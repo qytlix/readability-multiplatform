@@ -76,7 +76,7 @@ tests/
 - Preload + typed IPC；
 - Windows 11 与原生 Wayland Linux。
 
-使用仓库锁定的 Node.js LTS、包管理器和 lockfile。未经 Issue 说明和相关负责人 Review，不得：
+使用 Node.js 24.x LTS 与 npm；唯一锁文件为提交到仓库的 `package-lock.json`，不得混用其他锁文件。首次工程初始化环境为 Node.js 24.11.1；锁文件产生后，其他成员优先使用 `npm ci` 安装依赖。未经 Issue 说明和相关负责人 Review，不得：
 
 - 切换包管理器或删除 lockfile；
 - 更换核心框架、SQLite 驱动或构建体系；

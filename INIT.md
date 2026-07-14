@@ -1,4 +1,4 @@
-# Mercury：本地优先 AI Feed 阅读器
+# Shale：本地优先 AI Feed 阅读器
 
 ## 一句话目标
 
@@ -6,7 +6,7 @@
 
 ## 1. 产品定位
 
-Mercury 面向希望集中阅读博客、独立网站和其他 Feed 内容，同时又重视本地数据所有权与 AI 可控性的用户。
+Shale 面向希望集中阅读博客、独立网站和其他 Feed 内容，同时又重视本地数据所有权与 AI 可控性的用户。
 
 产品的主体是订阅与阅读。AI 是辅助用户理解文章的能力，不是独立聊天产品，也不应阻塞基本阅读流程。
 
@@ -192,7 +192,9 @@ flowchart LR
 - 通信：Electron Preload + typed IPC；
 - 网络与模型：Main 进程内的 Feed、Content 与 Provider Service；
 - 目标平台：Windows 11、原生 Wayland Linux；
-- 运行时与包管理器：使用仓库锁定的 Node.js LTS 与 lockfile，不在开发中擅自切换；
+- 产品名与 npm package name：Shale / `shale`；后续 `package.json` 必须设置 `"private": true`；
+- 运行时：团队使用 Node.js 24.x LTS；首次工程初始化环境为 Node.js 24.11.1；
+- 包管理器与锁文件：只使用 npm，唯一锁文件为提交到仓库的 `package-lock.json`，不得混用其他锁文件；锁文件产生后，其他成员优先使用 `npm ci` 安装依赖；
 - 测试：通过仓库 `package.json` 中统一脚本执行单元、集成和必要的端到端验证。
 
 SQLite 驱动、密钥存储实现和测试库属于需要通过 M0 原型验证的实现选择；无论选择何种库，都不得改变本文件规定的边界、持久化目标和安全约束。

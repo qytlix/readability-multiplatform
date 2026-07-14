@@ -1,8 +1,8 @@
-# Mercury Cross-Platform Course Project Plan
+# Shale Cross-Platform Course Project Plan
 
 ## 1. Purpose and Fixed Decisions
 
-This document is the execution baseline for converting the Mercury product concept into a course project.
+This document is the execution baseline for converting the Shale product concept into a course project.
 
 ### 1.1 Fixed technical direction
 
