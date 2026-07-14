@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>中文测试文章 - 使用 React 构建现代 Web 应用</title>
+  <meta name="author" content="张三">
+</head>
+<body>
+  <div class="header">
+    <a href="/">首页</a> &gt; <a href="/tech">技术</a>
+  </div>
+
+  <article>
+    <h1>使用 React 构建现代 Web 应用</h1>
+    <p class="meta">作者：张三 | 2026年7月14日</p>
+
+    <p>React 是目前最流行的前端框架之一。本文将介绍如何使用 React 构建高质量、可维护的 Web 应用程序。</p>
+
+    <h2>为什么选择 React？</h2>
+    <p>React 具有以下优势：</p>
+    <ul>
+      <li>组件化开发，提高代码复用性</li>
+      <li>虚拟 DOM 提升渲染性能</li>
+      <li>丰富的生态系统和社区支持</li>
+      <li>TypeScript 支持良好</li>
+    </ul>
+
+    <h2>项目架构</h2>
+    <p>一个典型的 React 项目包含以下结构：</p>
+    <pre><code>src/
+  ├── components/    # 通用组件
+  ├── pages/        # 页面组件
+  ├── hooks/        # 自定义 Hook
+  ├── services/     # API 服务
+  ├── store/        # 状态管理
+  └── utils/        # 工具函数</code></pre>
+
+    <h2>核心概念</h2>
+
+    <h3>1. 组件与 Props</h3>
+    <p>React 应用由组件构成。每个组件接收 props 并返回描述界面的 React 元素。</p>
+    <pre><code>interface ButtonProps {
+  label: string;
+  onClick: () =&gt; void;
+  variant?: 'primary' | 'secondary';
+}
+
+const Button: React.FC&lt;ButtonProps&gt; = ({ label, onClick, variant = 'primary' }) =&gt; {
+  return (
+    &lt;button className={`btn btn-${variant}`} onClick={onClick}&gt;
+      {label}
+    &lt;/button&gt;
+  );
+};</code></pre>
+
+    <h3>2. 状态管理</h3>
+    <p>使用 useState 和 useReducer 管理组件内部状态。</p>
+    <pre><code>const [count, setCount] = useState(0);
+
+const increment = () =&gt; {
+  setCount(prev =&gt; prev + 1);
+};</code></pre>
+
+    <blockquote>
+      <p>「React 的声明式编程范式让 UI 开发变得更加直观和可预测。」</p>
+      <cite>—— React 官方文档</cite>
+    </blockquote>
+
+    <h2>性能优化建议</h2>
+    <p>以下是一些实用的性能优化技巧：</p>
+    <ol>
+      <li>使用 React.memo 避免不必要的重渲染</li>
+      <li>使用 useMemo 和 useCallback 缓存计算结果和回调函数</li>
+      <li>代码分割（Code Splitting）减少首屏加载时间</li>
+      <li>使用虚拟列表处理大型数据集</li>
+    </ol>
+
+    <h2>总结</h2>
+    <p>React 提供了强大的工具和模式来构建现代 Web 应用。通过合理的架构设计和最佳实践，我们可以创建高性能、可维护的前端应用。</p>
+    <p>希望本文对你有所帮助！</p>
+  </article>
+
+  <div class="comments">
+    <p>评论区：<span>用户留言区域</span></p>
+  </div>
+
+  <script>
+    console.log('跟踪代码 - 应被移除');
+  </script>
+</body>
+</html>

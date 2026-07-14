@@ -1,0 +1,20 @@
+{
+  "version": "https://jsonfeed.org/version/1",
+  "title": "Minimal JSON Feed",
+  "home_page_url": "https://minimal-json.example.com",
+  "feed_url": "https://minimal-json.example.com/feed.json",
+  "items": [
+    {
+      "id": "minimal-1",
+      "url": "https://minimal-json.example.com/only-title",
+      "title": "Only Title Post"
+    },
+    {
+      "id": "minimal-2",
+      "url": "https://minimal-json.example.com/full-post",
+      "title": "Full Post",
+      "date_published": "2026-07-12T08:00:00Z",
+      "content_html": "<p>Some content here.</p>"
+    }
+  ]
+}

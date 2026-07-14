@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Developer Diary</title>
+    <link>https://devdiary.example.com</link>
+    <description>Weekly dev updates</description>
+    <item>
+      <title>Building with TypeScript</title>
+      <link>https://devdiary.example.com/typescript-tips</link>
+      <guid>uuid:ts-tips-2026</guid>
+      <pubDate>Sun, 13 Jul 2026 08:00:00 GMT</pubDate>
+      <author>dev@example.com (Dev Author)</author>
+      <description>TypeScript strict mode tips and tricks.</description>
+    </item>
+    <item>
+      <title>Rust for Web Devs</title>
+      <link>https://devdiary.example.com/rust-web</link>
+      <guid>uuid:rust-web-2026</guid>
+      <pubDate>Sat, 12 Jul 2026 10:30:00 GMT</pubDate>
+      <description>Why Rust is interesting for web developers.</description>
+    </item>
+    <item>
+      <title>Testing Strategies</title>
+      <link>https://devdiary.example.com/testing</link>
+      <guid>uuid:testing-2026</guid>
+      <pubDate>Fri, 11 Jul 2026 16:00:00 GMT</pubDate>
+      <author>dev@example.com</author>
+      <description>How we test our applications.</description>
+    </item>
+  </channel>
+</rss>
