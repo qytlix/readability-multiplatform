@@ -1,4 +1,4 @@
-# Mercury Cross-Platform Architecture
+# Shale Cross-Platform Architecture
 
 | Item | Value |
 |---|---|
@@ -9,7 +9,7 @@
 
 ## 1. Decision Summary
 
-Build the cross-platform Mercury application with the following stack:
+Build the cross-platform Shale application with the following stack:
 
 | Area | Decision |
 |---|---|
@@ -35,7 +35,7 @@ This decision supersedes the previous Tauri and shared-Swift-sidecar proposal.
 
 ### Product fit
 
-Mercury is dominated by web-shaped workloads:
+Shale is dominated by web-shaped workloads:
 
 - rendering cleaned HTML and Markdown
 - loading original article websites
@@ -49,7 +49,7 @@ Electron provides one Chromium implementation on Windows, macOS, and Linux. It a
 
 Windows is Electron's strongest deployment target for this project:
 
-- Chromium is bundled with the application; Mercury does not depend on the installed WebView2 version.
+- Chromium is bundled with the application; Shale does not depend on the installed WebView2 version.
 - Electron Forge can produce a normal Windows installer.
 - Windows code signing and automatic update paths are officially supported.
 - Windows on ARM is supported, although it is not a first-release requirement.
@@ -248,7 +248,7 @@ Platform notes:
 - macOS uses Keychain-backed encryption.
 - Linux normally depends on a supported secret service.
 
-On Linux, check the selected `safeStorage` backend. If Electron reports a weak plaintext-like fallback such as `basic_text`, Mercury must warn the user and avoid claiming that the key is securely encrypted. Document the required secret-service packages for supported distributions.
+On Linux, check the selected `safeStorage` backend. If Electron reports a weak plaintext-like fallback such as `basic_text`, Shale must warn the user and avoid claiming that the key is securely encrypted. Document the required secret-service packages for supported distributions.
 
 Local-first rules:
 
