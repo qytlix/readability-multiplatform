@@ -1,10 +1,19 @@
 import { app, BrowserWindow } from 'electron';
+import { env } from 'node:process';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { registerIpcHandlers } from './ipc';
 
 if (started) {
   app.quit();
+}
+
+// Wayland 兼容
+if (env.XDG_SESSION_TYPE === 'wayland' || env.WAYLAND_DISPLAY) {
+  env.ELECTRON_OZONE_PLATFORM_HINT = 'wayland';
+  app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform');
+  app.commandLine.appendSwitch('ozone-platform', 'wayland');
+  app.commandLine.appendSwitch('in-process-gpu');
 }
 
 let mainWindow: BrowserWindow | null = null;
