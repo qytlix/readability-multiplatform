@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { CleanedContent } from '../../../shared/contracts/content.types';
 import type { Entry } from '../../../shared/contracts/feed.types';
+import shaleAppIcon from '../../../../assets/icons/shale-app-icon-1024.png';
 
 interface EntryDetailProps {
   entry: Entry | null;
@@ -84,7 +85,10 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
   if (!entry) {
     return (
       <div className="entry-detail empty">
-        <p>Select an article to read</p>
+        <div className="entry-detail-empty-content">
+          <img className="entry-detail-empty-brand" src={shaleAppIcon} alt="" />
+          <p>Select an article to read</p>
+        </div>
       </div>
     );
   }

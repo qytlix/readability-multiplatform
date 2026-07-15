@@ -23,7 +23,7 @@
   --stream-selected: #cbdad1;
   --error: #a75952;
   --overlay: rgba(37, 42, 40, 0.58);
-  --header-height: 48px;
+  --header-height: 60px;
   --reader-content-max: 720px;
   --reader-gutter: clamp(28px, 4vw, 72px);
 }
@@ -71,10 +71,20 @@ a:focus-visible {
 }
 
 .app-header h1 {
-  font-size: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22.5px;
   font-weight: 650;
   letter-spacing: 0.01em;
   margin-right: auto;
+}
+
+.app-brand-mark {
+  display: block;
+  width: 35px;
+  height: auto;
+  flex: 0 0 auto;
 }
 
 .app-header button {
@@ -683,6 +693,21 @@ body.workspace-is-resizing * {
   align-items: center;
   justify-content: center;
   color: var(--paper-muted);
+}
+
+.entry-detail-empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.entry-detail-empty-brand {
+  display: block;
+  width: min(38vw, 192px);
+  min-width: 112px;
+  height: auto;
 }
 
 .entry-detail.loading {

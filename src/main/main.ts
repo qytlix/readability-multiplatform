@@ -18,12 +18,17 @@ if (env.XDG_SESSION_TYPE === 'wayland' || env.WAYLAND_DISPLAY) {
 
 let mainWindow: BrowserWindow | null = null;
 
+const linuxWindowIconPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'shale-app-icon-512.png')
+  : path.join(__dirname, '../../assets/icons/linux/shale-app-icon-512.png');
+
 const createWindow = (): void => {
   const newMainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
     minWidth: 1100,
     minHeight: 600,
+    icon: process.platform === 'linux' ? linuxWindowIconPath : undefined,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

@@ -6,6 +6,7 @@ import { FeedList } from './features/feeds/FeedList';
 import { EntryList } from './features/feeds/EntryList';
 import { EntryDetail } from './features/feeds/EntryDetail';
 import { WorkspaceLayout } from './features/layout/WorkspaceLayout';
+import shaleMark from './assets/brand/shale-mark.svg';
 
 export const App = () => {
   const [feeds, setFeeds] = useState<Feed[]>([]);
@@ -160,7 +161,10 @@ export const App = () => {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Shale</h1>
+        <h1>
+          <img className="app-brand-mark" src={shaleMark} alt="" />
+          <span>Shale</span>
+        </h1>
         <button type="button" onClick={handleTestIpc}>
           Test IPC
         </button>

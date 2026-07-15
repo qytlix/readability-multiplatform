@@ -7,10 +7,18 @@ import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-nati
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import path from 'node:path';
+
+const appIconBasePath = path.resolve(__dirname, 'assets/icons/shale-app-icon');
+const linuxIconPath = path.resolve(__dirname, 'assets/icons/linux/shale-app-icon-512.png');
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // Electron Packager selects `.icns` on macOS and `.ico` on Windows.
+    icon: appIconBasePath,
+    // Linux window icons need a PNG outside app.asar at runtime.
+    extraResource: linuxIconPath,
     // The Vite plugin normally packages only `.vite`. Main-process dependencies
     // are deliberately externalized in vite.main.config.ts, so let Forge retain
     // the application dependencies and prune development-only packages.
@@ -20,8 +28,16 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({}),
     new MakerZIP({}, ['darwin']),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    new MakerRpm({
+      options: {
+        icon: linuxIconPath,
+      },
+    }),
+    new MakerDeb({
+      options: {
+        icon: linuxIconPath,
+      },
+    }),
   ],
   plugins: [
     // better-sqlite3 is a native addon and cannot be loaded from inside app.asar.
