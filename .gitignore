@@ -97,5 +97,3 @@ dist/
 # makepkg
 *.pkg.tar.zst
 pkg/
-shale.PKGINFO
-src/shale.desktop
