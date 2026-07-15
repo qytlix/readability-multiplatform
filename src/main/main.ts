@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import { env } from 'node:process';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
-import { registerIpcHandlers } from './ipc';
+import { initializeServices, registerIpcHandlers } from './ipc';
 
 if (started) {
   app.quit();
@@ -47,6 +47,8 @@ const createWindow = (): void => {
 };
 
 app.on('ready', () => {
+  // Initialize database and feed services
+  initializeServices();
   registerIpcHandlers(() => mainWindow);
   createWindow();
 });

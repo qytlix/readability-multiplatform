@@ -8,6 +8,8 @@ export interface Feed {
   lastFetchedAt?: string;               // ISO-8601 datetime
   lastSyncStatus: SyncStatus;
   lastSyncError?: string;
+  lastETag?: string;
+  lastModified?: string;
   syncIntervalMin: number;              // 定时同步间隔（分钟）
   createdAt: string;                    // ISO-8601 datetime
 }
