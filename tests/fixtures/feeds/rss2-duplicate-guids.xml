@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Dups Feed</title>
+    <link>https://dups.example.com</link>
+    <description>Feed with duplicate GUIDs</description>
+    <item>
+      <title>Original Version</title>
+      <link>https://dups.example.com/original</link>
+      <guid>same-guid-value</guid>
+      <pubDate>Mon, 14 Jul 2026 10:00:00 GMT</pubDate>
+      <description>Original description.</description>
+    </item>
+    <item>
+      <title>Updated Version</title>
+      <link>https://dups.example.com/updated</link>
+      <guid>same-guid-value</guid>
+      <pubDate>Mon, 14 Jul 2026 12:00:00 GMT</pubDate>
+      <description>Updated description (should win).</description>
+    </item>
+    <item>
+      <title>Unique Item</title>
+      <link>https://dups.example.com/unique</link>
+      <guid>unique-guid</guid>
+      <pubDate>Mon, 14 Jul 2026 08:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

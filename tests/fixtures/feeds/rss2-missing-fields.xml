@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Minimal Feed</title>
+    <link>https://minimal.example.com</link>
+    <description>Feed with minimal fields</description>
+    <item>
+      <title>No GUID No Date</title>
+      <link>https://minimal.example.com/no-guid</link>
+    </item>
+    <item>
+      <guid>only-guid-item</guid>
+    </item>
+    <item>
+      <title></title>
+      <link>https://minimal.example.com/empty-title</link>
+      <guid>empty-title-item</guid>
+      <pubDate></pubDate>
+    </item>
+  </channel>
+</rss>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Science News</title>
+  <link href="https://science.example.com" />
+  <link rel="self" href="https://science.example.com/atom.xml" />
+  <updated>2026-07-14T08:00:00Z</updated>
+  <id>urn:uuid:science-feed</id>
+
+  <entry>
+    <title>New Breakthrough in Fusion Energy</title>
+    <link href="https://science.example.com/fusion-2026" />
+    <id>urn:uuid:fusion-2026</id>
+    <published>2026-07-14T07:00:00Z</published>
+    <summary>Scientists achieve sustained fusion with net positive energy.</summary>
+  </entry>
+
+  <entry>
+    <title>Mars Mission Update</title>
+    <link href="https://science.example.com/mars-2026" />
+    <id>urn:uuid:mars-2026</id>
+    <published>2026-07-13T09:00:00Z</published>
+    <summary>New images from the Mars rover reveal ancient riverbeds.</summary>
+    <content type="html">&lt;p&gt;The Mars rover has sent back stunning new images.&lt;/p&gt;</content>
+  </entry>
+</feed>
