@@ -6,17 +6,44 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    executableName: 'Shale',
+    // VitePlugin sets an ignore filter that only allows /.vite/ through.
+    // Override it to also include node_modules for runtime dependencies
+    // (better-sqlite3 native addon, jsdom, etc.) that Vite externalized.
+    ignore: (file: string) => {
+      if (!file) return false; // electron-packager root itself
+      // Always include Vite build output (default VitePlugin behavior)
+      if (file.startsWith('/.vite')) return false;
+      // Include all node_modules for runtime externals (native addons + jsdom etc.)
+      if (file === '/node_modules' || file.startsWith('/node_modules/')) return false;
+      return true; // everything else is ignored
+    },
   },
   rebuildConfig: {},
   makers: [
+    // Windows: Squirrel (NSIS-like installer)
     new MakerSquirrel({}),
+    // macOS: ZIP
     new MakerZIP({}, ['darwin']),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    // Linux: RPM (Fedora/RHEL)
+    new MakerRpm({
+      options: {
+        name: 'shale',
+        bin: 'Shale',
+      },
+    }),
+    // Linux: DEB (Debian/Ubuntu)
+    new MakerDeb({
+      options: {
+        name: 'shale',
+        bin: 'Shale',
+      },
+    }),
   ],
   plugins: [
     new VitePlugin({
@@ -42,6 +69,8 @@ const config: ForgeConfig = {
         },
       ],
     }),
+    // Auto-unpack native .node files from ASAR so Electron can load them
+    new AutoUnpackNativesPlugin({}),
     // Fuses are used to enable/disable various Electron functionality
     // at package time, before code signing the application
     new FusesPlugin({
@@ -51,7 +80,9 @@ const config: ForgeConfig = {
       [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
       [FuseV1Options.EnableNodeCliInspectArguments]: false,
       [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
-      [FuseV1Options.OnlyLoadAppFromAsar]: true,
+      // OnlyLoadAppFromAsar blocks native modules that are unpacked from ASAR;
+      // set to false because better-sqlite3 is a native addon loaded at runtime
+      [FuseV1Options.OnlyLoadAppFromAsar]: false,
     }),
   ],
 };
