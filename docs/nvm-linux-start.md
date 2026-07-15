@@ -104,7 +104,20 @@ Your user's .npmrc file has a `prefix` setting, which are incompatible with nvm.
 npm install -g @anthropic-ai/claude-code
 ```
 
-### 4.5 `better-sqlite3` 原生模块版本不匹配
+### 4.5 `better-sqlite3` 原生模块版本不匹配（高频）
+
+`better-sqlite3` 是 C++ 原生模块，编译产物与运行时 Node.js 版本强绑定。
+本项目中存在两个不同的 Node.js 运行时：
+
+| 运行时 | 版本 | NODE_MODULE_VERSION |
+|--------|------|---------------------|
+| 本地 nvm Node.js | 24.11.1 | **137** |
+| Electron 43 内置 Node | 对应 Node 22 分支 | **148** |
+
+`npm test`（vitest）使用本地 Node.js，`npm start` 使用 Electron 内置 Node。
+同一份 `better-sqlite3` 编译产物无法同时兼容两者。
+
+#### 错误表现
 
 ```
 Error: The module 'better-sqlite3.node' was compiled against a different
@@ -112,20 +125,85 @@ Node.js version using NODE_MODULE_VERSION 148. This version of Node.js
 requires NODE_MODULE_VERSION 137.
 ```
 
-**原因**：`better-sqlite3` 是原生 C++ 模块，必须针对运行时的 Node.js/Electron 版本编译。
-- Electron 43 内置 Node.js（NODE_MODULE_VERSION 148）
-- 本地 nvm Node.js 24.11.1（NODE_MODULE_VERSION 137）
+#### 完整工作流
 
-二者互不兼容，`npm start`（Electron）和 `npm test` / `vitest`（本地 Node）各需一份编译产物。
+**场景 A：首次安装后直接跑测试**
 
-**解决**：在执行测试前重新编译：
+```bash
+npm ci                   # 安装所有依赖，better-sqlite3 编译为本地 Node (137)
+npm test                 # ✅ 正常
+```
+
+**场景 B：首次安装后直接启动**
+
+```bash
+npm ci                   # better-sqlite3 编译为本地 Node (137)
+npm start                # @electron/rebuild 自动重编译为 Electron (148)，耗时 ~20s
+                         # ✅ Electron 窗口正常打开
+```
+
+**场景 C：启动过项目后，想跑测试**
+
+```bash
+# 此时 better-sqlite3 已被 @electron/rebuild 编译为 Electron (148)
+npm test
+# ❌ 报错 NODE_MODULE_VERSION 148 vs 137
+```
+
+**解决**：切回本地 Node 编译：
 
 ```bash
 npm rebuild better-sqlite3
-npm test
+npm test                 # ✅ 正常
 ```
 
-每次在 `npm start` 和 `npm test` 之间切换都需要 rebuild。`npm start` 首次启动时 `@electron/rebuild` 会自动为 Electron 重新编译（会看到编译 cc1 进程），耗时约 15–30 秒。
+**场景 D：跑完测试后，想再启动项目**
+
+```bash
+# 此时 better-sqlite3 已被 rebuild 为本地 Node (137)
+npm start
+# @electron/rebuild 检测到版本不匹配，自动重编译为 Electron (148)
+# ✅ 等待 ~20s，窗口正常打开
+```
+
+#### 规则总结
+
+```
+        首次 npm ci
+            │
+            ▼
+     ┌──────────────┐
+     │ 本地 Node 137 │ ← npm test 可用
+     └──────┬───────┘
+            │
+    ┌───────┴────────┐
+    │                │
+ npm start       npm rebuild
+    │                │
+    ▼                ▼
+ ┌──────────────┐ ┌──────────────┐
+ │ Electron 148 │ │ 本地 Node 137│
+ │ (自动rebuild)│ │              │
+ └──────────────┘ └──────────────┘
+    │                │
+ npm rebuild     npm start
+    │            (自动rebuild)
+    └────┬─────────┘
+         ▼
+    回到另一侧
+```
+
+**核心原则**：每次在 `npm start` 和 `npm test` 之间切换，都需要 rebuild / 等待自动 rebuild。
+`npm start` 的 Electron rebuild 是自动的（`@electron/rebuild`），`npm test` 的需要手动 `npm rebuild better-sqlite3`。
+
+**快速判断当前编译版本**：
+
+```bash
+# 看最后修改时间——谁刚跑过
+ls -la node_modules/better-sqlite3/build/Release/better_sqlite3.node
+```
+
+如果刚 `npm start` 过，它被 Electron 版本覆盖；刚 `npm rebuild` 过，它是本地版本。
 
 ### 4.6 首次 `npm start` 无窗口、终端卡住
 
