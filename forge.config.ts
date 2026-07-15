@@ -12,6 +12,13 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName: 'Shale',
+    // macOS ad-hoc signing — prevents FusesPlugin from leaving a broken
+    // signature on arm64. Identity "-" means ad-hoc (free, no Developer ID
+    // required). Gatekeeper will show "unverified" (bypassable) instead of
+    // "damaged" (unrecoverable).
+    osxSign: {
+      identity: '-',
+    },
     // VitePlugin sets an ignore filter that only allows /.vite/ through.
     // Override it to also include node_modules for runtime dependencies
     // (better-sqlite3 native addon, jsdom, etc.) that Vite externalized.
