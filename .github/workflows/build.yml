@@ -80,12 +80,12 @@ jobs:
       - run: npm ci
       - run: npm rebuild better-sqlite3
 
+      - name: Setup MSVC dev environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Build distributables
-        run: |
-          echo "msvs_version=2022" >> .npmrc
-          npm run make -- --targets=${{ matrix.makers }}
-        env:
-          npm_config_build_from_source: false
+        run: npm run make -- --targets=${{ matrix.makers }}
 
       - name: Create Arch Linux package (from Ubuntu x64 build)
         if: runner.os == 'Linux'
