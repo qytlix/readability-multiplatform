@@ -161,6 +161,10 @@ a:focus-visible {
   letter-spacing: 0.08em;
 }
 
+.feed-section + .feed-section {
+  margin-top: 24px;
+}
+
 .feed-list-actions {
   display: flex;
   gap: 4px;
@@ -193,11 +197,45 @@ a:focus-visible {
   gap: 2px;
 }
 
+.add-feed-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--sidebar-selected);
+  color: var(--slate-text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.add-feed-button:hover:not(:disabled) {
+  border-color: var(--accent-light);
+  background: var(--slate-surface);
+}
+
+.add-feed-button:active:not(:disabled) {
+  background: var(--slate-base);
+}
+
+.add-feed-button-icon {
+  color: var(--accent-light);
+  font-size: 17px;
+  line-height: 1;
+}
+
 .feed-item {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
+  min-height: 36px;
   padding: 8px;
   border: 1px solid transparent;
   background: transparent;
@@ -227,11 +265,13 @@ a:focus-visible {
 }
 
 .feed-item-error {
+  flex-shrink: 0;
   color: var(--error);
   font-size: 12px;
 }
 
 .feed-item-count {
+  flex-shrink: 0;
   min-width: 20px;
   padding: 1px 6px;
   border-radius: 10px;
