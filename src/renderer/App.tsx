@@ -121,15 +121,22 @@ export const App = () => {
   const handleSyncAll = useCallback(async () => {
     setLoadingFeeds(true);
     try {
-      await window.shaleAPI.feed.sync();
+      const syncResult = await window.shaleAPI.feed.sync();
+      if (!syncResult.ok) {
+        console.error('Sync failed:', syncResult.error);
+        return false;
+      }
+
       await loadFeeds();
       // Reload entries for current feed
       setEntries([]);
       setEntriesCursor(undefined);
       setHasMoreEntries(true);
       await loadEntries(true);
+      return true;
     } catch (err) {
       console.error('Sync failed:', err);
+      return false;
     } finally {
       setLoadingFeeds(false);
     }
