@@ -1,76 +1,140 @@
 import { describe, expect, it } from 'vitest';
 import {
   PANE_LAYOUT,
-  constrainPaneWidths,
-  getDefaultPaneWidths,
-  getMinimumWorkspaceWidth,
-  getPaneBounds,
-  parseStoredPaneWidths,
-  resizePane,
+  collapsePanePreference,
+  getDefaultPaneLayoutPreference,
+  getPaneTrackLayout,
+  isCollapseArmed,
+  parseStoredPaneLayoutPreference,
+  resizePanePreference,
+  restorePanePreference,
+  shouldCollapseAfterDrag,
 } from '../../src/renderer/features/layout/paneLayout';
 
-describe('pane layout sizing', () => {
-  it('keeps all three panes usable at the temporary minimum workspace width', () => {
-    const widths = constrainPaneWidths(getDefaultPaneWidths(), 1100);
+describe('pane layout preferences', () => {
+  it('migrates the phase-one v1 preference without losing saved widths', () => {
+    expect(
+      parseStoredPaneLayoutPreference('{"version":1,"feedWidth":300,"entryWidth":500}'),
+    ).toEqual({
+      version: 2,
+      feed: { width: 300, collapsed: false },
+      entry: { width: 500, collapsed: false },
+    });
+  });
+
+  it('accepts v2 collapsed preferences and safely rejects unknown or damaged data', () => {
+    expect(
+      parseStoredPaneLayoutPreference(
+        '{"version":2,"feed":{"width":280,"collapsed":true},"entry":{"width":440,"collapsed":false}}',
+      ),
+    ).toEqual({
+      version: 2,
+      feed: { width: 280, collapsed: true },
+      entry: { width: 440, collapsed: false },
+    });
+    expect(
+      parseStoredPaneLayoutPreference('{"version":3,"feedWidth":280,"entryWidth":440}'),
+    ).toEqual(getDefaultPaneLayoutPreference());
+    expect(
+      parseStoredPaneLayoutPreference(
+        '{"version":2,"feed":{"width":"bad","collapsed":false},"entry":{"width":440,"collapsed":false}}',
+      ),
+    ).toEqual(getDefaultPaneLayoutPreference());
+  });
+
+  it('arms Feed collapse only after the threshold and only collapses on pointerup', () => {
+    expect(isCollapseArmed('feed', PANE_LAYOUT.feed.minWidth - 43)).toBe(false);
+    expect(isCollapseArmed('feed', PANE_LAYOUT.feed.minWidth - 44)).toBe(true);
+    expect(isCollapseArmed('feed', PANE_LAYOUT.feed.minWidth - 10)).toBe(false);
+    expect(shouldCollapseAfterDrag('pointerup', true)).toBe(true);
+    expect(shouldCollapseAfterDrag('pointerup', false)).toBe(false);
+    expect(shouldCollapseAfterDrag('pointercancel', true)).toBe(false);
+    expect(shouldCollapseAfterDrag('windowblur', true)).toBe(false);
+  });
+
+  it('uses the same threshold rules for Entry and does not collapse after lost capture', () => {
+    expect(isCollapseArmed('entry', PANE_LAYOUT.entry.minWidth - 43)).toBe(false);
+    expect(isCollapseArmed('entry', PANE_LAYOUT.entry.minWidth - 44)).toBe(true);
+    expect(shouldCollapseAfterDrag('lostpointercapture', true)).toBe(false);
+  });
+
+  it('preserves the last expanded width through collapse and restores it', () => {
+    const collapsed = collapsePanePreference(
+      getDefaultPaneLayoutPreference(),
+      'feed',
+      288,
+    );
+    const restored = restorePanePreference(collapsed, 'feed');
+    const restoredTracks = getPaneTrackLayout(restored, 1280);
+
+    expect(collapsed.feed).toEqual({ width: 288, collapsed: true });
+    expect(restored.feed).toEqual({ width: 288, collapsed: false });
+    expect(restoredTracks.feed.trackWidth).toBe(288);
+  });
+
+  it('uses the rail and removes the ordinary divider for a collapsed pane', () => {
+    const collapsed = collapsePanePreference(
+      getDefaultPaneLayoutPreference(),
+      'feed',
+      280,
+    );
+    const tracks = getPaneTrackLayout(collapsed, 1280);
+
+    expect(tracks.feed).toMatchObject({
+      collapsed: true,
+      trackWidth: PANE_LAYOUT.collapsedRailWidth,
+      dividerWidth: 0,
+    });
+    expect(tracks.entry.collapsed).toBe(false);
+    expect(tracks.entry.dividerWidth).toBe(PANE_LAYOUT.dividerWidth);
+  });
+
+  it('clamps expanded panes before the Reader falls below 480px', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { width: 340, collapsed: false },
+      entry: { width: 560, collapsed: false },
+    };
+    const tracks = getPaneTrackLayout(preference, 1100);
     const readerWidth = 1100
-      - widths.feedWidth
-      - widths.entryWidth
-      - PANE_LAYOUT.dividerWidth * 2;
+      - tracks.feed.trackWidth
+      - tracks.feed.dividerWidth
+      - tracks.entry.trackWidth
+      - tracks.entry.dividerWidth;
 
-    expect(widths).toEqual({ feedWidth: 224, entryWidth: 384 });
     expect(readerWidth).toBe(PANE_LAYOUT.readerMinWidth);
+    expect(tracks.entry.expandedWidth).toBe(PANE_LAYOUT.entry.minWidth);
+    expect(tracks.feed.expandedWidth).toBe(248);
   });
 
-  it('falls back to the minimum viable workspace for invalid container widths', () => {
-    const widths = constrainPaneWidths(
-      { feedWidth: Number.NaN, entryWidth: Number.POSITIVE_INFINITY },
-      Number.NaN,
+  it('keeps two independent rails when both panes are collapsed', () => {
+    const feedCollapsed = collapsePanePreference(
+      getDefaultPaneLayoutPreference(),
+      'feed',
+      280,
     );
+    const bothCollapsed = collapsePanePreference(feedCollapsed, 'entry', 440);
+    const tracks = getPaneTrackLayout(bothCollapsed, 1100);
 
-    expect(widths).toEqual({
-      feedWidth: PANE_LAYOUT.feed.minWidth,
-      entryWidth: PANE_LAYOUT.entry.minWidth,
+    expect(tracks.feed).toMatchObject({
+      collapsed: true,
+      trackWidth: PANE_LAYOUT.collapsedRailWidth,
+      dividerWidth: 0,
     });
-    expect(getMinimumWorkspaceWidth()).toBe(1068);
-  });
-
-  it('limits a dragged pane before it would shrink the reader below its minimum', () => {
-    const currentWidths = { feedWidth: 340, entryWidth: 400 };
-    const resizedWidths = resizePane('entry', 560, currentWidths, 1280);
-
-    expect(resizedWidths).toEqual({ feedWidth: 340, entryWidth: 448 });
-    expect(getPaneBounds('entry', 340, 1280)).toEqual({
-      minWidth: 360,
-      maxWidth: 448,
+    expect(tracks.entry).toMatchObject({
+      collapsed: true,
+      trackWidth: PANE_LAYOUT.collapsedRailWidth,
+      dividerWidth: 0,
     });
   });
 
-  it('applies the pane minimums and maximums at normal and wide desktop widths', () => {
-    const baselineWidths = constrainPaneWidths(getDefaultPaneWidths(), 1280);
-    const feedAtMinimum = resizePane('feed', 0, baselineWidths, 1280);
-    const entryAtMinimum = resizePane('entry', 0, baselineWidths, 1280);
-    const feedAtMaximum = resizePane('feed', 999, baselineWidths, 1600);
-    const entryAtMaximum = resizePane('entry', 999, feedAtMaximum, 1600);
-
-    expect(baselineWidths).toEqual({ feedWidth: 224, entryWidth: 400 });
-    expect(feedAtMinimum.feedWidth).toBe(PANE_LAYOUT.feed.minWidth);
-    expect(entryAtMinimum.entryWidth).toBe(PANE_LAYOUT.entry.minWidth);
-    expect(feedAtMaximum.feedWidth).toBe(PANE_LAYOUT.feed.maxWidth);
-    expect(entryAtMaximum.entryWidth).toBe(PANE_LAYOUT.entry.maxWidth);
-  });
-
-  it('parses only the current, valid version of the stored layout object', () => {
-    expect(parseStoredPaneWidths('{"version":1,"feedWidth":300,"entryWidth":500}')).toEqual({
-      feedWidth: 300,
-      entryWidth: 500,
-    });
-    expect(parseStoredPaneWidths('{"version":2,"feedWidth":300,"entryWidth":500}')).toEqual(
-      getDefaultPaneWidths(),
+  it('restores a width through the normal safe resize clamp', () => {
+    const restored = restorePanePreference(
+      collapsePanePreference(getDefaultPaneLayoutPreference(), 'entry', 560),
+      'entry',
     );
-    expect(parseStoredPaneWidths('{"version":1,"feedWidth":-1,"entryWidth":900}')).toEqual({
-      feedWidth: PANE_LAYOUT.feed.minWidth,
-      entryWidth: PANE_LAYOUT.entry.maxWidth,
-    });
-    expect(parseStoredPaneWidths('{not valid json')).toEqual(getDefaultPaneWidths());
+    const resized = resizePanePreference('entry', restored.entry.width, restored, 1100);
+
+    expect(resized.entry.width).toBe(384);
   });
 });
