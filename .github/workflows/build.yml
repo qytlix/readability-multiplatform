@@ -84,36 +84,11 @@ jobs:
         run: |
           echo "msvs_version=2022" >> .npmrc
           npm run make -- --targets=${{ matrix.makers }}
+        env:
+          npm_config_build_from_source: false
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: shale-${{ matrix.label }}
-          path: out/make/**/*
-          if-no-files-found: error
-
-  # ── Arch Linux 原生包 (.pkg.tar.zst) ────────────────
-  make-arch:
-    needs: [check, test]
-    runs-on: ubuntu-latest
-    container: archlinux:base-devel
-    timeout-minutes: 30
-
-    steps:
-      - name: Install build tools
-        run: |
-          pacman -Syu --noconfirm git nodejs npm
-
-      - uses: actions/checkout@v4
-
-      - name: Build Shale (npm ci + package)
-        run: |
-          echo "fetch-allow-git=all" >> .npmrc
-          npm ci --loglevel=warn
-          npm run typecheck
-          npm run package
-
-      - name: Create Arch Linux package
+      - name: Create Arch Linux package (from Ubuntu x64 build)
+        if: runner.os == 'Linux'
         run: |
           set -euo pipefail
           pkgname="shale"
@@ -126,19 +101,11 @@ jobs:
           mkdir -p "${pkgdir}/usr/bin"
           mkdir -p "${pkgdir}/usr/share/applications"
 
-          # Copy bundled Electron app
           cp -r out/Shale-linux-x64/* "${pkgdir}/usr/lib/${pkgname}/"
-
-          # .desktop entry
           install -m644 shale.desktop "${pkgdir}/usr/share/applications/${pkgname}.desktop"
-
-          # Launcher symlink
           ln -sf "/usr/lib/${pkgname}/Shale" "${pkgdir}/usr/bin/${pkgname}"
-
-          # chrome-sandbox setuid
           chmod 4755 "${pkgdir}/usr/lib/${pkgname}/chrome-sandbox" 2>/dev/null || true
 
-          # ── .PKGINFO (pacman metadata) ──
           install_size="$(du -sk "${pkgdir}" | cut -f1)"
           sed \
             -e "s/%PKGVER%/${pkgver}/g" \
@@ -146,7 +113,6 @@ jobs:
             -e "s/%INSTALL_SIZE%/${install_size}/g" \
             shale.PKGINFO > "${pkgdir}/.PKGINFO"
 
-          # ── .MTREE (file checksums for pacman -Qk) ──
           cd "${pkgdir}"
           bsdtar -cf .MTREE --format=mtree \
             --options='!all,use-set,type,uid,gid,mode,size,sha256digest' \
@@ -155,26 +121,33 @@ jobs:
             usr/ .PKGINFO 2>/dev/null || echo > .MTREE
           cd - > /dev/null
 
-          # ── tar.zst ──
           cd "${pkgdir}"
           tar --zstd -cf "/tmp/${pkgname}-${pkgver}-${pkgrel}-x86_64.pkg.tar.zst" \
             --transform 's|^./||' \
             .PKGINFO .MTREE usr/
           cd - > /dev/null
 
-          cp "/tmp/${pkgname}-${pkgver}-${pkgrel}-x86_64.pkg.tar.zst" .
+          cp "/tmp/${pkgname}-${pkgver}-${pkgrel}-x86_64.pkg.tar.zst" ./shale-linux-arch-x86_64.pkg.tar.zst
 
       - name: Upload Arch package
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: shale-linux-arch-x64
           path: ./*.pkg.tar.zst
           if-no-files-found: error
 
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: shale-${{ matrix.label }}
+          path: out/make/**/*
+          if-no-files-found: error
+
   # ── GitHub Release（仅 v* 标签触发）──────────────────
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [make, make-arch]
+    needs: [make]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
