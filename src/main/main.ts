@@ -47,8 +47,9 @@ const createWindow = (): void => {
 };
 
 app.on('ready', () => {
-  // Initialize database and feed services
-  initializeServices();
+  // Initialize database with persistent path
+  const dbPath = path.join(app.getPath('userData'), 'shale.db');
+  initializeServices(dbPath);
   registerIpcHandlers(() => mainWindow);
   createWindow();
 });

@@ -139,7 +139,7 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
         {status === 'success' && content && (
           <div className="entry-detail-content">
             {showRaw ? (
-              <pre className="entry-detail-markdown">{content.cleanedMarkdown}</pre>
+              <pre className="entry-detail-markdown">{content.markdown}</pre>
             ) : (
               <div
                 className="entry-detail-html"

@@ -72,10 +72,10 @@ export class ContentService {
       // Persist
       this.contentStore.upsert({
         entryId,
-        sourceHtml: fetchResult.body,
+        html: fetchResult.body,
         sourceUrl: fetchResult.url,
         cleanedHtml: cleanResult.content,
-        cleanedMarkdown: markdown,
+        markdown: markdown,
         readabilityTitle: cleanResult.title,
         readabilityByline: cleanResult.byline,
         documentBaseURL: cleanResult.documentBaseURL,
@@ -95,7 +95,7 @@ export class ContentService {
         entryId,
         sourceUrl: fetchResult.url,
         cleanedHtml: cleanResult.content,
-        cleanedMarkdown: markdown,
+        markdown: markdown,
         readabilityTitle: cleanResult.title,
         readabilityByline: cleanResult.byline,
         pipelineStatus: 'success',
@@ -123,7 +123,7 @@ export class ContentService {
       entryId,
       sourceUrl: '',
       cleanedHtml: '',
-      cleanedMarkdown: '',
+      markdown: '',
       pipelineStatus: 'failed',
       pipelineError: error,
     };

@@ -3,10 +3,10 @@ import type { CleanedContent, PipelineStatus } from '../../shared/contracts/cont
 
 interface UpsertContentParams {
   entryId: number;
-  sourceHtml?: string;
+  html?: string;
   sourceUrl?: string;
   cleanedHtml?: string;
-  cleanedMarkdown?: string;
+  markdown?: string;
   readabilityTitle?: string;
   readabilityByline?: string;
   readabilityVersion?: number;
@@ -21,10 +21,10 @@ interface UpsertContentParams {
 interface ContentRow {
   id: number;
   entryId: number;
-  sourceHtml: string | null;
+  html: string | null;
   sourceUrl: string | null;
   cleanedHtml: string | null;
-  cleanedMarkdown: string | null;
+  markdown: string | null;
   readabilityTitle: string | null;
   readabilityByline: string | null;
   readabilityVersion: number;
@@ -52,7 +52,7 @@ export class ContentStore {
       entryId: row.entryId,
       sourceUrl: row.sourceUrl ?? '',
       cleanedHtml: row.cleanedHtml ?? '',
-      cleanedMarkdown: row.cleanedMarkdown ?? '',
+      markdown: row.markdown ?? '',
       readabilityTitle: row.readabilityTitle ?? undefined,
       readabilityByline: row.readabilityByline ?? undefined,
       pipelineStatus: row.pipelineStatus as PipelineStatus,
@@ -71,10 +71,10 @@ export class ContentStore {
     if (existing) {
       const stmt = this.db.prepare(`
         UPDATE entry_content SET
-          sourceHtml = COALESCE(?, sourceHtml),
+          html = COALESCE(?, html),
           sourceUrl = COALESCE(?, sourceUrl),
           cleanedHtml = COALESCE(?, cleanedHtml),
-          cleanedMarkdown = COALESCE(?, cleanedMarkdown),
+          markdown = COALESCE(?, markdown),
           readabilityTitle = COALESCE(?, readabilityTitle),
           readabilityByline = COALESCE(?, readabilityByline),
           readabilityVersion = COALESCE(?, readabilityVersion),
@@ -89,10 +89,10 @@ export class ContentStore {
       `);
 
       stmt.run(
-        params.sourceHtml ?? null,
+        params.html ?? null,
         params.sourceUrl ?? null,
         params.cleanedHtml ?? null,
-        params.cleanedMarkdown ?? null,
+        params.markdown ?? null,
         params.readabilityTitle ?? null,
         params.readabilityByline ?? null,
         params.readabilityVersion ?? null,
@@ -108,7 +108,7 @@ export class ContentStore {
     } else {
       const stmt = this.db.prepare(`
         INSERT INTO entry_content
-          (entryId, sourceHtml, sourceUrl, cleanedHtml, cleanedMarkdown,
+          (entryId, html, sourceUrl, cleanedHtml, markdown,
            readabilityTitle, readabilityByline, readabilityVersion, markdownVersion,
            documentBaseURL, pipelineStatus, pipelineError,
            segmenterVersion, sourceContentHash, createdAt, updatedAt)
@@ -117,10 +117,10 @@ export class ContentStore {
 
       stmt.run(
         params.entryId,
-        params.sourceHtml ?? null,
+        params.html ?? null,
         params.sourceUrl ?? null,
         params.cleanedHtml ?? null,
-        params.cleanedMarkdown ?? null,
+        params.markdown ?? null,
         params.readabilityTitle ?? null,
         params.readabilityByline ?? null,
         params.readabilityVersion ?? null,

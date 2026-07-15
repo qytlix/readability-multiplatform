@@ -81,7 +81,7 @@ describe('ContentService', () => {
       expect(result.pipelineStatus).toBe('success');
       expect(result.sourceUrl).toBe('https://example.com/article');
       expect(result.cleanedHtml).toBeTruthy();
-      expect(result.cleanedMarkdown).toBeTruthy();
+      expect(result.markdown).toBeTruthy();
       expect(result.readabilityTitle).toBeDefined();
       expect(result.sourceContentHash).toBeDefined();
     });
@@ -92,7 +92,7 @@ describe('ContentService', () => {
       const stored = contentStore.findByEntry(entryId);
       expect(stored).toBeDefined();
       expect(stored!.cleanedHtml).toBeTruthy();
-      expect(stored!.cleanedMarkdown).toBeTruthy();
+      expect(stored!.markdown).toBeTruthy();
     });
 
     it('should handle entry not found', async () => {

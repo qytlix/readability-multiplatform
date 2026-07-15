@@ -12,7 +12,7 @@ export interface CleanedContent {
   entryId: number;
   sourceUrl: string;
   cleanedHtml: string;
-  cleanedMarkdown: string;
+  markdown: string;
   readabilityTitle?: string;
   readabilityByline?: string;
   pipelineStatus: PipelineStatus;

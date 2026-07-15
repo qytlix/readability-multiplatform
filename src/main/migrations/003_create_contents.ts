@@ -3,10 +3,10 @@ export const MIGRATION_003 = `
 CREATE TABLE IF NOT EXISTS entry_content (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     entryId             INTEGER NOT NULL UNIQUE REFERENCES entry(id) ON DELETE CASCADE,
-    sourceHtml          TEXT,
+    html                TEXT,
     sourceUrl           TEXT,
     cleanedHtml         TEXT,
-    cleanedMarkdown     TEXT,
+    markdown            TEXT,
     readabilityTitle    TEXT,
     readabilityByline   TEXT,
     readabilityVersion  INTEGER DEFAULT 0,

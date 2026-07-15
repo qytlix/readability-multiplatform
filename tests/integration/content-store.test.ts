@@ -34,17 +34,17 @@ describe('ContentStore', () => {
   it('should upsert new content', () => {
     contentStore.upsert({
       entryId,
-      sourceHtml: '<html>source</html>',
+      html: '<html>source</html>',
       sourceUrl: 'https://example.com/post-1',
       cleanedHtml: '<div>cleaned</div>',
-      cleanedMarkdown: 'cleaned',
+      markdown: 'cleaned',
       pipelineStatus: 'success',
     });
 
     const content = contentStore.findByEntry(entryId);
     expect(content).toBeDefined();
     expect(content!.cleanedHtml).toBe('<div>cleaned</div>');
-    expect(content!.cleanedMarkdown).toBe('cleaned');
+    expect(content!.markdown).toBe('cleaned');
     expect(content!.pipelineStatus).toBe('success');
   });
 
