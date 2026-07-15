@@ -120,6 +120,10 @@ html, body, #root {
   letter-spacing: 0.5px;
 }
 
+.feed-section + .feed-section {
+  margin-top: 24px;
+}
+
 .feed-list-actions {
   display: flex;
   gap: 4px;
@@ -146,10 +150,45 @@ html, body, #root {
   gap: 2px;
 }
 
+.add-feed-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--sidebar-selected);
+  color: var(--slate-text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.add-feed-button:hover:not(:disabled) {
+  border-color: var(--accent-light);
+  background: var(--slate-surface);
+}
+
+.add-feed-button:active:not(:disabled) {
+  background: var(--slate-base);
+}
+
+.add-feed-button-icon {
+  color: var(--accent-light);
+  font-size: 17px;
+  line-height: 1;
+}
+
 .feed-item {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  min-height: 36px;
   padding: 8px;
   border: none;
   background: transparent;
@@ -178,16 +217,17 @@ html, body, #root {
 }
 
 .feed-item-error {
+  flex-shrink: 0;
+  color: var(--error);
   font-size: 12px;
 }
 
 .feed-item-count {
-  font-size: 11px;
-  background: var(--bg-tertiary);
+  flex-shrink: 0;
+  min-width: 20px;
   padding: 1px 6px;
   border-radius: 10px;
   color: var(--text-secondary);
-  min-width: 20px;
   text-align: center;
 }
 
