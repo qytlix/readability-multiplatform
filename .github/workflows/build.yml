@@ -105,7 +105,7 @@ jobs:
 
       - name: Build Shale (npm ci + package)
         run: |
-          npm ci --loglevel=warn
+          npm ci --loglevel=warn --allow-git
           npm run typecheck
           npm run package
 
