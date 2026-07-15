@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Feed } from '../shared/contracts/feed.types';
 import type { EntryListItem } from '../shared/contracts/feed.types';
 import type { Entry } from '../shared/contracts/feed.types';
 import { FeedList } from './features/feeds/FeedList';
 import { EntryList } from './features/feeds/EntryList';
 import { EntryDetail } from './features/feeds/EntryDetail';
+import { WorkspaceLayout } from './features/layout/WorkspaceLayout';
 
 export const App = () => {
   const [feeds, setFeeds] = useState<Feed[]>([]);
@@ -166,8 +167,8 @@ export const App = () => {
         <span className="ipc-status">{ipcStatus}</span>
       </header>
 
-      <div className="app-body">
-        <aside className="app-sidebar">
+      <WorkspaceLayout
+        feedPane={(
           <FeedList
             feeds={feeds}
             selectedFeedId={selectedFeedId}
@@ -184,9 +185,8 @@ export const App = () => {
             }}
             loading={loadingFeeds}
           />
-        </aside>
-
-        <main className="app-main">
+        )}
+        entryPane={(
           <EntryList
             entries={entries}
             selectedEntryId={selectedEntryId}
@@ -196,12 +196,9 @@ export const App = () => {
             onLoadMore={handleLoadMore}
             hasMore={hasMoreEntries}
           />
-        </main>
-
-        <aside className="app-detail">
-          <EntryDetail entry={selectedEntry} />
-        </aside>
-      </div>
+        )}
+        readerPane={<EntryDetail entry={selectedEntry} />}
+      />
     </div>
   );
 };

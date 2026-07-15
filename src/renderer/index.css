@@ -23,8 +23,6 @@
   --stream-selected: #cbdad1;
   --error: #a75952;
   --overlay: rgba(37, 42, 40, 0.58);
-  --sidebar-width: clamp(216px, 14vw, 240px);
-  --entry-list-width: clamp(360px, 24vw, 420px);
   --header-height: 48px;
   --reader-content-max: 720px;
   --reader-gutter: clamp(28px, 4vw, 72px);
@@ -106,7 +104,12 @@ a:focus-visible {
 
 .app-body {
   display: grid;
-  grid-template-columns: var(--sidebar-width) var(--entry-list-width) minmax(0, 1fr);
+  grid-template-columns:
+    var(--workspace-feed-width)
+    var(--workspace-divider-width)
+    var(--workspace-entry-width)
+    var(--workspace-divider-width)
+    minmax(var(--workspace-reader-min-width), 1fr);
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -116,10 +119,10 @@ a:focus-visible {
 .app-sidebar {
   min-width: 0;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   background: var(--slate-base);
   color: var(--slate-text);
-  border-right: 1px solid var(--slate-border);
 }
 
 .app-main {
@@ -128,7 +131,6 @@ a:focus-visible {
   overflow: hidden;
   background: var(--stream-bg);
   color: var(--paper-text);
-  border-right: 1px solid var(--paper-border);
 }
 
 .app-detail {
@@ -137,6 +139,53 @@ a:focus-visible {
   overflow: hidden;
   background: var(--paper-bg);
   color: var(--paper-text);
+}
+
+.pane-divider {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  min-height: 0;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.pane-divider::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  content: '';
+  background: var(--paper-border);
+  transform: translateX(-50%);
+  transition: background-color 120ms ease;
+}
+
+.pane-divider:hover::after,
+.pane-divider.is-dragging::after {
+  background: var(--accent);
+}
+
+.pane-divider:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -2px;
+}
+
+.pane-divider:focus-visible::after {
+  background: var(--accent-strong);
+}
+
+body.workspace-is-resizing,
+body.workspace-is-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pane-divider::after {
+    transition: none;
+  }
 }
 
 /* ── Feed List ───────────────────────────────────── */
