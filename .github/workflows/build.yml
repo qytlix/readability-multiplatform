@@ -47,18 +47,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # - os: ubuntu-latest
-          #   label: linux-x64
-          #   makers: deb,rpm
-          #   deps: dpkg-dev rpm fakeroot
+          - os: ubuntu-latest
+            label: linux-x64
+            makers: deb,rpm
+            deps: dpkg-dev rpm fakeroot
 
           - os: windows-2022
             label: win-x64
             makers: squirrel
 
-          # - os: macos-latest
-          #   label: mac-x64
-          #   makers: zip
+          - os: macos-latest
+            label: mac-x64
+            makers: zip
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
