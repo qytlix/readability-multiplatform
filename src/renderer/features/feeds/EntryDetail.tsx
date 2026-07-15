@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import type { CleanedContent } from '../../../shared/contracts/content.types';
 import type { Entry } from '../../../shared/contracts/feed.types';
-import shaleAppIcon from '../../../../assets/icons/shale-app-icon-1024.png';
+import settlingPointAnimated from '../../assets/illustrations/empty-state/settling-point-animated.svg';
+import settlingPointStatic from '../../assets/illustrations/empty-state/settling-point-static.svg';
 
 interface EntryDetailProps {
   entry: Entry | null;
+  hasEntries: boolean;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
 
-export const EntryDetail = ({ entry }: EntryDetailProps) => {
+export const EntryDetail = ({ entry, hasEntries }: EntryDetailProps) => {
   const [content, setContent] = useState<CleanedContent | null>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
   const [error, setError] = useState('');
@@ -84,11 +86,19 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
 
   if (!entry) {
     return (
-      <div className="entry-detail empty">
-        <div className="entry-detail-empty-content">
-          <img className="entry-detail-empty-brand" src={shaleAppIcon} alt="" />
+      <div className={`entry-detail empty ${hasEntries ? 'entry-detail-empty-selection' : ''}`}>
+        {hasEntries ? (
+          <div className="entry-detail-empty-content">
+            <picture className="entry-detail-empty-illustration" aria-hidden="true">
+              <source media="(prefers-reduced-motion: reduce)" srcSet={settlingPointStatic} />
+              <img src={settlingPointAnimated} alt="" />
+            </picture>
+            <p className="entry-detail-empty-primary">Select an article to read</p>
+            <p className="entry-detail-empty-secondary">Let ideas settle into layers.</p>
+          </div>
+        ) : (
           <p>Select an article to read</p>
-        </div>
+        )}
       </div>
     );
   }

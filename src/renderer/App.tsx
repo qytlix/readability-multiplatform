@@ -201,7 +201,7 @@ export const App = () => {
             hasMore={hasMoreEntries}
           />
         )}
-        readerPane={<EntryDetail entry={selectedEntry} />}
+        readerPane={<EntryDetail entry={selectedEntry} hasEntries={entries.length > 0} />}
       />
     </div>
   );
