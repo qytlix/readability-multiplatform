@@ -27,7 +27,10 @@ const config: ForgeConfig = {
   rebuildConfig: {},
   makers: [
     // Windows: Squirrel (NSIS-like installer)
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      authors: 'Shale Team',
+      description: 'Shale — a cross-platform feed reader',
+    }),
     // macOS: ZIP
     new MakerZIP({}, ['darwin']),
     // Linux: RPM (Fedora/RHEL)
