@@ -170,25 +170,120 @@ a:focus-visible {
   gap: 4px;
 }
 
-.btn-icon {
-  padding: 4px 8px;
-  border: 1px solid transparent;
+.sync-button {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--slate-border);
+  border-radius: 8px;
   background: transparent;
-  color: var(--slate-muted);
+  color: var(--accent-light);
   cursor: pointer;
-  font-size: 14px;
-  border-radius: 5px;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 100ms ease;
 }
 
-.btn-icon:hover:not(:disabled) {
-  background: var(--slate-surface);
-  border-color: var(--slate-border);
-  color: var(--slate-text);
+.sync-button.idle:hover {
+  border-color: var(--accent);
+  background: var(--sidebar-selected);
 }
 
-.btn-icon:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
+.sync-button:active:not([aria-disabled='true']) {
+  transform: translateY(1px);
+}
+
+.sync-button:focus-visible {
+  outline-color: var(--accent-light);
+}
+
+.sync-button[aria-disabled='true'] {
+  cursor: wait;
+}
+
+.sync-button.success,
+.sync-button.error {
+  border-color: currentColor;
+  background: var(--sidebar-selected);
+}
+
+.sync-button.error {
+  color: var(--error);
+}
+
+.sync-icon {
+  display: block;
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.sync-button.idle:hover .sync-icon {
+  animation: sync-hover-cycle 1100ms ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.sync-button.loading .sync-icon {
+  animation: sync-loading 820ms linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.sync-error-message {
+  margin: -2px 4px 8px;
+  color: var(--error);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+@keyframes sync-hover-cycle {
+  0% {
+    opacity: 1;
+    transform: rotate(0deg);
+  }
+
+  66% {
+    opacity: 1;
+    transform: rotate(-270deg);
+  }
+
+  78% {
+    opacity: 0;
+    transform: rotate(-270deg);
+  }
+
+  79% {
+    opacity: 0;
+    transform: rotate(0deg);
+  }
+
+  100% {
+    opacity: 1;
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes sync-loading {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-button {
+    transition: none;
+  }
+
+  .sync-button.idle:hover .sync-icon,
+  .sync-button.loading .sync-icon {
+    animation: none;
+  }
 }
 
 .feed-items {
