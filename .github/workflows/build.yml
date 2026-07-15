@@ -82,7 +82,7 @@ jobs:
 
       - name: Build distributables
         run: |
-          npm config set msvs_version 2022
+          echo "msvs_version=2022" >> .npmrc
           npm run make -- --targets=${{ matrix.makers }}
 
       - name: Upload artifacts
@@ -108,7 +108,8 @@ jobs:
 
       - name: Build Shale (npm ci + package)
         run: |
-          npm_config_fetch_allow_git=all npm ci --loglevel=warn
+          echo "fetch-allow-git=all" >> .npmrc
+          npm ci --loglevel=warn
           npm run typecheck
           npm run package
 
