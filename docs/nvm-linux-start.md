@@ -127,83 +127,37 @@ requires NODE_MODULE_VERSION 137.
 
 #### 完整工作流
 
-**场景 A：首次安装后直接跑测试**
+**已自动化**：`package.json` 中配置了 `pretest` 脚本，`npm test` 会自动在测试前 rebuild 到本地 Node 版本。
 
 ```bash
-npm ci                   # 安装所有依赖，better-sqlite3 编译为本地 Node (137)
-npm test                 # ✅ 正常
+npm test     # pretest 自动 npm rebuild better-sqlite3 → vitest
+npm start    # @electron/rebuild 自动检测并 rebuild → Electron 启动
 ```
 
-**场景 B：首次安装后直接启动**
+不再需要手动记 rebuild 命令。
 
-```bash
-npm ci                   # better-sqlite3 编译为本地 Node (137)
-npm start                # @electron/rebuild 自动重编译为 Electron (148)，耗时 ~20s
-                         # ✅ Electron 窗口正常打开
-```
-
-**场景 C：启动过项目后，想跑测试**
-
-```bash
-# 此时 better-sqlite3 已被 @electron/rebuild 编译为 Electron (148)
-npm test
-# ❌ 报错 NODE_MODULE_VERSION 148 vs 137
-```
-
-**解决**：切回本地 Node 编译：
-
-```bash
-npm rebuild better-sqlite3
-npm test                 # ✅ 正常
-```
-
-**场景 D：跑完测试后，想再启动项目**
-
-```bash
-# 此时 better-sqlite3 已被 rebuild 为本地 Node (137)
-npm start
-# @electron/rebuild 检测到版本不匹配，自动重编译为 Electron (148)
-# ✅ 等待 ~20s，窗口正常打开
-```
-
-#### 规则总结
+#### 规则总结（已过时但保留作参考）
 
 ```
         首次 npm ci
             │
             ▼
      ┌──────────────┐
-     │ 本地 Node 137 │ ← npm test 可用
+     │ 本地 Node 137 │ ← npm test 可用（pretest 自动 rebuild）
      └──────┬───────┘
             │
     ┌───────┴────────┐
     │                │
- npm start       npm rebuild
+ npm start       npm test
+ (自动rebuild)   (pretest 自动rebuild)
     │                │
     ▼                ▼
  ┌──────────────┐ ┌──────────────┐
  │ Electron 148 │ │ 本地 Node 137│
- │ (自动rebuild)│ │              │
  └──────────────┘ └──────────────┘
-    │                │
- npm rebuild     npm start
-    │            (自动rebuild)
-    └────┬─────────┘
-         ▼
-    回到另一侧
 ```
 
-**核心原则**：每次在 `npm start` 和 `npm test` 之间切换，都需要 rebuild / 等待自动 rebuild。
-`npm start` 的 Electron rebuild 是自动的（`@electron/rebuild`），`npm test` 的需要手动 `npm rebuild better-sqlite3`。
-
-**快速判断当前编译版本**：
-
-```bash
-# 看最后修改时间——谁刚跑过
-ls -la node_modules/better-sqlite3/build/Release/better_sqlite3.node
-```
-
-如果刚 `npm start` 过，它被 Electron 版本覆盖；刚 `npm rebuild` 过，它是本地版本。
+`npm start` 和 `npm test` 现在各自自动处理 rebuild，无需手动切换。
 
 ### 4.6 首次 `npm start` 无窗口、终端卡住
 
@@ -328,7 +282,7 @@ import type { ParsedFeed } from '../../src/shared/contracts/feed.types';
 | 查看已安装的 Node 版本 | `nvm ls` |
 | 安装依赖（锁文件优先） | `npm ci` |
 | 更新依赖 + 锁文件 | `npm install` |
-| 测试前重编译原生模块 | `npm rebuild better-sqlite3` |
+| 测试前重编译原生模块 | `npm rebuild better-sqlite3`（`pretest` 已自动执行，通常无需手动） |
 | TypeScript 类型检查 | `npm run typecheck` |
 | 运行测试 | `npm test` |
 | 启动开发模式 | `npm start` |
