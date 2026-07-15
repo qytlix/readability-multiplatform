@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Feed } from '../shared/contracts/feed.types';
 import type { EntryListItem } from '../shared/contracts/feed.types';
 import type { Entry } from '../shared/contracts/feed.types';

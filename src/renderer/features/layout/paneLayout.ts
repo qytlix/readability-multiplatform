@@ -1,9 +1,7 @@
 export const PANE_LAYOUT = {
   storageKey: 'shale.workspace-layout',
-  version: 2,
+  version: 1,
   dividerWidth: 6,
-  collapsedRailWidth: 34,
-  collapseThreshold: 44,
   readerMinWidth: 480,
   feed: {
     defaultWidth: 224,
@@ -20,37 +18,14 @@ export const PANE_LAYOUT = {
 } as const;
 
 export type ResizablePane = 'feed' | 'entry';
-export type DragEndReason =
-  | 'pointerup'
-  | 'pointercancel'
-  | 'lostpointercapture'
-  | 'windowblur'
-  | 'unmount';
 
-export interface PanePreference {
-  /** The user's last expanded width. A collapsed rail never overwrites this. */
-  width: number;
-  collapsed: boolean;
+export interface PaneWidths {
+  feedWidth: number;
+  entryWidth: number;
 }
 
-export interface PaneLayoutPreference {
+interface StoredPaneLayout extends PaneWidths {
   version: number;
-  feed: PanePreference;
-  entry: PanePreference;
-}
-
-export interface PaneTrack {
-  collapsed: boolean;
-  /** The effective expanded width after the current container constraints. */
-  expandedWidth: number;
-  trackWidth: number;
-  dividerWidth: number;
-}
-
-export interface PaneTrackLayout {
-  feed: PaneTrack;
-  entry: PaneTrack;
-  readerMinWidth: number;
 }
 
 const clamp = (value: number, minimum: number, maximum: number): number =>
@@ -59,49 +34,12 @@ const clamp = (value: number, minimum: number, maximum: number): number =>
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === 'object';
-
-const getPaneConfig = (pane: ResizablePane) =>
+const getStaticPaneBounds = (pane: ResizablePane) =>
   pane === 'feed' ? PANE_LAYOUT.feed : PANE_LAYOUT.entry;
 
-const getOtherPane = (pane: ResizablePane): ResizablePane =>
-  pane === 'feed' ? 'entry' : 'feed';
-
-const normalizePanePreference = (
-  pane: ResizablePane,
-  preference: PanePreference,
-): PanePreference => {
-  const config = getPaneConfig(pane);
-
-  return {
-    width: clamp(
-      isFiniteNumber(preference.width) ? preference.width : config.defaultWidth,
-      config.minWidth,
-      config.maxWidth,
-    ),
-    collapsed: preference.collapsed === true,
-  };
-};
-
-export const getDefaultPaneLayoutPreference = (): PaneLayoutPreference => ({
-  version: PANE_LAYOUT.version,
-  feed: {
-    width: PANE_LAYOUT.feed.defaultWidth,
-    collapsed: false,
-  },
-  entry: {
-    width: PANE_LAYOUT.entry.defaultWidth,
-    collapsed: false,
-  },
-});
-
-export const normalizePaneLayoutPreference = (
-  preference: PaneLayoutPreference,
-): PaneLayoutPreference => ({
-  version: PANE_LAYOUT.version,
-  feed: normalizePanePreference('feed', preference.feed),
-  entry: normalizePanePreference('entry', preference.entry),
+export const getDefaultPaneWidths = (): PaneWidths => ({
+  feedWidth: PANE_LAYOUT.feed.defaultWidth,
+  entryWidth: PANE_LAYOUT.entry.defaultWidth,
 });
 
 export const getMinimumWorkspaceWidth = (): number =>
@@ -115,289 +53,149 @@ const getSafeContainerWidth = (containerWidth: number): number =>
     ? Math.max(containerWidth, getMinimumWorkspaceWidth())
     : getMinimumWorkspaceWidth();
 
-const getAvailableExpandedPaneWidth = (
-  preference: PaneLayoutPreference,
-  containerWidth: number,
-): number => {
-  const collapsedRailCount = Number(preference.feed.collapsed)
-    + Number(preference.entry.collapsed);
-  const dividerCount = Number(!preference.feed.collapsed)
-    + Number(!preference.entry.collapsed);
-
-  return getSafeContainerWidth(containerWidth)
-    - PANE_LAYOUT.readerMinWidth
-    - collapsedRailCount * PANE_LAYOUT.collapsedRailWidth
-    - dividerCount * PANE_LAYOUT.dividerWidth;
-};
+export const normalizePaneWidths = (widths: PaneWidths): PaneWidths => ({
+  feedWidth: clamp(
+    isFiniteNumber(widths.feedWidth) ? widths.feedWidth : PANE_LAYOUT.feed.defaultWidth,
+    PANE_LAYOUT.feed.minWidth,
+    PANE_LAYOUT.feed.maxWidth,
+  ),
+  entryWidth: clamp(
+    isFiniteNumber(widths.entryWidth) ? widths.entryWidth : PANE_LAYOUT.entry.defaultWidth,
+    PANE_LAYOUT.entry.minWidth,
+    PANE_LAYOUT.entry.maxWidth,
+  ),
+});
 
 /**
- * Calculates all five Grid tracks from the persisted preference. Collapsed
- * panes consume only their rail and have no ordinary resize divider.
+ * Resolves saved preferred widths for the available Grid width without mutating
+ * the saved preference. At narrow desktop widths, the Entry pane gives up its
+ * optional width first, then the Feed pane, so the Reader retains its minimum.
  */
-export const getPaneTrackLayout = (
-  inputPreference: PaneLayoutPreference,
+export const constrainPaneWidths = (
+  preferredWidths: PaneWidths,
   containerWidth: number,
-): PaneTrackLayout => {
-  const preference = normalizePaneLayoutPreference(inputPreference);
-  let feedExpandedWidth = preference.feed.width;
-  let entryExpandedWidth = preference.entry.width;
-  const availableExpandedPaneWidth = getAvailableExpandedPaneWidth(
-    preference,
-    containerWidth,
+): PaneWidths => {
+  let { feedWidth, entryWidth } = normalizePaneWidths(preferredWidths);
+  const availablePaneWidth = getSafeContainerWidth(containerWidth)
+    - PANE_LAYOUT.readerMinWidth
+    - PANE_LAYOUT.dividerWidth * 2;
+  let excessWidth = feedWidth + entryWidth - availablePaneWidth;
+
+  if (excessWidth <= 0) {
+    return { feedWidth, entryWidth };
+  }
+
+  const entryReduction = Math.min(
+    excessWidth,
+    entryWidth - PANE_LAYOUT.entry.minWidth,
   );
-  const expandedPaneWidth = (preference.feed.collapsed ? 0 : feedExpandedWidth)
-    + (preference.entry.collapsed ? 0 : entryExpandedWidth);
-  let excessWidth = expandedPaneWidth - availableExpandedPaneWidth;
+  entryWidth -= entryReduction;
+  excessWidth -= entryReduction;
 
-  if (excessWidth > 0 && !preference.entry.collapsed) {
-    const entryReduction = Math.min(
-      excessWidth,
-      entryExpandedWidth - PANE_LAYOUT.entry.minWidth,
-    );
-    entryExpandedWidth -= entryReduction;
-    excessWidth -= entryReduction;
+  if (excessWidth > 0) {
+    feedWidth = Math.max(PANE_LAYOUT.feed.minWidth, feedWidth - excessWidth);
   }
 
-  if (excessWidth > 0 && !preference.feed.collapsed) {
-    feedExpandedWidth = Math.max(
-      PANE_LAYOUT.feed.minWidth,
-      feedExpandedWidth - excessWidth,
-    );
-  }
-
-  return {
-    feed: {
-      collapsed: preference.feed.collapsed,
-      expandedWidth: feedExpandedWidth,
-      trackWidth: preference.feed.collapsed
-        ? PANE_LAYOUT.collapsedRailWidth
-        : feedExpandedWidth,
-      dividerWidth: preference.feed.collapsed ? 0 : PANE_LAYOUT.dividerWidth,
-    },
-    entry: {
-      collapsed: preference.entry.collapsed,
-      expandedWidth: entryExpandedWidth,
-      trackWidth: preference.entry.collapsed
-        ? PANE_LAYOUT.collapsedRailWidth
-        : entryExpandedWidth,
-      dividerWidth: preference.entry.collapsed ? 0 : PANE_LAYOUT.dividerWidth,
-    },
-    readerMinWidth: PANE_LAYOUT.readerMinWidth,
-  };
+  return { feedWidth, entryWidth };
 };
 
 export const getPaneBounds = (
   pane: ResizablePane,
-  preference: PaneLayoutPreference,
+  otherPaneWidth: number,
   containerWidth: number,
 ): { minWidth: number; maxWidth: number } => {
-  const normalizedPreference = normalizePaneLayoutPreference(preference);
-  const tracks = getPaneTrackLayout(normalizedPreference, containerWidth);
-  const config = getPaneConfig(pane);
-  const otherPane = getOtherPane(pane);
-  const otherTrack = tracks[otherPane];
-  const occupiedWidth = PANE_LAYOUT.readerMinWidth
-    + PANE_LAYOUT.dividerWidth
-    + (otherTrack.collapsed
-      ? PANE_LAYOUT.collapsedRailWidth
-      : otherTrack.expandedWidth + PANE_LAYOUT.dividerWidth);
-  const dynamicMaximum = getSafeContainerWidth(containerWidth) - occupiedWidth;
+  const bounds = getStaticPaneBounds(pane);
+  const dynamicMaximum = getSafeContainerWidth(containerWidth)
+    - otherPaneWidth
+    - PANE_LAYOUT.readerMinWidth
+    - PANE_LAYOUT.dividerWidth * 2;
 
   return {
-    minWidth: config.minWidth,
-    maxWidth: Math.max(config.minWidth, Math.min(config.maxWidth, dynamicMaximum)),
+    minWidth: bounds.minWidth,
+    maxWidth: Math.max(
+      bounds.minWidth,
+      Math.min(bounds.maxWidth, dynamicMaximum),
+    ),
   };
 };
 
-export const resizePanePreference = (
+export const resizePane = (
   pane: ResizablePane,
   requestedWidth: number,
-  inputPreference: PaneLayoutPreference,
+  currentWidths: PaneWidths,
   containerWidth: number,
-): PaneLayoutPreference => {
-  const preference = normalizePaneLayoutPreference(inputPreference);
-  const { minWidth, maxWidth } = getPaneBounds(pane, preference, containerWidth);
-  const currentWidth = preference[pane].width;
+): PaneWidths => {
+  const otherPaneWidth = pane === 'feed'
+    ? currentWidths.entryWidth
+    : currentWidths.feedWidth;
+  const { minWidth, maxWidth } = getPaneBounds(
+    pane,
+    otherPaneWidth,
+    containerWidth,
+  );
+  const fallbackWidth = pane === 'feed'
+    ? currentWidths.feedWidth
+    : currentWidths.entryWidth;
   const nextWidth = clamp(
-    isFiniteNumber(requestedWidth) ? requestedWidth : currentWidth,
+    isFiniteNumber(requestedWidth) ? requestedWidth : fallbackWidth,
     minWidth,
     maxWidth,
   );
 
-  return {
-    ...preference,
-    [pane]: {
-      ...preference[pane],
-      width: nextWidth,
-    },
-  };
+  return pane === 'feed'
+    ? { ...currentWidths, feedWidth: nextWidth }
+    : { ...currentWidths, entryWidth: nextWidth };
 };
 
-export const isCollapseArmed = (
-  pane: ResizablePane,
-  requestedWidth: number,
-): boolean => {
-  const { minWidth } = getPaneConfig(pane);
-  return isFiniteNumber(requestedWidth)
-    && requestedWidth <= minWidth - PANE_LAYOUT.collapseThreshold;
-};
-
-export const shouldCollapseAfterDrag = (
-  endReason: DragEndReason,
-  collapseArmed: boolean,
-): boolean => endReason === 'pointerup' && collapseArmed;
-
-export const collapsePanePreference = (
-  inputPreference: PaneLayoutPreference,
-  pane: ResizablePane,
-  lastExpandedWidth: number,
-): PaneLayoutPreference => {
-  const preference = normalizePaneLayoutPreference(inputPreference);
-  const config = getPaneConfig(pane);
-  const savedWidth = clamp(
-    isFiniteNumber(lastExpandedWidth) ? lastExpandedWidth : preference[pane].width,
-    config.minWidth,
-    config.maxWidth,
-  );
-
-  return {
-    ...preference,
-    [pane]: {
-      width: savedWidth,
-      collapsed: true,
-    },
-  };
-};
-
-export const restorePanePreference = (
-  inputPreference: PaneLayoutPreference,
-  pane: ResizablePane,
-): PaneLayoutPreference => {
-  const preference = normalizePaneLayoutPreference(inputPreference);
-
-  return {
-    ...preference,
-    [pane]: {
-      ...preference[pane],
-      collapsed: false,
-    },
-  };
-};
-
-const parseVersionOne = (value: Record<string, unknown>): PaneLayoutPreference | null => {
-  const feedWidth = value.feedWidth;
-  const entryWidth = value.entryWidth;
-  if (!isFiniteNumber(feedWidth) || !isFiniteNumber(entryWidth)) {
-    return null;
-  }
-
-  return normalizePaneLayoutPreference({
-    version: PANE_LAYOUT.version,
-    feed: {
-      width: feedWidth,
-      collapsed: false,
-    },
-    entry: {
-      width: entryWidth,
-      collapsed: false,
-    },
-  });
-};
-
-const parseVersionTwo = (value: Record<string, unknown>): PaneLayoutPreference | null => {
-  if (!isRecord(value.feed) || !isRecord(value.entry)) {
-    return null;
-  }
-
-  const feed = value.feed;
-  const entry = value.entry;
-  if (
-    !isFiniteNumber(feed.width)
-    || typeof feed.collapsed !== 'boolean'
-    || !isFiniteNumber(entry.width)
-    || typeof entry.collapsed !== 'boolean'
-  ) {
-    return null;
-  }
-
-  return normalizePaneLayoutPreference({
-    version: PANE_LAYOUT.version,
-    feed: {
-      width: feed.width,
-      collapsed: feed.collapsed,
-    },
-    entry: {
-      width: entry.width,
-      collapsed: entry.collapsed,
-    },
-  });
-};
-
-export const parseStoredPaneLayoutPreference = (
-  rawValue: string | null,
-): PaneLayoutPreference => {
+export const parseStoredPaneWidths = (rawValue: string | null): PaneWidths => {
   if (!rawValue) {
-    return getDefaultPaneLayoutPreference();
+    return getDefaultPaneWidths();
   }
 
   try {
     const parsedValue: unknown = JSON.parse(rawValue);
-    if (!isRecord(parsedValue) || !isFiniteNumber(parsedValue.version)) {
-      return getDefaultPaneLayoutPreference();
+    if (
+      !parsedValue
+      || typeof parsedValue !== 'object'
+      || !('version' in parsedValue)
+      || !('feedWidth' in parsedValue)
+      || !('entryWidth' in parsedValue)
+    ) {
+      return getDefaultPaneWidths();
     }
 
-    if (parsedValue.version === 1) {
-      return parseVersionOne(parsedValue) ?? getDefaultPaneLayoutPreference();
+    const storedLayout = parsedValue as StoredPaneLayout;
+    if (
+      storedLayout.version !== PANE_LAYOUT.version
+      || !isFiniteNumber(storedLayout.feedWidth)
+      || !isFiniteNumber(storedLayout.entryWidth)
+    ) {
+      return getDefaultPaneWidths();
     }
 
-    if (parsedValue.version === PANE_LAYOUT.version) {
-      return parseVersionTwo(parsedValue) ?? getDefaultPaneLayoutPreference();
-    }
-
-    return getDefaultPaneLayoutPreference();
+    return normalizePaneWidths(storedLayout);
   } catch {
-    return getDefaultPaneLayoutPreference();
+    return getDefaultPaneWidths();
   }
 };
 
-const isVersionOneStoredLayout = (rawValue: string | null): boolean => {
-  if (!rawValue) return false;
-
+export const loadPaneWidths = (): PaneWidths => {
   try {
-    const parsedValue: unknown = JSON.parse(rawValue);
-    return isRecord(parsedValue) && parsedValue.version === 1;
+    return parseStoredPaneWidths(window.localStorage.getItem(PANE_LAYOUT.storageKey));
   } catch {
-    return false;
+    return getDefaultPaneWidths();
   }
 };
 
-export const loadPaneLayoutPreference = (): PaneLayoutPreference => {
+export const savePaneWidths = (widths: PaneWidths): void => {
+  const normalizedWidths = normalizePaneWidths(widths);
+  const storedLayout: StoredPaneLayout = {
+    version: PANE_LAYOUT.version,
+    ...normalizedWidths,
+  };
+
   try {
-    const rawValue = window.localStorage.getItem(PANE_LAYOUT.storageKey);
-    const preference = parseStoredPaneLayoutPreference(rawValue);
-
-    if (isVersionOneStoredLayout(rawValue)) {
-      try {
-        window.localStorage.setItem(PANE_LAYOUT.storageKey, JSON.stringify(preference));
-      } catch {
-        // A valid v1 preference remains usable when the one-time migration write fails.
-      }
-    }
-
-    return preference;
-  } catch {
-    return getDefaultPaneLayoutPreference();
-  }
-};
-
-export const savePaneLayoutPreference = (
-  preference: PaneLayoutPreference,
-): void => {
-  try {
-    window.localStorage.setItem(
-      PANE_LAYOUT.storageKey,
-      JSON.stringify(normalizePaneLayoutPreference(preference)),
-    );
+    window.localStorage.setItem(PANE_LAYOUT.storageKey, JSON.stringify(storedLayout));
   } catch {
     // Storage can be disabled or full; layout persistence must not block reading.
   }
