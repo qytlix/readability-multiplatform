@@ -107,6 +107,90 @@ describe('pane layout preferences', () => {
     expect(tracks.feed.expandedWidth).toBe(248);
   });
 
+  it('uses the actual container width without mutating oversized persisted preferences', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { width: 340, collapsed: false },
+      entry: { width: 560, collapsed: false },
+    };
+    const tracks = getPaneTrackLayout(preference, 1024);
+    const readerWidth = 1024
+      - tracks.feed.trackWidth
+      - tracks.feed.dividerWidth
+      - tracks.entry.trackWidth
+      - tracks.entry.dividerWidth;
+
+    expect(tracks.feed.expandedWidth).toBe(PANE_LAYOUT.feed.minWidth);
+    expect(tracks.entry.expandedWidth).toBe(PANE_LAYOUT.entry.minWidth);
+    expect(tracks.readerMinWidth).toBe(436);
+    expect(readerWidth).toBe(436);
+    expect(preference).toEqual({
+      version: PANE_LAYOUT.version,
+      feed: { width: 340, collapsed: false },
+      entry: { width: 560, collapsed: false },
+    });
+  });
+
+  it('gives all extra desktop width to Reader instead of expanding persisted pane widths', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { width: 340, collapsed: false },
+      entry: { width: 560, collapsed: false },
+    };
+    const tracks = getPaneTrackLayout(preference, 3440);
+    const readerWidth = 3440
+      - tracks.feed.trackWidth
+      - tracks.feed.dividerWidth
+      - tracks.entry.trackWidth
+      - tracks.entry.dividerWidth;
+
+    expect(tracks.feed.expandedWidth).toBe(340);
+    expect(tracks.entry.expandedWidth).toBe(560);
+    expect(readerWidth).toBe(2528);
+  });
+
+  it('keeps a collapsed rail stable while the remaining pane is clamped', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { width: 340, collapsed: true },
+      entry: { width: 560, collapsed: false },
+    };
+    const tracks = getPaneTrackLayout(preference, 1024);
+    const readerWidth = 1024
+      - tracks.feed.trackWidth
+      - tracks.feed.dividerWidth
+      - tracks.entry.trackWidth
+      - tracks.entry.dividerWidth;
+
+    expect(tracks.feed).toMatchObject({
+      collapsed: true,
+      trackWidth: PANE_LAYOUT.collapsedRailWidth,
+      dividerWidth: 0,
+    });
+    expect(tracks.entry.expandedWidth).toBe(504);
+    expect(readerWidth).toBe(PANE_LAYOUT.readerMinWidth);
+    expect(preference.feed.collapsed).toBe(true);
+  });
+
+  it.each([1024, 1100, 1280, 1440, 1920, 2560, 3440])(
+    'keeps all five tracks within a %ipx workspace',
+    (containerWidth) => {
+      const tracks = getPaneTrackLayout({
+        version: PANE_LAYOUT.version,
+        feed: { width: 340, collapsed: false },
+        entry: { width: 560, collapsed: false },
+      }, containerWidth);
+      const usedWidth = tracks.feed.trackWidth
+        + tracks.feed.dividerWidth
+        + tracks.entry.trackWidth
+        + tracks.entry.dividerWidth;
+      const readerWidth = containerWidth - usedWidth;
+
+      expect(usedWidth).toBeLessThanOrEqual(containerWidth);
+      expect(readerWidth).toBeGreaterThanOrEqual(0);
+    },
+  );
+
   it('keeps two independent rails when both panes are collapsed', () => {
     const feedCollapsed = collapsePanePreference(
       getDefaultPaneLayoutPreference(),
