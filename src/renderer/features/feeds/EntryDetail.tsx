@@ -107,10 +107,11 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
     loadContent(entry.id);
   }, [entry, loadContent]);
 
-  const handleMarkStarred = useCallback(async () => {
-    if (!entry) return;
-    await window.shaleAPI.entry.markStarred(entry.id, !entry.isStarred);
-  }, [entry]);
+  // TODO: 收藏/取消收藏按钮功能 — 通过 IPC entry:mark-starred 切换 entry.isStarred
+  // const handleMarkStarred = useCallback(async () => {
+  //   if (!entry) return;
+  //   await window.shaleAPI.entry.markStarred(entry.id, !entry.isStarred);
+  // }, [entry]);
 
   if (!entry) {
     return (
@@ -144,6 +145,7 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
               })}
             </span>
           )}
+          {/* TODO: Star 按钮 — 点击切换 entry.isStarred 状态，持久化到 SQLite entry.isStarred 字段
           <button
             type="button"
             className={`btn-star ${entry.isStarred ? 'starred' : ''}`}
@@ -152,6 +154,7 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
           >
             {entry.isStarred ? '★' : '☆'}
           </button>
+          */}
         </div>
         {entry.url && (
           <a
