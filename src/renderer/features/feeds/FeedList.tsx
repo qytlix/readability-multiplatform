@@ -164,6 +164,11 @@ export const FeedList = ({
     [onLocalRefresh, onSelectFeed, selectedFeedId],
   );
 
+  const handleSingleSync = useCallback(async (feedId: number) => {
+    await window.shaleAPI.feed.sync(feedId);
+    await onLocalRefresh();
+  }, [onLocalRefresh]);
+
   const handleSync = useCallback(async () => {
     if (syncInFlightRef.current) return;
 
@@ -315,6 +320,17 @@ export const FeedList = ({
                     </span>
                   )}
                   <div className="feed-item-actions">
+                    <button
+                      type="button"
+                      className="feed-item-action"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSingleSync(feed.id);
+                      }}
+                      title="Refresh this feed"
+                    >
+                      ↻
+                    </button>
                     <button
                       type="button"
                       className="feed-item-action"
