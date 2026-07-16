@@ -4,7 +4,7 @@
 
 Summary consumes only persisted `CleanedContent.markdown`; the Feed-provided `entry.summary` remains unrelated metadata. The Reader places the Summary panel directly below the article title and metadata, before the cleaned article body.
 
-P0 supports one active OpenAI-compatible Chat Completions provider, streaming output, `zh-CN` and `en` targets, and `short` / `medium` / `detailed` detail levels. Translation, automatic retry, cancellation UI, queuing, multi-provider management, and chunked/map-reduce summaries remain out of scope.
+P0 supports one active OpenAI-compatible Chat Completions provider, streaming output, `zh-CN` and `en` targets, and `short` / `medium` / `detailed` detail levels. The settings dialog only offers the supported GPT models (`gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, and legacy `gpt-4o-mini`); Main validates that allowlist as well. Translation, automatic retry, cancellation UI, queuing, multi-provider management, and chunked/map-reduce summaries remain out of scope.
 
 ## Security boundary
 

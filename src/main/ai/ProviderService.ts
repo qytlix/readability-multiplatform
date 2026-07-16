@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type {
-  ProviderConnectionTestResult,
-  ProviderProfile,
-  SaveProviderRequest,
+import {
+  isGptSummaryModel,
+  type GptSummaryModel,
+  type ProviderConnectionTestResult,
+  type ProviderProfile,
+  type SaveProviderRequest,
 } from '../../shared/contracts/provider.types';
 import { SUMMARY_ERROR_CODES, SummaryError } from '../../shared/errors/summary.errors';
 import { ProviderProfileStore } from './ProviderProfileStore';
@@ -94,13 +96,13 @@ export class ProviderService {
 
 function validateProviderRequest(request: SaveProviderRequest): {
   baseUrl: string;
-  model: string;
+  model: GptSummaryModel;
 } {
   const model = request.model.trim();
-  if (!model || model.length > 200) {
+  if (!isGptSummaryModel(model)) {
     throw new SummaryError(
       SUMMARY_ERROR_CODES.SUMMARY_INVALID_REQUEST,
-      'Enter a valid model name.',
+      'Select a supported GPT model.',
       false,
     );
   }

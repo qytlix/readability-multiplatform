@@ -28,16 +28,21 @@ export const SummaryPanel = ({ entryId, isContentReady }: SummaryPanelProps) => 
   const activeRunIdRef = useRef<number | null>(null);
 
   const loadState = useCallback(async () => {
-    if (!isContentReady) {
-      setSummaryState({ state: 'idle' });
-      return;
-    }
     setMessage('');
     try {
-      const [summaryResult, profileResult] = await Promise.all([
-        window.shaleAPI.summary.get({ entryId, targetLanguage, detailLevel }),
-        window.shaleAPI.provider.get(),
-      ]);
+      const profileResult = await window.shaleAPI.provider.get();
+      if (profileResult.ok) setProfile(profileResult.data);
+
+      if (!isContentReady) {
+        setSummaryState({ state: 'idle' });
+        return;
+      }
+
+      const summaryResult = await window.shaleAPI.summary.get({
+        entryId,
+        targetLanguage,
+        detailLevel,
+      });
       if (summaryResult.ok) {
         setSummaryState(summaryResult.data);
         if (summaryResult.data.state === 'running') {
@@ -49,7 +54,6 @@ export const SummaryPanel = ({ entryId, isContentReady }: SummaryPanelProps) => 
       } else {
         setMessage(summaryResult.error.message);
       }
-      if (profileResult.ok) setProfile(profileResult.data);
     } catch {
       setMessage('Unable to load the Summary state.');
     }

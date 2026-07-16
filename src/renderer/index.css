@@ -1031,7 +1031,8 @@ body.workspace-is-resizing * {
   font-weight: 400;
 }
 
-.provider-settings-dialog input {
+.provider-settings-dialog input,
+.provider-settings-dialog select {
   width: 100%;
   box-sizing: border-box;
   padding: 9px 10px;

@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ProviderProfile } from '../../../shared/contracts/provider.types';
+import {
+  DEFAULT_GPT_SUMMARY_MODEL,
+  GPT_SUMMARY_MODEL_OPTIONS,
+  isGptSummaryModel,
+  type GptSummaryModel,
+  type ProviderProfile,
+} from '../../../shared/contracts/provider.types';
 
 interface ProviderSettingsProps {
   profile: ProviderProfile | null;
@@ -13,14 +19,14 @@ export const ProviderSettings = ({
   onSaved,
 }: ProviderSettingsProps) => {
   const [baseUrl, setBaseUrl] = useState(profile?.baseUrl ?? 'https://api.openai.com/v1');
-  const [model, setModel] = useState(profile?.model ?? 'gpt-4o-mini');
+  const [model, setModel] = useState<GptSummaryModel>(toSelectableModel(profile?.model));
   const [status, setStatus] = useState('');
   const [saving, setSaving] = useState(false);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setBaseUrl(profile?.baseUrl ?? 'https://api.openai.com/v1');
-    setModel(profile?.model ?? 'gpt-4o-mini');
+    setModel(toSelectableModel(profile?.model));
   }, [profile]);
 
   const save = async (): Promise<ProviderProfile | null> => {
@@ -105,12 +111,15 @@ export const ProviderSettings = ({
           </label>
           <label>
             Model
-            <input
+            <select
               value={model}
-              onChange={(event) => setModel(event.target.value)}
-              placeholder="gpt-4o-mini"
+              onChange={(event) => setModel(event.target.value as GptSummaryModel)}
               required
-            />
+            >
+              {GPT_SUMMARY_MODEL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
           </label>
           <label>
             API key {hasApiKey ? <span>(leave empty to keep the current key)</span> : null}
@@ -141,3 +150,7 @@ export const ProviderSettings = ({
     </div>
   );
 };
+
+function toSelectableModel(model: string | undefined): GptSummaryModel {
+  return model && isGptSummaryModel(model) ? model : DEFAULT_GPT_SUMMARY_MODEL;
+}

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, type PingResponse, type ShaleAPI } from '../shared/ipc';
 import { EXTERNAL_IPC_CHANNELS } from '../shared/contracts/external.ipc';
 import { SUMMARY_IPC_CHANNELS } from '../shared/contracts/summary.ipc';
+import type { SaveProviderRequest } from '../shared/contracts/provider.types';
 import type { SummaryStreamEvent } from '../shared/contracts/summary.types';
 
 const ping = (): Promise<PingResponse> =>
@@ -43,7 +44,7 @@ const externalAPI = {
 
 const providerAPI = {
   get: () => ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerGet),
-  save: (request: { baseUrl: string; model: string; apiKey?: string }) =>
+  save: (request: SaveProviderRequest) =>
     ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerSave, request),
   test: () => ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerTest),
 };
