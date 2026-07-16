@@ -1,7 +1,12 @@
 import type { Feed, EntryListItem } from './contracts/feed.types';
 import type { CleanedContent } from './contracts/content.types';
-import type { IPCResult, ShaleError, FeedSyncProgress, OPMLImportResult } from './contracts/feed.ipc';
+import type {
+  FeedSyncProgress,
+  IPCResult,
+  OPMLImportResult,
+} from './contracts/feed.ipc';
 import type { ExternalOpenRequest } from './contracts/external.ipc';
+import type { ProviderAPI, SummaryAPI } from './contracts/summary.ipc';
 
 export const IPC_CHANNELS = {
   systemPing: 'system:ping',
@@ -21,13 +26,19 @@ export interface FeedAPI {
     entries: EntryListItem[];
   }>>;
   remove: (feedId: number) => Promise<IPCResult<void>>;
-  update: (feedId: number, params: Partial<Pick<Feed, 'title' | 'siteURL' | 'syncIntervalMin'>>) => Promise<IPCResult<Feed>>;
+  update: (
+    feedId: number,
+    params: Partial<Pick<Feed, 'title' | 'siteURL' | 'syncIntervalMin'>>,
+  ) => Promise<IPCResult<Feed>>;
   syncCancel: () => Promise<IPCResult<void>>;
   onSyncProgress: (callback: (progress: FeedSyncProgress) => void) => () => void;
 }
 
 export interface OPMLAPI {
-  import: (filePath: string, mode: 'merge' | 'replace') => Promise<IPCResult<OPMLImportResult>>;
+  import: (
+    filePath: string,
+    mode: 'merge' | 'replace',
+  ) => Promise<IPCResult<OPMLImportResult>>;
   export: (filePath: string) => Promise<IPCResult<void>>;
 }
 
@@ -65,8 +76,18 @@ export interface ShaleAPI {
   content: ContentAPI;
   opml: OPMLAPI;
   dialog: {
-    openFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }>; defaultPath?: string }) => Promise<{ canceled: boolean; filePaths: string[] }>;
-    saveFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }>; defaultPath?: string }) => Promise<{ canceled: boolean; filePath: string }>;
+    openFile: (options?: {
+      title?: string;
+      filters?: Array<{ name: string; extensions: string[] }>;
+      defaultPath?: string;
+    }) => Promise<{ canceled: boolean; filePaths: string[] }>;
+    saveFile: (options?: {
+      title?: string;
+      filters?: Array<{ name: string; extensions: string[] }>;
+      defaultPath?: string;
+    }) => Promise<{ canceled: boolean; filePath: string }>;
   };
   external: ExternalAPI;
+  provider: ProviderAPI;
+  summary: SummaryAPI;
 }

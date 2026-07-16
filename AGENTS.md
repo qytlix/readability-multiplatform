@@ -317,7 +317,6 @@ Issue 只有同时满足以下条件才能进入 `Done`：
 8. 采用滚动计划，只详细拆当前和下一个里程碑；
 9. 功能里程碑之间穿插 Review 和小规模重构，防止 AI 生成代码坏模式扩散；
 10. 最终截止前 5 天冻结功能，只处理测试、Bug、构建、文档和演示。
-11. FeedList 区分 `onRefresh`（全量网络同步）和 `onLocalRefresh`（仅本地 DB 重载），避免删除/编辑等操作触发不必要的全量网络请求。
 
 改变以上决策必须创建或更新对应 Issue/ADR，说明原因、影响范围、迁移方式和验证方案。
 
@@ -330,7 +329,6 @@ Issue 只有同时满足以下条件才能进入 `Done`：
 - Reader 和 AI 不等待真实内容管线全部完成，分别使用契约一致的 Fixture 开发；
 - P0 中 OPML、定时 Sync、Reader/Web/Dual 均已提升为必须完成；
 - 完整取消、复杂重试、并发治理和高级 Translation 降为 P1/P2。
-- 修复 FeedList 删除/编辑后触发全量网络同步的问题：分离出 `onLocalRefresh` 回调（仅本地 DB 重载），`handleRemove` 和 `handleEdit` 改用该回调，不再调用 `onRefresh`（`handleSyncAll`）。
 
 ## 17. Roadmap
 

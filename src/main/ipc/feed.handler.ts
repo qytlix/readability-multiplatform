@@ -27,7 +27,6 @@ import type {
 } from '../../shared/contracts/feed.ipc';
 import type { Feed, EntryListItem } from '../../shared/contracts/feed.types';
 import type { CleanedContent } from '../../shared/contracts/content.types';
-import type { SyncResult } from '../feed/FeedService';
 
 type GetMainWindow = () => BrowserWindow | null;
 

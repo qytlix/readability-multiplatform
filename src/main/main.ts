@@ -3,7 +3,12 @@ import { env } from 'node:process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
-import { initializeServices, registerIpcHandlers, getSyncScheduler } from './ipc';
+import {
+  getSummaryService,
+  getSyncScheduler,
+  initializeServices,
+  registerIpcHandlers,
+} from './ipc';
 import { getApplicationMenuTemplate } from './application-menu';
 import { installMainWindowNavigationGuards } from './navigation-guards';
 import { initializePageZoom, installPageZoomInputGuard } from './page-zoom';
@@ -73,23 +78,17 @@ app.on('ready', () => {
   Menu.setApplicationMenu(Menu.buildFromTemplate(getApplicationMenuTemplate()));
   // Initialize database with persistent path
   const dbPath = path.join(app.getPath('userData'), 'shale.db');
-  initializeServices(dbPath);
+  const secretStoragePath = path.join(app.getPath('userData'), 'ai-secrets.json');
+  initializeServices(dbPath, secretStoragePath);
   registerIpcHandlers(() => mainWindow);
   createWindow();
 
-  // Start the sync scheduler (periodic feed sync)
-  const scheduler = getSyncScheduler();
-  if (scheduler) {
-    scheduler.start();
-  }
+  getSyncScheduler()?.start();
 });
 
 app.on('before-quit', () => {
-  // Stop the sync scheduler
-  const scheduler = getSyncScheduler();
-  if (scheduler) {
-    scheduler.stop();
-  }
+  getSyncScheduler()?.stop();
+  getSummaryService()?.abortActiveRun();
 });
 
 app.on('window-all-closed', () => {

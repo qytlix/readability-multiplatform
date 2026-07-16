@@ -900,6 +900,217 @@ body.workspace-is-resizing * {
   padding: 0 var(--reader-gutter) 48px;
 }
 
+/* ── Summary ─────────────────────────────────────── */
+
+.summary-panel {
+  flex-shrink: 0;
+  padding: 18px max(var(--reader-gutter), calc((100% - var(--reader-content-max)) / 2));
+  border-bottom: 1px solid var(--paper-border);
+  background: #fbf9f2;
+}
+
+.summary-panel-header,
+.summary-controls,
+.provider-settings-header,
+.provider-settings-actions {
+  display: flex;
+  align-items: center;
+}
+
+.summary-panel-header {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.summary-panel-eyebrow,
+.provider-settings-eyebrow {
+  margin: 0 0 2px;
+  color: var(--paper-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.summary-panel h3,
+.provider-settings-dialog h2 {
+  margin: 0;
+  color: var(--paper-text);
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.summary-settings-button,
+.summary-generate-button,
+.provider-settings-actions button,
+.provider-settings-close {
+  border: 1px solid var(--paper-border);
+  border-radius: 5px;
+  background: var(--paper-bg);
+  color: var(--accent-strong);
+  cursor: pointer;
+  font: inherit;
+}
+
+.summary-settings-button {
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+.summary-controls {
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.summary-controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--paper-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.summary-controls select {
+  min-width: 102px;
+  padding: 6px 8px;
+  border: 1px solid var(--paper-border);
+  border-radius: 4px;
+  background: var(--paper-bg);
+  color: var(--paper-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.summary-generate-button {
+  align-self: end;
+  padding: 7px 11px;
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: white;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.summary-generate-button:disabled,
+.provider-settings-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.summary-panel-muted,
+.summary-panel-stale,
+.summary-panel-error {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.summary-panel-muted { color: var(--paper-muted); }
+.summary-panel-stale { color: #8a6c2c; }
+.summary-panel-error { color: var(--error); }
+
+.summary-panel-content {
+  margin-top: 14px;
+  color: var(--paper-text);
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.provider-settings-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--overlay);
+}
+
+.provider-settings-dialog {
+  width: min(100%, 460px);
+  padding: 22px;
+  border: 1px solid var(--paper-border);
+  border-radius: 8px;
+  background: var(--paper-bg);
+  box-shadow: 0 18px 50px rgba(31, 41, 37, 0.24);
+}
+
+.provider-settings-header {
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.provider-settings-close {
+  width: 30px;
+  height: 30px;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.provider-settings-dialog form {
+  display: grid;
+  gap: 14px;
+}
+
+.provider-settings-dialog label {
+  display: grid;
+  gap: 6px;
+  color: var(--paper-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.provider-settings-dialog label span {
+  color: var(--paper-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.provider-settings-dialog input,
+.provider-settings-dialog select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border: 1px solid var(--paper-border);
+  border-radius: 4px;
+  background: white;
+  color: var(--paper-text);
+  font: inherit;
+}
+
+.provider-settings-note,
+.provider-settings-status {
+  margin: 0;
+  color: var(--paper-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.provider-settings-status { color: var(--accent-strong); }
+
+.provider-settings-actions {
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.provider-settings-actions button {
+  padding: 8px 11px;
+  font-size: 13px;
+}
+
+.provider-settings-actions .provider-settings-save {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: white;
+}
+
+@media (max-width: 700px) {
+  .summary-controls { flex-wrap: wrap; }
+  .summary-generate-button { align-self: center; }
+}
+
 .entry-detail-loading,
 .entry-detail-error {
   width: min(100%, var(--reader-content-max));

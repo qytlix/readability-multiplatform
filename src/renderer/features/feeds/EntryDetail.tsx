@@ -18,6 +18,7 @@ import {
   getFloatingReaderHeaderAction,
   shouldRevealFloatingReaderHeaderAtWindowTop,
 } from './readerHeaderVisibility';
+import { SummaryPanel } from '../summary/SummaryPanel';
 
 interface EntryDetailProps {
   entry: Entry | null;
@@ -357,6 +358,10 @@ export const EntryDetail = ({
     <div className="entry-detail">
       <div className="entry-detail-scroll" onScroll={handleReaderScroll}>
         {renderArticleHeader()}
+        <SummaryPanel
+          entryId={entry.id}
+          isContentReady={status === 'success' && Boolean(content?.markdown.trim())}
+        />
         <div className="entry-detail-body">
           {status === 'loading' && (
             <div className="entry-detail-loading">

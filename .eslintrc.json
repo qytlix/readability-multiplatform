@@ -12,22 +12,5 @@
     "plugin:import/electron",
     "plugin:import/typescript"
   ],
-  "parser": "@typescript-eslint/parser",
-  "settings": {
-    "import/resolver": {
-      "node": {
-        "extensions": [".js", ".jsx", ".ts", ".tsx", ".d.ts"],
-        "paths": ["src"],
-        "tryExtensions": [".js", ".jsx", ".ts", ".tsx", ".json", ".node"]
-      }
-    }
-  },
-  "overrides": [
-    {
-      "files": ["vitest.config.ts"],
-      "rules": {
-        "import/no-unresolved": "off"
-      }
-    }
-  ]
+  "parser": "@typescript-eslint/parser"
 }
