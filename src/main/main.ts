@@ -3,6 +3,7 @@ import { env } from 'node:process';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { initializeServices, registerIpcHandlers } from './ipc';
+import { getAutomaticZoomFactor } from './window/automaticZoom';
 
 if (started) {
   app.quit();
@@ -22,6 +23,16 @@ const linuxWindowIconPath = app.isPackaged
   ? path.join(process.resourcesPath, 'shale-app-icon-512.png')
   : path.join(__dirname, '../../assets/icons/linux/shale-app-icon-512.png');
 
+const syncWindowZoom = (window: BrowserWindow): void => {
+  const zoomFactor = getAutomaticZoomFactor(
+    window.isMaximized() || window.isFullScreen(),
+  );
+
+  if (window.webContents.getZoomFactor() !== zoomFactor) {
+    window.webContents.setZoomFactor(zoomFactor);
+  }
+};
+
 const createWindow = (): void => {
   const newMainWindow = new BrowserWindow({
     width: 1280,
@@ -37,6 +48,31 @@ const createWindow = (): void => {
   });
 
   mainWindow = newMainWindow;
+  syncWindowZoom(newMainWindow);
+
+  newMainWindow.on('resize', () => {
+    syncWindowZoom(newMainWindow);
+  });
+
+  newMainWindow.on('maximize', () => {
+    syncWindowZoom(newMainWindow);
+  });
+
+  newMainWindow.on('unmaximize', () => {
+    syncWindowZoom(newMainWindow);
+  });
+
+  newMainWindow.on('enter-full-screen', () => {
+    syncWindowZoom(newMainWindow);
+  });
+
+  newMainWindow.on('leave-full-screen', () => {
+    syncWindowZoom(newMainWindow);
+  });
+
+  newMainWindow.webContents.on('did-finish-load', () => {
+    syncWindowZoom(newMainWindow);
+  });
 
   newMainWindow.on('closed', () => {
     if (mainWindow === newMainWindow) {
