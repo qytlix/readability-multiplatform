@@ -1,6 +1,7 @@
 import type { Feed, EntryListItem } from './contracts/feed.types';
 import type { CleanedContent } from './contracts/content.types';
-import type { IPCResult, ShaleError } from './contracts/feed.ipc';
+import type { IPCResult } from './contracts/feed.ipc';
+import type { ExternalOpenRequest } from './contracts/external.ipc';
 
 export const IPC_CHANNELS = {
   systemPing: 'system:ping',
@@ -43,6 +44,10 @@ export interface ContentAPI {
   get: (entryId: number) => Promise<IPCResult<CleanedContent | null>>;
 }
 
+export interface ExternalAPI {
+  open: (request: ExternalOpenRequest) => Promise<IPCResult<void>>;
+}
+
 export interface ShaleAPI {
   system: {
     ping: () => Promise<PingResponse>;
@@ -50,4 +55,5 @@ export interface ShaleAPI {
   feed: FeedAPI;
   entry: EntryAPI;
   content: ContentAPI;
+  external: ExternalAPI;
 }

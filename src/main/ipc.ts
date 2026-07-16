@@ -10,10 +10,11 @@ import { EntryStore } from './feed/EntryStore';
 import { ContentStore } from './feed/ContentStore';
 import { FeedService } from './feed/FeedService';
 import { ContentService } from './feed/ContentService';
+import { registerExternalIpcHandlers } from './ipc/external.handler';
 
-type GetMainWindow = () => BrowserWindow | null;
+export type GetMainWindow = () => BrowserWindow | null;
 
-const isAuthorizedSender = (
+export const isAuthorizedSender = (
   event: IpcMainInvokeEvent,
   getMainWindow: GetMainWindow,
 ): boolean => {
@@ -68,4 +69,6 @@ export function registerIpcHandlers(getMainWindow: GetMainWindow): void {
   if (feedServices) {
     registerFeedIpcHandlers(getMainWindow, feedServices);
   }
+
+  registerExternalIpcHandlers(getMainWindow);
 }

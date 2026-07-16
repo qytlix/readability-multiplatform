@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type MouseEvent } from 'react';
 import type { CleanedContent } from '../../../shared/contracts/content.types';
 import type { Entry } from '../../../shared/contracts/feed.types';
 import settlingPointAnimated from '../../assets/illustrations/empty-state/settling-point-animated.svg';
@@ -39,6 +39,7 @@ export const EntryDetail = ({
   const [content, setContent] = useState<CleanedContent | null>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
   const [error, setError] = useState('');
+  const [linkError, setLinkError] = useState('');
   const [showRaw, setShowRaw] = useState(false);
   const prevEntryId = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -47,6 +48,7 @@ export const EntryDetail = ({
     if (!entry) {
       setContent(null);
       setStatus('idle');
+      setLinkError('');
       return;
     }
 
@@ -62,6 +64,7 @@ export const EntryDetail = ({
     const loadContent = async () => {
       setStatus('loading');
       setError('');
+      setLinkError('');
       abortRef.current = new AbortController();
 
       try {
@@ -90,11 +93,11 @@ export const EntryDetail = ({
         }
         setContent(fetchResult.data);
         setStatus('success');
-      } catch (err: any) {
+      } catch (err: unknown) {
         // Ignore abort errors
-        if (err?.name === 'AbortError') return;
+        if (err instanceof Error && err.name === 'AbortError') return;
         setStatus('error');
-        setError(err?.message ?? 'Failed to load content');
+        setError(err instanceof Error ? err.message : 'Failed to load content');
       }
     };
 
@@ -195,6 +198,59 @@ export const EntryDetail = ({
 
   if (!entry) return null;
 
+  const openExternalLink = async (url: string, baseUrl?: string): Promise<void> => {
+    setLinkError('');
+
+    try {
+      const result = await window.shaleAPI.external.open({ url, baseUrl });
+      if (!result.ok) {
+        setLinkError(result.error.message);
+      }
+    } catch {
+      setLinkError('Unable to open this link in your default browser.');
+    }
+  };
+
+  const isPlainPrimaryClick = (event: MouseEvent<HTMLElement>): boolean =>
+    event.button === 0
+    && !event.metaKey
+    && !event.ctrlKey
+    && !event.shiftKey
+    && !event.altKey;
+
+  const handleExternalAnchorClick = (
+    event: MouseEvent<HTMLAnchorElement>,
+    url: string,
+    baseUrl?: string,
+  ): void => {
+    event.preventDefault();
+    if (isPlainPrimaryClick(event)) {
+      void openExternalLink(url, baseUrl);
+    }
+  };
+
+  const handleContentClick = (event: MouseEvent<HTMLDivElement>): void => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const anchor = target.closest('a[href]');
+    if (!anchor || !event.currentTarget.contains(anchor)) return;
+
+    const href = anchor.getAttribute('href');
+    if (!href) return;
+
+    if (href.trim().startsWith('#')) {
+      event.preventDefault();
+      window.location.hash = href.trim();
+      return;
+    }
+
+    event.preventDefault();
+    if (isPlainPrimaryClick(event)) {
+      void openExternalLink(href, content?.sourceUrl || entry.url);
+    }
+  };
+
   return (
     <div className="entry-detail">
       <div className="entry-detail-header">
@@ -215,9 +271,9 @@ export const EntryDetail = ({
         {entry.url && (
           <a
             href={entry.url}
-            target="_blank"
             rel="noopener noreferrer"
             className="entry-detail-original"
+            onClick={(event) => handleExternalAnchorClick(event, entry.url ?? '')}
           >
             View original ↗
           </a>
@@ -235,7 +291,11 @@ export const EntryDetail = ({
           <div className="entry-detail-error">
             <p>⚠️ {error}</p>
             {entry.url && (
-              <a href={entry.url} target="_blank" rel="noopener noreferrer">
+              <a
+                href={entry.url}
+                rel="noopener noreferrer"
+                onClick={(event) => handleExternalAnchorClick(event, entry.url ?? '')}
+              >
                 Read original article instead ↗
               </a>
             )}
@@ -250,6 +310,7 @@ export const EntryDetail = ({
               <div
                 className="entry-detail-html"
                 dangerouslySetInnerHTML={{ __html: content.cleanedHtml }}
+                onClick={handleContentClick}
               />
             )}
             <button
@@ -266,12 +327,18 @@ export const EntryDetail = ({
           <div className="entry-detail-error">
             <p>No content available</p>
             {entry.url && (
-              <a href={entry.url} target="_blank" rel="noopener noreferrer">
+              <a
+                href={entry.url}
+                rel="noopener noreferrer"
+                onClick={(event) => handleExternalAnchorClick(event, entry.url ?? '')}
+              >
                 Read original article ↗
               </a>
             )}
           </div>
         )}
+
+        {linkError && <p className="entry-detail-link-error" role="alert">{linkError}</p>}
       </div>
     </div>
   );

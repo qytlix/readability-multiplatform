@@ -1,8 +1,10 @@
 import { app, BrowserWindow } from 'electron';
 import { env } from 'node:process';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { initializeServices, registerIpcHandlers } from './ipc';
+import { installMainWindowNavigationGuards } from './navigation-guards';
 
 if (started) {
   app.quit();
@@ -23,6 +25,10 @@ const linuxWindowIconPath = app.isPackaged
   : path.join(__dirname, '../../assets/icons/linux/shale-app-icon-512.png');
 
 const createWindow = (): void => {
+  const applicationUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
+    ?? pathToFileURL(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+    ).toString();
   const newMainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
@@ -37,6 +43,7 @@ const createWindow = (): void => {
   });
 
   mainWindow = newMainWindow;
+  installMainWindowNavigationGuards(newMainWindow.webContents, applicationUrl);
 
   newMainWindow.on('closed', () => {
     if (mainWindow === newMainWindow) {
