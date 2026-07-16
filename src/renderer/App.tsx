@@ -156,6 +156,15 @@ export const App = () => {
     }
   }, [hasMoreEntries, loadingEntries, loadEntries]);
 
+  /** Reload feeds and entries from local DB only — no network sync. */
+  const reloadLocalData = useCallback(async () => {
+    await loadFeeds(false);
+    setEntries([]);
+    setEntriesCursor(undefined);
+    setHasMoreEntries(true);
+    await loadEntries(true);
+  }, [loadFeeds, loadEntries]);
+
   const handleSyncAll = useCallback(async () => {
     setLoadingFeeds(true);
     try {
@@ -235,6 +244,7 @@ export const App = () => {
               setSelectedFeedId(feedId);
             }}
             onRefresh={handleSyncAll}
+            onLocalRefresh={reloadLocalData}
             onOpenAddFeed={handleOpenAddFeedDialog}
             onUnreadCount={(feedId) => {
               // Simplified: count unread in current entries list

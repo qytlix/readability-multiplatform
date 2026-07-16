@@ -12,6 +12,7 @@
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm rebuild better-sqlite3",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -11,6 +11,9 @@ export type PipelineStatus =
 export interface CleanedContent {
   entryId: number;
   sourceUrl: string;
+  /** 原始 HTML（从目标网页 fetch 回来的未经清洗的 HTML） */
+  html?: string;
+  /** Readability 清洗后的纯净 HTML */
   cleanedHtml: string;
   markdown: string;
   readabilityTitle?: string;
