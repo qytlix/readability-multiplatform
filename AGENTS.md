@@ -237,7 +237,19 @@ tests/
 - 合并方式由仓库统一设置决定，不在单个 PR 中临时改变历史策略；
 - PR 合入不自动代表里程碑验收完成，跨模块功能仍需通过对应集成流程。
 
-## 11. Code Review
+## 11. Release Workflow
+
+发布流程详见 `RELEASE.md`。每次发布前按以下步骤操作：
+
+1. 确认所有变更已合入 `main`；
+2. 更新 `package.json` 版本号并运行 `npm install` 同步 lockfile；
+3. 更新 `CHANGELOG.md`，从 `git log` 总结变更；
+4. 提交并打 tag；
+5. 推送并验证 CI 构建。
+
+版本号遵循 SemVer，tag 名称与 `package.json` 的 `version` 一致（加 `v` 前缀）。
+
+## 12. Code Review
 
 AI Review 可以辅助发现问题，但不能替代人工责任。作者也不能仅以“代码由 Agent 生成”为理由跳过理解和验证。
 
