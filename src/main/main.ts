@@ -3,7 +3,12 @@ import { env } from 'node:process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
-import { getSummaryService, initializeServices, registerIpcHandlers } from './ipc';
+import {
+  getSummaryService,
+  getSyncScheduler,
+  initializeServices,
+  registerIpcHandlers,
+} from './ipc';
 import { getApplicationMenuTemplate } from './application-menu';
 import { installMainWindowNavigationGuards } from './navigation-guards';
 import { initializePageZoom, installPageZoomInputGuard } from './page-zoom';
@@ -77,9 +82,12 @@ app.on('ready', () => {
   initializeServices(dbPath, secretStoragePath);
   registerIpcHandlers(() => mainWindow);
   createWindow();
+
+  getSyncScheduler()?.start();
 });
 
 app.on('before-quit', () => {
+  getSyncScheduler()?.stop();
   getSummaryService()?.abortActiveRun();
 });
 

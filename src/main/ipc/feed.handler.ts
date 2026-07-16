@@ -4,23 +4,29 @@ import { EntryStore } from '../feed/EntryStore';
 import { ContentStore } from '../feed/ContentStore';
 import { FeedService } from '../feed/FeedService';
 import { ContentService } from '../feed/ContentService';
+import { SyncCoordinator } from '../feed/SyncCoordinator';
+import { SyncScheduler } from '../feed/SyncScheduler';
+import { OPMLImportService } from '../feed/OPMLImportService';
+import { OPMLExportService } from '../feed/OPMLExportService';
 import { FEED_IPC_CHANNELS } from '../../shared/contracts/feed.ipc';
 import type { ShaleError } from '../../shared/errors/feed.errors';
 import type {
   FeedAddRequest,
   FeedSyncRequest,
   FeedRemoveRequest,
+  FeedUpdateRequest,
   ContentFetchRequest,
   ContentGetRequest,
   EntryListRequest,
   EntryMarkReadRequest,
   EntryMarkStarredRequest,
   IPCResult,
+  FeedSyncProgress,
+  OPMLImportRequest,
+  OPMLExportRequest,
 } from '../../shared/contracts/feed.ipc';
 import type { Feed, EntryListItem } from '../../shared/contracts/feed.types';
 import type { CleanedContent } from '../../shared/contracts/content.types';
-import type { SyncResult } from '../feed/FeedService';
-import type { SyncResult as SyncAllResult } from '../feed/FeedService';
 
 type GetMainWindow = () => BrowserWindow | null;
 
@@ -36,11 +42,27 @@ const isAuthorizedSender = (
   );
 };
 
+/** Send a sync progress event to the renderer. */
+function sendSyncProgress(
+  getMainWindow: GetMainWindow,
+  progress: FeedSyncProgress,
+): void {
+  const mainWindow = getMainWindow();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(FEED_IPC_CHANNELS.feedSyncProgress, progress);
+  }
+}
+
 export interface FeedServices {
   feedService: FeedService;
   contentService: ContentService;
   entryStore: EntryStore;
   contentStore: ContentStore;
+  feedStore: FeedStore;
+  syncCoordinator: SyncCoordinator;
+  syncScheduler: SyncScheduler;
+  opmlImportService: OPMLImportService;
+  opmlExportService: OPMLExportService;
 }
 
 function success<T>(data: T): IPCResult<T> {
@@ -63,7 +85,15 @@ export function registerFeedIpcHandlers(
   getMainWindow: GetMainWindow,
   services: FeedServices,
 ): void {
-  const { feedService, contentService, entryStore, contentStore } = services;
+  const {
+    feedService,
+    contentService,
+    entryStore,
+    contentStore,
+    syncCoordinator,
+    opmlImportService,
+    opmlExportService,
+  } = services;
 
   // ── Feed ──────────────────────────────────────────────
 
@@ -105,21 +135,34 @@ export function registerFeedIpcHandlers(
     async (
       event: IpcMainInvokeEvent,
       request: FeedSyncRequest,
-    ): Promise<IPCResult<SyncResult>> => {
+    ): Promise<IPCResult<{
+      feed: Feed;
+      newCount: number;
+      entries: EntryListItem[];
+    }>> => {
       if (!isAuthorizedSender(event, getMainWindow)) {
         return failure({ code: 'UNAUTHORIZED', message: 'Unauthorized IPC sender.' });
       }
 
       try {
         if (request.feedId !== undefined) {
-          return success(await feedService.syncFeed(request.feedId));
+          // Single feed sync via coordinator (which handles dedup)
+          const result = await syncCoordinator.syncFeed(request.feedId);
+          return success(result);
         }
-        // Full sync: syncAll returns per-feed results; aggregate into a SyncResult
-        const results = await feedService.syncAll();
+
+        // Full sync via coordinator
+        const results = await syncCoordinator.syncAll();
         const feeds = await feedService.getFeeds();
         const allEntries = entryStore.query({ limit: 50 });
         return success({
-          feed: feeds[0],
+          feed: feeds[0] ?? {
+            id: 0,
+            feedURL: '',
+            lastSyncStatus: 'never',
+            syncIntervalMin: 30,
+            createdAt: new Date().toISOString(),
+          },
           newCount: results.filter((r) => r.success).length,
           entries: allEntries.entries,
         });
@@ -141,6 +184,41 @@ export function registerFeedIpcHandlers(
 
       try {
         await feedService.removeFeed(request.feedId);
+        return success(undefined);
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    FEED_IPC_CHANNELS.feedUpdate,
+    async (
+      event: IpcMainInvokeEvent,
+      request: FeedUpdateRequest,
+    ): Promise<IPCResult<Feed>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) {
+        return failure({ code: 'UNAUTHORIZED', message: 'Unauthorized IPC sender.' });
+      }
+
+      try {
+        const feed = await feedService.updateFeed(request.feedId, request.params);
+        return success(feed);
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    FEED_IPC_CHANNELS.feedSyncCancel,
+    async (event: IpcMainInvokeEvent): Promise<IPCResult<void>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) {
+        return failure({ code: 'UNAUTHORIZED', message: 'Unauthorized IPC sender.' });
+      }
+
+      try {
+        syncCoordinator.cancelAll();
         return success(undefined);
       } catch (error) {
         return failure(error);
@@ -244,4 +322,70 @@ export function registerFeedIpcHandlers(
       }
     },
   );
+
+  // ── OPML ───────────────────────────────────────────────
+
+  ipcMain.handle(
+    FEED_IPC_CHANNELS.opmlImport,
+    async (
+      event: IpcMainInvokeEvent,
+      request: OPMLImportRequest,
+    ): Promise<IPCResult<{ successCount: number; skipCount: number; failures: Array<{ title?: string; xmlUrl?: string; error: string }>; totalFound: number }>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) {
+        return failure({ code: 'UNAUTHORIZED', message: 'Unauthorized IPC sender.' });
+      }
+
+      try {
+        // Read file content in main process
+        const fs = await import('node:fs/promises');
+        const xml = await fs.readFile(request.filePath, 'utf-8');
+        const result = await opmlImportService.importFromContent(xml, request.mode);
+        return success(result);
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    FEED_IPC_CHANNELS.opmlExport,
+    async (
+      event: IpcMainInvokeEvent,
+      request: OPMLExportRequest,
+    ): Promise<IPCResult<void>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) {
+        return failure({ code: 'UNAUTHORIZED', message: 'Unauthorized IPC sender.' });
+      }
+
+      try {
+        await opmlExportService.exportToFile(request.filePath);
+        return success(undefined);
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+}
+
+/**
+ * Create a SyncCoordinator that emits progress events to the renderer.
+ */
+export function createSyncCoordinator(
+  getMainWindow: GetMainWindow,
+  feedService: FeedService,
+  maxConcurrency?: number,
+): SyncCoordinator {
+  return new SyncCoordinator(feedService, {
+    maxConcurrency,
+    onFeedProgress: (feedId, status, feedTitle, newCount, error) => {
+      sendSyncProgress(getMainWindow, {
+        feedId,
+        feedTitle,
+        status: status as FeedSyncProgress['status'],
+        newCount,
+        error,
+        timestamp: new Date().toISOString(),
+      });
+    },
+  });
 }

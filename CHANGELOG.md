@@ -1,0 +1,87 @@
+# Changelog
+
+All notable changes to Shale will be documented in this file.
+
+## [0.2.1] - 2026-07-16
+
+### Fixed
+
+- Reader 文章内链接点击修复
+- 清理测试 IPC 调试代码
+
+### Changed
+
+- 文件夹折叠状态调整
+
+## [0.2.0] - 2026-07-16
+
+### Added
+
+- Feed 模块 Windows 平台适配
+- ContentFetcher 三级自动降级：Simple → Enhanced → BrowserFetch
+- BrowserFetchStrategy Cloudflare Challenge 检测与等待
+- 文件夹折叠与调整功能
+- Feed 列表单条刷新按钮
+- OPML 导入对话框样式适配
+- 无 Feed 时的空状态提示
+
+### Changed
+
+- 按钮样式整体迁移至 M2.2 规范
+- Reader 状态管理与动画效果
+- 图标资源配置合并
+- 配色与布局比例调整
+
+### Fixed
+
+- 删除/编辑 Feed 后仅本地 DB 重载，不再触发全量网络同步
+- 底部 Sync 状态显示修复
+- Feed 列表渲染修复
+- App.tsx 中缺失的 useRef 导入
+- 按钮高度适配父容器
+
+### Docs
+
+- M2.1 ContentFetcher 三级降级方案 (#65e6e94)
+- M2.1 Cloudflare Challenge 实际测试记录
+- M2/M3 前置条件更新
+- cherry-pick 记录
+
+## [0.1.1] - 2026-07-15
+
+### Fixed
+
+- macOS ad-hoc code signing 配置，修复 Gatekeeper "damaged" 错误
+
+## [0.1.0] - 2026-07-15
+
+### Added
+
+- 工程脚手架：Electron Forge + React + TypeScript 工程底座
+- typed IPC bridge（Preload + contextBridge）
+- SQLite 数据库集成（better-sqlite3）与迁移机制
+- Feed 模块 M0：FeedParserAdapter + Readability 正文提取原型
+- Feed 模块 M1：Store / Service / IPC Handler / UI 全链路（98 项测试）
+- CI/CD：GitHub Actions 多平台构建（Windows / macOS / Linux / Arch Linux）
+- Wayland 原生支持
+
+### Changed
+
+- 项目命名与初始化配置
+
+### Fixed
+
+- better-sqlite3 原生模块打包后不可用的问题
+- npm test/start 原生模块版本统一（添加 pretest 自动 rebuild）
+- CI 多平台构建失败（Windows MSVC、macOS、Arch Linux 容器）
+- lockfile 重新生成，补充 encoding 可选依赖
+- vitest.config.ts eslint import/no-unresolved 报错
+- 构建产物 .desktop 文件忽略
+
+### Docs
+
+- 架构设计、数据库设计、INIT/PLAN 基线
+- 开发环境搭建指南（Linux / nvm / Wayland）
+- IPC 契约文档
+- M1 修复总结
+- NODE_MODULE_VERSION 完整工作流
