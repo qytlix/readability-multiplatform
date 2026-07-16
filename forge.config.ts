@@ -48,11 +48,13 @@ const config: ForgeConfig = {
     new MakerZIP({}, ['darwin']),
     new MakerRpm({
       options: {
+        bin: 'Shale',
         icon: linuxIconPath,
       },
     }),
     new MakerDeb({
       options: {
+        bin: 'Shale',
         icon: linuxIconPath,
       },
     }),
