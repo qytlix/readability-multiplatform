@@ -109,7 +109,8 @@ export interface OPMLExportRequest {
 
 // ── Sync Cancel ───────────────────────────────────────────
 
-export interface SyncCancelRequest {
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+ export interface SyncCancelRequest {
   // empty — cancels the current sync operation
 }
 
