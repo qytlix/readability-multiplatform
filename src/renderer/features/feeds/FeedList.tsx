@@ -55,6 +55,7 @@ interface FeedListProps {
   selectedFeedId: number | null;
   onSelectFeed: (feedId: number | null) => void;
   onRefresh: () => Promise<boolean>;
+  onLocalRefresh: () => Promise<void>;
   onUnreadCount: (feedId: number) => number;
   loading: boolean;
 }
@@ -64,6 +65,7 @@ export const FeedList = ({
   selectedFeedId,
   onSelectFeed,
   onRefresh,
+  onLocalRefresh,
   onUnreadCount,
   loading,
 }: FeedListProps) => {
@@ -141,9 +143,9 @@ export const FeedList = ({
       if (!result.ok) {
         throw new Error(result.error?.message ?? 'Failed to update feed');
       }
-      await onRefresh();
+      await onLocalRefresh();
     },
-    [editFeed, onRefresh],
+    [editFeed, onLocalRefresh],
   );
 
   const handleRemove = useCallback(
@@ -157,9 +159,9 @@ export const FeedList = ({
       if (selectedFeedId === feedId) {
         onSelectFeed(null);
       }
-      await onRefresh();
+      await onLocalRefresh();
     },
-    [onRefresh, onSelectFeed, selectedFeedId],
+    [onLocalRefresh, onSelectFeed, selectedFeedId],
   );
 
   const handleSync = useCallback(async () => {
