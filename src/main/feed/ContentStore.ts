@@ -51,6 +51,7 @@ export class ContentStore {
     return {
       entryId: row.entryId,
       sourceUrl: row.sourceUrl ?? '',
+      html: row.html ?? undefined,
       cleanedHtml: row.cleanedHtml ?? '',
       markdown: row.markdown ?? '',
       readabilityTitle: row.readabilityTitle ?? undefined,

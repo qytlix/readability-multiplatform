@@ -94,6 +94,7 @@ export class ContentService {
       return {
         entryId,
         sourceUrl: fetchResult.url,
+        html: fetchResult.body,
         cleanedHtml: cleanResult.content,
         markdown: markdown,
         readabilityTitle: cleanResult.title,

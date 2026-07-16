@@ -3,7 +3,7 @@ import { env } from 'node:process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
-import { initializeServices, registerIpcHandlers } from './ipc';
+import { initializeServices, registerIpcHandlers, getSyncScheduler } from './ipc';
 import { getApplicationMenuTemplate } from './application-menu';
 import { installMainWindowNavigationGuards } from './navigation-guards';
 import { initializePageZoom, installPageZoomInputGuard } from './page-zoom';
@@ -76,6 +76,20 @@ app.on('ready', () => {
   initializeServices(dbPath);
   registerIpcHandlers(() => mainWindow);
   createWindow();
+
+  // Start the sync scheduler (periodic feed sync)
+  const scheduler = getSyncScheduler();
+  if (scheduler) {
+    scheduler.start();
+  }
+});
+
+app.on('before-quit', () => {
+  // Stop the sync scheduler
+  const scheduler = getSyncScheduler();
+  if (scheduler) {
+    scheduler.stop();
+  }
 });
 
 app.on('window-all-closed', () => {

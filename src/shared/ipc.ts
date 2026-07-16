@@ -1,6 +1,6 @@
 import type { Feed, EntryListItem } from './contracts/feed.types';
 import type { CleanedContent } from './contracts/content.types';
-import type { IPCResult } from './contracts/feed.ipc';
+import type { IPCResult, ShaleError, FeedSyncProgress, OPMLImportResult } from './contracts/feed.ipc';
 import type { ExternalOpenRequest } from './contracts/external.ipc';
 
 export const IPC_CHANNELS = {
@@ -21,6 +21,14 @@ export interface FeedAPI {
     entries: EntryListItem[];
   }>>;
   remove: (feedId: number) => Promise<IPCResult<void>>;
+  update: (feedId: number, params: Partial<Pick<Feed, 'title' | 'siteURL' | 'syncIntervalMin'>>) => Promise<IPCResult<Feed>>;
+  syncCancel: () => Promise<IPCResult<void>>;
+  onSyncProgress: (callback: (progress: FeedSyncProgress) => void) => () => void;
+}
+
+export interface OPMLAPI {
+  import: (filePath: string, mode: 'merge' | 'replace') => Promise<IPCResult<OPMLImportResult>>;
+  export: (filePath: string) => Promise<IPCResult<void>>;
 }
 
 export interface EntryAPI {
@@ -55,5 +63,10 @@ export interface ShaleAPI {
   feed: FeedAPI;
   entry: EntryAPI;
   content: ContentAPI;
+  opml: OPMLAPI;
+  dialog: {
+    openFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }>; defaultPath?: string }) => Promise<{ canceled: boolean; filePaths: string[] }>;
+    saveFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }>; defaultPath?: string }) => Promise<{ canceled: boolean; filePath: string }>;
+  };
   external: ExternalAPI;
 }

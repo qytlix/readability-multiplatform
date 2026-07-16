@@ -3,10 +3,10 @@ import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
-import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import path from 'node:path';
 
 const appIconBasePath = path.resolve(__dirname, 'assets/icons/shale-app-icon');
@@ -15,33 +15,50 @@ const linuxIconPath = path.resolve(__dirname, 'assets/icons/linux/shale-app-icon
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    executableName: 'Shale',
     // Electron Packager selects `.icns` on macOS and `.ico` on Windows.
     icon: appIconBasePath,
     // Linux window icons need a PNG outside app.asar at runtime.
     extraResource: linuxIconPath,
-    // The Vite plugin normally packages only `.vite`. Main-process dependencies
-    // are deliberately externalized in vite.main.config.ts, so let Forge retain
-    // the application dependencies and prune development-only packages.
-    ignore: () => false,
+    // VitePlugin sets an ignore filter that only allows /.vite/ through.
+    // Override it to also include node_modules for runtime dependencies
+    // (better-sqlite3 native addon, jsdom, etc.) that Vite externalized.
+    ignore: (file: string) => {
+      if (!file) return false; // electron-packager root itself
+      // Always include Vite build output (default VitePlugin behavior)
+      if (file.startsWith('/.vite')) return false;
+      // Include all node_modules for runtime externals (native addons + jsdom etc.)
+      if (file === '/node_modules' || file.startsWith('/node_modules/')) return false;
+      return true; // everything else is ignored
+    },
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
+    // Windows: Squirrel (NSIS-like installer)
+    new MakerSquirrel({
+      authors: 'Shale Team',
+      description: 'Shale — a cross-platform feed reader',
+    }),
+    // macOS: ZIP
     new MakerZIP({}, ['darwin']),
+    // Linux: RPM (Fedora/RHEL)
     new MakerRpm({
       options: {
+        name: 'shale',
+        bin: 'Shale',
         icon: linuxIconPath,
       },
     }),
+    // Linux: DEB (Debian/Ubuntu)
     new MakerDeb({
       options: {
+        name: 'shale',
+        bin: 'Shale',
         icon: linuxIconPath,
       },
     }),
   ],
   plugins: [
-    // better-sqlite3 is a native addon and cannot be loaded from inside app.asar.
-    new AutoUnpackNativesPlugin({}),
     new VitePlugin({
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
       // If you are familiar with Vite configuration, it will look really familiar.
@@ -65,6 +82,8 @@ const config: ForgeConfig = {
         },
       ],
     }),
+    // Auto-unpack native .node files from ASAR so Electron can load them
+    new AutoUnpackNativesPlugin({}),
     // Fuses are used to enable/disable various Electron functionality
     // at package time, before code signing the application
     new FusesPlugin({
@@ -74,7 +93,9 @@ const config: ForgeConfig = {
       [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
       [FuseV1Options.EnableNodeCliInspectArguments]: false,
       [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
-      [FuseV1Options.OnlyLoadAppFromAsar]: true,
+      // OnlyLoadAppFromAsar blocks native modules that are unpacked from ASAR;
+      // set to false because better-sqlite3 is a native addon loaded at runtime
+      [FuseV1Options.OnlyLoadAppFromAsar]: false,
     }),
   ],
 };
