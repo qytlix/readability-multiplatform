@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, type PingResponse, type ShaleAPI } from '../shared/ipc';
 import { FEED_IPC_CHANNELS } from '../shared/contracts/feed.ipc';
+import { EXTERNAL_IPC_CHANNELS } from '../shared/contracts/external.ipc';
 
 const ping = (): Promise<PingResponse> =>
   ipcRenderer.invoke(IPC_CHANNELS.systemPing);
@@ -61,6 +62,11 @@ const opmlAPI = {
     ipcRenderer.invoke(FEED_IPC_CHANNELS.opmlExport, { filePath }),
 };
 
+const externalAPI = {
+  open: (request: { url: string; baseUrl?: string }) =>
+    ipcRenderer.invoke(EXTERNAL_IPC_CHANNELS.open, request),
+};
+
 const shaleAPI: ShaleAPI = {
   system: {
     ping,
@@ -70,6 +76,7 @@ const shaleAPI: ShaleAPI = {
   content: contentAPI,
   opml: opmlAPI,
   dialog: dialogAPI,
+  external: externalAPI,
 };
 
 contextBridge.exposeInMainWorld('shaleAPI', shaleAPI);

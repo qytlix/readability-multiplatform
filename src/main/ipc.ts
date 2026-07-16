@@ -16,10 +16,11 @@ import { SyncCoordinator } from './feed/SyncCoordinator';
 import { SyncScheduler } from './feed/SyncScheduler';
 import { OPMLImportService } from './feed/OPMLImportService';
 import { OPMLExportService } from './feed/OPMLExportService';
+import { registerExternalIpcHandlers } from './ipc/external.handler';
 
-type GetMainWindow = () => BrowserWindow | null;
+export type GetMainWindow = () => BrowserWindow | null;
 
-const isAuthorizedSender = (
+export const isAuthorizedSender = (
   event: IpcMainInvokeEvent,
   getMainWindow: GetMainWindow,
 ): boolean => {
@@ -161,4 +162,6 @@ export function registerIpcHandlers(getMainWindow: GetMainWindow): void {
 
     registerFeedIpcHandlers(getMainWindow, feedServices);
   }
+
+  registerExternalIpcHandlers(getMainWindow);
 }
