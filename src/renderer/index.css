@@ -114,15 +114,6 @@ a:focus-visible {
   outline-color: var(--accent-light);
 }
 
-.ipc-status {
-  min-width: 0;
-  overflow: hidden;
-  font-size: 12px;
-  color: var(--slate-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .app-body {
   display: grid;
   width: 100%;

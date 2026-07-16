@@ -30,7 +30,6 @@ export const App = () => {
     { publishedAt: string; id: number } | undefined
   >(undefined);
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
-  const [ipcStatus, setIpcStatus] = useState<string>('');
 
   const loadFeeds = useCallback(async (showLoadingState = true) => {
     setLoadingFeeds(true);
@@ -196,20 +195,6 @@ export const App = () => {
     }
   }, [handleSyncAll, loadFeeds]);
 
-  const handleTestIpc = useCallback(async () => {
-    setIpcStatus('Testing IPC...');
-    try {
-      const response = await window.shaleAPI.system.ping();
-      if (response.ok === true && response.message === 'pong') {
-        setIpcStatus('IPC OK: pong');
-      } else {
-        setIpcStatus('IPC failed');
-      }
-    } catch {
-      setIpcStatus('IPC failed');
-    }
-  }, []);
-
   const hasNoFeeds = feedLoadStatus === 'success' && feeds.length === 0;
   const visibleEntries = hasNoFeeds ? [] : entries;
 
@@ -220,10 +205,6 @@ export const App = () => {
           <img className="app-brand-mark" src={shaleMark} alt="" />
           <span>Shale</span>
         </h1>
-        <button type="button" onClick={handleTestIpc}>
-          Test IPC
-        </button>
-        <span className="ipc-status">{ipcStatus}</span>
       </header>
 
       <WorkspaceLayout
