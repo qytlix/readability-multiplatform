@@ -366,37 +366,114 @@ export class BrowserFetchStrategy implements FetcherStrategy {
       // Set up timeout + abort handling
       const html = await new Promise<string>((resolve, reject) => {
         let settled = false;
+        let isChallengePage = false;
+        let challengeDeadline = 0;
+        let timer: ReturnType<typeof setTimeout>;
+
         const done = (err: Error | null, html?: string) => {
           if (settled) return;
           settled = true;
+          clearTimeout(timer);
           if (err) reject(err);
           else resolve(html!);
         };
 
-        // Cleanup timer
-        const timer = setTimeout(() => {
-          win.webContents.stop();
-          done(new Error('Browser fetch timeout'));
-        }, this.timeoutMs);
+        const resetTimer = (ms?: number) => {
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            win.webContents.stop();
+            done(new Error('Browser fetch timeout'));
+          }, ms ?? this.timeoutMs);
+        };
 
         // Listen for external abort signal
         if (signal) {
           const onAbort = () => {
-            clearTimeout(timer);
             win.webContents.stop();
             done(new DOMException('The operation was aborted', 'AbortError'));
           };
           if (signal.aborted) {
-            clearTimeout(timer);
             done(new DOMException('The operation was aborted', 'AbortError'));
             return;
           }
           signal.addEventListener('abort', onAbort, { once: true });
         }
 
-        // Page loaded successfully
+        // Helper: check if current page is a Cloudflare challenge
+        const checkIsChallenge = async (): Promise<boolean> => {
+          try {
+            const title = await win.webContents.executeJavaScript('document.title').catch(() => '');
+            const url_2 = win.webContents.getURL();
+            return (
+              title === 'Just a moment...' ||
+              title.toLowerCase().includes('challenge') ||
+              url_2.includes('__cf_chl_') ||
+              url_2.includes('cf-ray')
+            );
+          } catch {
+            return false;
+          }
+        };
+
+        // After a page finishes loading
         win.webContents.on('did-finish-load', async () => {
-          clearTimeout(timer);
+          // Check if this is a challenge page that needs JS execution + redirect
+          const isChallenge = await checkIsChallenge();
+
+          if (isChallenge) {
+            if (!isChallengePage) {
+              // First time seeing a challenge page — start waiting for redirect
+              isChallengePage = true;
+              challengeDeadline = Date.now() + this.timeoutMs;
+
+              // Reset timer for challenge wait (generous 20s)
+              resetTimer(Math.min(this.timeoutMs, 20_000));
+
+              // Try polling: Cloudflare challenge takes ~2-5s
+              const poll = () => {
+                if (settled) return;
+                if (Date.now() >= challengeDeadline) {
+                  done(new Error('Cloudflare challenge did not resolve in time'));
+                  return;
+                }
+                win.webContents.executeJavaScript(
+                  'document.documentElement.outerHTML',
+                ).then((currentHtml: string) => {
+                  if (settled) return;
+                  const stillChallenge =
+                    currentHtml.toLowerCase().includes('just a moment') ||
+                    currentHtml.includes('cf_chl');
+                  if (!stillChallenge) {
+                    done(null, currentHtml);
+                  } else {
+                    setTimeout(poll, 1000);
+                  }
+                }).catch(() => {
+                  if (!settled) setTimeout(poll, 1000);
+                });
+              };
+              setTimeout(poll, 2000); // Start polling 2s after first detection
+            }
+            // If we already detected challenge and another did-finish-load
+            // fires (e.g. redirect), the code below will handle it
+            return;
+          }
+
+          if (isChallengePage) {
+            // We were on a challenge page, and now we landed on real content.
+            // This might be a redirect, so grab the HTML.
+            try {
+              const outerHtml = await win.webContents.executeJavaScript(
+                'document.documentElement.outerHTML',
+              );
+              done(null, outerHtml);
+            } catch (jsErr) {
+              done(jsErr instanceof Error ? jsErr : new Error(String(jsErr)));
+            }
+            return;
+          }
+
+          // Normal page (no challenge detected) — resolve immediately
           try {
             const outerHtml = await win.webContents.executeJavaScript(
               'document.documentElement.outerHTML',
@@ -409,11 +486,10 @@ export class BrowserFetchStrategy implements FetcherStrategy {
 
         // Page failed to load
         win.webContents.on('did-fail-load', (_event, _errorCode, errorDescription) => {
-          clearTimeout(timer);
           done(new Error(`Browser fetch failed: ${errorDescription}`));
         });
 
-        // Start loading
+        resetTimer();
         win.loadURL(url);
       });
 
@@ -426,7 +502,7 @@ export class BrowserFetchStrategy implements FetcherStrategy {
       }
 
       return {
-        url,
+        url: win.webContents.getURL(),
         statusCode: 200, // Browser internalizes status code
         headers: {},     // Browser internalizes headers
         body: html,
