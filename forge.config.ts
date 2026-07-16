@@ -7,11 +7,19 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
+import path from 'node:path';
+
+const appIconBasePath = path.resolve(__dirname, 'assets/icons/shale-app-icon');
+const linuxIconPath = path.resolve(__dirname, 'assets/icons/linux/shale-app-icon-512.png');
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName: 'Shale',
+    // Electron Packager selects `.icns` on macOS and `.ico` on Windows.
+    icon: appIconBasePath,
+    // Linux window icons need a PNG outside app.asar at runtime.
+    extraResource: linuxIconPath,
     // VitePlugin sets an ignore filter that only allows /.vite/ through.
     // Override it to also include node_modules for runtime dependencies
     // (better-sqlite3 native addon, jsdom, etc.) that Vite externalized.
@@ -38,6 +46,7 @@ const config: ForgeConfig = {
       options: {
         name: 'shale',
         bin: 'Shale',
+        icon: linuxIconPath,
       },
     }),
     // Linux: DEB (Debian/Ubuntu)
@@ -45,6 +54,7 @@ const config: ForgeConfig = {
       options: {
         name: 'shale',
         bin: 'Shale',
+        icon: linuxIconPath,
       },
     }),
   ],
