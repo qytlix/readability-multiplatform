@@ -11,7 +11,7 @@ P0 supports one active OpenAI-compatible Chat Completions provider, streaming ou
 - Renderer receives only a redacted provider profile. It never receives `apiKeyRef`, encrypted key data, or a plaintext key response.
 - The key input is uncontrolled in the settings dialog, so it is not kept in React state.
 - SQLite stores an opaque `apiKeyRef` only. When secure storage is available, the encrypted secret is stored separately in `ai-secrets.json` below Electron `userData` with mode `0600`.
-- Electron `safeStorage` encrypts/decrypts persistent key material. On Linux, `basic_text` and `unknown` backends are never used for persistence. If secure storage is unavailable, the key is held in Main-process memory only and discarded on exit; the user is told to enter it again after restart. There is no plaintext-on-disk fallback.
+- Electron `safeStorage` encrypts/decrypts persistent key material when secure storage is available. By explicit product decision, Linux `basic_text`, `unknown`, and other unavailable secure-storage cases use a persistent plaintext local-file fallback. Renderer is told the storage mode is `insecure` and the settings UI warns that anyone with access to the computer can use the key.
 - Main never logs API keys, Authorization headers, article Markdown, or raw provider error bodies.
 
 ## Persistence and cache behavior
@@ -53,4 +53,4 @@ Manual opt-in verification (never CI):
 3. Run **Test connection**, then generate a Summary in each supported language/detail combination. Confirm streaming text appears above the article body.
 4. Reopen the article and restart the app: the completed result remains, and its fresh slot does not make another provider call.
 5. Interrupt a generation by quitting, restart, and confirm the old `running` state becomes a retryable failure.
-6. On Linux without a secure keyring, verify that saving is marked session-only, the key is not written to disk, generation works for the current session, and the key must be entered again after restart.
+6. On Linux without a secure keyring, verify that saving is explicitly marked as unencrypted local storage, the warning explains the risk, generation works, and the provider remains usable after restart.

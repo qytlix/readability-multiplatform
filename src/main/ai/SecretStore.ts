@@ -9,21 +9,29 @@ export interface SafeStorageBackend {
   getSelectedStorageBackend?: () => string;
 }
 
-export type SecretStorageMode = 'secure' | 'session';
+export type SecretStorageMode = 'secure' | 'insecure';
 
 interface SecretFile {
+  version: 2;
+  secrets: Record<string, StoredSecret>;
+}
+
+interface StoredSecret {
+  storageMode: SecretStorageMode;
+  value: string;
+}
+
+interface LegacySecretFile {
   version: 1;
   secrets: Record<string, string>;
 }
 
 /**
- * Persists only OS-encrypted key material outside SQLite. When an OS keyring
- * is unavailable, keys remain in Main-process memory and are discarded when
- * the app exits; the `basic_text` fallback is never written to disk.
+ * Persists key material outside SQLite. Secure operating-system encryption is
+ * used when available; otherwise the user-approved fallback writes the key to
+ * the local secret file without encryption and reports that mode to Renderer.
  */
 export class SecretStore {
-  private readonly sessionSecrets = new Map<string, string>();
-
   constructor(
     private readonly filePath: string,
     private readonly safeStorage: SafeStorageBackend,
@@ -31,27 +39,17 @@ export class SecretStore {
   ) {}
 
   getStorageMode(): SecretStorageMode {
-    return this.isSecureStorageAvailable() ? 'secure' : 'session';
+    return this.isSecureStorageAvailable() ? 'secure' : 'insecure';
   }
 
   has(reference: string): boolean {
-    if (this.sessionSecrets.has(reference)) return true;
-    if (!this.isSecureStorageAvailable()) return false;
-
     try {
-      return Boolean(this.readSecretFile().secrets[reference]);
+      const secret = this.readSecretFile().secrets[reference];
+      return Boolean(secret) && (
+        secret.storageMode === 'insecure' || this.isSecureStorageAvailable()
+      );
     } catch {
       return false;
-    }
-  }
-
-  assertAvailable(): void {
-    if (!this.isSecureStorageAvailable()) {
-      throw new SummaryError(
-        SUMMARY_ERROR_CODES.SUMMARY_KEY_STORAGE_UNAVAILABLE,
-        'Secure operating-system key storage is unavailable on this device.',
-        false,
-      );
     }
   }
 
@@ -64,32 +62,20 @@ export class SecretStore {
       );
     }
 
-    if (!this.isSecureStorageAvailable()) {
-      this.sessionSecrets.set(reference, apiKey);
-      return;
-    }
-
     const secretFile = this.readSecretFile();
-    secretFile.secrets[reference] = this.safeStorage
-      .encryptString(apiKey)
-      .toString('base64');
+    const storageMode = this.getStorageMode();
+    secretFile.secrets[reference] = storageMode === 'secure'
+      ? {
+        storageMode,
+        value: this.safeStorage.encryptString(apiKey).toString('base64'),
+      }
+      : { storageMode, value: apiKey };
     this.writeSecretFile(secretFile);
   }
 
   read(reference: string): string {
-    const sessionSecret = this.sessionSecrets.get(reference);
-    if (sessionSecret) return sessionSecret;
-
-    if (!this.isSecureStorageAvailable()) {
-      throw new SummaryError(
-        SUMMARY_ERROR_CODES.SUMMARY_KEY_MISSING,
-        'This device cannot securely save API keys. Enter the API key again for this app session.',
-        true,
-      );
-    }
-
-    const ciphertext = this.readSecretFile().secrets[reference];
-    if (!ciphertext) {
+    const secret = this.readSecretFile().secrets[reference];
+    if (!secret) {
       throw new SummaryError(
         SUMMARY_ERROR_CODES.SUMMARY_KEY_MISSING,
         'The configured API key is unavailable. Save the provider configuration again.',
@@ -97,8 +83,18 @@ export class SecretStore {
       );
     }
 
+    if (secret.storageMode === 'insecure') return secret.value;
+
+    if (!this.isSecureStorageAvailable()) {
+      throw new SummaryError(
+        SUMMARY_ERROR_CODES.SUMMARY_KEY_MISSING,
+        'The configured API key requires secure operating-system storage that is unavailable.',
+        true,
+      );
+    }
+
     try {
-      return this.safeStorage.decryptString(Buffer.from(ciphertext, 'base64'));
+      return this.safeStorage.decryptString(Buffer.from(secret.value, 'base64'));
     } catch {
       throw new SummaryError(
         SUMMARY_ERROR_CODES.SUMMARY_KEY_MISSING,
@@ -109,9 +105,6 @@ export class SecretStore {
   }
 
   delete(reference: string): void {
-    this.sessionSecrets.delete(reference);
-    if (!this.isSecureStorageAvailable()) return;
-
     const secretFile = this.readSecretFile();
     if (secretFile.secrets[reference]) {
       delete secretFile.secrets[reference];
@@ -139,13 +132,22 @@ export class SecretStore {
   private readSecretFile(): SecretFile {
     try {
       const parsed: unknown = JSON.parse(readFileSync(this.filePath, 'utf8'));
-      if (!isSecretFile(parsed)) {
-        throw new Error('Invalid secret file');
+      if (isSecretFile(parsed)) return parsed;
+      if (isLegacySecretFile(parsed)) {
+        return {
+          version: 2,
+          secrets: Object.fromEntries(
+            Object.entries(parsed.secrets).map(([reference, value]) => [
+              reference,
+              { storageMode: 'secure', value },
+            ]),
+          ),
+        };
       }
-      return parsed;
+      throw new Error('Invalid secret file');
     } catch (error) {
       if (isMissingFileError(error)) {
-        return { version: 1, secrets: {} };
+        return { version: 2, secrets: {} };
       }
       throw new SummaryError(
         SUMMARY_ERROR_CODES.SUMMARY_KEY_STORAGE_UNAVAILABLE,
@@ -175,6 +177,24 @@ export class SecretStore {
 }
 
 function isSecretFile(value: unknown): value is SecretFile {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as { version?: unknown; secrets?: unknown };
+  if (candidate.version !== 2 || !candidate.secrets || typeof candidate.secrets !== 'object') {
+    return false;
+  }
+  return Object.values(candidate.secrets).every(isStoredSecret);
+}
+
+function isStoredSecret(value: unknown): value is StoredSecret {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as { storageMode?: unknown; value?: unknown };
+  return (
+    (candidate.storageMode === 'secure' || candidate.storageMode === 'insecure')
+    && typeof candidate.value === 'string'
+  );
+}
+
+function isLegacySecretFile(value: unknown): value is LegacySecretFile {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as { version?: unknown; secrets?: unknown };
   if (candidate.version !== 1 || !candidate.secrets || typeof candidate.secrets !== 'object') {

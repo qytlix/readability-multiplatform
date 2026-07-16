@@ -46,8 +46,8 @@ export const ProviderSettings = ({
       if (apiKeyInputRef.current) apiKeyInputRef.current.value = '';
       onSaved(result.data);
       setStatus(
-        result.data.keyStorageMode === 'session'
-          ? 'Saved for this app session. Enter the key again after restarting the app.'
+        result.data.keyStorageMode === 'insecure'
+          ? 'Saved locally without encryption. Anyone with access to this computer can use this API key.'
           : 'Saved securely.',
       );
       return result.data;
@@ -78,7 +78,7 @@ export const ProviderSettings = ({
   };
 
   const hasApiKey = profile?.hasApiKey ?? false;
-  const usesSessionStorage = profile?.keyStorageMode === 'session';
+  const usesInsecureStorage = profile?.keyStorageMode === 'insecure';
 
   return (
     <div className="provider-settings-backdrop" role="presentation" onMouseDown={onClose}>
@@ -132,9 +132,9 @@ export const ProviderSettings = ({
             />
           </label>
           <p className="provider-settings-note">
-            {usesSessionStorage
-              ? 'Secure operating-system key storage is unavailable. The key remains only in this app session and is never written to disk.'
-              : 'The key is sent only to the Main process. If system encryption is unavailable, it remains only in this app session and is never written to disk.'}
+            {usesInsecureStorage
+              ? 'Secure operating-system key storage is unavailable. The API key is kept in a local file without encryption.'
+              : 'The key is sent only to the Main process and stored using operating-system encryption when available.'}
           </p>
           {status && <p className="provider-settings-status" role="status">{status}</p>}
           <footer className="provider-settings-actions">

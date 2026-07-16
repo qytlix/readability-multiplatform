@@ -1,5 +1,5 @@
 export type ProviderKind = 'openai-compatible';
-export type ProviderKeyStorageMode = 'secure' | 'session';
+export type ProviderKeyStorageMode = 'secure' | 'insecure';
 
 /**
  * P0 intentionally limits Summary to GPT text models supported by the

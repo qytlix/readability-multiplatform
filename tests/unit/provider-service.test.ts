@@ -23,7 +23,7 @@ const encryptedBackend: SafeStorageBackend = {
   getSelectedStorageBackend: () => 'gnome_libsecret',
 };
 
-function createService(): {
+function createService(backend: SafeStorageBackend = encryptedBackend): {
   databaseManager: DatabaseManager;
   databasePath: string;
   service: ProviderService;
@@ -44,7 +44,7 @@ function createService(): {
   };
   const service = new ProviderService(
     new ProviderProfileStore(databaseManager.getDb()),
-    new SecretStore(secretFilePath, encryptedBackend, 'linux'),
+    new SecretStore(secretFilePath, backend, 'linux'),
     requestProvider,
   );
   return { databaseManager, databasePath, service, requestProvider, secretFilePath };
@@ -109,6 +109,49 @@ describe('ProviderService', () => {
       })).toThrow('Select a supported GPT model.');
     } finally {
       databaseManager.close();
+    }
+  });
+
+  it('reloads an explicitly allowed plaintext configuration after reopening the app', async () => {
+    const basicTextBackend: SafeStorageBackend = {
+      ...encryptedBackend,
+      getSelectedStorageBackend: () => 'basic_text',
+    };
+    const {
+      databaseManager,
+      databasePath,
+      service,
+      requestProvider,
+      secretFilePath,
+    } = createService(basicTextBackend);
+
+    const saved = service.save({
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-5.4-mini',
+      apiKey: 'sk-test-key',
+    });
+    expect(saved).toMatchObject({ hasApiKey: true, keyStorageMode: 'insecure' });
+
+    databaseManager.close();
+    const reopenedDatabaseManager = new DatabaseManager(databasePath);
+    try {
+      reopenedDatabaseManager.runMigrations();
+      const reopenedService = new ProviderService(
+        new ProviderProfileStore(reopenedDatabaseManager.getDb()),
+        new SecretStore(secretFilePath, basicTextBackend, 'linux'),
+        requestProvider,
+      );
+
+      expect(reopenedService.getActiveProfile()).toMatchObject({
+        hasApiKey: true,
+        keyStorageMode: 'insecure',
+      });
+      await reopenedService.testConnection();
+      expect(requestProvider.testConnection).toHaveBeenCalledWith(expect.objectContaining({
+        apiKey: 'sk-test-key',
+      }));
+    } finally {
+      reopenedDatabaseManager.close();
     }
   });
 });

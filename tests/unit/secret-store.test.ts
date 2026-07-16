@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -38,7 +38,7 @@ describe('SecretStore', () => {
     expect(readFileSync(filePath, 'utf8')).not.toContain('sk-test-key');
   });
 
-  it('keeps keys in memory when the Linux keyring would fall back to basic_text', () => {
+  it('persists plaintext keys when the Linux keyring would fall back to basic_text', () => {
     const basicTextBackend: SafeStorageBackend = {
       ...encryptedBackend,
       getSelectedStorageBackend: () => 'basic_text',
@@ -47,22 +47,33 @@ describe('SecretStore', () => {
 
     store.save('profile-1', 'sk-test-key');
 
-    expect(store.getStorageMode()).toBe('session');
+    expect(store.getStorageMode()).toBe('insecure');
     expect(store.read('profile-1')).toBe('sk-test-key');
-    expect(existsSync(filePath)).toBe(false);
-    expect(() => new SecretStore(filePath, basicTextBackend, 'linux').read('profile-1')).toThrow(
-      'Enter the API key again',
-    );
+    expect(existsSync(filePath)).toBe(true);
+    expect(readFileSync(filePath, 'utf8')).toContain('sk-test-key');
+    expect(new SecretStore(filePath, basicTextBackend, 'linux').read('profile-1')).toBe('sk-test-key');
   });
 
-  it('uses session storage when system encryption is unavailable', () => {
-    const { store } = createSecretStore({
+  it('uses persistent plaintext storage when system encryption is unavailable', () => {
+    const unavailableBackend: SafeStorageBackend = {
       ...encryptedBackend,
       isEncryptionAvailable: () => false,
-    });
+    };
+    const { store, filePath } = createSecretStore(unavailableBackend);
 
     store.save('profile-1', 'sk-test-key');
-    expect(store.getStorageMode()).toBe('session');
+    expect(store.getStorageMode()).toBe('insecure');
+    expect(store.read('profile-1')).toBe('sk-test-key');
+    expect(new SecretStore(filePath, unavailableBackend, 'linux').read('profile-1')).toBe('sk-test-key');
+  });
+
+  it('continues to read legacy encrypted key files', () => {
+    const { store, filePath } = createSecretStore();
+    writeFileSync(filePath, JSON.stringify({
+      version: 1,
+      secrets: { 'profile-1': Buffer.from('encrypted:sk-test-key').toString('base64') },
+    }));
+
     expect(store.read('profile-1')).toBe('sk-test-key');
   });
 });

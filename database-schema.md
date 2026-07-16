@@ -237,7 +237,7 @@ struct EntryListItem: Identifiable, Hashable {
 | `apiKeyRef` | 不透明密钥引用；SQLite 中不存储明文或密文 Key |
 | `isActive` | P0 只允许一条活动配置 |
 
-实际加密后的 Key 位于 Electron `userData/ai-secrets.json`，由系统 `safeStorage` 加密；Linux `basic_text` 与未知后端会被拒绝。
+Key 位于 Electron `userData/ai-secrets.json`。系统 `safeStorage` 可用时会加密；按当前产品决定，Linux `basic_text`、未知后端或无安全存储时改为持久化明文，并在界面明确警告用户。
 
 ### P0 Summary run 与结果
 
