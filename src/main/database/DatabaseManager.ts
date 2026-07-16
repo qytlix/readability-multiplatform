@@ -5,6 +5,7 @@ import { MIGRATION_003 } from '../migrations/003_create_contents';
 import { MIGRATION_004 } from '../migrations/004_add_feed_etag';
 import { MIGRATION_006 } from '../migrations/006_create_ai_profiles';
 import { MIGRATION_007 } from '../migrations/007_create_summary';
+import { MIGRATION_008 } from '../migrations/008_create_translation';
 
 interface Migration {
   id: string;
@@ -18,6 +19,7 @@ const MIGRATIONS: Migration[] = [
   { id: '004_add_feed_etag', sql: MIGRATION_004 },
   { id: '006_create_ai_profiles', sql: MIGRATION_006 },
   { id: '007_create_summary', sql: MIGRATION_007 },
+  { id: '008_create_translation', sql: MIGRATION_008 },
 ];
 
 export class DatabaseManager {

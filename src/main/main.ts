@@ -3,7 +3,12 @@ import { env } from 'node:process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
-import { getSummaryService, initializeServices, registerIpcHandlers } from './ipc';
+import {
+  getSummaryService,
+  getTranslationService,
+  initializeServices,
+  registerIpcHandlers,
+} from './ipc';
 import { getApplicationMenuTemplate } from './application-menu';
 import { installMainWindowNavigationGuards } from './navigation-guards';
 import { initializePageZoom, installPageZoomInputGuard } from './page-zoom';
@@ -81,6 +86,7 @@ app.on('ready', () => {
 
 app.on('before-quit', () => {
   getSummaryService()?.abortActiveRun();
+  getTranslationService()?.abortActiveRun();
 });
 
 app.on('window-all-closed', () => {

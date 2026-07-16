@@ -226,6 +226,7 @@ CREATE TABLE IF NOT EXISTS entry_content (
     pipelineError       TEXT,               -- 清洗流水线错误信息
     segmenterVersion    TEXT,               -- Segment ID 生成算法版本
     sourceContentHash   TEXT,               -- 源内容哈希，用于 Translation 缓存失效
+    segmentsJson        TEXT,               -- 已持久化的稳定 Reader segment 契约
     createdAt           TEXT NOT NULL,
     updatedAt           TEXT NOT NULL
 );
@@ -236,7 +237,7 @@ CREATE INDEX idx_entry_content_entryId ON entry_content(entryId);
 **关键约定**：
 - `pipelineStatus` 跟踪清洗流水线的每一步，支持断点恢复
 - 版本号字段支持按层重建缓存（参考 IMPLEMENTATION_PLAN.md M4 版本化缓存）
-- `sourceContentHash` 和 `segmenterVersion` 用于 AI 翻译缓存失效
+- `sourceContentHash` 是稳定 Reader segments 的 SHA-256，和 `segmenterVersion` 一起用于 AI 翻译缓存失效
 
 ### 3.4 Cleaned Content 契约类型（`src/shared/contracts/content.types.ts`）
 
@@ -250,18 +251,29 @@ export type PipelineStatus =
   | 'success'
   | 'failed';
 
+export type ContentSegmentType = 'p' | 'ul' | 'ol';
+
+export interface ContentSegment {
+  id: string;
+  orderIndex: number;
+  type: ContentSegmentType;
+  sourceHtml: string;
+  sourceText: string;
+}
+
 /** 清洗结果（Renderer 和 AI 可安全消费的契约） */
 export interface CleanedContent {
   entryId: number;
   sourceUrl: string;
   cleanedHtml: string;
-  cleanedMarkdown: string;
+  markdown: string;
   readabilityTitle?: string;
   readabilityByline?: string;
   pipelineStatus: PipelineStatus;
   pipelineError?: string;
   segmenterVersion?: string;
   sourceContentHash?: string;
+  segments?: ContentSegment[];
 }
 
 /** 文章列表轻量投影（非持久化模型） */

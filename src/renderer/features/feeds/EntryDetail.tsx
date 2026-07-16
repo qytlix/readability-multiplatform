@@ -19,6 +19,7 @@ import {
   shouldRevealFloatingReaderHeaderAtWindowTop,
 } from './readerHeaderVisibility';
 import { SummaryPanel } from '../summary/SummaryPanel';
+import { TranslationPanel } from '../translation/TranslationPanel';
 
 interface EntryDetailProps {
   entry: Entry | null;
@@ -362,6 +363,10 @@ export const EntryDetail = ({
           entryId={entry.id}
           isContentReady={status === 'success' && Boolean(content?.markdown.trim())}
         />
+        <TranslationPanel
+          entryId={entry.id}
+          isContentReady={status === 'success' && Boolean(content?.cleanedHtml.trim())}
+        >
         <div className="entry-detail-body">
           {status === 'loading' && (
             <div className="entry-detail-loading">
@@ -422,6 +427,7 @@ export const EntryDetail = ({
 
           {linkError && <p className="entry-detail-link-error" role="alert">{linkError}</p>}
         </div>
+        </TranslationPanel>
       </div>
       {renderArticleHeader(true)}
     </div>

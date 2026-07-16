@@ -7,6 +7,21 @@ export type PipelineStatus =
   | 'success'
   | 'failed';
 
+/** Stable Reader block kinds supported by Translation. */
+export type ContentSegmentType = 'p' | 'ul' | 'ol';
+
+/**
+ * A deterministic, sanitized Reader block. Consumers use this contract rather
+ * than relying on the content cleaner's DOM implementation.
+ */
+export interface ContentSegment {
+  id: string;
+  orderIndex: number;
+  type: ContentSegmentType;
+  sourceHtml: string;
+  sourceText: string;
+}
+
 /** 清洗结果（Renderer 和 AI 可安全消费的契约） */
 export interface CleanedContent {
   entryId: number;
@@ -19,6 +34,7 @@ export interface CleanedContent {
   pipelineError?: string;
   segmenterVersion?: string;
   sourceContentHash?: string;
+  segments?: ContentSegment[];
 }
 
 /** 正文提取结果 */

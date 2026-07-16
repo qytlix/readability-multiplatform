@@ -3,6 +3,7 @@ import type { CleanedContent } from './contracts/content.types';
 import type { IPCResult } from './contracts/feed.ipc';
 import type { ExternalOpenRequest } from './contracts/external.ipc';
 import type { ProviderAPI, SummaryAPI } from './contracts/summary.ipc';
+import type { TranslationAPI } from './contracts/translation.ipc';
 
 export const IPC_CHANNELS = {
   systemPing: 'system:ping',
@@ -59,4 +60,5 @@ export interface ShaleAPI {
   external: ExternalAPI;
   provider: ProviderAPI;
   summary: SummaryAPI;
+  translation: TranslationAPI;
 }

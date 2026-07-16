@@ -4,6 +4,8 @@ import { EXTERNAL_IPC_CHANNELS } from '../shared/contracts/external.ipc';
 import { SUMMARY_IPC_CHANNELS } from '../shared/contracts/summary.ipc';
 import type { SaveProviderRequest } from '../shared/contracts/provider.types';
 import type { SummaryStreamEvent } from '../shared/contracts/summary.types';
+import { TRANSLATION_IPC_CHANNELS } from '../shared/contracts/translation.ipc';
+import type { TranslationStreamEvent } from '../shared/contracts/translation.types';
 
 const ping = (): Promise<PingResponse> =>
   ipcRenderer.invoke(IPC_CHANNELS.systemPing);
@@ -69,6 +71,24 @@ const summaryAPI = {
   },
 };
 
+const translationAPI = {
+  get: (request: {
+    entryId: number;
+    targetLanguage: 'zh-CN' | 'en';
+  }) => ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationGet, request),
+  generate: (request: {
+    entryId: number;
+    targetLanguage: 'zh-CN' | 'en';
+  }) => ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationGenerate, request),
+  onEvent: (listener: (event: TranslationStreamEvent) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, event: TranslationStreamEvent) => {
+      listener(event);
+    };
+    ipcRenderer.on(TRANSLATION_IPC_CHANNELS.translationStream, handler);
+    return () => ipcRenderer.removeListener(TRANSLATION_IPC_CHANNELS.translationStream, handler);
+  },
+};
+
 const shaleAPI: ShaleAPI = {
   system: {
     ping,
@@ -79,6 +99,7 @@ const shaleAPI: ShaleAPI = {
   external: externalAPI,
   provider: providerAPI,
   summary: summaryAPI,
+  translation: translationAPI,
 };
 
 contextBridge.exposeInMainWorld('shaleAPI', shaleAPI);

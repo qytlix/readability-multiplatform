@@ -84,6 +84,8 @@ describe('ContentService', () => {
       expect(result.markdown).toBeTruthy();
       expect(result.readabilityTitle).toBeDefined();
       expect(result.sourceContentHash).toBeDefined();
+      expect(result.sourceContentHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(result.segments).toHaveLength(1);
     });
 
     it('should persist content to store', async () => {

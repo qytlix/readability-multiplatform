@@ -18,10 +18,16 @@ import { ProviderService } from './ai/ProviderService';
 import { SecretStore } from './ai/SecretStore';
 import { SummaryService } from './ai/SummaryService';
 import { SummaryStore } from './ai/SummaryStore';
+import { TranslationService } from './ai/TranslationService';
+import { TranslationStore } from './ai/TranslationStore';
 import {
   registerSummaryIpcHandlers,
   type SummaryServices,
 } from './ipc/summary.handler';
+import {
+  registerTranslationIpcHandlers,
+  type TranslationServices,
+} from './ipc/translation.handler';
 
 export type GetMainWindow = () => BrowserWindow | null;
 
@@ -44,10 +50,16 @@ export const isAuthorizedSender = (
 
 let feedServices: FeedServices | null = null;
 let summaryServices: SummaryServices | null = null;
+let translationServices: TranslationServices | null = null;
 
 /** Returns the Summary runtime for application shutdown cleanup. */
 export function getSummaryService(): SummaryService | null {
   return summaryServices?.summaryService ?? null;
+}
+
+/** Returns the Translation runtime for application shutdown cleanup. */
+export function getTranslationService(): TranslationService | null {
+  return translationServices?.translationService ?? null;
 }
 
 /**
@@ -70,6 +82,8 @@ export function initializeServices(
   const providerProfileStore = new ProviderProfileStore(dbManager.getDb());
   const summaryStore = new SummaryStore(dbManager.getDb());
   summaryStore.reconcileInterruptedRuns();
+  const translationStore = new TranslationStore(dbManager.getDb());
+  translationStore.reconcileInterruptedRuns();
   const secretStore = new SecretStore(
     secretStoragePath ?? path.join(path.dirname(dbPath ?? '.'), 'ai-secrets.json'),
     safeStorage,
@@ -87,9 +101,17 @@ export function initializeServices(
     summaryStore,
     provider,
   );
+  const translationService = new TranslationService(
+    contentStore,
+    providerProfileStore,
+    secretStore,
+    translationStore,
+    provider,
+  );
 
   feedServices = { feedService, contentService, entryStore, contentStore };
   summaryServices = { providerService, summaryService };
+  translationServices = { translationService };
   return feedServices;
 }
 
@@ -115,5 +137,9 @@ export function registerIpcHandlers(getMainWindow: GetMainWindow): void {
 
   if (summaryServices) {
     registerSummaryIpcHandlers(getMainWindow, summaryServices);
+  }
+
+  if (translationServices) {
+    registerTranslationIpcHandlers(getMainWindow, translationServices);
   }
 }
