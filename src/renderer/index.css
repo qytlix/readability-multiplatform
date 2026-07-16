@@ -648,11 +648,40 @@ body.workspace-is-resizing * {
   flex-shrink: 0;
 }
 
-.entry-detail-header h2 {
+.entry-detail-header-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.entry-detail-header-top h2 {
+  flex: 1;
   font-size: 20px;
   font-weight: 700;
-  margin-bottom: 8px;
   line-height: 1.3;
+}
+
+.btn-open-browser {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.btn-open-browser:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .entry-detail-meta {
@@ -751,21 +780,194 @@ body.workspace-is-resizing * {
   color: var(--text-primary);
 }
 
-.btn-toggle-raw {
-  display: block;
-  margin: 16px auto 0;
-  padding: 6px 16px;
+.entry-detail-view-controls {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.btn-view-mode {
+  padding: 4px 12px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg-secondary);
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 12px;
+  transition: background-color 140ms ease, color 140ms ease;
 }
 
-.btn-toggle-raw:hover {
+.btn-view-mode:hover:not(:disabled) {
   background: var(--bg-tertiary);
   color: var(--text-primary);
+}
+
+.btn-view-mode.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-view-mode:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Star Button ──────────────────────────────────── */
+
+.btn-star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--text-secondary);
+  padding: 0 4px;
+  transition: color 140ms ease, transform 100ms ease;
+}
+
+.btn-star:hover {
+  color: var(--accent-strong);
+  transform: scale(1.15);
+}
+
+.btn-star.starred {
+  color: #e8b84b;
+}
+
+.btn-retry {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-retry:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.entry-detail-error-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.entry-detail-error-actions {
+  margin-top: 12px;
+}
+
+.entry-detail-error-actions a {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--accent);
+}
+
+/* ── Feed Item Wrapper ────────────────────────────── */
+
+.feed-item-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.feed-item-wrapper .feed-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.feed-item-actions {
+  display: none;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.feed-item-wrapper:hover .feed-item-actions {
+  display: flex;
+}
+
+.feed-item-action {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--slate-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.feed-item-action:hover {
+  background: var(--sidebar-selected);
+  color: var(--slate-text);
+}
+
+/* ── OPML Dialog ──────────────────────────────────── */
+
+.opml-dialog {
+  width: 480px;
+}
+
+.opml-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+}
+
+.opml-action-btn {
+  width: 100%;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: center;
+}
+
+.opml-action-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.opml-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.opml-result {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.opml-result-success {
+  color: var(--accent-strong);
+}
+
+.opml-result-failures {
+  margin-top: 8px;
+  color: var(--error);
+  font-size: 12px;
+}
+
+.opml-result-failures ul {
+  margin-top: 4px;
+  padding-left: 16px;
+}
+
+.opml-result-failures li {
+  margin-bottom: 2px;
 }
 
 /* ── Dialog ──────────────────────────────────────── */

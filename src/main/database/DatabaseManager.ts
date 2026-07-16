@@ -3,6 +3,7 @@ import { MIGRATION_001 } from '../migrations/001_create_feeds';
 import { MIGRATION_002 } from '../migrations/002_create_entries';
 import { MIGRATION_003 } from '../migrations/003_create_contents';
 import { MIGRATION_004 } from '../migrations/004_add_feed_etag';
+import { MIGRATION_005 } from '../migrations/005_create_settings';
 
 interface Migration {
   id: string;
@@ -14,6 +15,7 @@ const MIGRATIONS: Migration[] = [
   { id: '002_create_entries', sql: MIGRATION_002 },
   { id: '003_create_contents', sql: MIGRATION_003 },
   { id: '004_add_feed_etag', sql: MIGRATION_004 },
+  { id: '005_create_settings', sql: MIGRATION_005 },
 ];
 
 export class DatabaseManager {

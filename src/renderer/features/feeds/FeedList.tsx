@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Feed } from '../../../shared/contracts/feed.types';
 import { FeedAddDialog } from './FeedAddDialog';
+import { FeedEditDialog } from './FeedEditDialog';
+import { OPMLDialog } from './OPMLDialog';
 
 type SyncStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -66,10 +68,14 @@ export const FeedList = ({
   loading,
 }: FeedListProps) => {
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [editFeed, setEditFeed] = useState<Feed | null>(null);
+  const [showOPMLDialog, setShowOPMLDialog] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [syncProgress, setSyncProgress] = useState<Record<number, string>>({});
   const isMountedRef = useRef(true);
   const syncInFlightRef = useRef(false);
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cleanProgressRef = useRef<(() => void) | null>(null);
   const totalUnreadCount = feeds.reduce(
     (sum, feed) => sum + onUnreadCount(feed.id),
     0,
@@ -85,9 +91,35 @@ export const FeedList = ({
   useEffect(() => {
     isMountedRef.current = true;
 
+    // Listen for sync progress events
+    cleanProgressRef.current = window.shaleAPI.feed.onSyncProgress((progress) => {
+      if (!isMountedRef.current) return;
+      setSyncProgress((prev) => ({
+        ...prev,
+        [progress.feedId]: progress.status,
+      }));
+
+      // Clear progress after done/error
+      if (progress.status === 'done' || progress.status === 'error') {
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            setSyncProgress((prev) => {
+              const next = { ...prev };
+              delete next[progress.feedId];
+              return next;
+            });
+          }
+        }, 3000);
+      }
+    });
+
     return () => {
       isMountedRef.current = false;
       clearSuccessTimer();
+      if (cleanProgressRef.current) {
+        cleanProgressRef.current();
+        cleanProgressRef.current = null;
+      }
     };
   }, [clearSuccessTimer]);
 
@@ -100,6 +132,34 @@ export const FeedList = ({
       onRefresh();
     },
     [onRefresh],
+  );
+
+  const handleEdit = useCallback(
+    async (params: { title?: string; siteURL?: string; syncIntervalMin?: number }) => {
+      if (!editFeed) return;
+      const result = await window.shaleAPI.feed.update(editFeed.id, params);
+      if (!result.ok) {
+        throw new Error(result.error?.message ?? 'Failed to update feed');
+      }
+      await onRefresh();
+    },
+    [editFeed, onRefresh],
+  );
+
+  const handleRemove = useCallback(
+    async (feedId: number) => {
+      if (!window.confirm('Remove this feed? All articles from this feed will be deleted.')) return;
+      const result = await window.shaleAPI.feed.remove(feedId);
+      if (!result.ok) {
+        console.error('Failed to remove feed:', result.error);
+        return;
+      }
+      if (selectedFeedId === feedId) {
+        onSelectFeed(null);
+      }
+      await onRefresh();
+    },
+    [onRefresh, onSelectFeed, selectedFeedId],
   );
 
   const handleSync = useCallback(async () => {
@@ -133,6 +193,25 @@ export const FeedList = ({
       successTimerRef.current = null;
     }, 1000);
   }, [clearSuccessTimer, onRefresh]);
+
+  const handleOPMLImport = useCallback(
+    async (filePath: string, mode: 'merge' | 'replace') => {
+      const result = await window.shaleAPI.opml.import(filePath, mode);
+      if (!result.ok) {
+        throw new Error(result.error?.message ?? 'OPML import failed');
+      }
+      await onRefresh();
+      return result.data;
+    },
+    [onRefresh],
+  );
+
+  const handleOPMLExport = useCallback(async (filePath: string) => {
+    const result = await window.shaleAPI.opml.export(filePath);
+    if (!result.ok) {
+      throw new Error(result.error?.message ?? 'OPML export failed');
+    }
+  }, []);
 
   const isSyncing = syncStatus === 'loading';
   const syncLabel = syncStatusLabels[syncStatus];
@@ -195,25 +274,65 @@ export const FeedList = ({
           Add Feed
         </button>
 
+        <button
+          type="button"
+          className="add-feed-button"
+          onClick={() => setShowOPMLDialog(true)}
+          style={{ borderColor: 'var(--slate-border)', background: 'transparent', fontSize: '12px' }}
+        >
+          <span className="add-feed-button-icon" aria-hidden="true" style={{ fontSize: '14px' }}>≡</span>
+          OPML
+        </button>
+
         <div className="feed-items">
           {feeds.map((feed) => {
             const feedName = feed.title ?? feed.feedURL;
+            const feedSyncStatus = syncProgress[feed.id];
 
             return (
-              <button
-                key={feed.id}
-                type="button"
-                className={`feed-item ${selectedFeedId === feed.id ? 'active' : ''}`}
-                onClick={() => onSelectFeed(feed.id)}
-              >
-                <span className="feed-item-name" title={feedName}>{feedName}</span>
-                {feed.lastSyncStatus === 'error' && (
-                  <span className="feed-item-error" title={feed.lastSyncError}>
-                    ⚠️
+              <div key={feed.id} className="feed-item-wrapper">
+                <button
+                  type="button"
+                  className={`feed-item ${selectedFeedId === feed.id ? 'active' : ''}`}
+                  onClick={() => onSelectFeed(feed.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setEditFeed(feed);
+                  }}
+                >
+                  <span className="feed-item-name" title={feedName}>
+                    {feedSyncStatus === 'fetching' && '⟳ '}
+                    {feedSyncStatus === 'parsing' && '⟳ '}
+                    {feedSyncStatus === 'done' && '✓ '}
+                    {feedSyncStatus === 'error' && '✗ '}
+                    {feedName}
                   </span>
-                )}
-                <UnreadCount count={onUnreadCount(feed.id)} />
-              </button>
+                  {feed.lastSyncStatus === 'error' && !syncProgress[feed.id] && (
+                    <span className="feed-item-error" title={feed.lastSyncError}>
+                      ⚠️
+                    </span>
+                  )}
+                  <UnreadCount count={onUnreadCount(feed.id)} />
+                </button>
+                <div className="feed-item-actions">
+                  <button
+                    type="button"
+                    className="feed-item-action"
+                    onClick={() => setEditFeed(feed)}
+                    title="Edit feed"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    type="button"
+                    className="feed-item-action"
+                    onClick={() => handleRemove(feed.id)}
+                    title="Remove feed"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
             );
           })}
         </div>
@@ -229,6 +348,22 @@ export const FeedList = ({
         <FeedAddDialog
           onAdd={handleAdd}
           onClose={() => setShowAddDialog(false)}
+        />
+      )}
+
+      {editFeed && (
+        <FeedEditDialog
+          feed={editFeed}
+          onSave={handleEdit}
+          onClose={() => setEditFeed(null)}
+        />
+      )}
+
+      {showOPMLDialog && (
+        <OPMLDialog
+          onImport={handleOPMLImport}
+          onExport={handleOPMLExport}
+          onClose={() => setShowOPMLDialog(false)}
         />
       )}
     </div>

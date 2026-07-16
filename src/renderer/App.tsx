@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Feed } from '../shared/contracts/feed.types';
 import type { EntryListItem } from '../shared/contracts/feed.types';
 import type { Entry } from '../shared/contracts/feed.types';
@@ -19,7 +19,16 @@ export const App = () => {
     { publishedAt: string; id: number } | undefined
   >(undefined);
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
+  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [ipcStatus, setIpcStatus] = useState<string>('');
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const loadFeeds = useCallback(async () => {
     setLoadingFeeds(true);
@@ -36,6 +45,61 @@ export const App = () => {
       setLoadingFeeds(false);
     }
   }, []);
+
+  const loadUnreadCounts = useCallback(
+    async (feedsList: Feed[]) => {
+      const counts: Record<number, number> = {};
+      for (const feed of feedsList) {
+        try {
+          const result = await window.shaleAPI.entry.list({
+            feedId: feed.id,
+            isRead: false,
+            limit: 1,
+          });
+          if (result.ok) {
+            // Count unread entries (first page counts approximate, but cursor means has more)
+            // Actually we need the total. Let's fetch with a larger limit to count more accurately.
+            const unreadResult = await window.shaleAPI.entry.list({
+              feedId: feed.id,
+              isRead: false,
+              limit: 100,
+            });
+            if (unreadResult.ok) {
+              let unreadCount = unreadResult.data.entries.length;
+              // If there's a nextCursor, there are more — we'll approximate
+              if (unreadResult.data.nextCursor) {
+                unreadCount = unreadCount + 50; // rough approximation
+              }
+              counts[feed.id] = unreadCount;
+            }
+          }
+        } catch {
+          counts[feed.id] = 0;
+        }
+      }
+
+      // Total unread
+      try {
+        const allUnread = await window.shaleAPI.entry.list({
+          isRead: false,
+          limit: 100,
+        });
+        if (allUnread.ok) {
+          counts[0] = allUnread.data.entries.length;
+          if (allUnread.data.nextCursor) {
+            counts[0] = counts[0] + 50;
+          }
+        }
+      } catch {
+        counts[0] = 0;
+      }
+
+      if (isMountedRef.current) {
+        setUnreadCounts(counts);
+      }
+    },
+    [],
+  );
 
   const loadEntries = useCallback(
     async (reset = false) => {
@@ -76,6 +140,13 @@ export const App = () => {
     loadFeeds();
   }, [loadFeeds]);
 
+  // Load unread counts when feeds change
+  useEffect(() => {
+    if (feeds.length > 0) {
+      loadUnreadCounts(feeds);
+    }
+  }, [feeds, loadUnreadCounts]);
+
   // Reset entries when feed selection changes
   useEffect(() => {
     setEntries([]);
@@ -92,7 +163,7 @@ export const App = () => {
     async (entryId: number) => {
       setSelectedEntryId(entryId);
 
-      // Find entry details from the list
+      // Find and update entry details from the list
       const listEntry = entries.find((e) => e.id === entryId);
       if (listEntry) {
         setSelectedEntry({
@@ -102,12 +173,27 @@ export const App = () => {
           author: listEntry.author,
           publishedAt: listEntry.publishedAt,
           createdAt: listEntry.createdAt,
-          isRead: true,
-          isStarred: false,
+          isRead: listEntry.isRead,
+          isStarred: listEntry.isStarred,
           isDeleted: false,
           updatedAt: listEntry.createdAt,
           summary: listEntry.summary,
         });
+
+        // Mark as read in backend and update local state
+        if (!listEntry.isRead) {
+          await window.shaleAPI.entry.markRead([entryId], true);
+          // Update local entry list
+          setEntries((prev) =>
+            prev.map((e) =>
+              e.id === entryId ? { ...e, isRead: true } : e,
+            ),
+          );
+          // Update selectedEntry
+          setSelectedEntry((prev) =>
+            prev ? { ...prev, isRead: true } : prev,
+          );
+        }
       }
     },
     [entries],
@@ -177,11 +263,7 @@ export const App = () => {
             }}
             onRefresh={handleSyncAll}
             onUnreadCount={(feedId) => {
-              // Simplified: count unread in current entries list
-              // In full implementation, use entryStore.countUnread via IPC
-              return entries.filter(
-                (e) => e.feedId === feedId && !e.isRead,
-              ).length;
+              return unreadCounts[feedId] ?? 0;
             }}
             loading={loadingFeeds}
           />

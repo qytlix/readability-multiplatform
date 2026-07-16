@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import { env } from 'node:process';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
-import { initializeServices, registerIpcHandlers } from './ipc';
+import { initializeServices, registerIpcHandlers, getSyncScheduler } from './ipc';
 
 if (started) {
   app.quit();
@@ -54,6 +54,20 @@ app.on('ready', () => {
   initializeServices(dbPath);
   registerIpcHandlers(() => mainWindow);
   createWindow();
+
+  // Start the sync scheduler (periodic feed sync)
+  const scheduler = getSyncScheduler();
+  if (scheduler) {
+    scheduler.start();
+  }
+});
+
+app.on('before-quit', () => {
+  // Stop the sync scheduler
+  const scheduler = getSyncScheduler();
+  if (scheduler) {
+    scheduler.stop();
+  }
 });
 
 app.on('window-all-closed', () => {

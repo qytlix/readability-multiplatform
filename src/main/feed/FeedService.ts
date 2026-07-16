@@ -211,6 +211,31 @@ export class FeedService {
   }
 
   /**
+   * Synchronous version of getFeeds for internal use where async is inconvenient.
+   */
+  getFeedsSync(): Feed[] {
+    return this.feedStore.findAll();
+  }
+
+  /**
+   * Remove a feed and its cascaded entries/contents.
+   */
+  /**
+   * Update feed properties (title, siteURL, syncIntervalMin).
+   * Does not trigger remote re-fetch.
+   */
+  async updateFeed(
+    feedId: number,
+    params: { title?: string; siteURL?: string; syncIntervalMin?: number },
+  ): Promise<Feed> {
+    const feed = this.feedStore.update(feedId, params);
+    if (!feed) {
+      throw new Error(`Feed not found: ${feedId}`);
+    }
+    return feed;
+  }
+
+  /**
    * Remove a feed and its cascaded entries/contents.
    */
   async removeFeed(feedId: number): Promise<void> {
