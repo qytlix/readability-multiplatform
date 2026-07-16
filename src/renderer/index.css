@@ -537,6 +537,42 @@ body.workspace-is-resizing * {
   color: var(--slate-text);
 }
 
+.feed-item-actions {
+  display: none;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.feed-item:hover .feed-item-actions {
+  display: flex;
+}
+
+.feed-item-action {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--slate-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.feed-item-action:hover {
+  border-color: var(--slate-border);
+  color: var(--slate-text);
+}
+
+.feed-item-action:last-child:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
 .feed-list-empty,
 .feed-list-loading {
   padding: 16px 8px;
@@ -821,9 +857,16 @@ body.workspace-is-resizing * {
   white-space: pre-wrap;
 }
 
+.entry-detail-view-controls {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--paper-border);
+}
+
 .btn-toggle-raw {
-  display: block;
-  margin: 24px auto 0;
   padding: 6px 14px;
   border: 1px solid var(--paper-border);
   border-radius: 5px;
@@ -831,11 +874,28 @@ body.workspace-is-resizing * {
   color: var(--paper-muted);
   cursor: pointer;
   font-size: 12px;
+  transition: border-color 0.15s, color 0.15s;
 }
 
 .btn-toggle-raw:hover {
   border-color: var(--accent);
   color: var(--accent-strong);
+}
+
+.btn-toggle-raw.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-toggle-raw:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-toggle-raw:disabled:hover {
+  border-color: var(--paper-border);
+  color: var(--paper-muted);
 }
 
 /* ── Dialog ──────────────────────────────────────── */

@@ -201,31 +201,6 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
 
         {status === 'success' && content && (
           <div className="entry-detail-content">
-            <div className="entry-detail-view-controls">
-              <button
-                type="button"
-                className={`btn-view-mode${viewMode === 'cleaned' ? ' active' : ''}`}
-                onClick={() => setViewMode('cleaned')}
-              >
-                Cleaned
-              </button>
-              <button
-                type="button"
-                className={`btn-view-mode${viewMode === 'markdown' ? ' active' : ''}`}
-                onClick={() => setViewMode('markdown')}
-              >
-                Markdown
-              </button>
-              <button
-                type="button"
-                className={`btn-view-mode${viewMode === 'source' ? ' active' : ''}`}
-                onClick={() => setViewMode('source')}
-                disabled={!content.html}
-                title={content.html ? 'View original HTML' : 'Original HTML not available'}
-              >
-                Source HTML
-              </button>
-            </div>
             {viewMode === 'source' && content.html ? (
               <div
                 className="entry-detail-html"
@@ -239,6 +214,31 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
                 dangerouslySetInnerHTML={{ __html: content.cleanedHtml }}
               />
             )}
+            <div className="entry-detail-view-controls">
+              <button
+                type="button"
+                className={`btn-toggle-raw${viewMode === 'cleaned' ? ' active' : ''}`}
+                onClick={() => setViewMode('cleaned')}
+              >
+                Cleaned
+              </button>
+              <button
+                type="button"
+                className={`btn-toggle-raw${viewMode === 'markdown' ? ' active' : ''}`}
+                onClick={() => setViewMode('markdown')}
+              >
+                Markdown
+              </button>
+              <button
+                type="button"
+                className={`btn-toggle-raw${viewMode === 'source' ? ' active' : ''}`}
+                onClick={() => setViewMode('source')}
+                disabled={!content.html}
+                title={content.html ? 'View original HTML' : 'Original HTML not available'}
+              >
+                Source HTML
+              </button>
+            </div>
           </div>
         )}
 

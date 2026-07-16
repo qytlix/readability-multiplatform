@@ -312,26 +312,32 @@ export const FeedList = ({
                       ⚠️
                     </span>
                   )}
+                  <div className="feed-item-actions">
+                    <button
+                      type="button"
+                      className="feed-item-action"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditFeed(feed);
+                      }}
+                      title="Edit feed"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      className="feed-item-action"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemove(feed.id);
+                      }}
+                      title="Remove feed"
+                    >
+                      ✕
+                    </button>
+                  </div>
                   <UnreadCount count={onUnreadCount(feed.id)} />
                 </button>
-                <div className="feed-item-actions">
-                  <button
-                    type="button"
-                    className="feed-item-action"
-                    onClick={() => setEditFeed(feed)}
-                    title="Edit feed"
-                  >
-                    ✎
-                  </button>
-                  <button
-                    type="button"
-                    className="feed-item-action"
-                    onClick={() => handleRemove(feed.id)}
-                    title="Remove feed"
-                  >
-                    ✕
-                  </button>
-                </div>
               </div>
             );
           })}
