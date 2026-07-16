@@ -5,15 +5,24 @@ export const PANE_LAYOUT = {
   collapsedRailWidth: 34,
   collapseThreshold: 44,
   readerMinWidth: 480,
+  /**
+   * At this width the default track widths match their saved pixel values.
+   * Wider desktops scale the defaults up so the navigation panes do not look
+   * undersized beside a full-screen Reader.
+   */
+  desktopReferenceWidth: 1280,
+  maximumDesktopScale: 1.75,
   feed: {
     defaultWidth: 224,
     minWidth: 216,
     maxWidth: 340,
+    wideMaxWidth: 420,
   },
   entry: {
     defaultWidth: 400,
     minWidth: 360,
     maxWidth: 560,
+    wideMaxWidth: 680,
   },
   keyboardStep: 10,
   keyboardLargeStep: 40,
@@ -68,6 +77,9 @@ const getPaneConfig = (pane: ResizablePane) =>
 const getOtherPane = (pane: ResizablePane): ResizablePane =>
   pane === 'feed' ? 'entry' : 'feed';
 
+const getStoredMaximumWidth = (pane: ResizablePane): number =>
+  getPaneConfig(pane).wideMaxWidth;
+
 const normalizePanePreference = (
   pane: ResizablePane,
   preference: PanePreference,
@@ -78,7 +90,7 @@ const normalizePanePreference = (
     width: clamp(
       isFiniteNumber(preference.width) ? preference.width : config.defaultWidth,
       config.minWidth,
-      config.maxWidth,
+      getStoredMaximumWidth(pane),
     ),
     collapsed: preference.collapsed === true,
   };
@@ -114,6 +126,71 @@ const getSafeContainerWidth = (containerWidth: number): number =>
   isFiniteNumber(containerWidth) && containerWidth > 0
     ? containerWidth
     : getMinimumWorkspaceWidth();
+
+const getDesktopScale = (containerWidth: number): number => clamp(
+  getSafeContainerWidth(containerWidth) / PANE_LAYOUT.desktopReferenceWidth,
+  1,
+  PANE_LAYOUT.maximumDesktopScale,
+);
+
+const getResponsiveMaximumPaneWidth = (
+  pane: ResizablePane,
+  containerWidth: number,
+): number => {
+  const config = getPaneConfig(pane);
+
+  return clamp(
+    config.maxWidth * getDesktopScale(containerWidth),
+    config.maxWidth,
+    config.wideMaxWidth,
+  );
+};
+
+const getResponsiveDefaultPaneWidth = (
+  pane: ResizablePane,
+  containerWidth: number,
+): number => {
+  const config = getPaneConfig(pane);
+
+  return clamp(
+    config.defaultWidth * getDesktopScale(containerWidth),
+    config.minWidth,
+    getResponsiveMaximumPaneWidth(pane, containerWidth),
+  );
+};
+
+const getResponsiveMinimumPaneWidth = (
+  pane: ResizablePane,
+  containerWidth: number,
+): number => {
+  const config = getPaneConfig(pane);
+
+  return getDesktopScale(containerWidth) > 1
+    ? getResponsiveDefaultPaneWidth(pane, containerWidth)
+    : config.minWidth;
+};
+
+/**
+ * A saved user width remains authoritative when it is larger than the
+ * responsive default. This keeps manual enlargement stable while allowing
+ * untouched, small-window defaults to grow on a wide desktop.
+ */
+const getExpandedPaneWidth = (
+  pane: ResizablePane,
+  preference: PaneLayoutPreference,
+  containerWidth: number,
+): number => {
+  const config = getPaneConfig(pane);
+
+  return clamp(
+    Math.max(
+      preference[pane].width,
+      getResponsiveDefaultPaneWidth(pane, containerWidth),
+    ),
+    config.minWidth,
+    getResponsiveMaximumPaneWidth(pane, containerWidth),
+  );
+};
 
 const getMinimumNonReaderWidth = (preference: PaneLayoutPreference): number => {
   const feedMinimumWidth = preference.feed.collapsed
@@ -162,8 +239,8 @@ export const getPaneTrackLayout = (
   containerWidth: number,
 ): PaneTrackLayout => {
   const preference = normalizePaneLayoutPreference(inputPreference);
-  let feedExpandedWidth = preference.feed.width;
-  let entryExpandedWidth = preference.entry.width;
+  let feedExpandedWidth = getExpandedPaneWidth('feed', preference, containerWidth);
+  let entryExpandedWidth = getExpandedPaneWidth('entry', preference, containerWidth);
   const readerMinWidth = getEffectiveReaderMinimumWidth(preference, containerWidth);
   const availableExpandedPaneWidth = getAvailableExpandedPaneWidth(
     preference,
@@ -217,9 +294,10 @@ export const getPaneBounds = (
 ): { minWidth: number; maxWidth: number } => {
   const normalizedPreference = normalizePaneLayoutPreference(preference);
   const tracks = getPaneTrackLayout(normalizedPreference, containerWidth);
-  const config = getPaneConfig(pane);
   const otherPane = getOtherPane(pane);
   const otherTrack = tracks[otherPane];
+  const minimumWidth = getResponsiveMinimumPaneWidth(pane, containerWidth);
+  const maximumWidth = getResponsiveMaximumPaneWidth(pane, containerWidth);
   const occupiedWidth = tracks.readerMinWidth
     + PANE_LAYOUT.dividerWidth
     + (otherTrack.collapsed
@@ -228,8 +306,8 @@ export const getPaneBounds = (
   const dynamicMaximum = getSafeContainerWidth(containerWidth) - occupiedWidth;
 
   return {
-    minWidth: config.minWidth,
-    maxWidth: Math.max(config.minWidth, Math.min(config.maxWidth, dynamicMaximum)),
+    minWidth: minimumWidth,
+    maxWidth: Math.max(minimumWidth, Math.min(maximumWidth, dynamicMaximum)),
   };
 };
 
@@ -260,10 +338,10 @@ export const resizePanePreference = (
 export const isCollapseArmed = (
   pane: ResizablePane,
   requestedWidth: number,
+  minimumWidth: number = getPaneConfig(pane).minWidth,
 ): boolean => {
-  const { minWidth } = getPaneConfig(pane);
   return isFiniteNumber(requestedWidth)
-    && requestedWidth <= minWidth - PANE_LAYOUT.collapseThreshold;
+    && requestedWidth <= minimumWidth - PANE_LAYOUT.collapseThreshold;
 };
 
 export const shouldCollapseAfterDrag = (
@@ -281,7 +359,7 @@ export const collapsePanePreference = (
   const savedWidth = clamp(
     isFiniteNumber(lastExpandedWidth) ? lastExpandedWidth : preference[pane].width,
     config.minWidth,
-    config.maxWidth,
+    getStoredMaximumWidth(pane),
   );
 
   return {
