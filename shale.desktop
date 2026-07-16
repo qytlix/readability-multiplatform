@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=Shale
-Comment=Local-first AI-powered Feed reader — offline reading with AI summaries and translations
-Exec=/usr/lib/shale/Shale
-Icon=shale
-Terminal=false
-Type=Application
-Categories=Network;Feed;RSS;reader;
-StartupNotify=true

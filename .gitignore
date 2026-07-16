@@ -93,8 +93,3 @@ out/
 
 # TypeScript
 dist/
-
-# makepkg
-*.pkg.tar.zst
-pkg/
-src/shale.desktop

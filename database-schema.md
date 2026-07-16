@@ -226,6 +226,23 @@ struct EntryListItem: Identifiable, Hashable {
 
 ## 2. LLM
 
+> **当前 P0 Summary 实现（迁移 006/007）**：下方 Mercury 参考模型仍保留给后续多 Provider / Translation 设计。当前运行代码使用更小的 `ai_provider_profile`、`agent_task_run` 和 `summary_result` 三表，不直接实现参考模型中的 `agent_model_profile`、`agent_profile` 或 Usage 表。
+
+### ai_provider_profile — 当前 Summary Provider
+
+| 列 | 说明 |
+|---|---|
+| `providerKind` | 当前固定为 `openai-compatible` |
+| `baseUrl` / `model` | 用户配置的 Chat Completions 端点和模型 |
+| `apiKeyRef` | 不透明密钥引用；SQLite 中不存储明文或密文 Key |
+| `isActive` | P0 只允许一条活动配置 |
+
+实际加密后的 Key 位于 Electron `userData/ai-secrets.json`，由系统 `safeStorage` 加密；Linux `basic_text` 与未知后端会被拒绝。
+
+### P0 Summary run 与结果
+
+`agent_task_run` 记录 `summary` 任务的 `running` / `succeeded` / `failed` 状态、文章、语言、详略、输入 Markdown 哈希和脱敏错误。`summary_result` 对 `(entryId, targetLanguage, detailLevel)` 唯一，保存最终文本、Prompt 版本和精确 Markdown SHA-256。输入哈希变化后结果必须视为 stale，不能伪装为当前文章的 Summary。
+
 ### agent_provider_profile — LLM 提供商
 
 存储 LLM API 提供商的连接配置。

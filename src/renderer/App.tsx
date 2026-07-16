@@ -30,7 +30,6 @@ export const App = () => {
     { publishedAt: string; id: number } | undefined
   >(undefined);
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
-  const [ipcStatus, setIpcStatus] = useState<string>('');
 
   const loadFeeds = useCallback(async (showLoadingState = true) => {
     setLoadingFeeds(true);
@@ -156,15 +155,6 @@ export const App = () => {
     }
   }, [hasMoreEntries, loadingEntries, loadEntries]);
 
-  /** Reload feeds and entries from local DB only — no network sync. */
-  const reloadLocalData = useCallback(async () => {
-    await loadFeeds(false);
-    setEntries([]);
-    setEntriesCursor(undefined);
-    setHasMoreEntries(true);
-    await loadEntries(true);
-  }, [loadFeeds, loadEntries]);
-
   const handleSyncAll = useCallback(async () => {
     setLoadingFeeds(true);
     try {
@@ -205,20 +195,6 @@ export const App = () => {
     }
   }, [handleSyncAll, loadFeeds]);
 
-  const handleTestIpc = useCallback(async () => {
-    setIpcStatus('Testing IPC...');
-    try {
-      const response = await window.shaleAPI.system.ping();
-      if (response.ok === true && response.message === 'pong') {
-        setIpcStatus('IPC OK: pong');
-      } else {
-        setIpcStatus('IPC failed');
-      }
-    } catch {
-      setIpcStatus('IPC failed');
-    }
-  }, []);
-
   const hasNoFeeds = feedLoadStatus === 'success' && feeds.length === 0;
   const visibleEntries = hasNoFeeds ? [] : entries;
 
@@ -229,10 +205,6 @@ export const App = () => {
           <img className="app-brand-mark" src={shaleMark} alt="" />
           <span>Shale</span>
         </h1>
-        <button type="button" onClick={handleTestIpc}>
-          Test IPC
-        </button>
-        <span className="ipc-status">{ipcStatus}</span>
       </header>
 
       <WorkspaceLayout
@@ -244,7 +216,6 @@ export const App = () => {
               setSelectedFeedId(feedId);
             }}
             onRefresh={handleSyncAll}
-            onLocalRefresh={reloadLocalData}
             onOpenAddFeed={handleOpenAddFeedDialog}
             onUnreadCount={(feedId) => {
               // Simplified: count unread in current entries list

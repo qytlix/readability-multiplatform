@@ -118,27 +118,6 @@ export class FeedStore {
   delete(id: number): void {
     this.db.prepare('DELETE FROM feed WHERE id = ?').run(id);
   }
-
-  /**
-   * Delete all feeds except those whose URLs are in the keepUrls set.
-   * Used for OPML replace mode.
-   */
-  deleteAllExcept(keepUrls: Set<string>): number {
-    const allFeeds = this.findAll();
-    const toDelete = allFeeds.filter(
-      (f) => !keepUrls.has(f.feedURL.toLowerCase()),
-    );
-
-    const deleteStmt = this.db.prepare('DELETE FROM feed WHERE id = ?');
-    const deleteMany = this.db.transaction((ids: number[]) => {
-      for (const id of ids) {
-        deleteStmt.run(id);
-      }
-    });
-
-    deleteMany(toDelete.map((f) => f.id));
-    return toDelete.length;
-  }
 }
 
 function normalizeFeed(row: Record<string, unknown>): Feed {

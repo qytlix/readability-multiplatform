@@ -11,7 +11,6 @@ import {
   PANE_LAYOUT,
   collapsePanePreference,
   getMinimumWorkspaceWidth,
-  getPaneBounds,
   getPaneTrackLayout,
   isCollapseArmed,
   loadPaneLayoutPreference,
@@ -305,12 +304,7 @@ export const usePaneLayout = (): PaneLayoutControls => {
 
     event.preventDefault();
     const requestedWidth = activeDrag.startWidth + event.clientX - activeDrag.startClientX;
-    const { minWidth } = getPaneBounds(
-      pane,
-      preferenceRef.current,
-      getContainerWidth(),
-    );
-    const nextCollapseArmed = isCollapseArmed(pane, requestedWidth, minWidth);
+    const nextCollapseArmed = isCollapseArmed(pane, requestedWidth);
     if (activeDrag.collapseArmed !== nextCollapseArmed) {
       activeDrag.collapseArmed = nextCollapseArmed;
       setCollapseArmedPane(nextCollapseArmed ? pane : null);

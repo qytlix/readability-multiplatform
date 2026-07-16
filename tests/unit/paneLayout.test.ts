@@ -131,32 +131,22 @@ describe('pane layout preferences', () => {
     });
   });
 
-  it('scales default navigation panes on wide desktops before giving space to Reader', () => {
-    const tracks = getPaneTrackLayout(getDefaultPaneLayoutPreference(), 1920);
-    const readerWidth = 1920
+  it('gives all extra desktop width to Reader instead of expanding persisted pane widths', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { width: 340, collapsed: false },
+      entry: { width: 560, collapsed: false },
+    };
+    const tracks = getPaneTrackLayout(preference, 3440);
+    const readerWidth = 3440
       - tracks.feed.trackWidth
       - tracks.feed.dividerWidth
       - tracks.entry.trackWidth
       - tracks.entry.dividerWidth;
 
-    expect(tracks.feed.expandedWidth).toBe(336);
-    expect(tracks.entry.expandedWidth).toBe(600);
-    expect(readerWidth).toBe(972);
-  });
-
-  it('uses the scaled width as the wide-desktop resize minimum', () => {
-    const preference = getDefaultPaneLayoutPreference();
-    const resized = resizePanePreference('feed', 300, preference, 1920);
-
-    expect(resized.feed.width).toBe(336);
-    expect(getPaneTrackLayout(resized, 1920).feed.expandedWidth).toBe(336);
-  });
-
-  it('caps responsive navigation widths on ultrawide screens', () => {
-    const tracks = getPaneTrackLayout(getDefaultPaneLayoutPreference(), 3440);
-
-    expect(tracks.feed.expandedWidth).toBe(392);
-    expect(tracks.entry.expandedWidth).toBe(680);
+    expect(tracks.feed.expandedWidth).toBe(340);
+    expect(tracks.entry.expandedWidth).toBe(560);
+    expect(readerWidth).toBe(2528);
   });
 
   it('keeps a collapsed rail stable while the remaining pane is clamped', () => {
@@ -182,7 +172,7 @@ describe('pane layout preferences', () => {
     expect(preference.feed.collapsed).toBe(true);
   });
 
-  it.each([1024, 1100, 1280, 1440, 1920, 2560, 3440])(
+  it.each([1024, 1100, 1280, 1440, 1707, 1920, 2560, 3440])(
     'keeps all five tracks within a %ipx workspace',
     (containerWidth) => {
       const tracks = getPaneTrackLayout({

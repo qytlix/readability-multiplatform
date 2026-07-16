@@ -22,7 +22,6 @@ export interface FeedSyncProgress {
   status: 'pending' | 'fetching' | 'parsing' | 'saving' | 'done' | 'error';
   error?: string;
   newCount: number;
-  timestamp: string;
 }
 
 export interface FeedSyncResponse {
@@ -89,50 +88,6 @@ export type IPCResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: ShaleError };
 
-// ── OPML IPC ───────────────────────────────────────────────
-
-export interface OPMLImportRequest {
-  filePath: string;
-  mode: 'merge' | 'replace';
-}
-
-export interface OPMLImportResult {
-  successCount: number;
-  skipCount: number;
-  failures: Array<{ title?: string; xmlUrl?: string; error: string }>;
-  totalFound: number;
-}
-
-export interface OPMLExportRequest {
-  filePath: string;
-}
-
-// ── Sync Cancel ───────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
- export interface SyncCancelRequest {
-  // empty — cancels the current sync operation
-}
-
-// ── File Dialog IPC ───────────────────────────────────────
-
-export interface FileOpenDialogOptions {
-  title?: string;
-  filters?: Array<{ name: string; extensions: string[] }>;
-  defaultPath?: string;
-}
-
-export interface FileSaveDialogOptions {
-  title?: string;
-  filters?: Array<{ name: string; extensions: string[] }>;
-  defaultPath?: string;
-}
-
-export interface FileOpenResult {
-  canceled: boolean;
-  filePaths: string[];
-}
-
 // ── Channel Constants ─────────────────────────────────────
 
 export const FEED_IPC_CHANNELS = {
@@ -141,12 +96,7 @@ export const FEED_IPC_CHANNELS = {
   feedSync: 'feed:sync',
   feedRemove: 'feed:remove',
   feedUpdate: 'feed:update',
-  feedSyncCancel: 'feed:sync-cancel',
   feedSyncProgress: 'feed:sync-progress',
-  opmlImport: 'opml:import',
-  opmlExport: 'opml:export',
-  dialogOpenFile: 'dialog:open-file',
-  dialogSaveFile: 'dialog:save-file',
   contentFetch: 'content:fetch-and-clean',
   contentGet: 'content:get',
   entryList: 'entry:list',

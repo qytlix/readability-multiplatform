@@ -1,9 +1,8 @@
-import { ipcMain, dialog, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { ipcMain, safeStorage, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import path from 'node:path';
 import { IPC_CHANNELS, type PingResponse } from '../shared/ipc';
-import { FEED_IPC_CHANNELS } from '../shared/contracts/feed.ipc';
 import {
   registerFeedIpcHandlers,
-  createSyncCoordinator,
   type FeedServices,
 } from './ipc/feed.handler';
 import { DatabaseManager } from './database/DatabaseManager';
@@ -12,14 +11,21 @@ import { EntryStore } from './feed/EntryStore';
 import { ContentStore } from './feed/ContentStore';
 import { FeedService } from './feed/FeedService';
 import { ContentService } from './feed/ContentService';
-import { SyncCoordinator } from './feed/SyncCoordinator';
-import { SyncScheduler } from './feed/SyncScheduler';
-import { OPMLImportService } from './feed/OPMLImportService';
-import { OPMLExportService } from './feed/OPMLExportService';
+import { registerExternalIpcHandlers } from './ipc/external.handler';
+import { OpenAICompatibleProvider } from './ai/OpenAICompatibleProvider';
+import { ProviderProfileStore } from './ai/ProviderProfileStore';
+import { ProviderService } from './ai/ProviderService';
+import { SecretStore } from './ai/SecretStore';
+import { SummaryService } from './ai/SummaryService';
+import { SummaryStore } from './ai/SummaryStore';
+import {
+  registerSummaryIpcHandlers,
+  type SummaryServices,
+} from './ipc/summary.handler';
 
-type GetMainWindow = () => BrowserWindow | null;
+export type GetMainWindow = () => BrowserWindow | null;
 
-const isAuthorizedSender = (
+export const isAuthorizedSender = (
   event: IpcMainInvokeEvent,
   getMainWindow: GetMainWindow,
 ): boolean => {
@@ -37,20 +43,21 @@ const isAuthorizedSender = (
 };
 
 let feedServices: FeedServices | null = null;
-let syncScheduler: SyncScheduler | null = null;
+let summaryServices: SummaryServices | null = null;
 
-/**
- * Get the SyncScheduler instance (for lifecycle management).
- */
-export function getSyncScheduler(): SyncScheduler | null {
-  return syncScheduler;
+/** Returns the Summary runtime for application shutdown cleanup. */
+export function getSummaryService(): SummaryService | null {
+  return summaryServices?.summaryService ?? null;
 }
 
 /**
  * Initialize the database, run migrations, and create service instances.
  * Must be called before registerIpcHandlers.
  */
-export function initializeServices(dbPath?: string): FeedServices {
+export function initializeServices(
+  dbPath?: string,
+  secretStoragePath?: string,
+): FeedServices {
   const dbManager = new DatabaseManager(dbPath);
   dbManager.runMigrations();
 
@@ -60,19 +67,29 @@ export function initializeServices(dbPath?: string): FeedServices {
 
   const feedService = new FeedService(feedStore, entryStore);
   const contentService = new ContentService(contentStore, entryStore);
-
-  feedServices = {
-    feedService,
-    contentService,
-    entryStore,
+  const providerProfileStore = new ProviderProfileStore(dbManager.getDb());
+  const summaryStore = new SummaryStore(dbManager.getDb());
+  summaryStore.reconcileInterruptedRuns();
+  const secretStore = new SecretStore(
+    secretStoragePath ?? path.join(path.dirname(dbPath ?? '.'), 'ai-secrets.json'),
+    safeStorage,
+  );
+  const provider = new OpenAICompatibleProvider();
+  const providerService = new ProviderService(
+    providerProfileStore,
+    secretStore,
+    provider,
+  );
+  const summaryService = new SummaryService(
     contentStore,
-    feedStore,
-    syncCoordinator: null as unknown as SyncCoordinator,
-    syncScheduler: null as unknown as SyncScheduler,
-    opmlImportService: new OPMLImportService(feedStore),
-    opmlExportService: new OPMLExportService(feedStore),
-  };
+    providerProfileStore,
+    secretStore,
+    summaryStore,
+    provider,
+  );
 
+  feedServices = { feedService, contentService, entryStore, contentStore };
+  summaryServices = { providerService, summaryService };
   return feedServices;
 }
 
@@ -89,76 +106,14 @@ export function registerIpcHandlers(getMainWindow: GetMainWindow): void {
     };
   });
 
-  // ── File Dialog handlers ───────────────────────────
-
-  ipcMain.handle(
-    FEED_IPC_CHANNELS.dialogOpenFile,
-    async (event, options: { title?: string; filters?: Array<{ name: string; extensions: string[] }>; defaultPath?: string }) => {
-      if (!isAuthorizedSender(event, getMainWindow)) {
-        return { canceled: true, filePaths: [] };
-      }
-
-      const win = getMainWindow();
-      const result = win
-        ? await dialog.showOpenDialog(win, {
-            title: options.title ?? 'Select a file',
-            filters: options.filters ?? [{ name: 'All Files', extensions: ['*'] }],
-            defaultPath: options.defaultPath,
-            properties: ['openFile'],
-          })
-        : await dialog.showOpenDialog({
-            title: options.title ?? 'Select a file',
-            filters: options.filters ?? [{ name: 'All Files', extensions: ['*'] }],
-            defaultPath: options.defaultPath,
-            properties: ['openFile'],
-          });
-
-      return { canceled: result.canceled, filePaths: result.filePaths };
-    },
-  );
-
-  ipcMain.handle(
-    FEED_IPC_CHANNELS.dialogSaveFile,
-    async (event, options: { title?: string; filters?: Array<{ name: string; extensions: string[] }>; defaultPath?: string }) => {
-      if (!isAuthorizedSender(event, getMainWindow)) {
-        return { canceled: true, filePath: '' };
-      }
-
-      const win = getMainWindow();
-      const result = win
-        ? await dialog.showSaveDialog(win, {
-            title: options.title ?? 'Save file',
-            filters: options.filters ?? [{ name: 'All Files', extensions: ['*'] }],
-            defaultPath: options.defaultPath,
-          })
-        : await dialog.showSaveDialog({
-            title: options.title ?? 'Save file',
-            filters: options.filters ?? [{ name: 'All Files', extensions: ['*'] }],
-            defaultPath: options.defaultPath,
-          });
-
-      return { canceled: result.canceled, filePath: result.filePath ?? '' };
-    },
-  );
-
   // Feed module handlers (only if services are initialized)
   if (feedServices) {
-    // Create SyncCoordinator that emits progress to renderer
-    const coordinator = createSyncCoordinator(
-      getMainWindow,
-      feedServices.feedService,
-      6,
-    );
-
-    // Create SyncScheduler
-    syncScheduler = new SyncScheduler(feedServices.feedStore, coordinator, {
-      intervalMin: 30,
-    });
-
-    // Store coordinator and scheduler on feedServices
-    feedServices.syncCoordinator = coordinator;
-    feedServices.syncScheduler = syncScheduler;
-
     registerFeedIpcHandlers(getMainWindow, feedServices);
+  }
+
+  registerExternalIpcHandlers(getMainWindow);
+
+  if (summaryServices) {
+    registerSummaryIpcHandlers(getMainWindow, summaryServices);
   }
 }

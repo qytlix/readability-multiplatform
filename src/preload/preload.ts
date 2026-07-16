@@ -1,28 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, type PingResponse, type ShaleAPI } from '../shared/ipc';
-import { FEED_IPC_CHANNELS } from '../shared/contracts/feed.ipc';
+import { EXTERNAL_IPC_CHANNELS } from '../shared/contracts/external.ipc';
+import { SUMMARY_IPC_CHANNELS } from '../shared/contracts/summary.ipc';
+import type { SummaryStreamEvent } from '../shared/contracts/summary.types';
 
 const ping = (): Promise<PingResponse> =>
   ipcRenderer.invoke(IPC_CHANNELS.systemPing);
 
 const feedAPI = {
-  add: (url: string) => ipcRenderer.invoke(FEED_IPC_CHANNELS.feedAdd, { url }),
-  list: () => ipcRenderer.invoke(FEED_IPC_CHANNELS.feedList),
-  sync: (feedId?: number) => ipcRenderer.invoke(FEED_IPC_CHANNELS.feedSync, { feedId }),
-  remove: (feedId: number) => ipcRenderer.invoke(FEED_IPC_CHANNELS.feedRemove, { feedId }),
-  update: (feedId: number, params: Record<string, unknown>) =>
-    ipcRenderer.invoke(FEED_IPC_CHANNELS.feedUpdate, { feedId, params }),
-  syncCancel: () => ipcRenderer.invoke(FEED_IPC_CHANNELS.feedSyncCancel, {}),
-  onSyncProgress: (callback: (progress: any) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, progress: any) => {
-      callback(progress);
-    };
-    ipcRenderer.on(FEED_IPC_CHANNELS.feedSyncProgress, handler);
-    // Return cleanup function
-    return () => {
-      ipcRenderer.removeListener(FEED_IPC_CHANNELS.feedSyncProgress, handler);
-    };
-  },
+  add: (url: string) => ipcRenderer.invoke('feed:add', { url }),
+  list: () => ipcRenderer.invoke('feed:list'),
+  sync: (feedId?: number) => ipcRenderer.invoke('feed:sync', { feedId }),
+  remove: (feedId: number) => ipcRenderer.invoke('feed:remove', { feedId }),
 };
 
 const entryAPI = {
@@ -33,32 +22,50 @@ const entryAPI = {
     search?: string;
     limit: number;
     cursor?: { publishedAt: string; id: number };
-  }) => ipcRenderer.invoke(FEED_IPC_CHANNELS.entryList, params),
+  }) => ipcRenderer.invoke('entry:list', params),
   markRead: (ids: number[], isRead: boolean) =>
-    ipcRenderer.invoke(FEED_IPC_CHANNELS.entryMarkRead, { ids, isRead }),
+    ipcRenderer.invoke('entry:mark-read', { ids, isRead }),
   markStarred: (id: number, isStarred: boolean) =>
-    ipcRenderer.invoke(FEED_IPC_CHANNELS.entryMarkStarred, { id, isStarred }),
+    ipcRenderer.invoke('entry:mark-starred', { id, isStarred }),
 };
 
 const contentAPI = {
   fetchAndClean: (entryId: number) =>
-    ipcRenderer.invoke(FEED_IPC_CHANNELS.contentFetch, { entryId }),
+    ipcRenderer.invoke('content:fetch-and-clean', { entryId }),
   get: (entryId: number) =>
-    ipcRenderer.invoke(FEED_IPC_CHANNELS.contentGet, { entryId }),
+    ipcRenderer.invoke('content:get', { entryId }),
 };
 
-const dialogAPI = {
-  openFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }>; defaultPath?: string }) =>
-    ipcRenderer.invoke(FEED_IPC_CHANNELS.dialogOpenFile, options ?? {}),
-  saveFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }>; defaultPath?: string }) =>
-    ipcRenderer.invoke(FEED_IPC_CHANNELS.dialogSaveFile, options ?? {}),
+const externalAPI = {
+  open: (request: { url: string; baseUrl?: string }) =>
+    ipcRenderer.invoke(EXTERNAL_IPC_CHANNELS.open, request),
 };
 
-const opmlAPI = {
-  import: (filePath: string, mode: 'merge' | 'replace') =>
-    ipcRenderer.invoke(FEED_IPC_CHANNELS.opmlImport, { filePath, mode }),
-  export: (filePath: string) =>
-    ipcRenderer.invoke(FEED_IPC_CHANNELS.opmlExport, { filePath }),
+const providerAPI = {
+  get: () => ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerGet),
+  save: (request: { baseUrl: string; model: string; apiKey?: string }) =>
+    ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerSave, request),
+  test: () => ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerTest),
+};
+
+const summaryAPI = {
+  get: (request: {
+    entryId: number;
+    targetLanguage: 'zh-CN' | 'en';
+    detailLevel: 'short' | 'medium' | 'detailed';
+  }) => ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.summaryGet, request),
+  generate: (request: {
+    entryId: number;
+    targetLanguage: 'zh-CN' | 'en';
+    detailLevel: 'short' | 'medium' | 'detailed';
+  }) => ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.summaryGenerate, request),
+  onEvent: (listener: (event: SummaryStreamEvent) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, event: SummaryStreamEvent) => {
+      listener(event);
+    };
+    ipcRenderer.on(SUMMARY_IPC_CHANNELS.summaryStream, handler);
+    return () => ipcRenderer.removeListener(SUMMARY_IPC_CHANNELS.summaryStream, handler);
+  },
 };
 
 const shaleAPI: ShaleAPI = {
@@ -68,8 +75,9 @@ const shaleAPI: ShaleAPI = {
   feed: feedAPI,
   entry: entryAPI,
   content: contentAPI,
-  opml: opmlAPI,
-  dialog: dialogAPI,
+  external: externalAPI,
+  provider: providerAPI,
+  summary: summaryAPI,
 };
 
 contextBridge.exposeInMainWorld('shaleAPI', shaleAPI);

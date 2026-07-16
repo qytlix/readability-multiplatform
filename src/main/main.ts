@@ -1,9 +1,12 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
 import { env } from 'node:process';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
-import { initializeServices, registerIpcHandlers, getSyncScheduler } from './ipc';
-import { getAutomaticZoomFactor } from './window/automaticZoom';
+import { getSummaryService, initializeServices, registerIpcHandlers } from './ipc';
+import { getApplicationMenuTemplate } from './application-menu';
+import { installMainWindowNavigationGuards } from './navigation-guards';
+import { initializePageZoom, installPageZoomInputGuard } from './page-zoom';
 
 if (started) {
   app.quit();
@@ -23,22 +26,17 @@ const linuxWindowIconPath = app.isPackaged
   ? path.join(process.resourcesPath, 'shale-app-icon-512.png')
   : path.join(__dirname, '../../assets/icons/linux/shale-app-icon-512.png');
 
-const syncWindowZoom = (window: BrowserWindow): void => {
-  const zoomFactor = getAutomaticZoomFactor(
-    window.isMaximized() || window.isFullScreen(),
-  );
-
-  if (window.webContents.getZoomFactor() !== zoomFactor) {
-    window.webContents.setZoomFactor(zoomFactor);
-  }
-};
-
 const createWindow = (): void => {
+  const applicationUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
+    ?? pathToFileURL(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+    ).toString();
   const newMainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
     minWidth: 1100,
     minHeight: 600,
+    show: false,
     icon: process.platform === 'linux' ? linuxWindowIconPath : undefined,
     webPreferences: {
       contextIsolation: true,
@@ -48,30 +46,12 @@ const createWindow = (): void => {
   });
 
   mainWindow = newMainWindow;
-  syncWindowZoom(newMainWindow);
-
-  newMainWindow.on('resize', () => {
-    syncWindowZoom(newMainWindow);
-  });
-
-  newMainWindow.on('maximize', () => {
-    syncWindowZoom(newMainWindow);
-  });
-
-  newMainWindow.on('unmaximize', () => {
-    syncWindowZoom(newMainWindow);
-  });
-
-  newMainWindow.on('enter-full-screen', () => {
-    syncWindowZoom(newMainWindow);
-  });
-
-  newMainWindow.on('leave-full-screen', () => {
-    syncWindowZoom(newMainWindow);
-  });
-
-  newMainWindow.webContents.on('did-finish-load', () => {
-    syncWindowZoom(newMainWindow);
+  installMainWindowNavigationGuards(newMainWindow.webContents, applicationUrl);
+  installPageZoomInputGuard(newMainWindow.webContents);
+  initializePageZoom(newMainWindow.webContents, () => {
+    if (!newMainWindow.isDestroyed()) {
+      newMainWindow.show();
+    }
   });
 
   newMainWindow.on('closed', () => {
@@ -90,25 +70,17 @@ const createWindow = (): void => {
 };
 
 app.on('ready', () => {
+  Menu.setApplicationMenu(Menu.buildFromTemplate(getApplicationMenuTemplate()));
   // Initialize database with persistent path
   const dbPath = path.join(app.getPath('userData'), 'shale.db');
-  initializeServices(dbPath);
+  const secretStoragePath = path.join(app.getPath('userData'), 'ai-secrets.json');
+  initializeServices(dbPath, secretStoragePath);
   registerIpcHandlers(() => mainWindow);
   createWindow();
-
-  // Start the sync scheduler (periodic feed sync)
-  const scheduler = getSyncScheduler();
-  if (scheduler) {
-    scheduler.start();
-  }
 });
 
 app.on('before-quit', () => {
-  // Stop the sync scheduler
-  const scheduler = getSyncScheduler();
-  if (scheduler) {
-    scheduler.stop();
-  }
+  getSummaryService()?.abortActiveRun();
 });
 
 app.on('window-all-closed', () => {
