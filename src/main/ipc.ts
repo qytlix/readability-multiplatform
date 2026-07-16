@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { ipcMain, dialog, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { IPC_CHANNELS, type PingResponse } from '../shared/ipc';
 import { FEED_IPC_CHANNELS } from '../shared/contracts/feed.ipc';
 import {
@@ -88,24 +88,6 @@ export function registerIpcHandlers(getMainWindow: GetMainWindow): void {
       message: 'pong',
     };
   });
-
-  // ── System handlers ────────────────────────────────
-
-  ipcMain.handle(
-    FEED_IPC_CHANNELS.systemOpenExternal,
-    async (event, { url }: { url: string }) => {
-      if (!isAuthorizedSender(event, getMainWindow)) {
-        return { ok: false, error: 'Unauthorized' };
-      }
-
-      try {
-        await shell.openExternal(url);
-        return { ok: true };
-      } catch {
-        return { ok: false, error: 'Failed to open URL' };
-      }
-    },
-  );
 
   // ── File Dialog handlers ───────────────────────────
 

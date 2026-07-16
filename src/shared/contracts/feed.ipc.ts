@@ -137,7 +137,6 @@ export interface FileOpenResult {
 export const FEED_IPC_CHANNELS = {
   feedAdd: 'feed:add',
   feedList: 'feed:list',
-  systemOpenExternal: 'system:open-external',
   feedSync: 'feed:sync',
   feedRemove: 'feed:remove',
   feedUpdate: 'feed:update',

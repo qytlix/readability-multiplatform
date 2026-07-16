@@ -648,42 +648,6 @@ body.workspace-is-resizing * {
   flex-shrink: 0;
 }
 
-.entry-detail-header-top {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.entry-detail-header-top h2 {
-  flex: 1;
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.btn-open-browser {
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-secondary);
-  color: var(--accent);
-  cursor: pointer;
-  font-size: 16px;
-  transition: background-color 140ms ease, border-color 140ms ease;
-}
-
-.btn-open-browser:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
 .entry-detail-meta {
   display: flex;
   gap: 16px;

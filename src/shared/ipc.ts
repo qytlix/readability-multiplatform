@@ -51,13 +51,10 @@ export interface ContentAPI {
   get: (entryId: number) => Promise<IPCResult<CleanedContent | null>>;
 }
 
-export interface SystemAPI {
-  ping: () => Promise<PingResponse>;
-  openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
-}
-
 export interface ShaleAPI {
-  system: SystemAPI;
+  system: {
+    ping: () => Promise<PingResponse>;
+  };
   feed: FeedAPI;
   entry: EntryAPI;
   content: ContentAPI;

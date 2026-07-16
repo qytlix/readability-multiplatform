@@ -47,12 +47,6 @@ const contentAPI = {
     ipcRenderer.invoke(FEED_IPC_CHANNELS.contentGet, { entryId }),
 };
 
-const systemAPI = {
-  ping,
-  openExternal: (url: string) =>
-    ipcRenderer.invoke(FEED_IPC_CHANNELS.systemOpenExternal, { url }),
-};
-
 const dialogAPI = {
   openFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }>; defaultPath?: string }) =>
     ipcRenderer.invoke(FEED_IPC_CHANNELS.dialogOpenFile, options ?? {}),
@@ -68,7 +62,9 @@ const opmlAPI = {
 };
 
 const shaleAPI: ShaleAPI = {
-  system: systemAPI,
+  system: {
+    ping,
+  },
   feed: feedAPI,
   entry: entryAPI,
   content: contentAPI,

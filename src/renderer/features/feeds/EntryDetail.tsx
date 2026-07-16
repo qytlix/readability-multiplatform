@@ -112,11 +112,6 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
     await window.shaleAPI.entry.markStarred(entry.id, !entry.isStarred);
   }, [entry]);
 
-  const handleOpenInBrowser = useCallback(() => {
-    if (!entry?.url) return;
-    window.shaleAPI.system.openExternal(entry.url);
-  }, [entry]);
-
   if (!entry) {
     return (
       <div className="entry-detail empty">
@@ -136,19 +131,7 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
   return (
     <div className="entry-detail">
       <div className="entry-detail-header">
-        <div className="entry-detail-header-top">
-          <h2>{entry.title ?? 'Untitled'}</h2>
-          {entry.url && (
-            <button
-              type="button"
-              className="btn-open-browser"
-              onClick={handleOpenInBrowser}
-              title="Open in default browser"
-            >
-              ↗
-            </button>
-          )}
-        </div>
+        <h2>{entry.title ?? 'Untitled'}</h2>
         <div className="entry-detail-meta">
           {entry.author && <span className="entry-detail-author">{entry.author}</span>}
           {entry.publishedAt && (
