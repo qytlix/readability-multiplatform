@@ -172,7 +172,7 @@ describe('pane layout preferences', () => {
     expect(preference.feed.collapsed).toBe(true);
   });
 
-  it.each([1024, 1100, 1280, 1440, 1920, 2560, 3440])(
+  it.each([1024, 1100, 1280, 1440, 1707, 1920, 2560, 3440])(
     'keeps all five tracks within a %ipx workspace',
     (containerWidth) => {
       const tracks = getPaneTrackLayout({

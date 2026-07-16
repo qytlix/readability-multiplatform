@@ -1,10 +1,12 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
 import { env } from 'node:process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { initializeServices, registerIpcHandlers } from './ipc';
+import { getApplicationMenuTemplate } from './application-menu';
 import { installMainWindowNavigationGuards } from './navigation-guards';
+import { initializePageZoom, installPageZoomInputGuard } from './page-zoom';
 
 if (started) {
   app.quit();
@@ -34,6 +36,7 @@ const createWindow = (): void => {
     height: 720,
     minWidth: 1100,
     minHeight: 600,
+    show: false,
     icon: process.platform === 'linux' ? linuxWindowIconPath : undefined,
     webPreferences: {
       contextIsolation: true,
@@ -44,6 +47,12 @@ const createWindow = (): void => {
 
   mainWindow = newMainWindow;
   installMainWindowNavigationGuards(newMainWindow.webContents, applicationUrl);
+  installPageZoomInputGuard(newMainWindow.webContents);
+  initializePageZoom(newMainWindow.webContents, () => {
+    if (!newMainWindow.isDestroyed()) {
+      newMainWindow.show();
+    }
+  });
 
   newMainWindow.on('closed', () => {
     if (mainWindow === newMainWindow) {
@@ -61,6 +70,7 @@ const createWindow = (): void => {
 };
 
 app.on('ready', () => {
+  Menu.setApplicationMenu(Menu.buildFromTemplate(getApplicationMenuTemplate()));
   // Initialize database with persistent path
   const dbPath = path.join(app.getPath('userData'), 'shale.db');
   initializeServices(dbPath);
