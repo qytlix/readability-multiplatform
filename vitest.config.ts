@@ -1,3 +1,5 @@
+// eslint-plugin-import 2.x does not resolve Vitest's package `exports` map.
+// eslint-disable-next-line import/no-unresolved
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
