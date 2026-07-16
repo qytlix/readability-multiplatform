@@ -5,6 +5,11 @@ import type { Entry } from '../shared/contracts/feed.types';
 import { FeedList } from './features/feeds/FeedList';
 import { EntryList } from './features/feeds/EntryList';
 import { EntryDetail } from './features/feeds/EntryDetail';
+import { FeedAddDialog } from './features/feeds/FeedAddDialog';
+import {
+  type EntryLoadStatus,
+  type FeedLoadStatus,
+} from './features/feeds/readerState';
 import { WorkspaceLayout } from './features/layout/WorkspaceLayout';
 import shaleMark from './assets/brand/shale-mark.svg';
 
@@ -14,25 +19,41 @@ export const App = () => {
   const [selectedFeedId, setSelectedFeedId] = useState<number | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
-  const [loadingFeeds, setLoadingFeeds] = useState(false);
+  const [loadingFeeds, setLoadingFeeds] = useState(true);
   const [loadingEntries, setLoadingEntries] = useState(false);
+  const [feedLoadStatus, setFeedLoadStatus] = useState<FeedLoadStatus>('loading');
+  const [feedLoadError, setFeedLoadError] = useState('');
+  const [entryLoadStatus, setEntryLoadStatus] = useState<EntryLoadStatus>('loading');
+  const [entryLoadError, setEntryLoadError] = useState('');
+  const [showAddFeedDialog, setShowAddFeedDialog] = useState(false);
   const [entriesCursor, setEntriesCursor] = useState<
     { publishedAt: string; id: number } | undefined
   >(undefined);
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
   const [ipcStatus, setIpcStatus] = useState<string>('');
 
-  const loadFeeds = useCallback(async () => {
+  const loadFeeds = useCallback(async (showLoadingState = true) => {
     setLoadingFeeds(true);
+    if (showLoadingState) {
+      setFeedLoadStatus('loading');
+      setFeedLoadError('');
+    }
     try {
       const result = await window.shaleAPI.feed.list();
       if (!result.ok) {
         console.error('Failed to load feeds:', result.error);
-        return;
+        setFeedLoadStatus('error');
+        setFeedLoadError(result.error?.message ?? 'Unable to load feeds.');
+        return false;
       }
       setFeeds(result.data);
+      setFeedLoadStatus('success');
+      return true;
     } catch (err) {
       console.error('Failed to load feeds:', err);
+      setFeedLoadStatus('error');
+      setFeedLoadError('Unable to load feeds.');
+      return false;
     } finally {
       setLoadingFeeds(false);
     }
@@ -41,6 +62,10 @@ export const App = () => {
   const loadEntries = useCallback(
     async (reset = false) => {
       setLoadingEntries(true);
+      if (reset) {
+        setEntryLoadStatus('loading');
+        setEntryLoadError('');
+      }
       try {
         const params: any = {
           limit: 30,
@@ -51,7 +76,11 @@ export const App = () => {
         const result = await window.shaleAPI.entry.list(params);
         if (!result.ok) {
           console.error('Failed to load entries:', result.error);
-          return;
+          if (reset) {
+            setEntryLoadStatus('error');
+            setEntryLoadError(result.error?.message ?? 'Unable to load articles.');
+          }
+          return false;
         }
 
         const data = result.data;
@@ -63,8 +92,15 @@ export const App = () => {
         }
         setEntriesCursor(data.nextCursor);
         setHasMoreEntries(!!data.nextCursor);
+        setEntryLoadStatus('success');
+        return true;
       } catch (err) {
         console.error('Failed to load entries:', err);
+        if (reset) {
+          setEntryLoadStatus('error');
+          setEntryLoadError('Unable to load articles.');
+        }
+        return false;
       } finally {
         setLoadingEntries(false);
       }
@@ -129,7 +165,8 @@ export const App = () => {
         return false;
       }
 
-      await loadFeeds();
+      const feedsLoaded = await loadFeeds(false);
+      if (!feedsLoaded) return false;
       // Reload entries for current feed
       setEntries([]);
       setEntriesCursor(undefined);
@@ -144,6 +181,21 @@ export const App = () => {
     }
   }, [loadFeeds, loadEntries]);
 
+  const handleOpenAddFeedDialog = useCallback(() => {
+    setShowAddFeedDialog(true);
+  }, []);
+
+  const handleAddFeed = useCallback(async (url: string) => {
+    const result = await window.shaleAPI.feed.add(url);
+    if (!result.ok) {
+      throw new Error(result.error?.message ?? 'Unknown error');
+    }
+    const syncSucceeded = await handleSyncAll();
+    if (!syncSucceeded) {
+      await loadFeeds();
+    }
+  }, [handleSyncAll, loadFeeds]);
+
   const handleTestIpc = useCallback(async () => {
     setIpcStatus('Testing IPC...');
     try {
@@ -157,6 +209,9 @@ export const App = () => {
       setIpcStatus('IPC failed');
     }
   }, []);
+
+  const hasNoFeeds = feedLoadStatus === 'success' && feeds.length === 0;
+  const visibleEntries = hasNoFeeds ? [] : entries;
 
   return (
     <div className="app">
@@ -180,29 +235,55 @@ export const App = () => {
               setSelectedFeedId(feedId);
             }}
             onRefresh={handleSyncAll}
+            onOpenAddFeed={handleOpenAddFeedDialog}
             onUnreadCount={(feedId) => {
               // Simplified: count unread in current entries list
               // In full implementation, use entryStore.countUnread via IPC
-              return entries.filter(
+              return visibleEntries.filter(
                 (e) => e.feedId === feedId && !e.isRead,
               ).length;
             }}
             loading={loadingFeeds}
+            feedLoadStatus={feedLoadStatus}
           />
         )}
         entryPane={(
           <EntryList
-            entries={entries}
+            entries={visibleEntries}
             selectedEntryId={selectedEntryId}
             feedId={selectedFeedId}
             loading={loadingEntries}
             onSelectEntry={handleSelectEntry}
             onLoadMore={handleLoadMore}
-            hasMore={hasMoreEntries}
+            hasMore={hasNoFeeds ? false : hasMoreEntries}
           />
         )}
-        readerPane={<EntryDetail entry={selectedEntry} hasEntries={entries.length > 0} />}
+        readerPane={(
+          <EntryDetail
+            entry={selectedEntry}
+            feedLoadStatus={feedLoadStatus}
+            feedLoadError={feedLoadError}
+            feedCount={feeds.length}
+            entryLoadStatus={entryLoadStatus}
+            entryLoadError={entryLoadError}
+            entryCount={visibleEntries.length}
+            onAddFeed={handleOpenAddFeedDialog}
+            onRetryFeeds={() => {
+              void loadFeeds();
+            }}
+            onRetryEntries={() => {
+              void loadEntries(true);
+            }}
+          />
+        )}
       />
+
+      {showAddFeedDialog && (
+        <FeedAddDialog
+          onAdd={handleAddFeed}
+          onClose={() => setShowAddFeedDialog(false)}
+        />
+      )}
     </div>
   );
 };

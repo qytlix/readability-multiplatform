@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Feed } from '../../../shared/contracts/feed.types';
-import { FeedAddDialog } from './FeedAddDialog';
+import type { FeedLoadStatus } from './readerState';
 
 type SyncStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -53,8 +53,10 @@ interface FeedListProps {
   selectedFeedId: number | null;
   onSelectFeed: (feedId: number | null) => void;
   onRefresh: () => Promise<boolean>;
+  onOpenAddFeed: () => void;
   onUnreadCount: (feedId: number) => number;
   loading: boolean;
+  feedLoadStatus: FeedLoadStatus;
 }
 
 export const FeedList = ({
@@ -62,10 +64,11 @@ export const FeedList = ({
   selectedFeedId,
   onSelectFeed,
   onRefresh,
+  onOpenAddFeed,
   onUnreadCount,
   loading,
+  feedLoadStatus,
 }: FeedListProps) => {
-  const [showAddDialog, setShowAddDialog] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const isMountedRef = useRef(true);
   const syncInFlightRef = useRef(false);
@@ -90,17 +93,6 @@ export const FeedList = ({
       clearSuccessTimer();
     };
   }, [clearSuccessTimer]);
-
-  const handleAdd = useCallback(
-    async (url: string) => {
-      const result = await window.shaleAPI.feed.add(url);
-      if (!result.ok) {
-        throw new Error(result.error?.message ?? 'Unknown error');
-      }
-      onRefresh();
-    },
-    [onRefresh],
-  );
 
   const handleSync = useCallback(async () => {
     if (syncInFlightRef.current) return;
@@ -189,7 +181,7 @@ export const FeedList = ({
         <button
           type="button"
           className="add-feed-button"
-          onClick={() => setShowAddDialog(true)}
+          onClick={onOpenAddFeed}
         >
           <span className="add-feed-button-icon" aria-hidden="true">＋</span>
           Add Feed
@@ -219,17 +211,12 @@ export const FeedList = ({
         </div>
       </section>
 
-      {feeds.length === 0 && !loading && (
+      {feeds.length === 0 && feedLoadStatus === 'success' && (
         <p className="feed-list-empty">No feeds yet. Add one to get started.</p>
       )}
 
-      {loading && <p className="feed-list-loading">Loading feeds...</p>}
-
-      {showAddDialog && (
-        <FeedAddDialog
-          onAdd={handleAdd}
-          onClose={() => setShowAddDialog(false)}
-        />
+      {(loading || feedLoadStatus === 'loading') && (
+        <p className="feed-list-loading">Loading feeds...</p>
       )}
     </div>
   );
