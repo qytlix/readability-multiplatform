@@ -84,18 +84,10 @@ export const OPMLDialog = ({ onImport, onExport, onClose }: OPMLDialogProps) => 
             <label htmlFor="opml-import-mode">Import Mode</label>
             <select
               id="opml-import-mode"
+              className="opml-select"
               value={mode}
               onChange={(e) => setMode(e.target.value as 'merge' | 'replace')}
               disabled={importStatus === 'importing'}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                background: 'var(--bg-primary)',
-                color: 'var(--text-primary)',
-                fontSize: '14px',
-              }}
             >
               <option value="merge">Merge — add new feeds, keep existing</option>
               <option value="replace">Replace — remove feeds not in OPML</option>
@@ -136,7 +128,7 @@ export const OPMLDialog = ({ onImport, onExport, onClose }: OPMLDialogProps) => 
         </section>
 
         {/* Export Section */}
-        <section className="opml-section" style={{ marginTop: '24px' }}>
+        <section className="opml-section">
           <h3>Export</h3>
           <button
             type="button"
@@ -156,7 +148,7 @@ export const OPMLDialog = ({ onImport, onExport, onClose }: OPMLDialogProps) => 
           )}
         </section>
 
-        <div className="dialog-actions" style={{ marginTop: '24px' }}>
+        <div className="dialog-actions">
           <button type="button" onClick={onClose}>
             Close
           </button>
