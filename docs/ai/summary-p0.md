@@ -44,7 +44,7 @@ npm run lint
 npm test
 ```
 
-The Summary suites cover prompt injection boundaries, encrypted and session-only key storage, OpenAI-compatible SSE parsing and authentication failures, run/result persistence, interrupted-run recovery, cache reuse, stale content, missing Markdown, and the one-active-run limit. They use Mock/fake providers only.
+The Summary suites cover prompt injection boundaries, encrypted and explicitly marked plaintext local key storage, OpenAI-compatible SSE parsing and authentication failures, run/result persistence, interrupted-run recovery, cache reuse, stale content, missing Markdown, and the one-active-run limit. They use Mock/fake providers only.
 
 Manual opt-in verification (never CI):
 
