@@ -1,133 +1,199 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { CleanedContent } from '../../../shared/contracts/content.types';
 import type { Entry } from '../../../shared/contracts/feed.types';
+import settlingPointAnimated from '../../assets/illustrations/empty-state/settling-point-animated.svg';
+import settlingPointStatic from '../../assets/illustrations/empty-state/settling-point-static.svg';
+import {
+  getReaderDisplayState,
+  type EntryLoadStatus,
+  type FeedLoadStatus,
+} from './readerState';
 
 interface EntryDetailProps {
   entry: Entry | null;
+  feedLoadStatus: FeedLoadStatus;
+  feedLoadError: string;
+  feedCount: number;
+  entryLoadStatus: EntryLoadStatus;
+  entryLoadError: string;
+  entryCount: number;
+  onAddFeed: () => void;
+  onRetryFeeds: () => void;
+  onRetryEntries: () => void;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
-type ViewMode = 'cleaned' | 'markdown' | 'source';
 
-export const EntryDetail = ({ entry }: EntryDetailProps) => {
+export const EntryDetail = ({
+  entry,
+  feedLoadStatus,
+  feedLoadError,
+  feedCount,
+  entryLoadStatus,
+  entryLoadError,
+  entryCount,
+  onAddFeed,
+  onRetryFeeds,
+  onRetryEntries,
+}: EntryDetailProps) => {
   const [content, setContent] = useState<CleanedContent | null>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
   const [error, setError] = useState('');
-  const [viewMode, setViewMode] = useState<ViewMode>('cleaned');
+  const [showRaw, setShowRaw] = useState(false);
   const prevEntryId = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const isMountedRef = useRef(true);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  const loadContent = useCallback(async (entryId: number) => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
-
-    setStatus('loading');
-    setError('');
-
-    try {
-      // First check if content already exists
-      const existingResult = await window.shaleAPI.content.get(entryId);
-      if (!isMountedRef.current) return;
-
-      if (!existingResult.ok) {
-        setStatus('error');
-        setError(existingResult.error?.message ?? 'Failed to check existing content');
-        return;
-      }
-
-      if (existingResult.data !== null) {
-        // Check if it's a failed pipeline
-        if (existingResult.data.pipelineStatus === 'failed') {
-          setContent(existingResult.data);
-          setError(existingResult.data.pipelineError ?? 'Content extraction failed');
-          setStatus('error');
-          return;
-        }
-
-        // Already has cleaned content
-        setContent(existingResult.data);
-        setStatus('success');
-        return;
-      }
-
-      // No existing content — fetch and clean
-      const fetchResult = await window.shaleAPI.content.fetchAndClean(entryId);
-      if (!isMountedRef.current) return;
-
-      if (!fetchResult.ok) {
-        setStatus('error');
-        setError(fetchResult.error?.message ?? 'Failed to fetch content');
-        return;
-      }
-
-      if (fetchResult.data.pipelineStatus === 'failed') {
-        setContent(fetchResult.data);
-        setError(fetchResult.data.pipelineError ?? 'Content extraction failed');
-        setStatus('error');
-        return;
-      }
-
-      setContent(fetchResult.data);
-      setStatus('success');
-    } catch (err: any) {
-      if (!isMountedRef.current) return;
-      if (err?.name === 'AbortError') return;
-      setStatus('error');
-      setError(err?.message ?? 'Failed to load content');
-    }
-  }, []);
 
   useEffect(() => {
     if (!entry) {
       setContent(null);
       setStatus('idle');
-      setError('');
       return;
+    }
+
+    // Abort any in-flight request for previous entry (P2-#10: race condition fix)
+    if (abortRef.current) {
+      abortRef.current.abort();
     }
 
     // Avoid re-fetching same entry
     if (prevEntryId.current === entry.id) return;
     prevEntryId.current = entry.id;
 
-    loadContent(entry.id);
-  }, [entry?.id, loadContent]);
+    const loadContent = async () => {
+      setStatus('loading');
+      setError('');
+      abortRef.current = new AbortController();
 
-  const handleRetry = useCallback(() => {
-    if (!entry) return;
-    prevEntryId.current = null; // Reset to force re-fetch
-    loadContent(entry.id);
-  }, [entry, loadContent]);
+      try {
+        // First check if content already exists
+        const existingResult = await window.shaleAPI.content.get(entry.id);
+        if (!existingResult.ok) {
+          // IPC-level error (not "no content")
+          setStatus('error');
+          setError(existingResult.error?.message ?? 'Failed to check existing content');
+          return;
+        }
 
-  // TODO: 收藏/取消收藏按钮功能 — 通过 IPC entry:mark-starred 切换 entry.isStarred
-  // const handleMarkStarred = useCallback(async () => {
-  //   if (!entry) return;
-  //   await window.shaleAPI.entry.markStarred(entry.id, !entry.isStarred);
-  // }, [entry]);
+        if (existingResult.data !== null) {
+          // Already has cleaned content
+          setContent(existingResult.data);
+          setStatus('success');
+          return;
+        }
 
-  if (!entry) {
+        // No existing content (null) — fetch and clean
+        const fetchResult = await window.shaleAPI.content.fetchAndClean(entry.id);
+        if (!fetchResult.ok) {
+          setStatus('error');
+          setError(fetchResult.error?.message ?? 'Failed to fetch content');
+          return;
+        }
+        setContent(fetchResult.data);
+        setStatus('success');
+      } catch (err: any) {
+        // Ignore abort errors
+        if (err?.name === 'AbortError') return;
+        setStatus('error');
+        setError(err?.message ?? 'Failed to load content');
+      }
+    };
+
+    loadContent();
+
+    return () => {
+      // Cleanup: abort in-flight request on unmount
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
+    };
+  }, [entry?.id]);
+
+  const readerDisplayState = getReaderDisplayState({
+    feedLoadStatus,
+    feedCount,
+    entryLoadStatus,
+    entryCount,
+    hasSelectedEntry: entry !== null,
+  });
+
+  if (readerDisplayState === 'feed-loading') {
+    return <div className="entry-detail empty entry-detail-empty-state">Loading feeds…</div>;
+  }
+
+  if (readerDisplayState === 'feed-error') {
     return (
-      <div className="entry-detail empty">
-        <p>Select an article to read</p>
+      <div className="entry-detail empty entry-detail-empty-state">
+        <div className="entry-detail-empty-message">
+          <h2>Unable to load feeds</h2>
+          <p>{feedLoadError}</p>
+          <button type="button" className="reader-empty-action" onClick={onRetryFeeds}>
+            Try again
+          </button>
+        </div>
       </div>
     );
   }
 
-  const pipelineError = content?.pipelineError;
-  const isNetworkError = pipelineError?.toLowerCase().includes('network')
-    || pipelineError?.toLowerCase().includes('timeout')
-    || pipelineError?.toLowerCase().includes('fetch');
-  const isCleanFailed = pipelineError?.toLowerCase().includes('clean')
-    || pipelineError?.toLowerCase().includes('readability')
-    || (status === 'error' && !isNetworkError);
+  if (readerDisplayState === 'no-feeds') {
+    return (
+      <div className="entry-detail empty entry-detail-empty-state">
+        <div className="entry-detail-empty-message">
+          <h2>Add your first feed</h2>
+          <p>Subscribe to an RSS or Atom feed to start reading.</p>
+          <button type="button" className="reader-empty-action" onClick={onAddFeed}>
+            <span aria-hidden="true">＋</span>
+            Add Feed
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (readerDisplayState === 'entries-loading') {
+    return <div className="entry-detail empty entry-detail-empty-state">Loading articles…</div>;
+  }
+
+  if (readerDisplayState === 'entries-error') {
+    return (
+      <div className="entry-detail empty entry-detail-empty-state">
+        <div className="entry-detail-empty-message">
+          <h2>Unable to load articles</h2>
+          <p>{entryLoadError}</p>
+          <button type="button" className="reader-empty-action" onClick={onRetryEntries}>
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (readerDisplayState === 'no-articles') {
+    return (
+      <div className="entry-detail empty entry-detail-empty-state">
+        <div className="entry-detail-empty-message">
+          <h2>No articles yet</h2>
+          <p>Sync a feed to look for new articles.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (readerDisplayState === 'no-selection') {
+    return (
+      <div className="entry-detail empty entry-detail-empty-selection">
+        <div className="entry-detail-empty-content">
+          <picture className="entry-detail-empty-illustration" aria-hidden="true">
+            <source media="(prefers-reduced-motion: reduce)" srcSet={settlingPointStatic} />
+            <img src={settlingPointAnimated} alt="" />
+          </picture>
+          <p className="entry-detail-empty-primary">Select an article to read</p>
+          <p className="entry-detail-empty-secondary">Let ideas settle into layers.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!entry) return null;
 
   return (
     <div className="entry-detail">
@@ -145,16 +211,6 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
               })}
             </span>
           )}
-          {/* TODO: Star 按钮 — 点击切换 entry.isStarred 状态，持久化到 SQLite entry.isStarred 字段
-          <button
-            type="button"
-            className={`btn-star ${entry.isStarred ? 'starred' : ''}`}
-            onClick={handleMarkStarred}
-            title={entry.isStarred ? 'Unstar' : 'Star'}
-          >
-            {entry.isStarred ? '★' : '☆'}
-          </button>
-          */}
         </div>
         {entry.url && (
           <a
@@ -177,39 +233,18 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
 
         {status === 'error' && (
           <div className="entry-detail-error">
-            <p>⚠️&nbsp;{pipelineError || error}</p>
-
-            {isNetworkError && (
-              <p className="entry-detail-error-hint">Network unavailable. Please check your connection and try again.</p>
+            <p>⚠️ {error}</p>
+            {entry.url && (
+              <a href={entry.url} target="_blank" rel="noopener noreferrer">
+                Read original article instead ↗
+              </a>
             )}
-
-            {isCleanFailed && entry.url && (
-              <div className="entry-detail-error-actions">
-                <p>Could not extract article content.</p>
-                <a href={entry.url} target="_blank" rel="noopener noreferrer">
-                  Read original article ↗
-                </a>
-              </div>
-            )}
-
-            {!entry.url && (
-              <p>No URL available for this entry.</p>
-            )}
-
-            <button type="button" className="btn-retry" onClick={handleRetry}>
-              Retry
-            </button>
           </div>
         )}
 
         {status === 'success' && content && (
           <div className="entry-detail-content">
-            {viewMode === 'source' && content.html ? (
-              <div
-                className="entry-detail-html"
-                dangerouslySetInnerHTML={{ __html: content.html }}
-              />
-            ) : viewMode === 'markdown' ? (
+            {showRaw ? (
               <pre className="entry-detail-markdown">{content.markdown}</pre>
             ) : (
               <div
@@ -217,31 +252,13 @@ export const EntryDetail = ({ entry }: EntryDetailProps) => {
                 dangerouslySetInnerHTML={{ __html: content.cleanedHtml }}
               />
             )}
-            <div className="entry-detail-view-controls">
-              <button
-                type="button"
-                className={`btn-toggle-raw${viewMode === 'cleaned' ? ' active' : ''}`}
-                onClick={() => setViewMode('cleaned')}
-              >
-                Cleaned
-              </button>
-              <button
-                type="button"
-                className={`btn-toggle-raw${viewMode === 'markdown' ? ' active' : ''}`}
-                onClick={() => setViewMode('markdown')}
-              >
-                Markdown
-              </button>
-              <button
-                type="button"
-                className={`btn-toggle-raw${viewMode === 'source' ? ' active' : ''}`}
-                onClick={() => setViewMode('source')}
-                disabled={!content.html}
-                title={content.html ? 'View original HTML' : 'Original HTML not available'}
-              >
-                Source HTML
-              </button>
-            </div>
+            <button
+              type="button"
+              className="btn-toggle-raw"
+              onClick={() => setShowRaw(!showRaw)}
+            >
+              {showRaw ? 'Show rendered' : 'Show raw Markdown'}
+            </button>
           </div>
         )}
 

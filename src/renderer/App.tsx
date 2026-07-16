@@ -1,11 +1,17 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Feed } from '../shared/contracts/feed.types';
 import type { EntryListItem } from '../shared/contracts/feed.types';
 import type { Entry } from '../shared/contracts/feed.types';
 import { FeedList } from './features/feeds/FeedList';
 import { EntryList } from './features/feeds/EntryList';
 import { EntryDetail } from './features/feeds/EntryDetail';
+import { FeedAddDialog } from './features/feeds/FeedAddDialog';
+import {
+  type EntryLoadStatus,
+  type FeedLoadStatus,
+} from './features/feeds/readerState';
 import { WorkspaceLayout } from './features/layout/WorkspaceLayout';
+import shaleMark from './assets/brand/shale-mark.svg';
 
 export const App = () => {
   const [feeds, setFeeds] = useState<Feed[]>([]);
@@ -13,97 +19,53 @@ export const App = () => {
   const [selectedFeedId, setSelectedFeedId] = useState<number | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
-  const [loadingFeeds, setLoadingFeeds] = useState(false);
+  const [loadingFeeds, setLoadingFeeds] = useState(true);
   const [loadingEntries, setLoadingEntries] = useState(false);
+  const [feedLoadStatus, setFeedLoadStatus] = useState<FeedLoadStatus>('loading');
+  const [feedLoadError, setFeedLoadError] = useState('');
+  const [entryLoadStatus, setEntryLoadStatus] = useState<EntryLoadStatus>('loading');
+  const [entryLoadError, setEntryLoadError] = useState('');
+  const [showAddFeedDialog, setShowAddFeedDialog] = useState(false);
   const [entriesCursor, setEntriesCursor] = useState<
     { publishedAt: string; id: number } | undefined
   >(undefined);
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
-  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [ipcStatus, setIpcStatus] = useState<string>('');
-  const isMountedRef = useRef(true);
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  const loadFeeds = useCallback(async () => {
+  const loadFeeds = useCallback(async (showLoadingState = true) => {
     setLoadingFeeds(true);
+    if (showLoadingState) {
+      setFeedLoadStatus('loading');
+      setFeedLoadError('');
+    }
     try {
       const result = await window.shaleAPI.feed.list();
       if (!result.ok) {
         console.error('Failed to load feeds:', result.error);
-        return;
+        setFeedLoadStatus('error');
+        setFeedLoadError(result.error?.message ?? 'Unable to load feeds.');
+        return false;
       }
       setFeeds(result.data);
+      setFeedLoadStatus('success');
+      return true;
     } catch (err) {
       console.error('Failed to load feeds:', err);
+      setFeedLoadStatus('error');
+      setFeedLoadError('Unable to load feeds.');
+      return false;
     } finally {
       setLoadingFeeds(false);
     }
   }, []);
 
-  const loadUnreadCounts = useCallback(
-    async (feedsList: Feed[]) => {
-      const counts: Record<number, number> = {};
-      for (const feed of feedsList) {
-        try {
-          const result = await window.shaleAPI.entry.list({
-            feedId: feed.id,
-            isRead: false,
-            limit: 1,
-          });
-          if (result.ok) {
-            // Count unread entries (first page counts approximate, but cursor means has more)
-            // Actually we need the total. Let's fetch with a larger limit to count more accurately.
-            const unreadResult = await window.shaleAPI.entry.list({
-              feedId: feed.id,
-              isRead: false,
-              limit: 100,
-            });
-            if (unreadResult.ok) {
-              let unreadCount = unreadResult.data.entries.length;
-              // If there's a nextCursor, there are more — we'll approximate
-              if (unreadResult.data.nextCursor) {
-                unreadCount = unreadCount + 50; // rough approximation
-              }
-              counts[feed.id] = unreadCount;
-            }
-          }
-        } catch {
-          counts[feed.id] = 0;
-        }
-      }
-
-      // Total unread
-      try {
-        const allUnread = await window.shaleAPI.entry.list({
-          isRead: false,
-          limit: 100,
-        });
-        if (allUnread.ok) {
-          counts[0] = allUnread.data.entries.length;
-          if (allUnread.data.nextCursor) {
-            counts[0] = counts[0] + 50;
-          }
-        }
-      } catch {
-        counts[0] = 0;
-      }
-
-      if (isMountedRef.current) {
-        setUnreadCounts(counts);
-      }
-    },
-    [],
-  );
-
   const loadEntries = useCallback(
     async (reset = false) => {
       setLoadingEntries(true);
+      if (reset) {
+        setEntryLoadStatus('loading');
+        setEntryLoadError('');
+      }
       try {
         const params: any = {
           limit: 30,
@@ -114,7 +76,11 @@ export const App = () => {
         const result = await window.shaleAPI.entry.list(params);
         if (!result.ok) {
           console.error('Failed to load entries:', result.error);
-          return;
+          if (reset) {
+            setEntryLoadStatus('error');
+            setEntryLoadError(result.error?.message ?? 'Unable to load articles.');
+          }
+          return false;
         }
 
         const data = result.data;
@@ -126,8 +92,15 @@ export const App = () => {
         }
         setEntriesCursor(data.nextCursor);
         setHasMoreEntries(!!data.nextCursor);
+        setEntryLoadStatus('success');
+        return true;
       } catch (err) {
         console.error('Failed to load entries:', err);
+        if (reset) {
+          setEntryLoadStatus('error');
+          setEntryLoadError('Unable to load articles.');
+        }
+        return false;
       } finally {
         setLoadingEntries(false);
       }
@@ -139,13 +112,6 @@ export const App = () => {
   useEffect(() => {
     loadFeeds();
   }, [loadFeeds]);
-
-  // Load unread counts when feeds change
-  useEffect(() => {
-    if (feeds.length > 0) {
-      loadUnreadCounts(feeds);
-    }
-  }, [feeds, loadUnreadCounts]);
 
   // Reset entries when feed selection changes
   useEffect(() => {
@@ -163,7 +129,7 @@ export const App = () => {
     async (entryId: number) => {
       setSelectedEntryId(entryId);
 
-      // Find and update entry details from the list
+      // Find entry details from the list
       const listEntry = entries.find((e) => e.id === entryId);
       if (listEntry) {
         setSelectedEntry({
@@ -173,27 +139,12 @@ export const App = () => {
           author: listEntry.author,
           publishedAt: listEntry.publishedAt,
           createdAt: listEntry.createdAt,
-          isRead: listEntry.isRead,
-          isStarred: listEntry.isStarred,
+          isRead: true,
+          isStarred: false,
           isDeleted: false,
           updatedAt: listEntry.createdAt,
           summary: listEntry.summary,
         });
-
-        // Mark as read in backend and update local state
-        if (!listEntry.isRead) {
-          await window.shaleAPI.entry.markRead([entryId], true);
-          // Update local entry list
-          setEntries((prev) =>
-            prev.map((e) =>
-              e.id === entryId ? { ...e, isRead: true } : e,
-            ),
-          );
-          // Update selectedEntry
-          setSelectedEntry((prev) =>
-            prev ? { ...prev, isRead: true } : prev,
-          );
-        }
       }
     },
     [entries],
@@ -207,7 +158,7 @@ export const App = () => {
 
   /** Reload feeds and entries from local DB only — no network sync. */
   const reloadLocalData = useCallback(async () => {
-    await loadFeeds();
+    await loadFeeds(false);
     setEntries([]);
     setEntriesCursor(undefined);
     setHasMoreEntries(true);
@@ -223,7 +174,8 @@ export const App = () => {
         return false;
       }
 
-      await loadFeeds();
+      const feedsLoaded = await loadFeeds(false);
+      if (!feedsLoaded) return false;
       // Reload entries for current feed
       setEntries([]);
       setEntriesCursor(undefined);
@@ -237,6 +189,21 @@ export const App = () => {
       setLoadingFeeds(false);
     }
   }, [loadFeeds, loadEntries]);
+
+  const handleOpenAddFeedDialog = useCallback(() => {
+    setShowAddFeedDialog(true);
+  }, []);
+
+  const handleAddFeed = useCallback(async (url: string) => {
+    const result = await window.shaleAPI.feed.add(url);
+    if (!result.ok) {
+      throw new Error(result.error?.message ?? 'Unknown error');
+    }
+    const syncSucceeded = await handleSyncAll();
+    if (!syncSucceeded) {
+      await loadFeeds();
+    }
+  }, [handleSyncAll, loadFeeds]);
 
   const handleTestIpc = useCallback(async () => {
     setIpcStatus('Testing IPC...');
@@ -252,10 +219,16 @@ export const App = () => {
     }
   }, []);
 
+  const hasNoFeeds = feedLoadStatus === 'success' && feeds.length === 0;
+  const visibleEntries = hasNoFeeds ? [] : entries;
+
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Shale</h1>
+        <h1>
+          <img className="app-brand-mark" src={shaleMark} alt="" />
+          <span>Shale</span>
+        </h1>
         <button type="button" onClick={handleTestIpc}>
           Test IPC
         </button>
@@ -272,25 +245,55 @@ export const App = () => {
             }}
             onRefresh={handleSyncAll}
             onLocalRefresh={reloadLocalData}
+            onOpenAddFeed={handleOpenAddFeedDialog}
             onUnreadCount={(feedId) => {
-              return unreadCounts[feedId] ?? 0;
+              // Simplified: count unread in current entries list
+              // In full implementation, use entryStore.countUnread via IPC
+              return visibleEntries.filter(
+                (e) => e.feedId === feedId && !e.isRead,
+              ).length;
             }}
             loading={loadingFeeds}
+            feedLoadStatus={feedLoadStatus}
           />
         )}
         entryPane={(
           <EntryList
-            entries={entries}
+            entries={visibleEntries}
             selectedEntryId={selectedEntryId}
             feedId={selectedFeedId}
             loading={loadingEntries}
             onSelectEntry={handleSelectEntry}
             onLoadMore={handleLoadMore}
-            hasMore={hasMoreEntries}
+            hasMore={hasNoFeeds ? false : hasMoreEntries}
           />
         )}
-        readerPane={<EntryDetail entry={selectedEntry} />}
+        readerPane={(
+          <EntryDetail
+            entry={selectedEntry}
+            feedLoadStatus={feedLoadStatus}
+            feedLoadError={feedLoadError}
+            feedCount={feeds.length}
+            entryLoadStatus={entryLoadStatus}
+            entryLoadError={entryLoadError}
+            entryCount={visibleEntries.length}
+            onAddFeed={handleOpenAddFeedDialog}
+            onRetryFeeds={() => {
+              void loadFeeds();
+            }}
+            onRetryEntries={() => {
+              void loadEntries(true);
+            }}
+          />
+        )}
       />
+
+      {showAddFeedDialog && (
+        <FeedAddDialog
+          onAdd={handleAddFeed}
+          onClose={() => setShowAddFeedDialog(false)}
+        />
+      )}
     </div>
   );
 };
