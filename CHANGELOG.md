@@ -2,6 +2,29 @@
 
 All notable changes to Shale will be documented in this file.
 
+## [0.2.3] - 2026-07-17
+
+### Fixed
+
+- 构建文件恢复（#19 误删、#20 恢复后又误删的残留文件）
+- 文档恢复（#19 误删的文档文件）
+
+## [0.2.2] - 2026-07-16
+
+### Added
+
+- Summary 功能模块：GPT 模型选择、API Key 持久化（plaintext + keyring 双通道）
+
+### Fixed
+
+- macOS 代码签名（ad-hoc signing）
+- Windows 高 DPI 缩放问题
+- Windows & Wayland 跨平台构建修复
+
+### Docs
+
+- plaintext key fallback 工作机制说明
+
 ## [0.2.1] - 2026-07-16
 
 ### Fixed

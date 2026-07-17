@@ -1,7 +1,7 @@
 {
   "name": "shale",
   "productName": "Shale",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "Shale Electron foundation",
   "author": "Shale Contributors",
   "main": ".vite/build/main.js",
