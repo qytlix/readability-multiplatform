@@ -42,7 +42,11 @@ const config: ForgeConfig = {
     // the application dependencies and prune development-only packages.
     ignore: () => false,
   },
-  rebuildConfig: {},
+  // The start hook validates the actual binary before Forge reads its metadata.
+  // Restrict Forge's native-module scan to our one production addon.
+  rebuildConfig: {
+    onlyModules: ['better-sqlite3'],
+  },
   makers: [
     new MakerSquirrel({}),
     new MakerZIP({}, ['darwin']),

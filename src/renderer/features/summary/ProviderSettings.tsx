@@ -13,6 +13,18 @@ interface ProviderSettingsProps {
   onSaved: (profile: ProviderProfile) => void;
 }
 
+/**
+ * API keys can legitimately end in digits, so do not attempt to strip a
+ * numeric suffix. Replacing the complete field on paste prevents a previous
+ * value (or an autofill artifact) from being silently kept after the key.
+ */
+export function replaceApiKeyInputValue(
+  input: Pick<HTMLInputElement, 'value'>,
+  clipboardText: string,
+): void {
+  input.value = clipboardText.trim();
+}
+
 export const ProviderSettings = ({
   profile,
   onClose,
@@ -80,6 +92,14 @@ export const ProviderSettings = ({
   const hasApiKey = profile?.hasApiKey ?? false;
   const usesInsecureStorage = profile?.keyStorageMode === 'insecure';
 
+  const handleApiKeyPaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    replaceApiKeyInputValue(
+      event.currentTarget,
+      event.clipboardData.getData('text/plain'),
+    );
+  };
+
   return (
     <div className="provider-settings-backdrop" role="presentation" onMouseDown={onClose}>
       <section
@@ -126,8 +146,12 @@ export const ProviderSettings = ({
             <input
               ref={apiKeyInputRef}
               type="password"
-              autoComplete="off"
+              name="provider-api-key"
+              autoComplete="new-password"
               spellCheck={false}
+              data-1p-ignore="true"
+              data-lpignore="true"
+              onPaste={handleApiKeyPaste}
               required={!hasApiKey}
             />
           </label>

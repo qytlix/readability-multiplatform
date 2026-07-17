@@ -19,6 +19,10 @@ npm -v
 npm ci
 ```
 
+安装完成后会自动将 `better-sqlite3` 重建为当前 Electron 版本的 ABI，并用
+Electron 实际加载 SQLite 进行验证。不要用裸的 `npm rebuild better-sqlite3`
+作为启动前修复：它会改回系统 Node.js 的 ABI。
+
 如果 npm 官方源访问较慢：
 
 ```bash
@@ -32,12 +36,23 @@ npm ci --registry=https://registry.npmmirror.com
 ```bash
 npm run typecheck
 npm run lint
+npm test
 ```
 
 ## Start
 
 ```bash
 npm start
+```
+
+`npm start`（以及 Forge 的 package/make）会按 Electron ABI 检查
+`better-sqlite3`；只有检测到 ABI 不匹配时才重建。因此在更新依赖、切换 Electron
+版本或运行测试后都可以直接启动，而正常启动不需要重复编译。
+如果曾使用 `--ignore-scripts` 安装依赖，先运行：
+
+```bash
+npm run rebuild:native
+npm run verify:native
 ```
 
 预期：
