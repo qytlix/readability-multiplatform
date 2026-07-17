@@ -103,6 +103,56 @@ jobs:
           fi
           npm run make -- --targets=${{ matrix.targets }} --arch=${{ matrix.arch }}
 
+      - name: Create Arch Linux package (from Ubuntu x64 build)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          pkgname="shale"
+          pkgver="1.0.0"
+          pkgrel="1"
+          pkgdir="/tmp/pkgroot"
+
+          rm -rf "${pkgdir}"
+          mkdir -p "${pkgdir}/usr/lib/${pkgname}"
+          mkdir -p "${pkgdir}/usr/bin"
+          mkdir -p "${pkgdir}/usr/share/applications"
+
+          cp -r out/Shale-linux-x64/* "${pkgdir}/usr/lib/${pkgname}/"
+          install -m644 "${{ github.workspace }}/shale.desktop" "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+          ln -sf "/usr/lib/${pkgname}/Shale" "${pkgdir}/usr/bin/${pkgname}"
+          chmod 4755 "${pkgdir}/usr/lib/${pkgname}/chrome-sandbox" 2>/dev/null || true
+
+          install_size="$(du -sk "${pkgdir}" | cut -f1)"
+          sed \
+            -e "s/%PKGVER%/${pkgver}/g" \
+            -e "s/%PKGREL%/${pkgrel}/g" \
+            -e "s/%INSTALL_SIZE%/${install_size}/g" \
+            "${{ github.workspace }}/shale.PKGINFO" > "${pkgdir}/.PKGINFO"
+
+          cd "${pkgdir}"
+          bsdtar -cf .MTREE --format=mtree \
+            --options='!all,use-set,type,uid,gid,mode,size,sha256digest' \
+            --uid=0 --gid=0 \
+            -s '|^./||' \
+            usr/ .PKGINFO 2>/dev/null || echo > .MTREE
+          cd - > /dev/null
+
+          cd "${pkgdir}"
+          tar --zstd -cf "/tmp/${pkgname}-${pkgver}-${pkgrel}-x86_64.pkg.tar.zst" \
+            --transform 's|^./||' \
+            .PKGINFO .MTREE usr/
+          cd - > /dev/null
+
+          cp "/tmp/${pkgname}-${pkgver}-${pkgrel}-x86_64.pkg.tar.zst" ./shale-linux-arch-x86_64.pkg.tar.zst
+
+      - name: Upload Arch package
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shale-linux-arch-x64
+          path: ./*.pkg.tar.zst
+          if-no-files-found: error
+
       - name: Verify macOS arm64 signature and ZIP
         if: runner.os == 'macOS'
         shell: bash
