@@ -551,6 +551,42 @@ body.workspace-is-resizing * {
   color: var(--slate-text);
 }
 
+.feed-item-actions {
+  display: none;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.feed-item:hover .feed-item-actions {
+  display: flex;
+}
+
+.feed-item-action {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--slate-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.feed-item-action:hover {
+  border-color: var(--slate-border);
+  color: var(--slate-text);
+}
+
+.feed-item-action:last-child:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
 .feed-list-empty,
 .feed-list-loading {
   padding: 16px 8px;
@@ -1424,4 +1460,66 @@ body.workspace-is-resizing * {
 .dialog-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* ── OPML Dialog ──────────────────────────────────── */
+
+.opml-section + .opml-section {
+  margin-top: 24px;
+}
+
+.opml-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--paper-border);
+  border-radius: 5px;
+  background: var(--paper-bg);
+  color: var(--paper-text);
+  font-size: 14px;
+}
+
+.opml-select:focus {
+  border-color: var(--accent-strong);
+  outline: none;
+}
+
+.opml-action-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--paper-border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--paper-text);
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.opml-action-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.opml-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.opml-result {
+  margin-top: 12px;
+}
+
+.opml-result-success {
+  color: var(--accent-strong);
+  font-size: 13px;
+}
+
+.opml-result-failures {
+  margin-top: 8px;
+  color: var(--error);
+  font-size: 12px;
+}
+
+.opml-result-failures ul {
+  margin-top: 4px;
+  padding-left: 18px;
 }

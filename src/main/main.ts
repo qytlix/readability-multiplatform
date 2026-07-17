@@ -6,6 +6,7 @@ import started from 'electron-squirrel-startup';
 import {
   getSummaryService,
   getTranslationService,
+  getSyncScheduler,
   initializeServices,
   registerIpcHandlers,
 } from './ipc';
@@ -82,9 +83,12 @@ app.on('ready', () => {
   initializeServices(dbPath, secretStoragePath);
   registerIpcHandlers(() => mainWindow);
   createWindow();
+
+  getSyncScheduler()?.start();
 });
 
 app.on('before-quit', () => {
+  getSyncScheduler()?.stop();
   getSummaryService()?.abortActiveRun();
   getTranslationService()?.abortActiveRun();
 });

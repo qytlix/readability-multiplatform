@@ -3,6 +3,7 @@ import { MIGRATION_001 } from '../migrations/001_create_feeds';
 import { MIGRATION_002 } from '../migrations/002_create_entries';
 import { MIGRATION_003 } from '../migrations/003_create_contents';
 import { MIGRATION_004 } from '../migrations/004_add_feed_etag';
+import { MIGRATION_005 } from '../migrations/005_create_settings';
 import { MIGRATION_006 } from '../migrations/006_create_ai_profiles';
 import { MIGRATION_007 } from '../migrations/007_create_summary';
 import { MIGRATION_008 } from '../migrations/008_create_translation';
@@ -17,6 +18,7 @@ const MIGRATIONS: Migration[] = [
   { id: '002_create_entries', sql: MIGRATION_002 },
   { id: '003_create_contents', sql: MIGRATION_003 },
   { id: '004_add_feed_etag', sql: MIGRATION_004 },
+  { id: '005_create_settings', sql: MIGRATION_005 },
   { id: '006_create_ai_profiles', sql: MIGRATION_006 },
   { id: '007_create_summary', sql: MIGRATION_007 },
   { id: '008_create_translation', sql: MIGRATION_008 },

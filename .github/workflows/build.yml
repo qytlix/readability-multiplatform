@@ -1,0 +1,160 @@
+name: Build
+
+on:
+  push:
+    branches: [main, build-*]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm rebuild better-sqlite3
+      - run: npm test
+
+  make:
+    needs: [check, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            targets: deb,rpm
+            arch: x64
+            packages: dpkg-dev rpm fakeroot
+          - os: windows-2022
+            label: win-x64
+            targets: squirrel
+            arch: x64
+          # macos-14 is GitHub Actions' ARM64 macOS image.
+          - os: macos-14
+            label: mac-arm64
+            targets: zip
+            arch: arm64
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ${{ matrix.packages }}
+
+      - run: npm ci
+
+      - name: Rebuild native modules
+        run: npm rebuild better-sqlite3 --arch=${{ matrix.arch }}
+
+      - name: Verify macOS native module architecture
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          native_module="$(find node_modules/better-sqlite3 -type f -name better_sqlite3.node -print -quit)"
+          test -n "${native_module}"
+          file "${native_module}"
+          file "${native_module}" | grep -q 'arm64'
+
+      - name: Build distributables
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            echo "msvs_version=2022" >> .npmrc
+          fi
+          npm run make -- --targets=${{ matrix.targets }} --arch=${{ matrix.arch }}
+
+      - name: Verify macOS arm64 signature and ZIP
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="out/Shale-darwin-arm64/Shale.app"
+          test -d "${app}"
+          codesign --verify --deep --strict --verbose=4 "${app}"
+          file "${app}/Contents/MacOS/Shale"
+          file "${app}/Contents/MacOS/Shale" | grep -q 'arm64'
+          packaged_native_module="$(find "${app}" -type f -name better_sqlite3.node -print -quit)"
+          test -n "${packaged_native_module}"
+          file "${packaged_native_module}"
+          file "${packaged_native_module}" | grep -q 'arm64'
+
+          zip_file="$(find out/make -type f -name '*.zip' -print -quit)"
+          test -n "${zip_file}"
+          temporary_directory="$(mktemp -d)"
+          trap 'rm -rf "${temporary_directory}"' EXIT
+          ditto -x -k "${zip_file}" "${temporary_directory}"
+          extracted_app="$(find "${temporary_directory}" -type d -name 'Shale.app' -print -quit)"
+          test -n "${extracted_app}"
+          codesign --verify --deep --strict --verbose=4 "${extracted_app}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: shale-${{ matrix.label }}
+          path: out/make/**/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [make]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Shale ${{ github.ref_name }}
+          body_path: CHANGELOG.md
+          draft: true
+          files: artifacts/**

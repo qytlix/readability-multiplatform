@@ -15,6 +15,24 @@ const linuxIconPath = path.resolve(__dirname, 'assets/icons/linux/shale-app-icon
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // A stable reverse-DNS ID is required for a uniquely identifiable macOS bundle.
+    appBundleId: 'com.github.qytlix.shale',
+    // FusesPlugin modifies the arm64 Electron binary during packaging.  Tell
+    // Electron Packager to perform its supported final signing pass afterwards.
+    // This is an internal-test build, so use an ad-hoc identity rather than a
+    // Developer ID certificate.  The options below are intentionally limited to
+    // ad-hoc signing: no identity lookup, Team ID mutation, hardened runtime, or
+    // timestamp service is applicable without a Developer ID certificate.
+    osxSign: {
+      identity: '-',
+      identityValidation: false,
+      preAutoEntitlements: false,
+      preEmbedProvisioningProfile: false,
+      optionsForFile: () => ({
+        hardenedRuntime: false,
+        timestamp: 'none',
+      }),
+    },
     // Electron Packager selects `.icns` on macOS and `.ico` on Windows.
     icon: appIconBasePath,
     // Linux window icons need a PNG outside app.asar at runtime.
@@ -30,11 +48,13 @@ const config: ForgeConfig = {
     new MakerZIP({}, ['darwin']),
     new MakerRpm({
       options: {
+        bin: 'Shale',
         icon: linuxIconPath,
       },
     }),
     new MakerDeb({
       options: {
+        bin: 'Shale',
         icon: linuxIconPath,
       },
     }),

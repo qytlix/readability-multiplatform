@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { FetcherStrategy } from '../../src/main/feed/FetchStrategy';
+import { ContentFetcher } from '../../src/main/feed/ContentFetcher';
 import { ContentService } from '../../src/main/feed/ContentService';
 import { ContentStore } from '../../src/main/feed/ContentStore';
 import { EntryStore } from '../../src/main/feed/EntryStore';
 import { FeedStore } from '../../src/main/feed/FeedStore';
-import { ContentFetcher } from '../../src/main/feed/ContentFetcher';
 import { ContentCleaner } from '../../src/main/feed/ContentCleaner';
 import { MarkdownConverter } from '../../src/main/feed/MarkdownConverter';
 import { buildTestDb } from '../fixtures/databases/feed-fixture';
@@ -172,6 +173,63 @@ describe('ContentService', () => {
       const second = contentStore.findByEntry(entryId);
       expect(second!.sourceContentHash).not.toBe(firstHash);
       expect(second!.readabilityTitle).toBe('Updated Article');
+    });
+  });
+
+  describe('fetchAndClean with strategy fallback', () => {
+    it('should succeed when T0 fails and T1 succeeds', async () => {
+      // Create mock strategies: T0 always fails, T1 returns valid HTML
+      const successResult = {
+        url: 'https://example.com/article',
+        statusCode: 200,
+        headers: { 'content-type': 'text/html' } as Record<string, string>,
+        body: SAMPLE_HTML,
+      };
+
+      const t0: FetcherStrategy = {
+        name: 'mock-t0',
+        isAvailable: () => true,
+        fetch: vi.fn().mockRejectedValue(new Error('Tier 0 failed')),
+      };
+      const t1: FetcherStrategy = {
+        name: 'mock-t1',
+        isAvailable: () => true,
+        fetch: vi.fn().mockResolvedValue(successResult),
+      };
+
+      const fetcher = new ContentFetcher({ strategies: [t0, t1] });
+      const svc = new ContentService(contentStore, entryStore, fetcher);
+
+      const result = await svc.fetchAndClean(entryId);
+
+      expect(result.pipelineStatus).toBe('success');
+      expect(result.cleanedHtml).toBeTruthy();
+      expect(result.markdown).toBeTruthy();
+      expect((t0.fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
+      expect((t1.fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
+    });
+
+    it('should fail when all strategies fail', async () => {
+      const t0: FetcherStrategy = {
+        name: 'mock-t0',
+        isAvailable: () => true,
+        fetch: vi.fn().mockRejectedValue(new Error('Tier 0 error')),
+      };
+      const t1: FetcherStrategy = {
+        name: 'mock-t1',
+        isAvailable: () => true,
+        fetch: vi.fn().mockRejectedValue(new Error('Tier 1 error')),
+      };
+
+      const fetcher = new ContentFetcher({ strategies: [t0, t1] });
+      const svc = new ContentService(contentStore, entryStore, fetcher);
+
+      const result = await svc.fetchAndClean(entryId);
+
+      expect(result.pipelineStatus).toBe('failed');
+      expect(result.pipelineError).toBe('Tier 1 error');
+      expect((t0.fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
+      expect((t1.fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
     });
   });
 });
