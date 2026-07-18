@@ -26,6 +26,10 @@ import {
   savePaneLayoutPreference,
 } from './paneLayoutStorage';
 import { usePaneTrackRenderer } from './usePaneTrackRenderer';
+import {
+  useWorkspaceMeasurement,
+  type WorkspaceWidthChangeHandler,
+} from './useWorkspaceMeasurement';
 
 interface ActiveDrag {
   pane: ResizablePane;
@@ -86,7 +90,11 @@ export interface PaneLayoutControls {
 }
 
 export const usePaneLayout = (): PaneLayoutControls => {
-  const layoutRef = useRef<HTMLDivElement>(null);
+  const syncTracksToContainerRef = useRef<WorkspaceWidthChangeHandler>(() => undefined);
+  const handleWorkspaceWidthChange = useCallback((measuredWidth: number | null) => {
+    syncTracksToContainerRef.current(measuredWidth);
+  }, []);
+  const { layoutRef, readMeasuredWidth } = useWorkspaceMeasurement(handleWorkspaceWidthChange);
   const initialPreferenceRef = useRef<PaneLayoutPreference | null>(null);
   if (initialPreferenceRef.current === null) {
     initialPreferenceRef.current = loadPaneLayoutPreference();
@@ -118,13 +126,13 @@ export const usePaneLayout = (): PaneLayoutControls => {
   }, []);
 
   const getContainerWidth = useCallback((): number => {
-    const measuredWidth = layoutRef.current?.getBoundingClientRect().width;
-    if (measuredWidth && Number.isFinite(measuredWidth)) {
+    const measuredWidth = readMeasuredWidth();
+    if (measuredWidth !== null) {
       containerWidthRef.current = measuredWidth;
     }
 
     return containerWidthRef.current;
-  }, []);
+  }, [readMeasuredWidth]);
 
   const updateRenderedTracks = useCallback((nextTracks: PaneTrackLayout) => {
     setTracks((currentTracks) => (
@@ -132,8 +140,12 @@ export const usePaneLayout = (): PaneLayoutControls => {
     ));
   }, []);
 
-  const syncTracksToContainer = useCallback(() => {
-    const measuredContainerWidth = getContainerWidth();
+  const syncTracksToContainer = useCallback((measuredWidth: number | null) => {
+    if (measuredWidth !== null) {
+      containerWidthRef.current = measuredWidth;
+    }
+
+    const measuredContainerWidth = containerWidthRef.current;
     const nextTracks = getPaneTrackLayout(
       preferenceRef.current,
       measuredContainerWidth,
@@ -143,7 +155,7 @@ export const usePaneLayout = (): PaneLayoutControls => {
     setContainerWidth((currentWidth) => (
       currentWidth === measuredContainerWidth ? currentWidth : measuredContainerWidth
     ));
-  }, [getContainerWidth, updateRenderedTracks, writeTracks]);
+  }, [updateRenderedTracks, writeTracks]);
 
   const commitPreference = useCallback((nextPreference: PaneLayoutPreference) => {
     preferenceRef.current = nextPreference;
@@ -188,19 +200,7 @@ export const usePaneLayout = (): PaneLayoutControls => {
   }, [commitPreference, flushPendingTracks, handleWindowBlur]);
 
   finishDragRef.current = finishDrag;
-
-  useEffect(() => {
-    const layoutElement = layoutRef.current;
-    if (!layoutElement) return undefined;
-
-    syncTracksToContainer();
-    const observer = new ResizeObserver(syncTracksToContainer);
-    observer.observe(layoutElement);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [syncTracksToContainer]);
+  syncTracksToContainerRef.current = syncTracksToContainer;
 
   useEffect(() => () => {
     cleanupTrackRenderer();
