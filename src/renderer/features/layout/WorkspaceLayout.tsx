@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useRef,
   type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
@@ -12,6 +11,7 @@ import {
   getWorkspaceCssVariables,
   type WorkspaceCssVariables,
 } from './paneLayoutCssVariables';
+import { usePaneFocusRestoration } from './usePaneFocusRestoration';
 import { usePaneLayout } from './usePaneLayout';
 
 interface WorkspaceLayoutProps {
@@ -42,27 +42,17 @@ export const WorkspaceLayout = ({
     onDividerLostPointerCapture,
     onDividerKeyDown,
   } = usePaneLayout();
-  const feedDividerRef = useRef<HTMLDivElement>(null);
-  const entryDividerRef = useRef<HTMLDivElement>(null);
-  const feedRailRef = useRef<HTMLButtonElement>(null);
-  const entryRailRef = useRef<HTMLButtonElement>(null);
+  const {
+    feedDividerRef,
+    entryDividerRef,
+    feedRailRef,
+    entryRailRef,
+    focusRail,
+    focusDivider,
+  } = usePaneFocusRestoration();
   const feedBounds = getPaneBoundsFromTracks(tracks, 'feed', containerWidth);
   const entryBounds = getPaneBoundsFromTracks(tracks, 'entry', containerWidth);
   const style: WorkspaceStyle = getWorkspaceCssVariables(tracks);
-
-  const focusRail = useCallback((pane: ResizablePane) => {
-    window.requestAnimationFrame(() => {
-      const rail = pane === 'feed' ? feedRailRef.current : entryRailRef.current;
-      rail?.focus();
-    });
-  }, []);
-
-  const focusDivider = useCallback((pane: ResizablePane) => {
-    window.requestAnimationFrame(() => {
-      const divider = pane === 'feed' ? feedDividerRef.current : entryDividerRef.current;
-      divider?.focus();
-    });
-  }, []);
 
   const handleRestore = useCallback((pane: ResizablePane) => {
     restorePane(pane);
