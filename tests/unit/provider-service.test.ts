@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ProviderProfileStore } from '../../src/main/ai/ProviderProfileStore';
-import { ProviderService } from '../../src/main/ai/ProviderService';
-import { SecretStore, type SafeStorageBackend } from '../../src/main/ai/SecretStore';
-import type { SummaryProvider } from '../../src/main/ai/SummaryProvider';
+import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileStore';
+import { ProviderService } from '../../src/main/ai/services/ProviderService';
+import { SecretStore, type SafeStorageBackend } from '../../src/main/ai/stores/SecretStore';
+import type { SummaryProvider } from '../../src/main/ai/provider/SummaryProvider';
 import { DatabaseManager } from '../../src/main/database/DatabaseManager';
 
 const temporaryDirectories: string[] = [];

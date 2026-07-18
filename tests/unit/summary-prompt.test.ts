@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSummaryPrompt, SUMMARY_PROMPT_VERSION } from '../../src/main/ai/SummaryPrompt';
+import { buildSummaryPrompt, SUMMARY_PROMPT_VERSION } from '../../src/main/ai/provider/SummaryPrompt';
 
 describe('buildSummaryPrompt', () => {
   it('sets Chinese medium instructions and isolates untrusted article text', () => {

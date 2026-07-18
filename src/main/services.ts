@@ -10,12 +10,12 @@ import { SyncCoordinator } from './feed/services/SyncCoordinator';
 import { SyncScheduler } from './feed/services/SyncScheduler';
 import { OPMLImportService } from './feed/services/OPMLImportService';
 import { OPMLExportService } from './feed/services/OPMLExportService';
-import { OpenAICompatibleProvider } from './ai/OpenAICompatibleProvider';
-import { ProviderProfileStore } from './ai/ProviderProfileStore';
-import { ProviderService } from './ai/ProviderService';
-import { SecretStore } from './ai/SecretStore';
-import { SummaryService } from './ai/SummaryService';
-import { SummaryStore } from './ai/SummaryStore';
+import { OpenAICompatibleProvider } from './ai/provider/OpenAICompatibleProvider';
+import { ProviderProfileStore } from './ai/stores/ProviderProfileStore';
+import { ProviderService } from './ai/services/ProviderService';
+import { SecretStore } from './ai/stores/SecretStore';
+import { SummaryService } from './ai/services/SummaryService';
+import { SummaryStore } from './ai/stores/SummaryStore';
 
 // ── Service Interfaces ──────────────────────────────────
 

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { CleanedContent } from '../../shared/contracts/content.types';
+import type { CleanedContent } from '../../../shared/contracts/content.types';
 import type {
   SummaryGenerateRequest,
   SummaryGenerateResponse,
@@ -8,21 +8,21 @@ import type {
   SummaryRun,
   SummaryState,
   SummaryStreamEvent,
-} from '../../shared/contracts/summary.types';
+} from '../../../shared/contracts/summary.types';
 import {
   SUMMARY_DETAIL_LEVELS,
   SUMMARY_TARGET_LANGUAGES,
-} from '../../shared/contracts/summary.types';
+} from '../../../shared/contracts/summary.types';
 import {
   SUMMARY_ERROR_CODES,
   SummaryError,
   toSummaryIpcError,
-} from '../../shared/errors/summary.errors';
-import type { ProviderProfileStore } from './ProviderProfileStore';
-import type { SecretStore } from './SecretStore';
-import { buildSummaryPrompt, SUMMARY_PROMPT_VERSION } from './SummaryPrompt';
-import type { SummaryProvider } from './SummaryProvider';
-import { SummaryStore } from './SummaryStore';
+} from '../../../shared/errors/summary.errors';
+import type { ProviderProfileStore } from '../stores/ProviderProfileStore';
+import type { SecretStore } from '../stores/SecretStore';
+import { buildSummaryPrompt, SUMMARY_PROMPT_VERSION } from '../provider/SummaryPrompt';
+import type { SummaryProvider } from '../provider/SummaryProvider';
+import { SummaryStore } from '../stores/SummaryStore';
 
 export interface CleanedContentLookup {
   findByEntry(entryId: number): CleanedContent | undefined;

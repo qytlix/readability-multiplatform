@@ -1,7 +1,7 @@
 import type {
   SummaryDetailLevel,
   SummaryTargetLanguage,
-} from '../../shared/contracts/summary.types';
+} from '../../../shared/contracts/summary.types';
 
 export const SUMMARY_PROMPT_VERSION = 'summary-v1';
 

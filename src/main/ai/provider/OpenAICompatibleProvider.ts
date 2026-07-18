@@ -1,4 +1,4 @@
-import { SUMMARY_ERROR_CODES, SummaryError } from '../../shared/errors/summary.errors';
+import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summary.errors';
 import type { SummaryProvider, SummaryProviderRequest } from './SummaryProvider';
 
 const REQUEST_TIMEOUT_MS = 60_000;

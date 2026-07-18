@@ -1,13 +1,13 @@
 import type Database from 'better-sqlite3';
-import type { ShaleError } from '../../shared/contracts/feed.ipc';
+import type { ShaleError } from '../../../shared/contracts/feed.ipc';
 import type {
   SummaryDetailLevel,
   SummaryResult,
   SummaryRun,
   SummaryRunStatus,
   SummaryTargetLanguage,
-} from '../../shared/contracts/summary.types';
-import { SUMMARY_ERROR_CODES } from '../../shared/errors/summary.errors';
+} from '../../../shared/contracts/summary.types';
+import { SUMMARY_ERROR_CODES } from '../../../shared/errors/summary.errors';
 
 interface SummaryRunRow {
   id: number;

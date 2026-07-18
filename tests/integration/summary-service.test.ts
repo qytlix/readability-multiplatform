@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MockSummaryProvider } from '../../src/main/ai/MockSummaryProvider';
-import { ProviderProfileStore } from '../../src/main/ai/ProviderProfileStore';
-import { SecretStore, type SafeStorageBackend } from '../../src/main/ai/SecretStore';
-import { SummaryService } from '../../src/main/ai/SummaryService';
-import { SummaryStore } from '../../src/main/ai/SummaryStore';
-import type { SummaryProvider, SummaryProviderRequest } from '../../src/main/ai/SummaryProvider';
+import { MockSummaryProvider } from '../../src/main/ai/provider/MockSummaryProvider';
+import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileStore';
+import { SecretStore, type SafeStorageBackend } from '../../src/main/ai/stores/SecretStore';
+import { SummaryService } from '../../src/main/ai/services/SummaryService';
+import { SummaryStore } from '../../src/main/ai/stores/SummaryStore';
+import type { SummaryProvider, SummaryProviderRequest } from '../../src/main/ai/provider/SummaryProvider';
 import { ContentStore } from '../../src/main/feed/stores/ContentStore';
 import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
 

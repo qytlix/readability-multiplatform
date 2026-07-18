@@ -5,11 +5,11 @@ import {
   type ProviderConnectionTestResult,
   type ProviderProfile,
   type SaveProviderRequest,
-} from '../../shared/contracts/provider.types';
-import { SUMMARY_ERROR_CODES, SummaryError } from '../../shared/errors/summary.errors';
-import { ProviderProfileStore } from './ProviderProfileStore';
-import { SecretStore } from './SecretStore';
-import type { SummaryProvider } from './SummaryProvider';
+} from '../../../shared/contracts/provider.types';
+import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summary.errors';
+import { ProviderProfileStore } from '../stores/ProviderProfileStore';
+import { SecretStore } from '../stores/SecretStore';
+import type { SummaryProvider } from '../provider/SummaryProvider';
 
 export class ProviderService {
   constructor(

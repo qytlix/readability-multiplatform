@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { SUMMARY_ERROR_CODES, SummaryError } from '../../shared/errors/summary.errors';
+import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summary.errors';
 
 export interface SafeStorageBackend {
   isEncryptionAvailable(): boolean;

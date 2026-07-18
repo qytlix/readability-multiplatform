@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
-import { SecretStore, type SafeStorageBackend } from '../../src/main/ai/SecretStore';
+import { SecretStore, type SafeStorageBackend } from '../../src/main/ai/stores/SecretStore';
 
 const temporaryDirectories: string[] = [];
 

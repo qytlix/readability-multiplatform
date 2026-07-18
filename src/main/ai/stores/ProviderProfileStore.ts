@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { ProviderKind, ProviderProfile } from '../../shared/contracts/provider.types';
+import type { ProviderKind, ProviderProfile } from '../../../shared/contracts/provider.types';
 
 interface ProviderProfileRow {
   id: number;
