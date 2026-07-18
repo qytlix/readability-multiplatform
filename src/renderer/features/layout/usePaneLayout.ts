@@ -21,6 +21,7 @@ import {
   type PaneTrackLayout,
   type ResizablePane,
 } from './paneLayout';
+import { writeWorkspaceCssVariables } from './paneLayoutCssVariables';
 import {
   loadPaneLayoutPreference,
   savePaneLayoutPreference,
@@ -126,16 +127,7 @@ export const usePaneLayout = (): PaneLayoutControls => {
     const layoutElement = layoutRef.current;
     if (!layoutElement) return;
 
-    layoutElement.style.setProperty('--workspace-feed-width', `${nextTracks.feed.trackWidth}px`);
-    layoutElement.style.setProperty(
-      '--workspace-feed-divider-width',
-      `${nextTracks.feed.dividerWidth}px`,
-    );
-    layoutElement.style.setProperty('--workspace-entry-width', `${nextTracks.entry.trackWidth}px`);
-    layoutElement.style.setProperty(
-      '--workspace-entry-divider-width',
-      `${nextTracks.entry.dividerWidth}px`,
-    );
+    writeWorkspaceCssVariables(layoutElement, nextTracks);
   }, []);
 
   const updateRenderedTracks = useCallback((nextTracks: PaneTrackLayout) => {

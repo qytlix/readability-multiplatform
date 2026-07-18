@@ -8,6 +8,10 @@ import {
 import { PaneDivider } from './PaneDivider';
 import { PaneRail } from './PaneRail';
 import { getPaneBounds, type ResizablePane } from './paneLayout';
+import {
+  getWorkspaceCssVariables,
+  type WorkspaceCssVariables,
+} from './paneLayoutCssVariables';
 import { usePaneLayout } from './usePaneLayout';
 
 interface WorkspaceLayoutProps {
@@ -16,12 +20,7 @@ interface WorkspaceLayoutProps {
   readerPane: ReactNode;
 }
 
-type WorkspaceStyle = CSSProperties & {
-  '--workspace-feed-width': string;
-  '--workspace-feed-divider-width': string;
-  '--workspace-entry-width': string;
-  '--workspace-entry-divider-width': string;
-};
+type WorkspaceStyle = CSSProperties & WorkspaceCssVariables;
 
 export const WorkspaceLayout = ({
   feedPane,
@@ -50,12 +49,7 @@ export const WorkspaceLayout = ({
   const entryRailRef = useRef<HTMLButtonElement>(null);
   const feedBounds = getPaneBounds('feed', preference, containerWidth);
   const entryBounds = getPaneBounds('entry', preference, containerWidth);
-  const style: WorkspaceStyle = {
-    '--workspace-feed-width': `${tracks.feed.trackWidth}px`,
-    '--workspace-feed-divider-width': `${tracks.feed.dividerWidth}px`,
-    '--workspace-entry-width': `${tracks.entry.trackWidth}px`,
-    '--workspace-entry-divider-width': `${tracks.entry.dividerWidth}px`,
-  };
+  const style: WorkspaceStyle = getWorkspaceCssVariables(tracks);
 
   const focusRail = useCallback((pane: ResizablePane) => {
     window.requestAnimationFrame(() => {
