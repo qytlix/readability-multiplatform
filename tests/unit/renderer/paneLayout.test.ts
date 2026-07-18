@@ -9,7 +9,7 @@ import {
   resizePanePreference,
   restorePanePreference,
   shouldCollapseAfterDrag,
-} from '../../src/renderer/features/layout/paneLayout';
+} from '../../../src/renderer/features/layout/paneLayout';
 
 describe('pane layout preferences', () => {
   it('migrates the phase-one v1 preference without losing saved widths', () => {

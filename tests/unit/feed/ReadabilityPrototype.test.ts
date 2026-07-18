@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const FIXTURES_DIR = path.resolve(__dirname, '../fixtures/articles');
+const FIXTURES_DIR = path.resolve(__dirname, '../../fixtures/articles');
 
 describe('Readability Content Extraction Prototype', () => {
   let Readability: typeof import('@mozilla/readability').Readability;

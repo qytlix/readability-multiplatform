@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { FeedParserAdapter } from '../../src/main/feed/parser/FeedParserAdapter';
+import { FeedParserAdapter } from '../../../src/main/feed/parser/FeedParserAdapter';
 
-const FIXTURES_DIR = path.resolve(__dirname, '../fixtures/feeds');
+const FIXTURES_DIR = path.resolve(__dirname, '../../fixtures/feeds');
 
 async function loadFixture(filename: string): Promise<string> {
   return fs.readFileSync(path.join(FIXTURES_DIR, filename), 'utf-8');

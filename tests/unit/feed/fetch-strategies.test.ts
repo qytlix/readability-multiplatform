@@ -3,7 +3,7 @@ import {
   SimpleFetchStrategy,
   EnhancedFetchStrategy,
   BrowserFetchStrategy,
-} from '../../src/main/feed/fetcher/FetchStrategy';
+} from '../../../src/main/feed/fetcher/FetchStrategy';
 
 // ── Mock helpers ────────────────────────────────────────────────
 

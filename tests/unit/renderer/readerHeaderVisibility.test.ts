@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getFloatingReaderHeaderAction,
   shouldRevealFloatingReaderHeaderAtWindowTop,
-} from '../../src/renderer/features/feeds/readerHeaderVisibility';
+} from '../../../src/renderer/features/feeds/readerHeaderVisibility';
 
 describe('reader header visibility', () => {
   const headerHeight = 120;

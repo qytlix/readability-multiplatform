@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getApplicationMenuTemplate } from '../../src/main/application-menu';
+import { getApplicationMenuTemplate } from '../../../src/main/application-menu';
 import {
   PAGE_ZOOM_FACTOR,
   initializePageZoom,
   installPageZoomInputGuard,
-} from '../../src/main/page-zoom';
+} from '../../../src/main/page-zoom';
 
 type Listener = (event: { preventDefault: () => void }, input?: unknown) => void;
 

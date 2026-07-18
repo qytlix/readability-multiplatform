@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ExternalLinkService } from '../../src/main/external/ExternalLinkService';
+import { ExternalLinkService } from '../../../src/main/external/ExternalLinkService';
 import {
   installMainWindowNavigationGuards,
   isAllowedMainWindowNavigation,
-} from '../../src/main/navigation-guards';
-import { resolveExternalLink } from '../../src/shared/external-links';
+} from '../../../src/main/navigation-guards';
+import { resolveExternalLink } from '../../../src/shared/external-links';
 
 describe('Reader external links', () => {
   it('allows HTTP and HTTPS links', () => {

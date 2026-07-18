@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getReaderDisplayState } from '../../src/renderer/features/feeds/readerState';
+import { getReaderDisplayState } from '../../../src/renderer/features/feeds/readerState';
 
 const selectedArticle = {
   feedLoadStatus: 'success' as const,

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { FeedStore } from '../../src/main/feed/stores/FeedStore';
-import { buildTestDb } from '../fixtures/databases/feed-fixture';
+import { FeedStore } from '../../../src/main/feed/stores/FeedStore';
+import { buildTestDb } from '../../fixtures/databases/feed-fixture';
 
 describe('FeedStore (M2 extensions)', () => {
   let feedStore: FeedStore;

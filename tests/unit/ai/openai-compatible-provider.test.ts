@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { OpenAICompatibleProvider } from '../../src/main/ai/provider/OpenAICompatibleProvider';
+import { OpenAICompatibleProvider } from '../../../src/main/ai/provider/OpenAICompatibleProvider';
 
 afterEach(() => {
   vi.unstubAllGlobals();
