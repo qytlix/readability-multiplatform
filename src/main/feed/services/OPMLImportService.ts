@@ -1,4 +1,4 @@
-import { FeedStore } from '../stores/FeedStore';
+import { FeedStore } from '../stores';
 import { createFeedError } from '../../../shared/errors/feed.errors';
 
 export interface OPMLOutline {

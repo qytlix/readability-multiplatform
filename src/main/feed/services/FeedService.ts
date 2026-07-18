@@ -1,7 +1,6 @@
 import type { Feed, EntryListItem, SyncStatus } from '../../../shared/contracts/feed.types';
 import { createFeedError } from '../../../shared/errors/feed.errors';
-import { FeedStore } from '../stores/FeedStore';
-import { EntryStore } from '../stores/EntryStore';
+import { FeedStore, EntryStore } from '../stores';
 import { FeedParserAdapter, type IFeedParserAdapter } from '../parser/FeedParserAdapter';
 
 export interface SyncResult {

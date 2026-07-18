@@ -1,4 +1,4 @@
-import { FeedStore } from '../stores/FeedStore';
+import { FeedStore } from '../stores';
 import { writeFile, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';

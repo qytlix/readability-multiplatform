@@ -1,6 +1,5 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
-import { FeedService } from '../feed/services/FeedService';
-import { SyncCoordinator } from '../feed/services/SyncCoordinator';
+import { FeedService, SyncCoordinator } from '../feed/services';
 import { FEED_IPC_CHANNELS } from '../../shared/contracts/feed.ipc';
 import type { ShaleError } from '../../shared/errors/feed.errors';
 import type {
