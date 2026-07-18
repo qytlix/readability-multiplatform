@@ -1,13 +1,6 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
-import { FeedStore } from '../feed/FeedStore';
-import { EntryStore } from '../feed/EntryStore';
-import { ContentStore } from '../feed/ContentStore';
 import { FeedService } from '../feed/FeedService';
-import { ContentService } from '../feed/ContentService';
 import { SyncCoordinator } from '../feed/SyncCoordinator';
-import { SyncScheduler } from '../feed/SyncScheduler';
-import { OPMLImportService } from '../feed/OPMLImportService';
-import { OPMLExportService } from '../feed/OPMLExportService';
 import { FEED_IPC_CHANNELS } from '../../shared/contracts/feed.ipc';
 import type { ShaleError } from '../../shared/errors/feed.errors';
 import type {
@@ -27,6 +20,7 @@ import type {
 } from '../../shared/contracts/feed.ipc';
 import type { Feed, EntryListItem } from '../../shared/contracts/feed.types';
 import type { CleanedContent } from '../../shared/contracts/content.types';
+import type { FeedServices } from '../services';
 
 type GetMainWindow = () => BrowserWindow | null;
 
@@ -51,18 +45,6 @@ function sendSyncProgress(
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(FEED_IPC_CHANNELS.feedSyncProgress, progress);
   }
-}
-
-export interface FeedServices {
-  feedService: FeedService;
-  contentService: ContentService;
-  entryStore: EntryStore;
-  contentStore: ContentStore;
-  feedStore: FeedStore;
-  syncCoordinator: SyncCoordinator;
-  syncScheduler: SyncScheduler;
-  opmlImportService: OPMLImportService;
-  opmlExportService: OPMLExportService;
 }
 
 function success<T>(data: T): IPCResult<T> {
