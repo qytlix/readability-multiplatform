@@ -21,11 +21,11 @@ import {
   type PaneTrackLayout,
   type ResizablePane,
 } from './paneLayout';
-import { writeWorkspaceCssVariables } from './paneLayoutCssVariables';
 import {
   loadPaneLayoutPreference,
   savePaneLayoutPreference,
 } from './paneLayoutStorage';
+import { usePaneTrackRenderer } from './usePaneTrackRenderer';
 
 interface ActiveDrag {
   pane: ResizablePane;
@@ -98,16 +98,20 @@ export const usePaneLayout = (): PaneLayoutControls => {
     initialPreference,
     getMinimumWorkspaceWidth(),
   ));
-  const renderedTracksRef = useRef<PaneTrackLayout>(tracks);
   const containerWidthRef = useRef(getMinimumWorkspaceWidth());
   const [containerWidth, setContainerWidth] = useState(getMinimumWorkspaceWidth());
   const activeDragRef = useRef<ActiveDrag | null>(null);
   const pendingPreferenceRef = useRef<PaneLayoutPreference | null>(null);
-  const pendingTracksRef = useRef<PaneTrackLayout | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
   const finishDragRef = useRef<(endReason: DragEndReason) => void>(() => undefined);
   const [draggingPane, setDraggingPane] = useState<ResizablePane | null>(null);
   const [collapseArmedPane, setCollapseArmedPane] = useState<ResizablePane | null>(null);
+  const {
+    renderedTracksRef,
+    writeTracks,
+    queueTrackWrite,
+    flushPendingTracks,
+    cleanupTrackRenderer,
+  } = usePaneTrackRenderer(layoutRef, tracks);
 
   const handleWindowBlur = useCallback(() => {
     finishDragRef.current('windowblur');
@@ -120,14 +124,6 @@ export const usePaneLayout = (): PaneLayoutControls => {
     }
 
     return containerWidthRef.current;
-  }, []);
-
-  const writeTracks = useCallback((nextTracks: PaneTrackLayout) => {
-    renderedTracksRef.current = nextTracks;
-    const layoutElement = layoutRef.current;
-    if (!layoutElement) return;
-
-    writeWorkspaceCssVariables(layoutElement, nextTracks);
   }, []);
 
   const updateRenderedTracks = useCallback((nextTracks: PaneTrackLayout) => {
@@ -148,33 +144,6 @@ export const usePaneLayout = (): PaneLayoutControls => {
       currentWidth === measuredContainerWidth ? currentWidth : measuredContainerWidth
     ));
   }, [getContainerWidth, updateRenderedTracks, writeTracks]);
-
-  const flushPendingTracks = useCallback(() => {
-    if (animationFrameRef.current !== null) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-
-    const pendingTracks = pendingTracksRef.current;
-    pendingTracksRef.current = null;
-    if (pendingTracks) {
-      writeTracks(pendingTracks);
-    }
-  }, [writeTracks]);
-
-  const queueTrackWrite = useCallback((nextTracks: PaneTrackLayout) => {
-    pendingTracksRef.current = nextTracks;
-    if (animationFrameRef.current !== null) return;
-
-    animationFrameRef.current = window.requestAnimationFrame(() => {
-      animationFrameRef.current = null;
-      const pendingTracks = pendingTracksRef.current;
-      pendingTracksRef.current = null;
-      if (pendingTracks) {
-        writeTracks(pendingTracks);
-      }
-    });
-  }, [writeTracks]);
 
   const commitPreference = useCallback((nextPreference: PaneLayoutPreference) => {
     preferenceRef.current = nextPreference;
@@ -234,13 +203,11 @@ export const usePaneLayout = (): PaneLayoutControls => {
   }, [syncTracksToContainer]);
 
   useEffect(() => () => {
-    if (animationFrameRef.current !== null) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-    }
+    cleanupTrackRenderer();
     activeDragRef.current = null;
     window.removeEventListener('blur', handleWindowBlur);
     document.body.classList.remove('workspace-is-resizing');
-  }, [handleWindowBlur]);
+  }, [cleanupTrackRenderer, handleWindowBlur]);
 
   const collapsePane = useCallback((pane: ResizablePane) => {
     if (preferenceRef.current[pane].collapsed) return;
