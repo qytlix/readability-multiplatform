@@ -21,10 +21,7 @@ import {
   type PaneTrackLayout,
   type ResizablePane,
 } from './paneLayout';
-import {
-  loadPaneLayoutPreference,
-  savePaneLayoutPreference,
-} from './paneLayoutStorage';
+import { usePanePreferenceState } from './usePanePreferenceState';
 import { usePaneTrackRenderer } from './usePaneTrackRenderer';
 import {
   useWorkspaceMeasurement,
@@ -95,15 +92,13 @@ export const usePaneLayout = (): PaneLayoutControls => {
     syncTracksToContainerRef.current(measuredWidth);
   }, []);
   const { layoutRef, readMeasuredWidth } = useWorkspaceMeasurement(handleWorkspaceWidthChange);
-  const initialPreferenceRef = useRef<PaneLayoutPreference | null>(null);
-  if (initialPreferenceRef.current === null) {
-    initialPreferenceRef.current = loadPaneLayoutPreference();
-  }
-  const initialPreference = initialPreferenceRef.current;
-  const [preference, setPreference] = useState<PaneLayoutPreference>(initialPreference);
-  const preferenceRef = useRef<PaneLayoutPreference>(initialPreference);
+  const {
+    preference,
+    preferenceRef,
+    commitPreferenceState,
+  } = usePanePreferenceState();
   const [tracks, setTracks] = useState<PaneTrackLayout>(() => getPaneTrackLayout(
-    initialPreference,
+    preference,
     getMinimumWorkspaceWidth(),
   ));
   const containerWidthRef = useRef(getMinimumWorkspaceWidth());
@@ -158,13 +153,12 @@ export const usePaneLayout = (): PaneLayoutControls => {
   }, [updateRenderedTracks, writeTracks]);
 
   const commitPreference = useCallback((nextPreference: PaneLayoutPreference) => {
-    preferenceRef.current = nextPreference;
-    setPreference(nextPreference);
-    const nextTracks = getPaneTrackLayout(nextPreference, getContainerWidth());
-    writeTracks(nextTracks);
-    updateRenderedTracks(nextTracks);
-    savePaneLayoutPreference(nextPreference);
-  }, [getContainerWidth, updateRenderedTracks, writeTracks]);
+    commitPreferenceState(nextPreference, () => {
+      const nextTracks = getPaneTrackLayout(nextPreference, getContainerWidth());
+      writeTracks(nextTracks);
+      updateRenderedTracks(nextTracks);
+    });
+  }, [commitPreferenceState, getContainerWidth, updateRenderedTracks, writeTracks]);
 
   const finishDrag = useCallback((endReason: DragEndReason) => {
     const activeDrag = activeDragRef.current;
