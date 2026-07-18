@@ -427,6 +427,27 @@ tests/integration/
 
 ---
 
+## 提交约定
+
+每个 Step 完成后提交，commit message 格式统一为：
+
+```
+refactor(#24): <变更摘要> (step N)
+```
+
+示例：
+
+- `refactor: separate service initialization from IPC registration (step 1)`
+- `refactor(#24): reorganize src/main/feed/ into subdirectories by responsibility (step 2)`
+
+约定：
+- 首行前缀固定为 `refactor(#24):`（引用 #24 Issue）
+- 末尾用 `(step N)` 标记步骤序号
+- body 列出具体变更项、涉及文件数量和验证结果
+- 不与 Step 外的工作混杂
+
+---
+
 ## 不在本轮范围（记录为后续事项）
 
 1. **`tests/integration/` 目录重组** — 当前 8 个文件仍可管理，后续随测试增多再分类
