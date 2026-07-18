@@ -13,16 +13,18 @@ import {
   getMinimumWorkspaceWidth,
   getPaneTrackLayout,
   isCollapseArmed,
-  loadPaneLayoutPreference,
   resizePanePreference,
   restorePanePreference,
-  savePaneLayoutPreference,
   shouldCollapseAfterDrag,
   type DragEndReason,
   type PaneLayoutPreference,
   type PaneTrackLayout,
   type ResizablePane,
 } from './paneLayout';
+import {
+  loadPaneLayoutPreference,
+  savePaneLayoutPreference,
+} from './paneLayoutStorage';
 
 interface ActiveDrag {
   pane: ResizablePane;
