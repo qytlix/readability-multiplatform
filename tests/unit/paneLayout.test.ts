@@ -3,6 +3,8 @@ import {
   PANE_LAYOUT,
   collapsePanePreference,
   getDefaultPaneLayoutPreference,
+  getPaneBounds,
+  getPaneBoundsFromTracks,
   getPaneTrackLayout,
   isCollapseArmed,
   parseStoredPaneLayoutPreference,
@@ -211,6 +213,44 @@ describe('pane layout preferences', () => {
       dividerWidth: 0,
     });
   });
+
+  it.each([
+    [
+      'a wide workspace',
+      'feed',
+      getDefaultPaneLayoutPreference(),
+      1440,
+    ],
+    [
+      'a constrained workspace',
+      'entry',
+      {
+        version: PANE_LAYOUT.version,
+        feed: { width: 340, collapsed: false },
+        entry: { width: 560, collapsed: false },
+      },
+      1100,
+    ],
+    [
+      'a collapsed pane',
+      'feed',
+      {
+        version: PANE_LAYOUT.version,
+        feed: { width: 280, collapsed: true },
+        entry: { width: 440, collapsed: false },
+      },
+      1280,
+    ],
+  ] as const)(
+    'returns equivalent bounds from resolved tracks in %s',
+    (_scenario, pane, preference, containerWidth) => {
+      const tracks = getPaneTrackLayout(preference, containerWidth);
+
+      expect(getPaneBoundsFromTracks(tracks, pane, containerWidth)).toEqual(
+        getPaneBounds(pane, preference, containerWidth),
+      );
+    },
+  );
 
   it('restores a width through the normal safe resize clamp', () => {
     const restored = restorePanePreference(

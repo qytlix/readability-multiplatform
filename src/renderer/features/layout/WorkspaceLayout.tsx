@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { PaneDivider } from './PaneDivider';
 import { PaneRail } from './PaneRail';
-import { getPaneBounds, type ResizablePane } from './paneLayout';
+import { getPaneBoundsFromTracks, type ResizablePane } from './paneLayout';
 import {
   getWorkspaceCssVariables,
   type WorkspaceCssVariables,
@@ -29,7 +29,6 @@ export const WorkspaceLayout = ({
 }: WorkspaceLayoutProps) => {
   const {
     layoutRef,
-    preference,
     tracks,
     containerWidth,
     draggingPane,
@@ -47,8 +46,8 @@ export const WorkspaceLayout = ({
   const entryDividerRef = useRef<HTMLDivElement>(null);
   const feedRailRef = useRef<HTMLButtonElement>(null);
   const entryRailRef = useRef<HTMLButtonElement>(null);
-  const feedBounds = getPaneBounds('feed', preference, containerWidth);
-  const entryBounds = getPaneBounds('entry', preference, containerWidth);
+  const feedBounds = getPaneBoundsFromTracks(tracks, 'feed', containerWidth);
+  const entryBounds = getPaneBoundsFromTracks(tracks, 'entry', containerWidth);
   const style: WorkspaceStyle = getWorkspaceCssVariables(tracks);
 
   const focusRail = useCallback((pane: ResizablePane) => {

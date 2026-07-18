@@ -115,13 +115,11 @@ export const getPaneTrackLayout = (
   };
 };
 
-export const getPaneBounds = (
+export const getPaneBoundsFromTracks = (
+  tracks: PaneTrackLayout,
   pane: ResizablePane,
-  preference: PaneLayoutPreference,
   containerWidth: number,
 ): { minWidth: number; maxWidth: number } => {
-  const normalizedPreference = normalizePaneLayoutPreference(preference);
-  const tracks = getPaneTrackLayout(normalizedPreference, containerWidth);
   const config = getPaneConfig(pane);
   const otherPane = getOtherPane(pane);
   const otherTrack = tracks[otherPane];
@@ -136,4 +134,15 @@ export const getPaneBounds = (
     minWidth: config.minWidth,
     maxWidth: Math.max(config.minWidth, Math.min(config.maxWidth, dynamicMaximum)),
   };
+};
+
+export const getPaneBounds = (
+  pane: ResizablePane,
+  preference: PaneLayoutPreference,
+  containerWidth: number,
+): { minWidth: number; maxWidth: number } => {
+  const normalizedPreference = normalizePaneLayoutPreference(preference);
+  const tracks = getPaneTrackLayout(normalizedPreference, containerWidth);
+
+  return getPaneBoundsFromTracks(tracks, pane, containerWidth);
 };

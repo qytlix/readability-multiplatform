@@ -15,6 +15,7 @@ export type {
 export {
   getMinimumWorkspaceWidth,
   getPaneBounds,
+  getPaneBoundsFromTracks,
   getPaneTrackLayout,
 } from './paneLayoutGeometry';
 
