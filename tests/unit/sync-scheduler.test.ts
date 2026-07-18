@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SyncScheduler } from '../../src/main/feed/SyncScheduler';
-import { SyncCoordinator } from '../../src/main/feed/SyncCoordinator';
-import { FeedService } from '../../src/main/feed/FeedService';
-import { FeedStore } from '../../src/main/feed/FeedStore';
-import { EntryStore } from '../../src/main/feed/EntryStore';
-import { FeedParserAdapter } from '../../src/main/feed/FeedParserAdapter';
+import { SyncScheduler } from '../../src/main/feed/services/SyncScheduler';
+import { SyncCoordinator } from '../../src/main/feed/services/SyncCoordinator';
+import { FeedService } from '../../src/main/feed/services/FeedService';
+import { FeedStore } from '../../src/main/feed/stores/FeedStore';
+import { EntryStore } from '../../src/main/feed/stores/EntryStore';
+import { FeedParserAdapter } from '../../src/main/feed/parser/FeedParserAdapter';
 import { buildTestDb } from '../fixtures/databases/feed-fixture';
 
 const MOCK_FEED_XML = `<?xml version="1.0" encoding="UTF-8"?>

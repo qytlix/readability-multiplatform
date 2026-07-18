@@ -1,5 +1,5 @@
 import { FeedService, type SyncResult } from './FeedService';
-import type { Feed } from '../../shared/contracts/feed.types';
+import type { Feed } from '../../../shared/contracts/feed.types';
 
 export interface SyncAllResult {
   feedId: number;

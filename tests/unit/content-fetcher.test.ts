@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ContentFetcher } from '../../src/main/feed/ContentFetcher';
-import type { FetcherStrategy } from '../../src/main/feed/FetchStrategy';
+import { ContentFetcher } from '../../src/main/feed/fetcher/ContentFetcher';
+import type { FetcherStrategy } from '../../src/main/feed/fetcher/FetchStrategy';
 import type { FetchResult } from '../../src/shared/contracts/content.types';
 
 function setMockFetch(fn: (...args: any[]) => any): void {

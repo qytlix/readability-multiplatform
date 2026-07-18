@@ -1,4 +1,4 @@
-import type { ParsedFeed, ParsedEntry } from '../../shared/contracts/feed.types';
+import type { ParsedFeed, ParsedEntry } from '../../../shared/contracts/feed.types';
 import Parser from 'rss-parser';
 
 type FeedType = 'rss' | 'atom' | 'json';

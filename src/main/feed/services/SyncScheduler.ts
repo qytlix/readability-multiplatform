@@ -1,4 +1,4 @@
-import { FeedStore } from './FeedStore';
+import { FeedStore } from '../stores/FeedStore';
 import { SyncCoordinator, type SyncAllResult } from './SyncCoordinator';
 
 /**

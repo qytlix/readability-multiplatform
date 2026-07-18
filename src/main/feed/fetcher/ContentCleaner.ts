@@ -1,7 +1,7 @@
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import createDOMPurify from 'dompurify';
-import type { CleanResult } from '../../shared/contracts/content.types';
+import type { CleanResult } from '../../../shared/contracts/content.types';
 
 export class ContentCleaner {
   /**

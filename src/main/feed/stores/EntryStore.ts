@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
-import type { Entry, EntryListItem, EntryQuery } from '../../shared/contracts/feed.types';
-import type { PipelineStatus } from '../../shared/contracts/content.types';
+import type { Entry, EntryListItem, EntryQuery } from '../../../shared/contracts/feed.types';
+import type { PipelineStatus } from '../../../shared/contracts/content.types';
 
 interface UpsertEntryParams {
   feedId: number;

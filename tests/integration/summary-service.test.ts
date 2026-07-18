@@ -5,7 +5,7 @@ import { SecretStore, type SafeStorageBackend } from '../../src/main/ai/SecretSt
 import { SummaryService } from '../../src/main/ai/SummaryService';
 import { SummaryStore } from '../../src/main/ai/SummaryStore';
 import type { SummaryProvider, SummaryProviderRequest } from '../../src/main/ai/SummaryProvider';
-import { ContentStore } from '../../src/main/feed/ContentStore';
+import { ContentStore } from '../../src/main/feed/stores/ContentStore';
 import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
 
 const memorySecrets = new Map<string, string>();

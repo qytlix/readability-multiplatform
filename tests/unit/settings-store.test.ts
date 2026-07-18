@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SettingsStore } from '../../src/main/feed/SettingsStore';
+import { SettingsStore } from '../../src/main/feed/stores/SettingsStore';
 import { buildTestDb } from '../fixtures/databases/feed-fixture';
 
 describe('SettingsStore', () => {

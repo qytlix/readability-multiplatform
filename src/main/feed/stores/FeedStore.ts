@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { Feed, SyncStatus } from '../../shared/contracts/feed.types';
+import type { Feed, SyncStatus } from '../../../shared/contracts/feed.types';
 
 interface CreateFeedParams {
   title?: string;

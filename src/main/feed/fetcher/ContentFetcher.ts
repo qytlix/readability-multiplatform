@@ -1,4 +1,4 @@
-import type { FetchResult } from '../../shared/contracts/content.types';
+import type { FetchResult } from '../../../shared/contracts/content.types';
 import type { FetcherStrategy } from './FetchStrategy';
 import {
   SimpleFetchStrategy,

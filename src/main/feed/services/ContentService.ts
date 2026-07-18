@@ -1,9 +1,9 @@
-import type { CleanedContent, PipelineStatus } from '../../shared/contracts/content.types';
-import { ContentStore } from './ContentStore';
-import { ContentFetcher } from './ContentFetcher';
-import { ContentCleaner } from './ContentCleaner';
-import { MarkdownConverter } from './MarkdownConverter';
-import { EntryStore } from './EntryStore';
+import type { CleanedContent, PipelineStatus } from '../../../shared/contracts/content.types';
+import { ContentStore } from '../stores/ContentStore';
+import { ContentFetcher } from '../fetcher/ContentFetcher';
+import { ContentCleaner } from '../fetcher/ContentCleaner';
+import { MarkdownConverter } from '../fetcher/MarkdownConverter';
+import { EntryStore } from '../stores/EntryStore';
 
 export class ContentService {
   private contentStore: ContentStore;

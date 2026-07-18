@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FeedStore } from '../../src/main/feed/FeedStore';
+import { FeedStore } from '../../src/main/feed/stores/FeedStore';
 import { buildTestDb } from '../fixtures/databases/feed-fixture';
 
 describe('FeedStore', () => {

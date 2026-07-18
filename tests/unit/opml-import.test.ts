@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { OPMLImportService } from '../../src/main/feed/OPMLImportService';
-import { FeedStore } from '../../src/main/feed/FeedStore';
+import { OPMLImportService } from '../../src/main/feed/services/OPMLImportService';
+import { FeedStore } from '../../src/main/feed/stores/FeedStore';
 import { buildTestDb } from '../fixtures/databases/feed-fixture';
 
 const VALID_OPML = `<?xml version="1.0" encoding="UTF-8"?>

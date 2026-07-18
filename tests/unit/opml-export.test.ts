@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { OPMLExportService } from '../../src/main/feed/OPMLExportService';
-import { FeedStore } from '../../src/main/feed/FeedStore';
+import { OPMLExportService } from '../../src/main/feed/services/OPMLExportService';
+import { FeedStore } from '../../src/main/feed/stores/FeedStore';
 import { buildTestDb } from '../fixtures/databases/feed-fixture';
 
 describe('OPMLExportService', () => {

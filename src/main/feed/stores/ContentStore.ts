@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { CleanedContent, PipelineStatus } from '../../shared/contracts/content.types';
+import type { CleanedContent, PipelineStatus } from '../../../shared/contracts/content.types';
 
 interface UpsertContentParams {
   entryId: number;

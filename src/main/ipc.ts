@@ -11,7 +11,7 @@ import {
   createSyncCoordinator,
   registerFeedIpcHandlers,
 } from './ipc/feed.handler';
-import { SyncScheduler } from './feed/SyncScheduler';
+import { SyncScheduler } from './feed/services/SyncScheduler';
 import { registerExternalIpcHandlers } from './ipc/external.handler';
 import {
   registerSummaryIpcHandlers,

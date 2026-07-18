@@ -1,8 +1,8 @@
-import type { Feed, EntryListItem, SyncStatus } from '../../shared/contracts/feed.types';
-import { createFeedError } from '../../shared/errors/feed.errors';
-import { FeedStore } from './FeedStore';
-import { EntryStore } from './EntryStore';
-import { FeedParserAdapter, type IFeedParserAdapter } from './FeedParserAdapter';
+import type { Feed, EntryListItem, SyncStatus } from '../../../shared/contracts/feed.types';
+import { createFeedError } from '../../../shared/errors/feed.errors';
+import { FeedStore } from '../stores/FeedStore';
+import { EntryStore } from '../stores/EntryStore';
+import { FeedParserAdapter, type IFeedParserAdapter } from '../parser/FeedParserAdapter';
 
 export interface SyncResult {
   feed: Feed;

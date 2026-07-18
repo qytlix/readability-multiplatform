@@ -1,4 +1,4 @@
-import type { FetchResult } from '../../shared/contracts/content.types';
+import type { FetchResult } from '../../../shared/contracts/content.types';
 
 // ── Strategy Interface ─────────────────────────────────────────
 
