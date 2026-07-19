@@ -13,7 +13,7 @@ import {
   getMinimumWorkspaceWidth,
   getPaneTrackLayout,
   isCollapseArmed,
-  resizePanePreference,
+  resolvePaneResizeIntent,
   restorePanePreference,
   shouldCollapseAfterDrag,
   type DragEndReason,
@@ -266,14 +266,16 @@ export const usePaneLayout = (): PaneLayoutControls => {
     }
 
     const currentContainerWidth = getContainerWidth();
-    const nextPreference = resizePanePreference(
+    const resizeIntent = resolvePaneResizeIntent({
       pane,
       requestedEffectiveWidth,
-      preferenceRef.current,
-      currentContainerWidth,
-    );
-    pendingPreferenceRef.current = nextPreference;
-    queueTrackWrite(getPaneTrackLayout(nextPreference, currentContainerWidth));
+      preference: preferenceRef.current,
+      containerWidth: currentContainerWidth,
+    });
+    pendingPreferenceRef.current = resizeIntent.effectiveWidthChanged
+      ? resizeIntent.nextPreference
+      : null;
+    queueTrackWrite(resizeIntent.tracks);
   }, [getContainerWidth, queueTrackWrite]);
 
   const onDividerPointerUp = useCallback((
@@ -318,13 +320,15 @@ export const usePaneLayout = (): PaneLayoutControls => {
       : PANE_LAYOUT.keyboardStep;
     const direction = event.key === 'ArrowLeft' ? -1 : 1;
     const currentEffectiveWidth = renderedTracksRef.current[pane].effectiveWidth;
-    const nextPreference = resizePanePreference(
+    const resizeIntent = resolvePaneResizeIntent({
       pane,
-      currentEffectiveWidth + direction * step,
-      preferenceRef.current,
-      getContainerWidth(),
-    );
-    commitPreference(nextPreference);
+      requestedEffectiveWidth: currentEffectiveWidth + direction * step,
+      preference: preferenceRef.current,
+      containerWidth: getContainerWidth(),
+    });
+    if (resizeIntent.effectiveWidthChanged) {
+      commitPreference(resizeIntent.nextPreference);
+    }
   }, [commitPreference, getContainerWidth]);
 
   return {

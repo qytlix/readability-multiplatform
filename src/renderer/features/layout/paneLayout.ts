@@ -24,9 +24,14 @@ export {
 export {
   collapsePanePreference,
   isCollapseArmed,
+  resolvePaneResizeIntent,
   resizePanePreference,
   restorePanePreference,
   shouldCollapseAfterDrag,
+} from './paneLayoutTransitions';
+export type {
+  PaneResizeIntent,
+  PaneResizeIntentInput,
 } from './paneLayoutTransitions';
 
 export {

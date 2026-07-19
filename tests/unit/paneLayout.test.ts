@@ -8,6 +8,7 @@ import {
   getPaneTrackLayout,
   isCollapseArmed,
   parseStoredPaneLayoutPreference,
+  resolvePaneResizeIntent,
   resizePanePreference,
   restorePanePreference,
   shouldCollapseAfterDrag,
@@ -178,6 +179,104 @@ describe('pane layout preferences', () => {
     expect(tracks.entry.effectiveWidth).toBe(504);
     expect(readerWidth).toBe(PANE_LAYOUT.readerMinWidth);
     expect(preference.feed.collapsed).toBe(true);
+  });
+
+  it('returns a no-op for a constrained Feed resize that has no effective movement', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
+    };
+    const resizeIntent = resolvePaneResizeIntent({
+      preference,
+      pane: 'feed',
+      requestedEffectiveWidth: 260,
+      containerWidth: 1024,
+    });
+
+    expect(resizeIntent.effectiveWidthChanged).toBe(false);
+    expect(resizeIntent.nextPreference).toEqual(preference);
+    expect(resizeIntent.tracks.feed.effectiveWidth).toBe(PANE_LAYOUT.feed.minWidth);
+  });
+
+  it('returns a no-op for a constrained Entry resize that has no effective movement', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
+    };
+    const resizeIntent = resolvePaneResizeIntent({
+      preference,
+      pane: 'entry',
+      requestedEffectiveWidth: 400,
+      containerWidth: 1024,
+    });
+
+    expect(resizeIntent.effectiveWidthChanged).toBe(false);
+    expect(resizeIntent.nextPreference).toEqual(preference);
+    expect(resizeIntent.tracks.entry.effectiveWidth).toBe(PANE_LAYOUT.entry.minWidth);
+  });
+
+  it('uses a visible effective width as the new preferred width', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
+    };
+    const resizeIntent = resolvePaneResizeIntent({
+      preference,
+      pane: 'feed',
+      requestedEffectiveWidth: 220,
+      containerWidth: 1100,
+    });
+
+    expect(resizeIntent.effectiveWidthChanged).toBe(true);
+    expect(resizeIntent.tracks.feed.effectiveWidth).toBe(220);
+    expect(resizeIntent.nextPreference.feed.preferredWidth).toBe(220);
+  });
+
+  it('saves the effective boundary width when a requested resize visibly reaches it', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
+    };
+    const resizeIntent = resolvePaneResizeIntent({
+      preference,
+      pane: 'feed',
+      requestedEffectiveWidth: 0,
+      containerWidth: 1100,
+    });
+
+    expect(resizeIntent.effectiveWidthChanged).toBe(true);
+    expect(resizeIntent.tracks.feed.effectiveWidth).toBe(PANE_LAYOUT.feed.minWidth);
+    expect(resizeIntent.nextPreference.feed.preferredWidth).toBe(PANE_LAYOUT.feed.minWidth);
+  });
+
+  it('returns a no-op when a drag finishes at its starting effective width', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
+    };
+    const startingTracks = getPaneTrackLayout(preference, 1100);
+    const movedIntent = resolvePaneResizeIntent({
+      preference,
+      pane: 'feed',
+      requestedEffectiveWidth: 220,
+      containerWidth: 1100,
+    });
+    const returnedIntent = resolvePaneResizeIntent({
+      preference,
+      pane: 'feed',
+      requestedEffectiveWidth: startingTracks.feed.effectiveWidth,
+      containerWidth: 1100,
+    });
+
+    expect(movedIntent.effectiveWidthChanged).toBe(true);
+    expect(returnedIntent.effectiveWidthChanged).toBe(false);
+    expect(returnedIntent.nextPreference).toEqual(preference);
+    expect(returnedIntent.tracks).toEqual(startingTracks);
   });
 
   it.each([1024, 1100, 1280, 1440, 1707, 1920, 2560, 3440])(

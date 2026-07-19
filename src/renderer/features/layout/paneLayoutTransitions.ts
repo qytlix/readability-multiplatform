@@ -6,9 +6,23 @@ import {
   normalizePaneLayoutPreference,
   type DragEndReason,
   type PaneLayoutPreference,
+  type PaneTrackLayout,
   type ResizablePane,
 } from './paneLayoutModel';
-import { getPaneBounds } from './paneLayoutGeometry';
+import { getPaneBounds, getPaneTrackLayout } from './paneLayoutGeometry';
+
+export interface PaneResizeIntentInput {
+  preference: PaneLayoutPreference;
+  pane: ResizablePane;
+  requestedEffectiveWidth: number;
+  containerWidth: number;
+}
+
+export interface PaneResizeIntent {
+  tracks: PaneTrackLayout;
+  nextPreference: PaneLayoutPreference;
+  effectiveWidthChanged: boolean;
+}
 
 export const resizePanePreference = (
   pane: ResizablePane,
@@ -33,6 +47,58 @@ export const resizePanePreference = (
       ...preference[pane],
       preferredWidth: nextPreferredWidth,
     },
+  };
+};
+
+/**
+ * Resolves a user resize against the current workspace without allowing a
+ * temporarily constrained effective width to replace an unchanged preference.
+ */
+export const resolvePaneResizeIntent = ({
+  preference: inputPreference,
+  pane,
+  requestedEffectiveWidth,
+  containerWidth,
+}: PaneResizeIntentInput): PaneResizeIntent => {
+  const preference = normalizePaneLayoutPreference(inputPreference);
+  const startingTracks = getPaneTrackLayout(preference, containerWidth);
+  const candidatePreference = resizePanePreference(
+    pane,
+    requestedEffectiveWidth,
+    preference,
+    containerWidth,
+  );
+  const candidateTracks = getPaneTrackLayout(candidatePreference, containerWidth);
+
+  if (candidateTracks[pane].effectiveWidth === startingTracks[pane].effectiveWidth) {
+    return {
+      tracks: startingTracks,
+      nextPreference: preference,
+      effectiveWidthChanged: false,
+    };
+  }
+
+  const nextPreference = {
+    ...candidatePreference,
+    [pane]: {
+      ...candidatePreference[pane],
+      preferredWidth: candidateTracks[pane].effectiveWidth,
+    },
+  };
+  const tracks = getPaneTrackLayout(nextPreference, containerWidth);
+
+  if (tracks[pane].effectiveWidth === startingTracks[pane].effectiveWidth) {
+    return {
+      tracks: startingTracks,
+      nextPreference: preference,
+      effectiveWidthChanged: false,
+    };
+  }
+
+  return {
+    tracks,
+    nextPreference,
+    effectiveWidthChanged: true,
   };
 };
 
