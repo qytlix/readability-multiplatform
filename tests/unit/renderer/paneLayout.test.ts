@@ -3,9 +3,12 @@ import {
   PANE_LAYOUT,
   collapsePanePreference,
   getDefaultPaneLayoutPreference,
+  getPaneBounds,
+  getPaneBoundsFromTracks,
   getPaneTrackLayout,
   isCollapseArmed,
   parseStoredPaneLayoutPreference,
+  resolvePaneResizeIntent,
   resizePanePreference,
   restorePanePreference,
   shouldCollapseAfterDrag,
@@ -17,8 +20,8 @@ describe('pane layout preferences', () => {
       parseStoredPaneLayoutPreference('{"version":1,"feedWidth":300,"entryWidth":500}'),
     ).toEqual({
       version: 2,
-      feed: { width: 300, collapsed: false },
-      entry: { width: 500, collapsed: false },
+      feed: { preferredWidth: 300, collapsed: false },
+      entry: { preferredWidth: 500, collapsed: false },
     });
   });
 
@@ -29,8 +32,8 @@ describe('pane layout preferences', () => {
       ),
     ).toEqual({
       version: 2,
-      feed: { width: 280, collapsed: true },
-      entry: { width: 440, collapsed: false },
+      feed: { preferredWidth: 280, collapsed: true },
+      entry: { preferredWidth: 440, collapsed: false },
     });
     expect(
       parseStoredPaneLayoutPreference('{"version":3,"feedWidth":280,"entryWidth":440}'),
@@ -58,17 +61,21 @@ describe('pane layout preferences', () => {
     expect(shouldCollapseAfterDrag('lostpointercapture', true)).toBe(false);
   });
 
-  it('preserves the last expanded width through collapse and restores it', () => {
+  it('preserves the preferred width through collapse and restores it', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { preferredWidth: 288, collapsed: false },
+      entry: { preferredWidth: 400, collapsed: false },
+    };
     const collapsed = collapsePanePreference(
-      getDefaultPaneLayoutPreference(),
+      preference,
       'feed',
-      288,
     );
     const restored = restorePanePreference(collapsed, 'feed');
     const restoredTracks = getPaneTrackLayout(restored, 1280);
 
-    expect(collapsed.feed).toEqual({ width: 288, collapsed: true });
-    expect(restored.feed).toEqual({ width: 288, collapsed: false });
+    expect(collapsed.feed).toEqual({ preferredWidth: 288, collapsed: true });
+    expect(restored.feed).toEqual({ preferredWidth: 288, collapsed: false });
     expect(restoredTracks.feed.trackWidth).toBe(288);
   });
 
@@ -76,7 +83,6 @@ describe('pane layout preferences', () => {
     const collapsed = collapsePanePreference(
       getDefaultPaneLayoutPreference(),
       'feed',
-      280,
     );
     const tracks = getPaneTrackLayout(collapsed, 1280);
 
@@ -92,8 +98,8 @@ describe('pane layout preferences', () => {
   it('clamps expanded panes before the Reader falls below 480px', () => {
     const preference = {
       version: PANE_LAYOUT.version,
-      feed: { width: 340, collapsed: false },
-      entry: { width: 560, collapsed: false },
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
     };
     const tracks = getPaneTrackLayout(preference, 1100);
     const readerWidth = 1100
@@ -103,39 +109,42 @@ describe('pane layout preferences', () => {
       - tracks.entry.dividerWidth;
 
     expect(readerWidth).toBe(PANE_LAYOUT.readerMinWidth);
-    expect(tracks.entry.expandedWidth).toBe(PANE_LAYOUT.entry.minWidth);
-    expect(tracks.feed.expandedWidth).toBe(248);
+    expect(tracks.entry.effectiveWidth).toBe(PANE_LAYOUT.entry.minWidth);
+    expect(tracks.feed.effectiveWidth).toBe(248);
   });
 
-  it('uses the actual container width without mutating oversized persisted preferences', () => {
+  it('uses the actual container width without mutating preferred widths', () => {
     const preference = {
       version: PANE_LAYOUT.version,
-      feed: { width: 340, collapsed: false },
-      entry: { width: 560, collapsed: false },
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
     };
     const tracks = getPaneTrackLayout(preference, 1024);
+    const widenedTracks = getPaneTrackLayout(preference, 1440);
     const readerWidth = 1024
       - tracks.feed.trackWidth
       - tracks.feed.dividerWidth
       - tracks.entry.trackWidth
       - tracks.entry.dividerWidth;
 
-    expect(tracks.feed.expandedWidth).toBe(PANE_LAYOUT.feed.minWidth);
-    expect(tracks.entry.expandedWidth).toBe(PANE_LAYOUT.entry.minWidth);
+    expect(tracks.feed.effectiveWidth).toBe(PANE_LAYOUT.feed.minWidth);
+    expect(tracks.entry.effectiveWidth).toBe(PANE_LAYOUT.entry.minWidth);
     expect(tracks.readerMinWidth).toBe(436);
     expect(readerWidth).toBe(436);
     expect(preference).toEqual({
       version: PANE_LAYOUT.version,
-      feed: { width: 340, collapsed: false },
-      entry: { width: 560, collapsed: false },
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
     });
+    expect(widenedTracks.feed.effectiveWidth).toBe(preference.feed.preferredWidth);
+    expect(widenedTracks.entry.effectiveWidth).toBe(preference.entry.preferredWidth);
   });
 
-  it('gives all extra desktop width to Reader instead of expanding persisted pane widths', () => {
+  it('keeps effective widths equal to preferred widths in a wide workspace', () => {
     const preference = {
       version: PANE_LAYOUT.version,
-      feed: { width: 340, collapsed: false },
-      entry: { width: 560, collapsed: false },
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
     };
     const tracks = getPaneTrackLayout(preference, 3440);
     const readerWidth = 3440
@@ -144,16 +153,16 @@ describe('pane layout preferences', () => {
       - tracks.entry.trackWidth
       - tracks.entry.dividerWidth;
 
-    expect(tracks.feed.expandedWidth).toBe(340);
-    expect(tracks.entry.expandedWidth).toBe(560);
+    expect(tracks.feed.effectiveWidth).toBe(preference.feed.preferredWidth);
+    expect(tracks.entry.effectiveWidth).toBe(preference.entry.preferredWidth);
     expect(readerWidth).toBe(2528);
   });
 
   it('keeps a collapsed rail stable while the remaining pane is clamped', () => {
     const preference = {
       version: PANE_LAYOUT.version,
-      feed: { width: 340, collapsed: true },
-      entry: { width: 560, collapsed: false },
+      feed: { preferredWidth: 340, collapsed: true },
+      entry: { preferredWidth: 560, collapsed: false },
     };
     const tracks = getPaneTrackLayout(preference, 1024);
     const readerWidth = 1024
@@ -167,9 +176,107 @@ describe('pane layout preferences', () => {
       trackWidth: PANE_LAYOUT.collapsedRailWidth,
       dividerWidth: 0,
     });
-    expect(tracks.entry.expandedWidth).toBe(504);
+    expect(tracks.entry.effectiveWidth).toBe(504);
     expect(readerWidth).toBe(PANE_LAYOUT.readerMinWidth);
     expect(preference.feed.collapsed).toBe(true);
+  });
+
+  it('returns a no-op for a constrained Feed resize that has no effective movement', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
+    };
+    const resizeIntent = resolvePaneResizeIntent({
+      preference,
+      pane: 'feed',
+      requestedEffectiveWidth: 260,
+      containerWidth: 1024,
+    });
+
+    expect(resizeIntent.effectiveWidthChanged).toBe(false);
+    expect(resizeIntent.nextPreference).toEqual(preference);
+    expect(resizeIntent.tracks.feed.effectiveWidth).toBe(PANE_LAYOUT.feed.minWidth);
+  });
+
+  it('returns a no-op for a constrained Entry resize that has no effective movement', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
+    };
+    const resizeIntent = resolvePaneResizeIntent({
+      preference,
+      pane: 'entry',
+      requestedEffectiveWidth: 400,
+      containerWidth: 1024,
+    });
+
+    expect(resizeIntent.effectiveWidthChanged).toBe(false);
+    expect(resizeIntent.nextPreference).toEqual(preference);
+    expect(resizeIntent.tracks.entry.effectiveWidth).toBe(PANE_LAYOUT.entry.minWidth);
+  });
+
+  it('uses a visible effective width as the new preferred width', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
+    };
+    const resizeIntent = resolvePaneResizeIntent({
+      preference,
+      pane: 'feed',
+      requestedEffectiveWidth: 220,
+      containerWidth: 1100,
+    });
+
+    expect(resizeIntent.effectiveWidthChanged).toBe(true);
+    expect(resizeIntent.tracks.feed.effectiveWidth).toBe(220);
+    expect(resizeIntent.nextPreference.feed.preferredWidth).toBe(220);
+  });
+
+  it('saves the effective boundary width when a requested resize visibly reaches it', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
+    };
+    const resizeIntent = resolvePaneResizeIntent({
+      preference,
+      pane: 'feed',
+      requestedEffectiveWidth: 0,
+      containerWidth: 1100,
+    });
+
+    expect(resizeIntent.effectiveWidthChanged).toBe(true);
+    expect(resizeIntent.tracks.feed.effectiveWidth).toBe(PANE_LAYOUT.feed.minWidth);
+    expect(resizeIntent.nextPreference.feed.preferredWidth).toBe(PANE_LAYOUT.feed.minWidth);
+  });
+
+  it('returns a no-op when a drag finishes at its starting effective width', () => {
+    const preference = {
+      version: PANE_LAYOUT.version,
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
+    };
+    const startingTracks = getPaneTrackLayout(preference, 1100);
+    const movedIntent = resolvePaneResizeIntent({
+      preference,
+      pane: 'feed',
+      requestedEffectiveWidth: 220,
+      containerWidth: 1100,
+    });
+    const returnedIntent = resolvePaneResizeIntent({
+      preference,
+      pane: 'feed',
+      requestedEffectiveWidth: startingTracks.feed.effectiveWidth,
+      containerWidth: 1100,
+    });
+
+    expect(movedIntent.effectiveWidthChanged).toBe(true);
+    expect(returnedIntent.effectiveWidthChanged).toBe(false);
+    expect(returnedIntent.nextPreference).toEqual(preference);
+    expect(returnedIntent.tracks).toEqual(startingTracks);
   });
 
   it.each([1024, 1100, 1280, 1440, 1707, 1920, 2560, 3440])(
@@ -177,8 +284,8 @@ describe('pane layout preferences', () => {
     (containerWidth) => {
       const tracks = getPaneTrackLayout({
         version: PANE_LAYOUT.version,
-        feed: { width: 340, collapsed: false },
-        entry: { width: 560, collapsed: false },
+        feed: { preferredWidth: 340, collapsed: false },
+        entry: { preferredWidth: 560, collapsed: false },
       }, containerWidth);
       const usedWidth = tracks.feed.trackWidth
         + tracks.feed.dividerWidth
@@ -195,9 +302,8 @@ describe('pane layout preferences', () => {
     const feedCollapsed = collapsePanePreference(
       getDefaultPaneLayoutPreference(),
       'feed',
-      280,
     );
-    const bothCollapsed = collapsePanePreference(feedCollapsed, 'entry', 440);
+    const bothCollapsed = collapsePanePreference(feedCollapsed, 'entry');
     const tracks = getPaneTrackLayout(bothCollapsed, 1100);
 
     expect(tracks.feed).toMatchObject({
@@ -212,13 +318,72 @@ describe('pane layout preferences', () => {
     });
   });
 
-  it('restores a width through the normal safe resize clamp', () => {
+  it.each([
+    [
+      'a wide workspace',
+      'feed',
+      getDefaultPaneLayoutPreference(),
+      1440,
+    ],
+    [
+      'a constrained workspace',
+      'entry',
+      {
+        version: PANE_LAYOUT.version,
+        feed: { preferredWidth: 340, collapsed: false },
+        entry: { preferredWidth: 560, collapsed: false },
+      },
+      1100,
+    ],
+    [
+      'a collapsed pane',
+      'feed',
+      {
+        version: PANE_LAYOUT.version,
+        feed: { preferredWidth: 280, collapsed: true },
+        entry: { preferredWidth: 440, collapsed: false },
+      },
+      1280,
+    ],
+  ] as const)(
+    'returns equivalent bounds from resolved tracks in %s',
+    (_scenario, pane, preference, containerWidth) => {
+      const tracks = getPaneTrackLayout(preference, containerWidth);
+
+      expect(getPaneBoundsFromTracks(tracks, pane, containerWidth)).toEqual(
+        getPaneBounds(pane, preference, containerWidth),
+      );
+    },
+  );
+
+  it('keeps the drag-start preferred width when a constrained pane collapses', () => {
+    const dragStartPreference = {
+      version: PANE_LAYOUT.version,
+      feed: { preferredWidth: 340, collapsed: false },
+      entry: { preferredWidth: 560, collapsed: false },
+    };
+    const constrainedTracks = getPaneTrackLayout(dragStartPreference, 1024);
+    const collapsed = collapsePanePreference(dragStartPreference, 'feed');
+    const restored = restorePanePreference(collapsed, 'feed');
+
+    expect(constrainedTracks.feed.effectiveWidth).toBe(PANE_LAYOUT.feed.minWidth);
+    expect(collapsed.feed).toEqual({ preferredWidth: 340, collapsed: true });
+    expect(restored.feed).toEqual({ preferredWidth: 340, collapsed: false });
+    expect(getPaneTrackLayout(restored, 1440).feed.effectiveWidth).toBe(340);
+  });
+
+  it('restores a preferred width through the normal safe resize clamp', () => {
     const restored = restorePanePreference(
-      collapsePanePreference(getDefaultPaneLayoutPreference(), 'entry', 560),
+      collapsePanePreference(getDefaultPaneLayoutPreference(), 'entry'),
       'entry',
     );
-    const resized = resizePanePreference('entry', restored.entry.width, restored, 1100);
+    const resized = resizePanePreference(
+      'entry',
+      restored.entry.preferredWidth,
+      restored,
+      1100,
+    );
 
-    expect(resized.entry.width).toBe(384);
+    expect(resized.entry.preferredWidth).toBe(384);
   });
 });

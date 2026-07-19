@@ -13,22 +13,26 @@ import {
   getMinimumWorkspaceWidth,
   getPaneTrackLayout,
   isCollapseArmed,
-  loadPaneLayoutPreference,
-  resizePanePreference,
+  resolvePaneResizeIntent,
   restorePanePreference,
-  savePaneLayoutPreference,
   shouldCollapseAfterDrag,
   type DragEndReason,
   type PaneLayoutPreference,
   type PaneTrackLayout,
   type ResizablePane,
 } from './paneLayout';
+import { usePanePreferenceState } from './usePanePreferenceState';
+import { usePaneTrackRenderer } from './usePaneTrackRenderer';
+import {
+  useWorkspaceMeasurement,
+  type WorkspaceWidthChangeHandler,
+} from './useWorkspaceMeasurement';
 
 interface ActiveDrag {
   pane: ResizablePane;
   pointerId: number;
   startClientX: number;
-  startWidth: number;
+  startEffectiveWidth: number;
   divider: HTMLDivElement;
   collapseArmed: boolean;
 }
@@ -38,11 +42,11 @@ const areTrackLayoutsEqual = (
   right: PaneTrackLayout,
 ): boolean => (
   left.feed.collapsed === right.feed.collapsed
-  && left.feed.expandedWidth === right.feed.expandedWidth
+  && left.feed.effectiveWidth === right.feed.effectiveWidth
   && left.feed.trackWidth === right.feed.trackWidth
   && left.feed.dividerWidth === right.feed.dividerWidth
   && left.entry.collapsed === right.entry.collapsed
-  && left.entry.expandedWidth === right.entry.expandedWidth
+  && left.entry.effectiveWidth === right.entry.effectiveWidth
   && left.entry.trackWidth === right.entry.trackWidth
   && left.entry.dividerWidth === right.entry.dividerWidth
 );
@@ -83,58 +87,47 @@ export interface PaneLayoutControls {
 }
 
 export const usePaneLayout = (): PaneLayoutControls => {
-  const layoutRef = useRef<HTMLDivElement>(null);
-  const initialPreferenceRef = useRef<PaneLayoutPreference | null>(null);
-  if (initialPreferenceRef.current === null) {
-    initialPreferenceRef.current = loadPaneLayoutPreference();
-  }
-  const initialPreference = initialPreferenceRef.current;
-  const [preference, setPreference] = useState<PaneLayoutPreference>(initialPreference);
-  const preferenceRef = useRef<PaneLayoutPreference>(initialPreference);
+  const syncTracksToContainerRef = useRef<WorkspaceWidthChangeHandler>(() => undefined);
+  const handleWorkspaceWidthChange = useCallback((measuredWidth: number | null) => {
+    syncTracksToContainerRef.current(measuredWidth);
+  }, []);
+  const { layoutRef, readMeasuredWidth } = useWorkspaceMeasurement(handleWorkspaceWidthChange);
+  const {
+    preference,
+    preferenceRef,
+    commitPreferenceState,
+  } = usePanePreferenceState();
   const [tracks, setTracks] = useState<PaneTrackLayout>(() => getPaneTrackLayout(
-    initialPreference,
+    preference,
     getMinimumWorkspaceWidth(),
   ));
-  const renderedTracksRef = useRef<PaneTrackLayout>(tracks);
   const containerWidthRef = useRef(getMinimumWorkspaceWidth());
   const [containerWidth, setContainerWidth] = useState(getMinimumWorkspaceWidth());
   const activeDragRef = useRef<ActiveDrag | null>(null);
   const pendingPreferenceRef = useRef<PaneLayoutPreference | null>(null);
-  const pendingTracksRef = useRef<PaneTrackLayout | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
   const finishDragRef = useRef<(endReason: DragEndReason) => void>(() => undefined);
   const [draggingPane, setDraggingPane] = useState<ResizablePane | null>(null);
   const [collapseArmedPane, setCollapseArmedPane] = useState<ResizablePane | null>(null);
+  const {
+    renderedTracksRef,
+    writeTracks,
+    queueTrackWrite,
+    flushPendingTracks,
+    cleanupTrackRenderer,
+  } = usePaneTrackRenderer(layoutRef, tracks);
 
   const handleWindowBlur = useCallback(() => {
     finishDragRef.current('windowblur');
   }, []);
 
   const getContainerWidth = useCallback((): number => {
-    const measuredWidth = layoutRef.current?.getBoundingClientRect().width;
-    if (measuredWidth && Number.isFinite(measuredWidth)) {
+    const measuredWidth = readMeasuredWidth();
+    if (measuredWidth !== null) {
       containerWidthRef.current = measuredWidth;
     }
 
     return containerWidthRef.current;
-  }, []);
-
-  const writeTracks = useCallback((nextTracks: PaneTrackLayout) => {
-    renderedTracksRef.current = nextTracks;
-    const layoutElement = layoutRef.current;
-    if (!layoutElement) return;
-
-    layoutElement.style.setProperty('--workspace-feed-width', `${nextTracks.feed.trackWidth}px`);
-    layoutElement.style.setProperty(
-      '--workspace-feed-divider-width',
-      `${nextTracks.feed.dividerWidth}px`,
-    );
-    layoutElement.style.setProperty('--workspace-entry-width', `${nextTracks.entry.trackWidth}px`);
-    layoutElement.style.setProperty(
-      '--workspace-entry-divider-width',
-      `${nextTracks.entry.dividerWidth}px`,
-    );
-  }, []);
+  }, [readMeasuredWidth]);
 
   const updateRenderedTracks = useCallback((nextTracks: PaneTrackLayout) => {
     setTracks((currentTracks) => (
@@ -142,8 +135,12 @@ export const usePaneLayout = (): PaneLayoutControls => {
     ));
   }, []);
 
-  const syncTracksToContainer = useCallback(() => {
-    const measuredContainerWidth = getContainerWidth();
+  const syncTracksToContainer = useCallback((measuredWidth: number | null) => {
+    if (measuredWidth !== null) {
+      containerWidthRef.current = measuredWidth;
+    }
+
+    const measuredContainerWidth = containerWidthRef.current;
     const nextTracks = getPaneTrackLayout(
       preferenceRef.current,
       measuredContainerWidth,
@@ -153,43 +150,15 @@ export const usePaneLayout = (): PaneLayoutControls => {
     setContainerWidth((currentWidth) => (
       currentWidth === measuredContainerWidth ? currentWidth : measuredContainerWidth
     ));
-  }, [getContainerWidth, updateRenderedTracks, writeTracks]);
-
-  const flushPendingTracks = useCallback(() => {
-    if (animationFrameRef.current !== null) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-
-    const pendingTracks = pendingTracksRef.current;
-    pendingTracksRef.current = null;
-    if (pendingTracks) {
-      writeTracks(pendingTracks);
-    }
-  }, [writeTracks]);
-
-  const queueTrackWrite = useCallback((nextTracks: PaneTrackLayout) => {
-    pendingTracksRef.current = nextTracks;
-    if (animationFrameRef.current !== null) return;
-
-    animationFrameRef.current = window.requestAnimationFrame(() => {
-      animationFrameRef.current = null;
-      const pendingTracks = pendingTracksRef.current;
-      pendingTracksRef.current = null;
-      if (pendingTracks) {
-        writeTracks(pendingTracks);
-      }
-    });
-  }, [writeTracks]);
+  }, [updateRenderedTracks, writeTracks]);
 
   const commitPreference = useCallback((nextPreference: PaneLayoutPreference) => {
-    preferenceRef.current = nextPreference;
-    setPreference(nextPreference);
-    const nextTracks = getPaneTrackLayout(nextPreference, getContainerWidth());
-    writeTracks(nextTracks);
-    updateRenderedTracks(nextTracks);
-    savePaneLayoutPreference(nextPreference);
-  }, [getContainerWidth, updateRenderedTracks, writeTracks]);
+    commitPreferenceState(nextPreference, () => {
+      const nextTracks = getPaneTrackLayout(nextPreference, getContainerWidth());
+      writeTracks(nextTracks);
+      updateRenderedTracks(nextTracks);
+    });
+  }, [commitPreferenceState, getContainerWidth, updateRenderedTracks, writeTracks]);
 
   const finishDrag = useCallback((endReason: DragEndReason) => {
     const activeDrag = activeDragRef.current;
@@ -213,7 +182,6 @@ export const usePaneLayout = (): PaneLayoutControls => {
         collapsePanePreference(
           preferenceRef.current,
           activeDrag.pane,
-          activeDrag.startWidth,
         ),
       );
       return;
@@ -225,28 +193,14 @@ export const usePaneLayout = (): PaneLayoutControls => {
   }, [commitPreference, flushPendingTracks, handleWindowBlur]);
 
   finishDragRef.current = finishDrag;
-
-  useEffect(() => {
-    const layoutElement = layoutRef.current;
-    if (!layoutElement) return undefined;
-
-    syncTracksToContainer();
-    const observer = new ResizeObserver(syncTracksToContainer);
-    observer.observe(layoutElement);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [syncTracksToContainer]);
+  syncTracksToContainerRef.current = syncTracksToContainer;
 
   useEffect(() => () => {
-    if (animationFrameRef.current !== null) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-    }
+    cleanupTrackRenderer();
     activeDragRef.current = null;
     window.removeEventListener('blur', handleWindowBlur);
     document.body.classList.remove('workspace-is-resizing');
-  }, [handleWindowBlur]);
+  }, [cleanupTrackRenderer, handleWindowBlur]);
 
   const collapsePane = useCallback((pane: ResizablePane) => {
     if (preferenceRef.current[pane].collapsed) return;
@@ -255,7 +209,6 @@ export const usePaneLayout = (): PaneLayoutControls => {
       collapsePanePreference(
         preferenceRef.current,
         pane,
-        renderedTracksRef.current[pane].expandedWidth,
       ),
     );
   }, [commitPreference]);
@@ -282,7 +235,7 @@ export const usePaneLayout = (): PaneLayoutControls => {
       pane,
       pointerId: event.pointerId,
       startClientX: event.clientX,
-      startWidth: renderedTracksRef.current[pane].expandedWidth,
+      startEffectiveWidth: renderedTracksRef.current[pane].effectiveWidth,
       divider,
       collapseArmed: false,
     };
@@ -303,22 +256,26 @@ export const usePaneLayout = (): PaneLayoutControls => {
     }
 
     event.preventDefault();
-    const requestedWidth = activeDrag.startWidth + event.clientX - activeDrag.startClientX;
-    const nextCollapseArmed = isCollapseArmed(pane, requestedWidth);
+    const requestedEffectiveWidth = activeDrag.startEffectiveWidth
+      + event.clientX
+      - activeDrag.startClientX;
+    const nextCollapseArmed = isCollapseArmed(pane, requestedEffectiveWidth);
     if (activeDrag.collapseArmed !== nextCollapseArmed) {
       activeDrag.collapseArmed = nextCollapseArmed;
       setCollapseArmedPane(nextCollapseArmed ? pane : null);
     }
 
     const currentContainerWidth = getContainerWidth();
-    const nextPreference = resizePanePreference(
+    const resizeIntent = resolvePaneResizeIntent({
       pane,
-      requestedWidth,
-      preferenceRef.current,
-      currentContainerWidth,
-    );
-    pendingPreferenceRef.current = nextPreference;
-    queueTrackWrite(getPaneTrackLayout(nextPreference, currentContainerWidth));
+      requestedEffectiveWidth,
+      preference: preferenceRef.current,
+      containerWidth: currentContainerWidth,
+    });
+    pendingPreferenceRef.current = resizeIntent.effectiveWidthChanged
+      ? resizeIntent.nextPreference
+      : null;
+    queueTrackWrite(resizeIntent.tracks);
   }, [getContainerWidth, queueTrackWrite]);
 
   const onDividerPointerUp = useCallback((
@@ -362,14 +319,16 @@ export const usePaneLayout = (): PaneLayoutControls => {
       ? PANE_LAYOUT.keyboardLargeStep
       : PANE_LAYOUT.keyboardStep;
     const direction = event.key === 'ArrowLeft' ? -1 : 1;
-    const currentWidth = renderedTracksRef.current[pane].expandedWidth;
-    const nextPreference = resizePanePreference(
+    const currentEffectiveWidth = renderedTracksRef.current[pane].effectiveWidth;
+    const resizeIntent = resolvePaneResizeIntent({
       pane,
-      currentWidth + direction * step,
-      preferenceRef.current,
-      getContainerWidth(),
-    );
-    commitPreference(nextPreference);
+      requestedEffectiveWidth: currentEffectiveWidth + direction * step,
+      preference: preferenceRef.current,
+      containerWidth: getContainerWidth(),
+    });
+    if (resizeIntent.effectiveWidthChanged) {
+      commitPreference(resizeIntent.nextPreference);
+    }
   }, [commitPreference, getContainerWidth]);
 
   return {
