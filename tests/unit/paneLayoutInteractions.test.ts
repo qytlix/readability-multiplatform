@@ -102,11 +102,11 @@ describe('pane layout collapse interactions', () => {
         });
       }
 
-      observe() {}
+      observe = vi.fn();
 
-      disconnect() {}
+      disconnect = vi.fn();
 
-      unobserve() {}
+      unobserve = vi.fn();
     });
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback): number => {
       callback(0);
