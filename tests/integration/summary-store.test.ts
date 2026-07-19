@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ProviderProfileStore } from '../../src/main/ai/ProviderProfileStore';
-import { SummaryStore } from '../../src/main/ai/SummaryStore';
+import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileStore';
+import { SummaryStore } from '../../src/main/ai/stores/SummaryStore';
 import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
 
 describe('SummaryStore', () => {

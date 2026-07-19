@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ContentStore } from '../../src/main/feed/ContentStore';
-import { EntryStore } from '../../src/main/feed/EntryStore';
-import { FeedStore } from '../../src/main/feed/FeedStore';
+import { ContentStore } from '../../src/main/feed/stores/ContentStore';
+import { EntryStore } from '../../src/main/feed/stores/EntryStore';
+import { FeedStore } from '../../src/main/feed/stores/FeedStore';
 import { buildTestDb } from '../fixtures/databases/feed-fixture';
 
 describe('ContentStore', () => {

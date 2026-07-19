@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { FeedService } from '../../src/main/feed/FeedService';
-import { FeedStore } from '../../src/main/feed/FeedStore';
-import { EntryStore } from '../../src/main/feed/EntryStore';
-import { FeedParserAdapter } from '../../src/main/feed/FeedParserAdapter';
+import { FeedService } from '../../src/main/feed/services/FeedService';
+import { FeedStore } from '../../src/main/feed/stores/FeedStore';
+import { EntryStore } from '../../src/main/feed/stores/EntryStore';
+import { FeedParserAdapter } from '../../src/main/feed/parser/FeedParserAdapter';
 import { buildTestDb } from '../fixtures/databases/feed-fixture';
-import type { IFeedParserAdapter } from '../../src/main/feed/FeedParserAdapter';
+import type { IFeedParserAdapter } from '../../src/main/feed/parser/FeedParserAdapter';
 import type { ParsedFeed } from '../../src/shared/contracts/feed.types';
 
 // ── Helpers ──────────────────────────────────────────
