@@ -6,6 +6,7 @@ import {
 import {
   isVersionOneStoredLayout,
   parseStoredPaneLayoutPreference,
+  toStoredPaneLayoutPreference,
 } from './paneLayoutSerialization';
 
 export const PANE_LAYOUT_STORAGE_KEY = 'shale.workspace-layout';
@@ -17,7 +18,10 @@ export const loadPaneLayoutPreference = (): PaneLayoutPreference => {
 
     if (isVersionOneStoredLayout(rawValue)) {
       try {
-        window.localStorage.setItem(PANE_LAYOUT_STORAGE_KEY, JSON.stringify(preference));
+        window.localStorage.setItem(
+          PANE_LAYOUT_STORAGE_KEY,
+          JSON.stringify(toStoredPaneLayoutPreference(preference)),
+        );
       } catch {
         // A valid v1 preference remains usable when the one-time migration write fails.
       }
@@ -35,7 +39,7 @@ export const savePaneLayoutPreference = (
   try {
     window.localStorage.setItem(
       PANE_LAYOUT_STORAGE_KEY,
-      JSON.stringify(normalizePaneLayoutPreference(preference)),
+      JSON.stringify(toStoredPaneLayoutPreference(normalizePaneLayoutPreference(preference))),
     );
   } catch {
     // Storage can be disabled or full; layout persistence must not block reading.

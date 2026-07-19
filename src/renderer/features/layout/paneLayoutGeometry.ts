@@ -67,48 +67,48 @@ export const getPaneTrackLayout = (
   containerWidth: number,
 ): PaneTrackLayout => {
   const preference = normalizePaneLayoutPreference(inputPreference);
-  let feedExpandedWidth = preference.feed.width;
-  let entryExpandedWidth = preference.entry.width;
+  let feedEffectiveWidth = preference.feed.preferredWidth;
+  let entryEffectiveWidth = preference.entry.preferredWidth;
   const readerMinWidth = getEffectiveReaderMinimumWidth(preference, containerWidth);
   const availableExpandedPaneWidth = getAvailableExpandedPaneWidth(
     preference,
     containerWidth,
   );
-  const expandedPaneWidth = (preference.feed.collapsed ? 0 : feedExpandedWidth)
-    + (preference.entry.collapsed ? 0 : entryExpandedWidth);
+  const expandedPaneWidth = (preference.feed.collapsed ? 0 : feedEffectiveWidth)
+    + (preference.entry.collapsed ? 0 : entryEffectiveWidth);
   let excessWidth = expandedPaneWidth - availableExpandedPaneWidth;
 
   if (excessWidth > 0 && !preference.entry.collapsed) {
     const entryReduction = Math.min(
       excessWidth,
-      entryExpandedWidth - PANE_LAYOUT.entry.minWidth,
+      entryEffectiveWidth - PANE_LAYOUT.entry.minWidth,
     );
-    entryExpandedWidth -= entryReduction;
+    entryEffectiveWidth -= entryReduction;
     excessWidth -= entryReduction;
   }
 
   if (excessWidth > 0 && !preference.feed.collapsed) {
-    feedExpandedWidth = Math.max(
+    feedEffectiveWidth = Math.max(
       PANE_LAYOUT.feed.minWidth,
-      feedExpandedWidth - excessWidth,
+      feedEffectiveWidth - excessWidth,
     );
   }
 
   return {
     feed: {
       collapsed: preference.feed.collapsed,
-      expandedWidth: feedExpandedWidth,
+      effectiveWidth: feedEffectiveWidth,
       trackWidth: preference.feed.collapsed
         ? PANE_LAYOUT.collapsedRailWidth
-        : feedExpandedWidth,
+        : feedEffectiveWidth,
       dividerWidth: preference.feed.collapsed ? 0 : PANE_LAYOUT.dividerWidth,
     },
     entry: {
       collapsed: preference.entry.collapsed,
-      expandedWidth: entryExpandedWidth,
+      effectiveWidth: entryEffectiveWidth,
       trackWidth: preference.entry.collapsed
         ? PANE_LAYOUT.collapsedRailWidth
-        : entryExpandedWidth,
+        : entryEffectiveWidth,
       dividerWidth: preference.entry.collapsed ? 0 : PANE_LAYOUT.dividerWidth,
     },
     readerMinWidth,
@@ -127,7 +127,7 @@ export const getPaneBoundsFromTracks = (
     + PANE_LAYOUT.dividerWidth
     + (otherTrack.collapsed
       ? PANE_LAYOUT.collapsedRailWidth
-      : otherTrack.expandedWidth + PANE_LAYOUT.dividerWidth);
+      : otherTrack.effectiveWidth + PANE_LAYOUT.dividerWidth);
   const dynamicMaximum = getSafeContainerWidth(containerWidth) - occupiedWidth;
 
   return {

@@ -9,13 +9,13 @@ describe('workspace CSS variable mapping', () => {
     const tracks: PaneTrackLayout = {
       feed: {
         collapsed: false,
-        expandedWidth: 224,
+        effectiveWidth: 224,
         trackWidth: 224,
         dividerWidth: 6,
       },
       entry: {
         collapsed: false,
-        expandedWidth: 400,
+        effectiveWidth: 400,
         trackWidth: 400,
         dividerWidth: 6,
       },
@@ -34,13 +34,13 @@ describe('workspace CSS variable mapping', () => {
     const tracks: PaneTrackLayout = {
       feed: {
         collapsed: true,
-        expandedWidth: 280,
+        effectiveWidth: 280,
         trackWidth: 34,
         dividerWidth: 0,
       },
       entry: {
         collapsed: true,
-        expandedWidth: 440,
+        effectiveWidth: 440,
         trackWidth: 34,
         dividerWidth: 0,
       },

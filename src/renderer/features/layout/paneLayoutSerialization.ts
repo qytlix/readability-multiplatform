@@ -4,6 +4,7 @@ import {
   isFiniteNumber,
   normalizePaneLayoutPreference,
   type PaneLayoutPreference,
+  type StoredPaneLayoutPreference,
 } from './paneLayoutModel';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -19,11 +20,11 @@ const parseVersionOne = (value: Record<string, unknown>): PaneLayoutPreference |
   return normalizePaneLayoutPreference({
     version: PANE_LAYOUT.version,
     feed: {
-      width: feedWidth,
+      preferredWidth: feedWidth,
       collapsed: false,
     },
     entry: {
-      width: entryWidth,
+      preferredWidth: entryWidth,
       collapsed: false,
     },
   });
@@ -48,11 +49,11 @@ const parseVersionTwo = (value: Record<string, unknown>): PaneLayoutPreference |
   return normalizePaneLayoutPreference({
     version: PANE_LAYOUT.version,
     feed: {
-      width: feed.width,
+      preferredWidth: feed.width,
       collapsed: feed.collapsed,
     },
     entry: {
-      width: entry.width,
+      preferredWidth: entry.width,
       collapsed: entry.collapsed,
     },
   });
@@ -94,4 +95,22 @@ export const isVersionOneStoredLayout = (rawValue: string | null): boolean => {
   } catch {
     return false;
   }
+};
+
+export const toStoredPaneLayoutPreference = (
+  inputPreference: PaneLayoutPreference,
+): StoredPaneLayoutPreference => {
+  const preference = normalizePaneLayoutPreference(inputPreference);
+
+  return {
+    version: PANE_LAYOUT.version,
+    feed: {
+      width: preference.feed.preferredWidth,
+      collapsed: preference.feed.collapsed,
+    },
+    entry: {
+      width: preference.entry.preferredWidth,
+      collapsed: preference.entry.collapsed,
+    },
+  };
 };

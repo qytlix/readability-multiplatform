@@ -10,6 +10,8 @@ export type {
   PaneTrack,
   PaneTrackLayout,
   ResizablePane,
+  StoredPaneLayoutPreference,
+  StoredPanePreference,
 } from './paneLayoutModel';
 
 export {
@@ -30,4 +32,5 @@ export {
 export {
   isVersionOneStoredLayout,
   parseStoredPaneLayoutPreference,
+  toStoredPaneLayoutPreference,
 } from './paneLayoutSerialization';

@@ -32,7 +32,7 @@ interface ActiveDrag {
   pane: ResizablePane;
   pointerId: number;
   startClientX: number;
-  startWidth: number;
+  startEffectiveWidth: number;
   divider: HTMLDivElement;
   collapseArmed: boolean;
 }
@@ -42,11 +42,11 @@ const areTrackLayoutsEqual = (
   right: PaneTrackLayout,
 ): boolean => (
   left.feed.collapsed === right.feed.collapsed
-  && left.feed.expandedWidth === right.feed.expandedWidth
+  && left.feed.effectiveWidth === right.feed.effectiveWidth
   && left.feed.trackWidth === right.feed.trackWidth
   && left.feed.dividerWidth === right.feed.dividerWidth
   && left.entry.collapsed === right.entry.collapsed
-  && left.entry.expandedWidth === right.entry.expandedWidth
+  && left.entry.effectiveWidth === right.entry.effectiveWidth
   && left.entry.trackWidth === right.entry.trackWidth
   && left.entry.dividerWidth === right.entry.dividerWidth
 );
@@ -182,7 +182,6 @@ export const usePaneLayout = (): PaneLayoutControls => {
         collapsePanePreference(
           preferenceRef.current,
           activeDrag.pane,
-          activeDrag.startWidth,
         ),
       );
       return;
@@ -210,7 +209,6 @@ export const usePaneLayout = (): PaneLayoutControls => {
       collapsePanePreference(
         preferenceRef.current,
         pane,
-        renderedTracksRef.current[pane].expandedWidth,
       ),
     );
   }, [commitPreference]);
@@ -237,7 +235,7 @@ export const usePaneLayout = (): PaneLayoutControls => {
       pane,
       pointerId: event.pointerId,
       startClientX: event.clientX,
-      startWidth: renderedTracksRef.current[pane].expandedWidth,
+      startEffectiveWidth: renderedTracksRef.current[pane].effectiveWidth,
       divider,
       collapseArmed: false,
     };
@@ -258,8 +256,10 @@ export const usePaneLayout = (): PaneLayoutControls => {
     }
 
     event.preventDefault();
-    const requestedWidth = activeDrag.startWidth + event.clientX - activeDrag.startClientX;
-    const nextCollapseArmed = isCollapseArmed(pane, requestedWidth);
+    const requestedEffectiveWidth = activeDrag.startEffectiveWidth
+      + event.clientX
+      - activeDrag.startClientX;
+    const nextCollapseArmed = isCollapseArmed(pane, requestedEffectiveWidth);
     if (activeDrag.collapseArmed !== nextCollapseArmed) {
       activeDrag.collapseArmed = nextCollapseArmed;
       setCollapseArmedPane(nextCollapseArmed ? pane : null);
@@ -268,7 +268,7 @@ export const usePaneLayout = (): PaneLayoutControls => {
     const currentContainerWidth = getContainerWidth();
     const nextPreference = resizePanePreference(
       pane,
-      requestedWidth,
+      requestedEffectiveWidth,
       preferenceRef.current,
       currentContainerWidth,
     );
@@ -317,10 +317,10 @@ export const usePaneLayout = (): PaneLayoutControls => {
       ? PANE_LAYOUT.keyboardLargeStep
       : PANE_LAYOUT.keyboardStep;
     const direction = event.key === 'ArrowLeft' ? -1 : 1;
-    const currentWidth = renderedTracksRef.current[pane].expandedWidth;
+    const currentEffectiveWidth = renderedTracksRef.current[pane].effectiveWidth;
     const nextPreference = resizePanePreference(
       pane,
-      currentWidth + direction * step,
+      currentEffectiveWidth + direction * step,
       preferenceRef.current,
       getContainerWidth(),
     );

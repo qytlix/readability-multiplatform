@@ -97,7 +97,7 @@ export const WorkspaceLayout = ({
         <PaneDivider
           ref={feedDividerRef}
           pane="feed"
-          value={tracks.feed.expandedWidth}
+          effectiveWidth={tracks.feed.effectiveWidth}
           minimum={feedBounds.minWidth}
           maximum={feedBounds.maxWidth}
           isDragging={draggingPane === 'feed'}
@@ -130,7 +130,7 @@ export const WorkspaceLayout = ({
         <PaneDivider
           ref={entryDividerRef}
           pane="entry"
-          value={tracks.entry.expandedWidth}
+          effectiveWidth={tracks.entry.effectiveWidth}
           minimum={entryBounds.minWidth}
           maximum={entryBounds.maxWidth}
           isDragging={draggingPane === 'entry'}

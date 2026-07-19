@@ -27,8 +27,8 @@ export type DragEndReason =
   | 'unmount';
 
 export interface PanePreference {
-  /** The user's last expanded width. A collapsed rail never overwrites this. */
-  width: number;
+  /** The user's last chosen expanded width. A collapsed rail never overwrites this. */
+  preferredWidth: number;
   collapsed: boolean;
 }
 
@@ -41,7 +41,7 @@ export interface PaneLayoutPreference {
 export interface PaneTrack {
   collapsed: boolean;
   /** The effective expanded width after the current container constraints. */
-  expandedWidth: number;
+  effectiveWidth: number;
   trackWidth: number;
   dividerWidth: number;
 }
@@ -50,6 +50,18 @@ export interface PaneTrackLayout {
   feed: PaneTrack;
   entry: PaneTrack;
   readerMinWidth: number;
+}
+
+/** The persisted v2 shape. Keep `width` stable for existing localStorage data. */
+export interface StoredPanePreference {
+  width: number;
+  collapsed: boolean;
+}
+
+export interface StoredPaneLayoutPreference {
+  version: number;
+  feed: StoredPanePreference;
+  entry: StoredPanePreference;
 }
 
 export const clamp = (value: number, minimum: number, maximum: number): number =>
@@ -71,8 +83,10 @@ const normalizePanePreference = (
   const config = getPaneConfig(pane);
 
   return {
-    width: clamp(
-      isFiniteNumber(preference.width) ? preference.width : config.defaultWidth,
+    preferredWidth: clamp(
+      isFiniteNumber(preference.preferredWidth)
+        ? preference.preferredWidth
+        : config.defaultWidth,
       config.minWidth,
       config.maxWidth,
     ),
@@ -83,11 +97,11 @@ const normalizePanePreference = (
 export const getDefaultPaneLayoutPreference = (): PaneLayoutPreference => ({
   version: PANE_LAYOUT.version,
   feed: {
-    width: PANE_LAYOUT.feed.defaultWidth,
+    preferredWidth: PANE_LAYOUT.feed.defaultWidth,
     collapsed: false,
   },
   entry: {
-    width: PANE_LAYOUT.entry.defaultWidth,
+    preferredWidth: PANE_LAYOUT.entry.defaultWidth,
     collapsed: false,
   },
 });

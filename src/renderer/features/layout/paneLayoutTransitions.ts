@@ -12,15 +12,17 @@ import { getPaneBounds } from './paneLayoutGeometry';
 
 export const resizePanePreference = (
   pane: ResizablePane,
-  requestedWidth: number,
+  requestedEffectiveWidth: number,
   inputPreference: PaneLayoutPreference,
   containerWidth: number,
 ): PaneLayoutPreference => {
   const preference = normalizePaneLayoutPreference(inputPreference);
   const { minWidth, maxWidth } = getPaneBounds(pane, preference, containerWidth);
-  const currentWidth = preference[pane].width;
-  const nextWidth = clamp(
-    isFiniteNumber(requestedWidth) ? requestedWidth : currentWidth,
+  const currentPreferredWidth = preference[pane].preferredWidth;
+  const nextPreferredWidth = clamp(
+    isFiniteNumber(requestedEffectiveWidth)
+      ? requestedEffectiveWidth
+      : currentPreferredWidth,
     minWidth,
     maxWidth,
   );
@@ -29,18 +31,18 @@ export const resizePanePreference = (
     ...preference,
     [pane]: {
       ...preference[pane],
-      width: nextWidth,
+      preferredWidth: nextPreferredWidth,
     },
   };
 };
 
 export const isCollapseArmed = (
   pane: ResizablePane,
-  requestedWidth: number,
+  requestedEffectiveWidth: number,
 ): boolean => {
   const { minWidth } = getPaneConfig(pane);
-  return isFiniteNumber(requestedWidth)
-    && requestedWidth <= minWidth - PANE_LAYOUT.collapseThreshold;
+  return isFiniteNumber(requestedEffectiveWidth)
+    && requestedEffectiveWidth <= minWidth - PANE_LAYOUT.collapseThreshold;
 };
 
 export const shouldCollapseAfterDrag = (
@@ -51,20 +53,13 @@ export const shouldCollapseAfterDrag = (
 export const collapsePanePreference = (
   inputPreference: PaneLayoutPreference,
   pane: ResizablePane,
-  lastExpandedWidth: number,
 ): PaneLayoutPreference => {
   const preference = normalizePaneLayoutPreference(inputPreference);
-  const config = getPaneConfig(pane);
-  const savedWidth = clamp(
-    isFiniteNumber(lastExpandedWidth) ? lastExpandedWidth : preference[pane].width,
-    config.minWidth,
-    config.maxWidth,
-  );
 
   return {
     ...preference,
     [pane]: {
-      width: savedWidth,
+      ...preference[pane],
       collapsed: true,
     },
   };
