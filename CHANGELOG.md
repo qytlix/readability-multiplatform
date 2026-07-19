@@ -2,6 +2,35 @@
 
 All notable changes to Shale will be documented in this file.
 
+## [0.2.4] - 2026-07-21
+
+### Added
+
+- 项目目录架构重构：#24 大规模重构完成
+  - `src/main/feed/` 拆分为 `fetcher/`、`parser/`、`services/`、`stores/` 子目录
+  - `src/main/ai/` 拆分为 `provider/`、`services/`、`stores/` 子目录
+  - `tests/unit/` 拆分为按模块组织的子目录
+- 新增 `src/main/services.ts` 统一服务初始化
+- 新增 `src/shared/domain-api.ts` 分离领域 API 类型
+- `src/main/feed/services/index.ts` 和 `src/main/feed/stores/index.ts` barrel export
+- Pane Layout 领域模块提取：模型、几何、序列化、存储、过渡、CSS 变量、焦点恢复等独立模块
+
+### Changed
+
+- Pane Layout 重构：`usePaneLayout` 从 469 行单体拆分为 9 个独立 hooks/modules
+- 整合相关单个 Feed/Service barrel 导出
+
+### Fixed
+
+- 受限布局下 pane 偏好保存与恢复
+- 折叠状态下 pane 宽度保持
+
+### Docs
+
+- 新增 `docs/refactor/refactor-issues-summary-24-23.md`
+- 新增 `docs/refactor/refactor-plan-24.md`
+- 新增 `docs/refactor/refactor-result-24.md`
+
 ## [0.2.3] - 2026-07-17
 
 ### Fixed
