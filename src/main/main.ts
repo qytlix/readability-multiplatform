@@ -3,12 +3,8 @@ import { env } from 'node:process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
-import {
-  getSummaryService,
-  getSyncScheduler,
-  initializeServices,
-  registerIpcHandlers,
-} from './ipc';
+import { initializeServices, getSyncScheduler, getSummaryService } from './services';
+import { registerIpcHandlers } from './ipc';
 import { getApplicationMenuTemplate } from './application-menu';
 import { installMainWindowNavigationGuards } from './navigation-guards';
 import { initializePageZoom, installPageZoomInputGuard } from './page-zoom';
