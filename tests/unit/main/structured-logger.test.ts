@@ -153,6 +153,28 @@ describe('StructuredLogger', () => {
     });
   });
 
+  it('retains the bounded numeric fields required by Feed sync summaries', async () => {
+    const directory = createLogDirectory();
+    const logger = createLogger(directory);
+
+    logger.info('feed.sync.run.completed', 'feed.sync', {
+      trigger: 'manual',
+      durationMs: 42,
+      successCount: 3,
+      failureCount: 1,
+      newCount: 7,
+    });
+    await logger.flush();
+
+    expect(readRecords(directory)[0].context).toEqual({
+      trigger: 'manual',
+      durationMs: 42,
+      successCount: 3,
+      failureCount: 1,
+      newCount: 7,
+    });
+  });
+
   it('serializes concurrent calls in call order without interleaving JSONL rows', async () => {
     const directory = createLogDirectory();
     const logger = createLogger(directory);

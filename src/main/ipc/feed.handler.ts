@@ -1,5 +1,10 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
-import { FeedService, SyncCoordinator } from '../feed/services';
+import {
+  FeedService,
+  SyncCoordinator,
+  type FeedOperationLogger,
+  type FeedSyncTrigger,
+} from '../feed/services';
 import { FEED_IPC_CHANNELS } from '../../shared/contracts/feed.ipc';
 import type { ShaleError } from '../../shared/errors/feed.errors';
 import type {
@@ -22,6 +27,8 @@ import type { CleanedContent } from '../../shared/contracts/content.types';
 import type { FeedServices } from '../services';
 
 type GetMainWindow = () => BrowserWindow | null;
+
+const MANUAL_FEED_SYNC_TRIGGER: FeedSyncTrigger = 'manual';
 
 const isAuthorizedSender = (
   event: IpcMainInvokeEvent,
@@ -128,12 +135,12 @@ export function registerFeedIpcHandlers(
       try {
         if (request.feedId !== undefined) {
           // Single feed sync via coordinator (which handles dedup)
-          const result = await syncCoordinator.syncFeed(request.feedId);
+          const result = await syncCoordinator.syncFeed(request.feedId, MANUAL_FEED_SYNC_TRIGGER);
           return success(result);
         }
 
         // Full sync via coordinator
-        const results = await syncCoordinator.syncAll();
+        const results = await syncCoordinator.syncAll(MANUAL_FEED_SYNC_TRIGGER);
         const feeds = await feedService.getFeeds();
         const allEntries = entryStore.query({ limit: 50 });
         return success({
@@ -354,9 +361,10 @@ export function registerFeedIpcHandlers(
 export function createSyncCoordinator(
   getMainWindow: GetMainWindow,
   feedService: FeedService,
+  feedLogger: FeedOperationLogger,
   maxConcurrency?: number,
 ): SyncCoordinator {
-  return new SyncCoordinator(feedService, {
+  return new SyncCoordinator(feedService, feedLogger, {
     maxConcurrency,
     onFeedProgress: (feedId, status, feedTitle, newCount, error) => {
       sendSyncProgress(getMainWindow, {

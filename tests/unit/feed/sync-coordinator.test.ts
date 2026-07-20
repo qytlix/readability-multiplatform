@@ -5,6 +5,7 @@ import { FeedStore } from '../../../src/main/feed/stores/FeedStore';
 import { EntryStore } from '../../../src/main/feed/stores/EntryStore';
 import { FeedParserAdapter } from '../../../src/main/feed/parser/FeedParserAdapter';
 import { buildTestDb } from '../../fixtures/databases/feed-fixture';
+import { createFeedLoggerSpy, type FeedLogRecord } from '../../fixtures/feed-logger';
 
 const MOCK_FEED_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
@@ -36,14 +37,17 @@ describe('SyncCoordinator', () => {
   let feedService: FeedService;
   let feedStore: FeedStore;
   let entryStore: EntryStore;
+  let logRecords: FeedLogRecord[];
 
   beforeEach(() => {
     const { db } = buildTestDb();
     feedStore = new FeedStore(db);
     entryStore = new EntryStore(db);
     const parser = new FeedParserAdapter();
-    feedService = new FeedService(feedStore, entryStore, parser);
-    coordinator = new SyncCoordinator(feedService, { maxConcurrency: 6 });
+    const feedLogger = createFeedLoggerSpy();
+    logRecords = feedLogger.records;
+    feedService = new FeedService(feedStore, entryStore, feedLogger.logger, parser);
+    coordinator = new SyncCoordinator(feedService, feedLogger.logger, { maxConcurrency: 6 });
     global.fetch = mockFetch(200, MOCK_FEED_XML);
   });
 
@@ -53,9 +57,26 @@ describe('SyncCoordinator', () => {
       vi.clearAllMocks();
       global.fetch = mockFetch(200, MOCK_FEED_XML);
 
-      const result = await coordinator.syncFeed(addResult.feed.id);
+      logRecords.length = 0;
+      const result = await coordinator.syncFeed(addResult.feed.id, 'manual');
       expect(result.newCount).toBe(0); // Already synced
       expect(result.feed.lastSyncStatus).toBe('success');
+      expect(logRecords).toEqual([
+        expect.objectContaining({
+          event: 'feed.sync.run.started',
+          context: { feedId: addResult.feed.id, trigger: 'manual' },
+        }),
+        expect.objectContaining({
+          event: 'feed.sync.run.completed',
+          context: expect.objectContaining({
+            feedId: addResult.feed.id,
+            trigger: 'manual',
+            successCount: 1,
+            failureCount: 0,
+            newCount: 0,
+          }),
+        }),
+      ]);
     });
 
     it('should reject concurrent sync of the same feed', async () => {
@@ -70,13 +91,13 @@ describe('SyncCoordinator', () => {
       );
 
       // Start first sync
-      const promise1 = coordinator.syncFeed(addResult.feed.id);
+      const promise1 = coordinator.syncFeed(addResult.feed.id, 'manual');
       // Wait a tick to let it start
       await new Promise((r) => setTimeout(r, 10));
 
       // Second sync should throw
       await expect(
-        coordinator.syncFeed(addResult.feed.id),
+        coordinator.syncFeed(addResult.feed.id, 'manual'),
       ).rejects.toThrow(/already being synced/i);
 
       await promise1;
@@ -95,9 +116,25 @@ describe('SyncCoordinator', () => {
       vi.clearAllMocks();
       global.fetch = mockFetch(200, MOCK_FEED_XML);
 
-      const results = await coordinator.syncAll();
+      logRecords.length = 0;
+      const results = await coordinator.syncAll('manual');
       expect(results).toHaveLength(2);
       expect(results.every((r) => r.success)).toBe(true);
+      expect(logRecords).toEqual([
+        expect.objectContaining({
+          event: 'feed.sync.run.started',
+          context: { trigger: 'manual' },
+        }),
+        expect.objectContaining({
+          event: 'feed.sync.run.completed',
+          context: expect.objectContaining({
+            trigger: 'manual',
+            successCount: 2,
+            failureCount: 0,
+            newCount: 0,
+          }),
+        }),
+      ]);
     });
 
     it('should report per-feed results when some fail', async () => {
@@ -117,12 +154,42 @@ describe('SyncCoordinator', () => {
         return Promise.reject(new Error('Network error'));
       });
 
-      const results = await coordinator.syncAll();
+      logRecords.length = 0;
+      const results = await coordinator.syncAll('scheduled');
       expect(results).toHaveLength(3);
       const successes = results.filter((r) => r.success);
       const failures = results.filter((r) => !r.success);
       expect(successes.length).toBe(1);
       expect(failures.length).toBe(2);
+      expect(logRecords.filter((record) => record.event === 'feed.sync.feed.failed')).toEqual([
+        expect.objectContaining({
+          level: 'error',
+          component: 'feed.sync',
+          context: expect.objectContaining({
+            trigger: 'scheduled',
+            errorCode: 'FEED_SYNC_FAILED',
+          }),
+        }),
+        expect.objectContaining({
+          level: 'error',
+          component: 'feed.sync',
+          context: expect.objectContaining({
+            trigger: 'scheduled',
+            errorCode: 'FEED_SYNC_FAILED',
+          }),
+        }),
+      ]);
+      expect(logRecords.find((record) => record.event === 'feed.sync.run.completed')).toEqual(
+        expect.objectContaining({
+          context: expect.objectContaining({
+            trigger: 'scheduled',
+            successCount: 1,
+            failureCount: 2,
+            newCount: 0,
+          }),
+        }),
+      );
+      expect(JSON.stringify(logRecords)).not.toContain('Network error');
     });
   });
 
@@ -140,7 +207,7 @@ describe('SyncCoordinator', () => {
       );
 
       // Start syncAll and cancel after a tick
-      const promise = coordinator.syncAll();
+      const promise = coordinator.syncAll('manual');
       await new Promise((r) => setTimeout(r, 10));
       coordinator.cancelAll();
 
@@ -161,7 +228,7 @@ describe('SyncCoordinator', () => {
           ),
       );
 
-      const promise = coordinator.syncFeed(addResult.feed.id);
+      const promise = coordinator.syncFeed(addResult.feed.id, 'manual');
       await new Promise((r) => setTimeout(r, 10));
       expect(coordinator.isFeedSyncing(addResult.feed.id)).toBe(true);
       await promise;

@@ -27,6 +27,9 @@ const CONTEXT_FIELD_TYPES = {
   taskRunId: 'number',
   providerId: 'number',
   count: 'number',
+  successCount: 'number',
+  failureCount: 'number',
+  newCount: 'number',
   durationMs: 'number',
   httpStatus: 'number',
   errorCode: 'string',
@@ -64,6 +67,9 @@ export interface StructuredLogContext {
   taskRunId?: number;
   providerId?: number;
   count?: number;
+  successCount?: number;
+  failureCount?: number;
+  newCount?: number;
   durationMs?: number;
   httpStatus?: number;
   errorCode?: string;
@@ -480,6 +486,15 @@ function assignContextField(
       return;
     case 'count':
       if (typeof value === 'number') context.count = value;
+      return;
+    case 'successCount':
+      if (typeof value === 'number') context.successCount = value;
+      return;
+    case 'failureCount':
+      if (typeof value === 'number') context.failureCount = value;
+      return;
+    case 'newCount':
+      if (typeof value === 'number') context.newCount = value;
       return;
     case 'durationMs':
       if (typeof value === 'number') context.durationMs = value;

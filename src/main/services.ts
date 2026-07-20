@@ -9,6 +9,7 @@ import {
   OPMLImportService,
   SyncCoordinator,
   SyncScheduler,
+  type FeedOperationLogger,
 } from './feed/services';
 import { OpenAICompatibleProvider } from './ai/provider/OpenAICompatibleProvider';
 import { ProviderProfileStore } from './ai/stores/ProviderProfileStore';
@@ -68,8 +69,9 @@ export function getSummaryService(): SummaryService | null {
  * Must be called before registerIpcHandlers.
  */
 export function initializeServices(
-  dbPath?: string,
-  secretStoragePath?: string,
+  dbPath: string | undefined,
+  secretStoragePath: string | undefined,
+  feedLogger: FeedOperationLogger,
 ): FeedServices {
   const dbManager = new DatabaseManager(dbPath);
   dbManager.runMigrations();
@@ -78,7 +80,7 @@ export function initializeServices(
   const entryStore = new EntryStore(dbManager.getDb());
   const contentStore = new ContentStore(dbManager.getDb());
 
-  const feedService = new FeedService(feedStore, entryStore);
+  const feedService = new FeedService(feedStore, entryStore, feedLogger);
   const contentService = new ContentService(contentStore, entryStore);
   const providerProfileStore = new ProviderProfileStore(dbManager.getDb());
   const summaryStore = new SummaryStore(dbManager.getDb());

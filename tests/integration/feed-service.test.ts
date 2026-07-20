@@ -5,7 +5,7 @@ import { EntryStore } from '../../src/main/feed/stores/EntryStore';
 import { FeedParserAdapter } from '../../src/main/feed/parser/FeedParserAdapter';
 import { buildTestDb } from '../fixtures/databases/feed-fixture';
 import type { IFeedParserAdapter } from '../../src/main/feed/parser/FeedParserAdapter';
-import type { ParsedFeed } from '../../src/shared/contracts/feed.types';
+import { createFeedLoggerSpy, type FeedLogRecord } from '../fixtures/feed-logger';
 
 // ── Helpers ──────────────────────────────────────────
 
@@ -45,13 +45,16 @@ describe('FeedService', () => {
   let feedStore: FeedStore;
   let entryStore: EntryStore;
   let parser: IFeedParserAdapter;
+  let logRecords: FeedLogRecord[];
 
   beforeEach(() => {
     const { db } = buildTestDb();
     feedStore = new FeedStore(db);
     entryStore = new EntryStore(db);
     parser = new FeedParserAdapter();
-    service = new FeedService(feedStore, entryStore, parser);
+    const feedLogger = createFeedLoggerSpy();
+    logRecords = feedLogger.records;
+    service = new FeedService(feedStore, entryStore, feedLogger.logger, parser);
   });
 
   describe('addFeed', () => {
@@ -84,14 +87,40 @@ describe('FeedService', () => {
       expect(result.feed.lastSyncStatus).toBe('success');
       expect(result.entries).toHaveLength(2);
       expect(result.entries[0].title).toBe('First Post');
+      expect(logRecords).toEqual([
+        expect.objectContaining({
+          level: 'info',
+          event: 'feed.add.completed',
+          component: 'feed.service',
+          context: expect.objectContaining({
+            feedId: result.feed.id,
+            success: true,
+          }),
+        }),
+      ]);
     });
 
     it('should reject feed fetch failure', async () => {
-      global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+      const canary = 'CANARY_NETWORK_ERROR_MUST_NOT_BE_LOGGED';
+      global.fetch = vi.fn().mockRejectedValue(new Error(canary));
 
       await expect(
         service.addFeed('https://unreachable.example.com/feed'),
       ).rejects.toMatchObject({ code: 'FEED_FETCH_FAILED' });
+
+      expect(logRecords).toEqual([
+        expect.objectContaining({
+          level: 'error',
+          event: 'feed.add.failed',
+          component: 'feed.service',
+          context: expect.objectContaining({
+            success: false,
+            errorCode: 'FEED_ADD_FAILED',
+          }),
+        }),
+      ]);
+      expect(JSON.stringify(logRecords)).not.toContain(canary);
+      expect(JSON.stringify(logRecords)).not.toContain('unreachable.example.com');
     });
 
     it('should reject HTTP error status', async () => {

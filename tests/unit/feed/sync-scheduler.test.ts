@@ -6,6 +6,7 @@ import { FeedStore } from '../../../src/main/feed/stores/FeedStore';
 import { EntryStore } from '../../../src/main/feed/stores/EntryStore';
 import { FeedParserAdapter } from '../../../src/main/feed/parser/FeedParserAdapter';
 import { buildTestDb } from '../../fixtures/databases/feed-fixture';
+import { createFeedLoggerSpy } from '../../fixtures/feed-logger';
 
 const MOCK_FEED_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
@@ -41,8 +42,9 @@ describe('SyncScheduler', () => {
     feedStore = new FeedStore(db);
     const entryStore = new EntryStore(db);
     const parser = new FeedParserAdapter();
-    feedService = new FeedService(feedStore, entryStore, parser);
-    coordinator = new SyncCoordinator(feedService, { maxConcurrency: 6 });
+    const feedLogger = createFeedLoggerSpy();
+    feedService = new FeedService(feedStore, entryStore, feedLogger.logger, parser);
+    coordinator = new SyncCoordinator(feedService, feedLogger.logger, { maxConcurrency: 6 });
     scheduler = new SyncScheduler(feedStore, coordinator, { intervalMin: 30 });
     global.fetch = mockFetch(200, MOCK_FEED_XML);
   });
@@ -71,6 +73,23 @@ describe('SyncScheduler', () => {
       scheduler.stop(); // Should be no-op
       expect(scheduler.isRunning).toBe(false);
     });
+
+    it('maps immediate and interval cycles to startup and scheduled triggers', async () => {
+      vi.useFakeTimers();
+      const syncAll = vi.spyOn(coordinator, 'syncAll').mockResolvedValue([]);
+
+      try {
+        scheduler.start();
+        await Promise.resolve();
+        expect(syncAll).toHaveBeenCalledWith('startup');
+
+        await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+        expect(syncAll).toHaveBeenCalledWith('scheduled');
+      } finally {
+        scheduler.stop();
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('setInterval', () => {
@@ -93,6 +112,16 @@ describe('SyncScheduler', () => {
       const results = await scheduler.triggerNow();
       expect(Array.isArray(results)).toBe(true);
       scheduler.stop();
+    });
+
+    it('maps an explicit scheduler trigger to the internal manual trigger', async () => {
+      const syncAll = vi.spyOn(coordinator, 'syncAll').mockResolvedValue([]);
+      scheduler.start();
+      await Promise.resolve();
+
+      await scheduler.triggerNow();
+
+      expect(syncAll).toHaveBeenLastCalledWith('manual');
     });
   });
 

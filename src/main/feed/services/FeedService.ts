@@ -1,7 +1,15 @@
-import type { Feed, EntryListItem, SyncStatus } from '../../../shared/contracts/feed.types';
+import { performance } from 'node:perf_hooks';
+import type { Feed, EntryListItem } from '../../../shared/contracts/feed.types';
 import { createFeedError } from '../../../shared/errors/feed.errors';
 import { FeedStore, EntryStore } from '../stores';
 import { FeedParserAdapter, type IFeedParserAdapter } from '../parser/FeedParserAdapter';
+import {
+  elapsedMilliseconds,
+  FEED_LOG_COMPONENTS,
+  FEED_LOG_EVENTS,
+  logFeedOperation,
+  type FeedOperationLogger,
+} from './FeedLogging';
 
 export interface SyncResult {
   feed: Feed;
@@ -17,6 +25,7 @@ export class FeedService {
   constructor(
     feedStore: FeedStore,
     entryStore: EntryStore,
+    private readonly logger: FeedOperationLogger,
     parser?: IFeedParserAdapter,
   ) {
     this.feedStore = feedStore;
@@ -28,78 +37,95 @@ export class FeedService {
    * Add a feed by URL: fetch, parse, persist, and sync entries.
    */
   async addFeed(url: string): Promise<{ feed: Feed; entries: EntryListItem[] }> {
-    // 1. Validate URL
-    if (!this.isValidUrl(url)) {
-      throw createFeedError('FEED_INVALID_URL', 'Invalid feed URL format', false);
-    }
-
-    // 2. Check duplicate
-    const existing = this.feedStore.findByUrl(url);
-    if (existing) {
-      throw createFeedError(
-        'FEED_DUPLICATE',
-        'This feed has already been added',
-        false,
-      );
-    }
-
-    // 3. Fetch feed XML/JSON
-    let xml: string;
+    const startedAt = performance.now();
     try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Shale/1.0 Feed Reader',
-          Accept: 'application/rss+xml, application/atom+xml, application/feed+json, application/xml, text/xml',
-        },
-        signal: AbortSignal.timeout(30_000),
-      });
+      // 1. Validate URL
+      if (!this.isValidUrl(url)) {
+        throw createFeedError('FEED_INVALID_URL', 'Invalid feed URL format', false);
+      }
 
-      if (!response.ok) {
+      // 2. Check duplicate
+      const existing = this.feedStore.findByUrl(url);
+      if (existing) {
+        throw createFeedError(
+          'FEED_DUPLICATE',
+          'This feed has already been added',
+          false,
+        );
+      }
+
+      // 3. Fetch feed XML/JSON
+      let xml: string;
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Shale/1.0 Feed Reader',
+            Accept: 'application/rss+xml, application/atom+xml, application/feed+json, application/xml, text/xml',
+          },
+          signal: AbortSignal.timeout(30_000),
+        });
+
+        if (!response.ok) {
+          throw createFeedError(
+            'FEED_FETCH_FAILED',
+            `HTTP ${response.status}: ${response.statusText}`,
+            true,
+          );
+        }
+
+        xml = await response.text();
+      } catch (error) {
         throw createFeedError(
           'FEED_FETCH_FAILED',
-          `HTTP ${response.status}: ${response.statusText}`,
+          error instanceof Error ? error.message : 'Failed to fetch feed',
           true,
         );
       }
 
-      xml = await response.text();
+      // 4. Parse
+      let parsed;
+      try {
+        parsed = await this.parser.parse(xml, url);
+      } catch (error) {
+        throw createFeedError(
+          'FEED_PARSE_FAILED',
+          error instanceof Error ? error.message : 'Failed to parse feed',
+          false,
+        );
+      }
+
+      // 5. Create feed record
+      const feed = this.feedStore.create({
+        title: parsed.title,
+        feedURL: url,
+        siteURL: parsed.siteUrl,
+      });
+
+      // 6. Sync entries
+      const result = this.syncEntries(feed.id, parsed.entries);
+
+      // 7. Update sync status
+      this.feedStore.updateSyncStatus(feed.id, 'success');
+      const completedFeed = this.feedStore.findById(feed.id)!;
+      const response = {
+        feed: completedFeed,
+        entries: result.entries,
+      };
+
+      logFeedOperation(this.logger, 'info', FEED_LOG_EVENTS.addCompleted, FEED_LOG_COMPONENTS.service, {
+        feedId: completedFeed.id,
+        durationMs: elapsedMilliseconds(startedAt),
+        success: true,
+      });
+      return response;
     } catch (error) {
-      throw createFeedError(
-        'FEED_FETCH_FAILED',
-        error instanceof Error ? error.message : 'Failed to fetch feed',
-        true,
-      );
+      logFeedOperation(this.logger, 'error', FEED_LOG_EVENTS.addFailed, FEED_LOG_COMPONENTS.service, {
+        durationMs: elapsedMilliseconds(startedAt),
+        success: false,
+        errorCode: 'FEED_ADD_FAILED',
+      });
+      throw error;
     }
-
-    // 4. Parse
-    let parsed;
-    try {
-      parsed = await this.parser.parse(xml, url);
-    } catch (error) {
-      throw createFeedError(
-        'FEED_PARSE_FAILED',
-        error instanceof Error ? error.message : 'Failed to parse feed',
-        false,
-      );
-    }
-
-    // 5. Create feed record
-    const feed = this.feedStore.create({
-      title: parsed.title,
-      feedURL: url,
-      siteURL: parsed.siteUrl,
-    });
-
-    // 6. Sync entries
-    const result = this.syncEntries(feed.id, parsed.entries);
-
-    // 7. Update sync status
-    this.feedStore.updateSyncStatus(feed.id, 'success');
-
-    return {
-      feed: this.feedStore.findById(feed.id)!,
-      entries: result.entries,
-    };
   }
 
   /**
@@ -301,4 +327,3 @@ export class FeedService {
     }
   }
 }
-
