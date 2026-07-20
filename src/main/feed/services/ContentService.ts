@@ -1,8 +1,9 @@
-import type { CleanedContent, PipelineStatus } from '../../../shared/contracts/content.types';
+import type { CleanedContent } from '../../../shared/contracts/content.types';
 import { ContentFetcher } from '../fetcher/ContentFetcher';
 import { ContentCleaner } from '../fetcher/ContentCleaner';
 import { MarkdownConverter } from '../fetcher/MarkdownConverter';
 import { ContentStore, EntryStore } from '../stores';
+import { ContentSegmenter } from './ContentSegmenter';
 
 export class ContentService {
   private contentStore: ContentStore;
@@ -10,6 +11,7 @@ export class ContentService {
   private fetcher: ContentFetcher;
   private cleaner: ContentCleaner;
   private markdownConverter: MarkdownConverter;
+  private segmenter: ContentSegmenter;
 
   constructor(
     contentStore: ContentStore,
@@ -17,12 +19,14 @@ export class ContentService {
     fetcher?: ContentFetcher,
     cleaner?: ContentCleaner,
     markdownConverter?: MarkdownConverter,
+    segmenter?: ContentSegmenter,
   ) {
     this.contentStore = contentStore;
     this.entryStore = entryStore;
     this.fetcher = fetcher ?? new ContentFetcher();
     this.cleaner = cleaner ?? new ContentCleaner();
     this.markdownConverter = markdownConverter ?? new MarkdownConverter();
+    this.segmenter = segmenter ?? new ContentSegmenter();
   }
 
   /**
@@ -65,8 +69,12 @@ export class ContentService {
       this.contentStore.updatePipelineStatus(entryId, 'converting');
       const markdown = this.markdownConverter.convert(cleanResult.content);
 
-      // Simple content hash for caching
-      const sourceContentHash = this.hashString(fetchResult.body);
+      const readerTitle = entry.title ?? cleanResult.title;
+      const readerByline = entry.author ?? cleanResult.byline;
+      const segmentedContent = this.segmenter.segment(cleanResult.content, {
+        title: readerTitle,
+        byline: readerByline,
+      });
 
       // Persist
       this.contentStore.upsert({
@@ -79,28 +87,32 @@ export class ContentService {
         readabilityByline: cleanResult.byline,
         documentBaseURL: cleanResult.documentBaseURL,
         pipelineStatus: 'success',
-        segmenterVersion: 'v1',
-        sourceContentHash,
+        segmenterVersion: segmentedContent.segmenterVersion,
+        sourceContentHash: segmentedContent.sourceContentHash,
+        segments: segmentedContent.segments,
       });
 
       // Update entry contentHash
       this.entryStore.createOrUpdate({
         feedId: entry.feedId,
         guid: entry.guid,
-        contentHash: sourceContentHash,
+        contentHash: segmentedContent.sourceContentHash,
       });
 
       return {
         entryId,
         sourceUrl: fetchResult.url,
+        readerTitle,
+        readerByline,
         html: fetchResult.body,
         cleanedHtml: cleanResult.content,
         markdown: markdown,
         readabilityTitle: cleanResult.title,
         readabilityByline: cleanResult.byline,
         pipelineStatus: 'success',
-        segmenterVersion: 'v1',
-        sourceContentHash,
+        segmenterVersion: segmentedContent.segmenterVersion,
+        sourceContentHash: segmentedContent.sourceContentHash,
+        segments: segmentedContent.segments,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -127,15 +139,5 @@ export class ContentService {
       pipelineStatus: 'failed',
       pipelineError: error,
     };
-  }
-
-  private hashString(str: string): string {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash |= 0; // Convert to 32bit integer
-    }
-    return Math.abs(hash).toString(16);
   }
 }

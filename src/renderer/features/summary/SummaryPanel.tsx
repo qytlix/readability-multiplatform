@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import type { ProviderProfile } from '../../../shared/contracts/provider.types';
 import type {
   SummaryDetailLevel,
@@ -6,25 +13,34 @@ import type {
   SummaryStreamEvent,
   SummaryTargetLanguage,
 } from '../../../shared/contracts/summary.types';
-import { ProviderSettings } from './ProviderSettings';
 
 interface SummaryPanelProps {
   entryId: number;
   isContentReady: boolean;
+  targetLanguage: SummaryTargetLanguage;
+  detailLevel: SummaryDetailLevel;
+  onGeneratingChange: (isGenerating: boolean) => void;
+  onVisibleChange: (isVisible: boolean) => void;
 }
 
-const DEFAULT_LANGUAGE: SummaryTargetLanguage = 'zh-CN';
-const DEFAULT_DETAIL_LEVEL: SummaryDetailLevel = 'medium';
+export interface SummaryPanelHandle {
+  activate: () => void;
+}
 
-export const SummaryPanel = ({ entryId, isContentReady }: SummaryPanelProps) => {
-  const [targetLanguage, setTargetLanguage] = useState<SummaryTargetLanguage>(DEFAULT_LANGUAGE);
-  const [detailLevel, setDetailLevel] = useState<SummaryDetailLevel>(DEFAULT_DETAIL_LEVEL);
+export const SummaryPanel = forwardRef<SummaryPanelHandle, SummaryPanelProps>(({
+  entryId,
+  isContentReady,
+  targetLanguage,
+  detailLevel,
+  onGeneratingChange,
+  onVisibleChange,
+}, ref) => {
   const [summaryState, setSummaryState] = useState<SummaryState>({ state: 'idle' });
   const [profile, setProfile] = useState<ProviderProfile | null>(null);
   const [streamedText, setStreamedText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
   const [message, setMessage] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
   const activeRunIdRef = useRef<number | null>(null);
 
   const loadState = useCallback(async () => {
@@ -63,6 +79,7 @@ export const SummaryPanel = ({ entryId, isContentReady }: SummaryPanelProps) => 
     activeRunIdRef.current = null;
     setStreamedText('');
     setIsGenerating(false);
+    setIsVisible(false);
     void loadState();
   }, [loadState]);
 
@@ -97,11 +114,13 @@ export const SummaryPanel = ({ entryId, isContentReady }: SummaryPanelProps) => 
     return unsubscribe;
   }, [detailLevel, entryId, loadState, targetLanguage]);
 
-  const generate = async () => {
+  const generate = useCallback(async (): Promise<void> => {
     if (!profile || !profile.hasApiKey) {
-      setShowSettings(true);
+      setIsVisible(true);
+      setMessage('Configure an AI provider in Settings before generating a Summary.');
       return;
     }
+    setIsVisible(true);
     setMessage('');
     setStreamedText('');
     try {
@@ -123,9 +142,29 @@ export const SummaryPanel = ({ entryId, isContentReady }: SummaryPanelProps) => 
     } catch {
       setMessage('Unable to start Summary generation.');
     }
-  };
+  }, [detailLevel, entryId, loadState, profile, targetLanguage]);
 
-  const hasFreshSummary = summaryState.state === 'succeeded' && summaryState.freshness === 'fresh';
+  const hasFreshSummary = summaryState.state === 'succeeded'
+    && summaryState.freshness === 'fresh';
+
+  const activate = useCallback((): void => {
+    if (hasFreshSummary) {
+      setIsVisible((current) => !current);
+      return;
+    }
+    void generate();
+  }, [generate, hasFreshSummary]);
+
+  useImperativeHandle(ref, () => ({ activate }), [activate]);
+
+  useEffect(() => {
+    onGeneratingChange(isGenerating);
+  }, [isGenerating, onGeneratingChange]);
+
+  useEffect(() => {
+    onVisibleChange(isVisible);
+  }, [isVisible, onVisibleChange]);
+
   const summaryText = isGenerating
     ? streamedText
     : summaryState.state === 'succeeded'
@@ -134,64 +173,20 @@ export const SummaryPanel = ({ entryId, isContentReady }: SummaryPanelProps) => 
 
   return (
     <>
-      <section className="summary-panel" aria-labelledby="summary-title">
-        <div className="summary-panel-header">
-          <div>
-            <p className="summary-panel-eyebrow">AI reading aid</p>
-            <h3 id="summary-title">Summary</h3>
-          </div>
-          <button type="button" className="summary-settings-button" onClick={() => setShowSettings(true)}>
-            Provider settings
-          </button>
-        </div>
-
-        {!isContentReady ? (
-          <p className="summary-panel-muted">A Summary becomes available after the article content is ready.</p>
-        ) : (
-          <>
-            <div className="summary-controls">
-              <label>
-                Language
-                <select value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value as SummaryTargetLanguage)} disabled={isGenerating}>
-                  <option value="zh-CN">简体中文</option>
-                  <option value="en">English</option>
-                </select>
-              </label>
-              <label>
-                Detail
-                <select value={detailLevel} onChange={(event) => setDetailLevel(event.target.value as SummaryDetailLevel)} disabled={isGenerating}>
-                  <option value="short">Brief</option>
-                  <option value="medium">Medium</option>
-                  <option value="detailed">Detailed</option>
-                </select>
-              </label>
-              <button type="button" className="summary-generate-button" onClick={() => void generate()} disabled={isGenerating || hasFreshSummary}>
-                {isGenerating ? 'Generating…' : hasFreshSummary ? 'Saved' : summaryState.state === 'succeeded' ? 'Regenerate' : 'Generate summary'}
-              </button>
-            </div>
-
-            {summaryState.state === 'failed' && (
-              <p className="summary-panel-error">{summaryState.run.error?.message ?? 'Summary generation failed.'}</p>
-            )}
-            {summaryState.state === 'succeeded' && summaryState.freshness === 'stale' && (
-              <p className="summary-panel-stale">The article changed after this Summary was generated. Regenerate to update it.</p>
-            )}
-            {message && <p className="summary-panel-error" role="status">{message}</p>}
-            {isGenerating && !streamedText && <p className="summary-panel-muted">Waiting for the provider…</p>}
-            {summaryText && <div className="summary-panel-content">{summaryText}</div>}
-          </>
-        )}
-      </section>
-
-      {showSettings && (
-        <ProviderSettings
-          profile={profile}
-          onClose={() => setShowSettings(false)}
-          onSaved={(savedProfile) => {
-            setProfile(savedProfile);
-          }}
-        />
+      {isVisible && (summaryText || message || summaryState.state === 'failed') && (
+        <section id="summary-result" className="summary-result" aria-label="Summary" aria-live="polite">
+          {summaryState.state === 'failed' && (
+            <p className="entry-detail-ai-error">
+              {summaryState.run.error?.message ?? 'Summary generation failed.'}
+            </p>
+          )}
+          {message && <p className="entry-detail-ai-error" role="status">{message}</p>}
+          {summaryText && <div className="summary-result-content">{summaryText}</div>}
+        </section>
       )}
+
     </>
   );
-};
+});
+
+SummaryPanel.displayName = 'SummaryPanel';

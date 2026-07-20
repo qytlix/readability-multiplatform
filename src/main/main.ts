@@ -3,7 +3,13 @@ import { env } from 'node:process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
-import { initializeServices, getSyncScheduler, getSummaryService } from './services';
+import {
+  getSummaryService,
+  getInlineTranslationService,
+  getTranslationService,
+  getSyncScheduler,
+  initializeServices,
+} from './services';
 import { registerIpcHandlers } from './ipc';
 import { getApplicationMenuTemplate } from './application-menu';
 import { installMainWindowNavigationGuards } from './navigation-guards';
@@ -26,6 +32,10 @@ let mainWindow: BrowserWindow | null = null;
 const linuxWindowIconPath = app.isPackaged
   ? path.join(process.resourcesPath, 'shale-app-icon-512.png')
   : path.join(__dirname, '../../assets/icons/linux/shale-app-icon-512.png');
+
+const terminologyDbPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'terminology.sqlite')
+  : path.join(__dirname, '../../resources/terminology/terminology.sqlite');
 
 const createWindow = (): void => {
   const applicationUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
@@ -75,7 +85,7 @@ app.on('ready', () => {
   // Initialize database with persistent path
   const dbPath = path.join(app.getPath('userData'), 'shale.db');
   const secretStoragePath = path.join(app.getPath('userData'), 'ai-secrets.json');
-  initializeServices(dbPath, secretStoragePath);
+  initializeServices(dbPath, secretStoragePath, terminologyDbPath);
   registerIpcHandlers(() => mainWindow);
   createWindow();
 
@@ -85,6 +95,8 @@ app.on('ready', () => {
 app.on('before-quit', () => {
   getSyncScheduler()?.stop();
   getSummaryService()?.abortActiveRun();
+  getInlineTranslationService()?.close();
+  getTranslationService()?.close();
 });
 
 app.on('window-all-closed', () => {

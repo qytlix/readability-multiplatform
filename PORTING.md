@@ -164,7 +164,7 @@ Database rules:
 - Close the database during orderly application shutdown and before an updater replaces files.
 - Preserve notes, read state, tags, summaries, translations, usage records, and task checkpoints across restarts.
 
-`better-sqlite3` is a native Node module. It must be rebuilt for Electron's ABI and for every target OS and CPU architecture. Electron Forge integrates Electron rebuild support, but each release artifact must still be produced and tested on its native operating system.
+`better-sqlite3` is a native Node module. It must be rebuilt for Electron's ABI and for every target OS and CPU architecture. A Node-targeted `npm rebuild` replaces the Electron binary with an incompatible ABI, so Vitest runs through Electron's Node mode and the project keeps one Electron-targeted binary for development, tests, and packaging. `npm start` verifies a real Electron SQLite load before launching, while `npm ci` / `npm install` run the Electron rebuild and the same load probe. Each release artifact must still be produced and tested on its native operating system.
 
 Do not assume that a package created on Linux proves that the Windows native module is valid.
 
