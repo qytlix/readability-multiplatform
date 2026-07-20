@@ -70,7 +70,12 @@ export class ContentService {
       this.contentStore.updatePipelineStatus(entryId, 'converting');
       const markdown = this.markdownConverter.convert(cleanResult.content);
 
-      const segmentedContent = this.segmenter.segment(cleanResult.content);
+      const readerTitle = entry.title ?? cleanResult.title;
+      const readerByline = entry.author ?? cleanResult.byline;
+      const segmentedContent = this.segmenter.segment(cleanResult.content, {
+        title: readerTitle,
+        byline: readerByline,
+      });
 
       // Persist
       this.contentStore.upsert({
@@ -98,6 +103,8 @@ export class ContentService {
       return {
         entryId,
         sourceUrl: fetchResult.url,
+        readerTitle,
+        readerByline,
         html: fetchResult.body,
         cleanedHtml: cleanResult.content,
         markdown: markdown,

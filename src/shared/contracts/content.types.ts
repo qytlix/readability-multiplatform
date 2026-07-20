@@ -7,8 +7,15 @@ export type PipelineStatus =
   | 'success'
   | 'failed';
 
-/** Stable Reader block kinds supported by Translation. */
-export type ContentSegmentType = 'p' | 'ul' | 'ol';
+/** Stable Reader block roles supported by Translation. */
+export type ContentSegmentType =
+  | 'title'
+  | 'byline'
+  | 'heading'
+  | 'paragraph'
+  | 'list'
+  | 'blockquote'
+  | 'caption';
 
 /**
  * A deterministic, sanitized Reader block. Consumers use this contract rather
@@ -26,6 +33,9 @@ export interface ContentSegment {
 export interface CleanedContent {
   entryId: number;
   sourceUrl: string;
+  /** Metadata currently used by Reader, sourced from the persisted Entry. */
+  readerTitle?: string;
+  readerByline?: string;
   /** 原始 HTML（从目标网页 fetch 回来的未经清洗的 HTML） */
   html?: string;
   /** Readability 清洗后的纯净 HTML */

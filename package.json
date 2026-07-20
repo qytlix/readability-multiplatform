@@ -20,9 +20,8 @@
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "typecheck": "tsc --noEmit",
-    "pretest": "npm rebuild better-sqlite3 && node scripts/remove-forge-native-metadata.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "node scripts/run-vitest-in-electron.mjs run",
+    "test:watch": "node scripts/run-vitest-in-electron.mjs"
   },
   "keywords": [],
   "license": "MIT",

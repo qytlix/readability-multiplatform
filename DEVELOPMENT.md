@@ -39,6 +39,10 @@ npm run lint
 npm test
 ```
 
+测试通过 Electron 的 Node 模式运行 Vitest，因此测试与应用共用 Electron ABI，
+不会在测试后覆盖 `better-sqlite3` 的原生二进制。不要绕过 `npm test` 直接调用
+`vitest`；普通 Node.js 无法加载为 Electron 编译的 `better-sqlite3`。
+
 ## Start
 
 ```bash
@@ -47,7 +51,7 @@ npm start
 
 `npm start`（以及 Forge 的 package/make）会按 Electron ABI 检查
 `better-sqlite3`；只有检测到 ABI 不匹配时才重建。因此在更新依赖、切换 Electron
-版本或运行测试后都可以直接启动，而正常启动不需要重复编译。
+版本后都可以直接启动，而正常启动和运行测试都不需要重复编译。
 如果曾使用 `--ignore-scripts` 安装依赖，先运行：
 
 ```bash

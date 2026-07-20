@@ -43,6 +43,8 @@ interface ContentRow {
   segmentsJson: string | null;
   createdAt: string;
   updatedAt: string;
+  readerTitle: string | null;
+  readerByline: string | null;
 }
 
 export class ContentStore {
@@ -50,7 +52,12 @@ export class ContentStore {
 
   findByEntry(entryId: number): CleanedContent | undefined {
     const row = this.db
-      .prepare('SELECT * FROM entry_content WHERE entryId = ?')
+      .prepare(`
+        SELECT entry_content.*, entry.title AS readerTitle, entry.author AS readerByline
+        FROM entry_content
+        JOIN entry ON entry.id = entry_content.entryId
+        WHERE entry_content.entryId = ?
+      `)
       .get(entryId) as ContentRow | undefined;
 
     if (!row) return undefined;
@@ -58,6 +65,8 @@ export class ContentStore {
     return {
       entryId: row.entryId,
       sourceUrl: row.sourceUrl ?? '',
+      readerTitle: row.readerTitle ?? row.readabilityTitle ?? undefined,
+      readerByline: row.readerByline ?? row.readabilityByline ?? undefined,
       html: row.html ?? undefined,
       cleanedHtml: row.cleanedHtml ?? '',
       markdown: row.markdown ?? '',
@@ -195,5 +204,11 @@ function isContentSegment(value: unknown): value is ContentSegment {
 }
 
 function isContentSegmentType(value: unknown): value is ContentSegmentType {
-  return value === 'p' || value === 'ul' || value === 'ol';
+  return value === 'title'
+    || value === 'byline'
+    || value === 'heading'
+    || value === 'paragraph'
+    || value === 'list'
+    || value === 'blockquote'
+    || value === 'caption';
 }

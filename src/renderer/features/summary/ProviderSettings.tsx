@@ -9,8 +9,9 @@ import {
 
 interface ProviderSettingsProps {
   profile: ProviderProfile | null;
-  onClose: () => void;
   onSaved: (profile: ProviderProfile) => void;
+  mode?: 'dialog' | 'embedded';
+  onClose?: () => void;
 }
 
 /**
@@ -27,8 +28,9 @@ export function replaceApiKeyInputValue(
 
 export const ProviderSettings = ({
   profile,
-  onClose,
   onSaved,
+  mode = 'dialog',
+  onClose,
 }: ProviderSettingsProps) => {
   const [baseUrl, setBaseUrl] = useState(profile?.baseUrl ?? 'https://api.openai.com/v1');
   const [model, setModel] = useState<GptSummaryModel>(toSelectableModel(profile?.model));
@@ -71,7 +73,7 @@ export const ProviderSettings = ({
     }
   };
 
-  const testConnection = async () => {
+  const testConnection = async (): Promise<void> => {
     setSaving(true);
     setStatus('');
     try {
@@ -84,7 +86,7 @@ export const ProviderSettings = ({
     }
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     await save();
   };
@@ -92,7 +94,7 @@ export const ProviderSettings = ({
   const hasApiKey = profile?.hasApiKey ?? false;
   const usesInsecureStorage = profile?.keyStorageMode === 'insecure';
 
-  const handleApiKeyPaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+  const handleApiKeyPaste = (event: React.ClipboardEvent<HTMLInputElement>): void => {
     event.preventDefault();
     replaceApiKeyInputValue(
       event.currentTarget,
@@ -100,76 +102,98 @@ export const ProviderSettings = ({
     );
   };
 
+  const titleId = `provider-settings-title-${mode}`;
+  const content = (
+    <>
+      <header className="provider-settings-header">
+        <div>
+          <p className="provider-settings-eyebrow">AI configuration</p>
+          <h2 id={titleId}>Provider</h2>
+        </div>
+        {mode === 'dialog' && (
+          <button
+            type="button"
+            className="provider-settings-close"
+            onClick={onClose}
+            aria-label="Close settings"
+          >
+            ×
+          </button>
+        )}
+      </header>
+      <form onSubmit={handleSubmit}>
+        <label>
+          Provider base URL
+          <input
+            value={baseUrl}
+            onChange={(event) => setBaseUrl(event.target.value)}
+            placeholder="https://api.openai.com/v1"
+            inputMode="url"
+            required
+          />
+        </label>
+        <label>
+          Model
+          <select
+            value={model}
+            onChange={(event) => setModel(event.target.value as GptSummaryModel)}
+            required
+          >
+            {GPT_SUMMARY_MODEL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          API key {hasApiKey ? <span>(leave empty to keep the current key)</span> : null}
+          <input
+            ref={apiKeyInputRef}
+            type="password"
+            name="provider-api-key"
+            autoComplete="new-password"
+            spellCheck={false}
+            data-1p-ignore="true"
+            data-lpignore="true"
+            onPaste={handleApiKeyPaste}
+            required={!hasApiKey}
+          />
+        </label>
+        <p className="provider-settings-note">
+          {usesInsecureStorage
+            ? 'Secure operating-system key storage is unavailable. The API key is kept in a local file without encryption.'
+            : 'The key is sent only to the Main process and stored using operating-system encryption when available.'}
+        </p>
+        {status && <p className="provider-settings-status" role="status">{status}</p>}
+        <footer className="provider-settings-actions">
+          <button type="button" onClick={() => void testConnection()} disabled={saving || !hasApiKey}>
+            Test connection
+          </button>
+          <button type="submit" className="provider-settings-save" disabled={saving}>
+            {saving ? 'Saving...' : 'Save provider'}
+          </button>
+        </footer>
+      </form>
+    </>
+  );
+
+  if (mode === 'embedded') {
+    return (
+      <section className="settings-card provider-settings-embedded" aria-labelledby={titleId}>
+        {content}
+      </section>
+    );
+  }
+
   return (
     <div className="provider-settings-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         className="provider-settings-dialog"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="provider-settings-title"
+        aria-labelledby={titleId}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="provider-settings-header">
-          <div>
-            <p className="provider-settings-eyebrow">Summary</p>
-            <h2 id="provider-settings-title">AI provider</h2>
-          </div>
-          <button type="button" className="provider-settings-close" onClick={onClose} aria-label="Close settings">
-            ×
-          </button>
-        </header>
-        <form onSubmit={handleSubmit}>
-          <label>
-            Provider base URL
-            <input
-              value={baseUrl}
-              onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder="https://api.openai.com/v1"
-              inputMode="url"
-              required
-            />
-          </label>
-          <label>
-            Model
-            <select
-              value={model}
-              onChange={(event) => setModel(event.target.value as GptSummaryModel)}
-              required
-            >
-              {GPT_SUMMARY_MODEL_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            API key {hasApiKey ? <span>(leave empty to keep the current key)</span> : null}
-            <input
-              ref={apiKeyInputRef}
-              type="password"
-              name="provider-api-key"
-              autoComplete="new-password"
-              spellCheck={false}
-              data-1p-ignore="true"
-              data-lpignore="true"
-              onPaste={handleApiKeyPaste}
-              required={!hasApiKey}
-            />
-          </label>
-          <p className="provider-settings-note">
-            {usesInsecureStorage
-              ? 'Secure operating-system key storage is unavailable. The API key is kept in a local file without encryption.'
-              : 'The key is sent only to the Main process and stored using operating-system encryption when available.'}
-          </p>
-          {status && <p className="provider-settings-status" role="status">{status}</p>}
-          <footer className="provider-settings-actions">
-            <button type="button" onClick={() => void testConnection()} disabled={saving || !hasApiKey}>
-              Test connection
-            </button>
-            <button type="submit" className="provider-settings-save" disabled={saving}>
-              {saving ? 'Saving…' : 'Save provider'}
-            </button>
-          </footer>
-        </form>
+        {content}
       </section>
     </div>
   );

@@ -9,7 +9,10 @@ import { SUMMARY_IPC_CHANNELS } from '../shared/contracts/summary.ipc';
 import type { SaveProviderRequest } from '../shared/contracts/provider.types';
 import type { SummaryStreamEvent } from '../shared/contracts/summary.types';
 import { TRANSLATION_IPC_CHANNELS } from '../shared/contracts/translation.ipc';
-import type { TranslationStreamEvent } from '../shared/contracts/translation.types';
+import type {
+  InlineTranslationRequest,
+  TranslationStreamEvent,
+} from '../shared/contracts/translation.types';
 
 const ping = (): Promise<PingResponse> =>
   ipcRenderer.invoke(IPC_CHANNELS.systemPing);
@@ -111,6 +114,8 @@ const summaryAPI = {
 };
 
 const translationAPI = {
+  getTerminologyInfo: () =>
+    ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.terminologyInfo),
   get: (request: {
     entryId: number;
     targetLanguage: 'zh-CN' | 'en';
@@ -119,6 +124,14 @@ const translationAPI = {
     entryId: number;
     targetLanguage: 'zh-CN' | 'en';
   }) => ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationGenerate, request),
+  translateInline: (request: InlineTranslationRequest) =>
+    ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.inlineTranslate, request),
+  prioritize: (request: {
+    runId: number;
+    entryId: number;
+    targetLanguage: 'zh-CN' | 'en';
+    sourceSegmentIds: string[];
+  }) => ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationPrioritize, request),
   onEvent: (listener: (event: TranslationStreamEvent) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, event: TranslationStreamEvent) => {
       listener(event);

@@ -7,6 +7,7 @@ import {
   type OpenDialogOptions,
 } from 'electron';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { IPC_CHANNELS, type PingResponse } from '../shared/ipc';
 import { FEED_IPC_CHANNELS } from '../shared/contracts/feed.ipc';
 import {
@@ -32,7 +33,12 @@ import { SecretStore } from './ai/SecretStore';
 import { SummaryService } from './ai/SummaryService';
 import { SummaryStore } from './ai/SummaryStore';
 import { TranslationService } from './ai/TranslationService';
+import { InlineTranslationService } from './ai/InlineTranslationService';
 import { TranslationStore } from './ai/TranslationStore';
+import {
+  EmptyTerminologyLookup,
+  TerminologyStore,
+} from './ai/TerminologyStore';
 import {
   registerSummaryIpcHandlers,
   type SummaryServices,
@@ -81,6 +87,11 @@ export function getTranslationService(): TranslationService | null {
   return translationServices?.translationService ?? null;
 }
 
+/** Returns the one-shot inline Translation runtime for shutdown cleanup. */
+export function getInlineTranslationService(): InlineTranslationService | null {
+  return translationServices?.inlineTranslationService ?? null;
+}
+
 /**
  * Initialize the database, run migrations, and create service instances.
  * Must be called before registerIpcHandlers.
@@ -88,6 +99,7 @@ export function getTranslationService(): TranslationService | null {
 export function initializeServices(
   dbPath?: string,
   secretStoragePath?: string,
+  terminologyDbPath?: string,
 ): FeedServices {
   const dbManager = new DatabaseManager(dbPath);
   dbManager.runMigrations();
@@ -108,6 +120,9 @@ export function initializeServices(
     safeStorage,
   );
   const provider = new OpenAICompatibleProvider();
+  const terminologyLookup = terminologyDbPath && existsSync(terminologyDbPath)
+    ? new TerminologyStore(terminologyDbPath)
+    : new EmptyTerminologyLookup();
   const providerService = new ProviderService(
     providerProfileStore,
     secretStore,
@@ -126,6 +141,13 @@ export function initializeServices(
     secretStore,
     translationStore,
     provider,
+    undefined,
+    terminologyLookup,
+  );
+  const inlineTranslationService = new InlineTranslationService(
+    providerProfileStore,
+    secretStore,
+    provider,
   );
 
   feedServices = {
@@ -140,7 +162,7 @@ export function initializeServices(
     opmlExportService: new OPMLExportService(feedStore),
   };
   summaryServices = { providerService, summaryService };
-  translationServices = { translationService };
+  translationServices = { translationService, inlineTranslationService };
   return feedServices;
 }
 

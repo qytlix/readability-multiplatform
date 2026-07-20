@@ -24,6 +24,7 @@ export class OpenAICompatibleProvider implements SummaryProvider {
           messages: [{ role: 'user', content: request.prompt }],
         },
       );
+      request.onTiming?.('response-headers');
 
       if (!response.body) {
         throw new SummaryError(
@@ -36,6 +37,7 @@ export class OpenAICompatibleProvider implements SummaryProvider {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let pending = '';
+      let receivedFirstDelta = false;
 
       while (true) {
         let chunk: ReadableStreamReadResult<Uint8Array>;
@@ -69,12 +71,21 @@ export class OpenAICompatibleProvider implements SummaryProvider {
         pending = lines.pop() ?? '';
         for (const line of lines) {
           const delta = parseStreamDelta(line);
-          if (delta) yield delta;
+          if (delta) {
+            if (!receivedFirstDelta) {
+              receivedFirstDelta = true;
+              request.onTiming?.('first-delta');
+            }
+            yield delta;
+          }
         }
       }
 
       const finalDelta = parseStreamDelta(pending);
-      if (finalDelta) yield finalDelta;
+      if (finalDelta) {
+        if (!receivedFirstDelta) request.onTiming?.('first-delta');
+        yield finalDelta;
+      }
     } catch (error) {
       if (timedOut) {
         throw new SummaryError(

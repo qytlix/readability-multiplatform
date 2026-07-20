@@ -18,8 +18,16 @@ import {
   getFloatingReaderHeaderAction,
   shouldRevealFloatingReaderHeaderAtWindowTop,
 } from './readerHeaderVisibility';
-import { SummaryPanel } from '../summary/SummaryPanel';
-import { TranslationPanel } from '../translation/TranslationPanel';
+import {
+  SummaryPanel,
+  type SummaryPanelHandle,
+} from '../summary/SummaryPanel';
+import {
+  TranslationPanel,
+  type TranslationPanelHandle,
+} from '../translation/TranslationPanel';
+import type { AiPreferences } from '../settings/aiPreferences';
+import { InlineTranslationOverlay } from '../translation/InlineTranslationOverlay';
 
 interface EntryDetailProps {
   entry: Entry | null;
@@ -32,6 +40,7 @@ interface EntryDetailProps {
   onAddFeed: () => void;
   onRetryFeeds: () => void;
   onRetryEntries: () => void;
+  aiPreferences: AiPreferences;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -49,16 +58,25 @@ export const EntryDetail = ({
   onAddFeed,
   onRetryFeeds,
   onRetryEntries,
+  aiPreferences,
 }: EntryDetailProps) => {
   const [content, setContent] = useState<CleanedContent | null>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
   const [error, setError] = useState('');
   const [linkError, setLinkError] = useState('');
   const [showRaw, setShowRaw] = useState(false);
+  const [isSummaryGenerating, setIsSummaryGenerating] = useState(false);
+  const [isSummaryVisible, setIsSummaryVisible] = useState(false);
+  const [isTranslationGenerating, setIsTranslationGenerating] = useState(false);
+  const [isTitleTranslating, setIsTitleTranslating] = useState(false);
+  const [isBilingualVisible, setIsBilingualVisible] = useState(false);
   const [isFloatingHeaderVisible, setIsFloatingHeaderVisible] = useState(false);
   const prevEntryId = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const flowHeaderRef = useRef<HTMLDivElement>(null);
+  const summaryPanelRef = useRef<SummaryPanelHandle>(null);
+  const translationPanelRef = useRef<TranslationPanelHandle>(null);
   const currentScrollTopRef = useRef(0);
   const previousScrollTopRef = useRef(0);
   const isFloatingHeaderHoveredRef = useRef(false);
@@ -135,6 +153,11 @@ export const EntryDetail = ({
     previousScrollTopRef.current = 0;
     isFloatingHeaderHoveredRef.current = false;
     setIsFloatingHeaderVisible(false);
+    setIsSummaryGenerating(false);
+    setIsSummaryVisible(false);
+    setIsTranslationGenerating(false);
+    setIsTitleTranslating(false);
+    setIsBilingualVisible(false);
   }, [entry?.id]);
 
   useEffect(() => {
@@ -311,6 +334,21 @@ export const EntryDetail = ({
     }
   };
 
+  const isSummaryReady = status === 'success' && Boolean(content?.markdown.trim());
+  const isTranslationReady = status === 'success' && Boolean(content?.cleanedHtml.trim());
+
+  const activateSummary = (fromFloatingHeader: boolean): void => {
+    summaryPanelRef.current?.activate();
+    if (fromFloatingHeader) {
+      scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      setIsFloatingHeaderVisible(false);
+    }
+  };
+
+  const activateTranslation = (): void => {
+    translationPanelRef.current?.activate();
+  };
+
   const renderArticleHeader = (floating = false) => (
     <div
       ref={floating ? undefined : flowHeaderRef}
@@ -327,7 +365,44 @@ export const EntryDetail = ({
         setIsFloatingHeaderVisible(false);
       } : undefined}
     >
-      <h2>{entry.title ?? 'Untitled'}</h2>
+      <div className="entry-detail-title-row">
+        <h2>
+          {entry.title ?? 'Untitled'}
+          {isTitleTranslating && (
+            <span
+              className="translation-segment-spinner"
+              role="img"
+              aria-label="Translating the article title"
+            />
+          )}
+        </h2>
+        <div className="entry-detail-ai-actions" aria-label="AI reading aids">
+          <button
+            type="button"
+            className={isSummaryVisible ? 'is-active' : ''}
+            aria-controls="summary-result"
+            aria-expanded={isSummaryVisible}
+            disabled={!isSummaryReady || isSummaryGenerating}
+            tabIndex={floating ? -1 : undefined}
+            title={isSummaryReady ? 'Generate or show Summary' : 'Summary is available after the article loads'}
+            onClick={() => activateSummary(floating)}
+          >
+            {isSummaryGenerating ? 'Summarizing...' : 'Summary'}
+          </button>
+          <button
+            type="button"
+            className={isBilingualVisible ? 'is-active' : ''}
+            aria-pressed={isBilingualVisible}
+            disabled={!isTranslationReady || isTranslationGenerating}
+            tabIndex={floating ? -1 : undefined}
+            title={isTranslationReady ? 'Translate or toggle the bilingual view' : 'Translation is available after the article loads'}
+            onClick={activateTranslation}
+            aria-busy={isTranslationGenerating}
+          >
+            Translate
+          </button>
+        </div>
+      </div>
       <div className="entry-detail-meta">
         {entry.author && <span className="entry-detail-author">{entry.author}</span>}
         {entry.publishedAt && (
@@ -357,15 +432,26 @@ export const EntryDetail = ({
 
   return (
     <div className="entry-detail">
-      <div className="entry-detail-scroll" onScroll={handleReaderScroll}>
+      <div ref={scrollContainerRef} className="entry-detail-scroll" onScroll={handleReaderScroll}>
         {renderArticleHeader()}
         <SummaryPanel
+          ref={summaryPanelRef}
           entryId={entry.id}
-          isContentReady={status === 'success' && Boolean(content?.markdown.trim())}
+          isContentReady={isSummaryReady}
+          targetLanguage={aiPreferences.summaryTargetLanguage}
+          detailLevel={aiPreferences.summaryDetailLevel}
+          onGeneratingChange={setIsSummaryGenerating}
+          onVisibleChange={setIsSummaryVisible}
         />
         <TranslationPanel
+          ref={translationPanelRef}
           entryId={entry.id}
-          isContentReady={status === 'success' && Boolean(content?.cleanedHtml.trim())}
+          isContentReady={isTranslationReady}
+          targetLanguage={aiPreferences.translationTargetLanguage}
+          sourceHtml={content?.cleanedHtml ?? ''}
+          onGeneratingChange={setIsTranslationGenerating}
+          onBilingualChange={setIsBilingualVisible}
+          onTitleTranslatingChange={setIsTitleTranslating}
         >
         <div className="entry-detail-body">
           {status === 'loading' && (
@@ -430,6 +516,11 @@ export const EntryDetail = ({
         </TranslationPanel>
       </div>
       {renderArticleHeader(true)}
+      <InlineTranslationOverlay
+        containerRef={scrollContainerRef}
+        shortcut={aiPreferences.inlineTranslationShortcut}
+        targetLanguage={aiPreferences.translationTargetLanguage}
+      />
     </div>
   );
 };

@@ -251,7 +251,14 @@ export type PipelineStatus =
   | 'success'
   | 'failed';
 
-export type ContentSegmentType = 'p' | 'ul' | 'ol';
+export type ContentSegmentType =
+  | 'title'
+  | 'byline'
+  | 'heading'
+  | 'paragraph'
+  | 'list'
+  | 'blockquote'
+  | 'caption';
 
 export interface ContentSegment {
   id: string;
@@ -269,6 +276,8 @@ export interface CleanedContent {
   markdown: string;
   readabilityTitle?: string;
   readabilityByline?: string;
+  readerTitle?: string;
+  readerByline?: string;
   pipelineStatus: PipelineStatus;
   pipelineError?: string;
   segmenterVersion?: string;

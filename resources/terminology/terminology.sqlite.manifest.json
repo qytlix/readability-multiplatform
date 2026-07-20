@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "packVersion": "agrovoc@2026-06-02",
+  "generatedAt": "2026-07-19T14:19:27.700Z",
+  "recordCount": 41632,
+  "sha256": "98515fef529ea6e05509fcec8fc261945b5ed9db78348fcb04e7c5543353a791",
+  "sources": [
+    {
+      "id": "agrovoc",
+      "name": "FAO AGROVOC",
+      "license": "CC BY 4.0",
+      "url": "https://agrovoc.fao.org/latestAgrovoc/agrovoc_core.nt.zip"
+    }
+  ]
+}

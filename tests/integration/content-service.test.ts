@@ -86,7 +86,11 @@ describe('ContentService', () => {
       expect(result.readabilityTitle).toBeDefined();
       expect(result.sourceContentHash).toBeDefined();
       expect(result.sourceContentHash).toMatch(/^[a-f0-9]{64}$/);
-      expect(result.segments).toHaveLength(1);
+      expect(result.segments?.map((segment) => segment.type)).toEqual([
+        'title',
+        'heading',
+        'paragraph',
+      ]);
     });
 
     it('should persist content to store', async () => {
