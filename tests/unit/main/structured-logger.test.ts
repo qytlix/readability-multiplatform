@@ -17,6 +17,7 @@ import {
   type LogLineWriter,
   type StructuredLogContext,
 } from '../../../src/main/logging/StructuredLogger';
+import { MAIN_LIFECYCLE_EVENTS } from '../../../src/main/logging/MainLifecycleEvents';
 
 const filesystemControl = vi.hoisted(() => ({
   readdir: 0,
@@ -98,6 +99,29 @@ function readRecords(directory: string): Array<Record<string, unknown>> {
 }
 
 describe('StructuredLogger', () => {
+  it('writes every Main lifecycle event as independently parseable JSONL', async () => {
+    const directory = createLogDirectory();
+    const logger = createLogger(directory);
+    const lifecycleRecords = [
+      [MAIN_LIFECYCLE_EVENTS.starting, 'app.lifecycle'],
+      [MAIN_LIFECYCLE_EVENTS.databaseInitializeStarted, 'database.lifecycle'],
+      [MAIN_LIFECYCLE_EVENTS.databaseInitializeCompleted, 'database.lifecycle'],
+      [MAIN_LIFECYCLE_EVENTS.databaseInitializeFailed, 'database.lifecycle'],
+      [MAIN_LIFECYCLE_EVENTS.initializationFailed, 'app.lifecycle'],
+      [MAIN_LIFECYCLE_EVENTS.ready, 'app.lifecycle'],
+      [MAIN_LIFECYCLE_EVENTS.shutdownRequested, 'app.lifecycle'],
+    ] as const;
+
+    for (const [event, component] of lifecycleRecords) {
+      logger.info(event, component);
+    }
+    await logger.flush();
+
+    expect(readRecords(directory).map((record) => record.event)).toEqual(
+      lifecycleRecords.map(([event]) => event),
+    );
+  });
+
   it('writes independently parseable JSONL records with the fixed fields', async () => {
     const directory = createLogDirectory();
     const logger = createLogger(directory);
@@ -106,6 +130,8 @@ describe('StructuredLogger', () => {
       feedId: 42,
       count: 3,
       success: true,
+      phase: 'sync',
+      arch: 'arm64',
     });
     await logger.flush();
 
@@ -117,7 +143,13 @@ describe('StructuredLogger', () => {
       event: 'feed.sync.completed',
       component: 'feed.sync',
       sessionId: 'session-test-1',
-      context: { feedId: 42, count: 3, success: true },
+      context: {
+        feedId: 42,
+        count: 3,
+        success: true,
+        phase: 'sync',
+        arch: 'arm64',
+      },
     });
   });
 
@@ -165,6 +197,7 @@ describe('StructuredLogger', () => {
       request: { token: canary },
       response: [canary],
       nested: { value: canary },
+      phase: 'external',
     } as unknown as StructuredLogContext;
 
     logger.error('feed.sync.failed', 'feed.sync', unsafeContext);

@@ -34,8 +34,10 @@ const CONTEXT_FIELD_TYPES = {
   trigger: 'string',
   outcome: 'string',
   success: 'boolean',
+  phase: 'string',
   appVersion: 'string',
   platform: 'string',
+  arch: 'string',
   architecture: 'string',
 } as const;
 
@@ -43,6 +45,14 @@ type ContextFieldName = keyof typeof CONTEXT_FIELD_TYPES;
 type ContextFieldType = (typeof CONTEXT_FIELD_TYPES)[ContextFieldName];
 
 export type LogLevel = keyof typeof LOG_LEVEL_RANK;
+export type AppInitializationPhase = 'services' | 'ipc' | 'window' | 'sync';
+
+const APP_INITIALIZATION_PHASES = new Set<AppInitializationPhase>([
+  'services',
+  'ipc',
+  'window',
+  'sync',
+]);
 
 /**
  * The only context fields accepted by the first logging phase. Values are
@@ -61,8 +71,10 @@ export interface StructuredLogContext {
   trigger?: string;
   outcome?: string;
   success?: boolean;
+  phase?: AppInitializationPhase;
   appVersion?: string;
   platform?: string;
+  arch?: string;
   architecture?: string;
 }
 
@@ -415,6 +427,7 @@ function sanitizeContext(value: unknown): StructuredLogContext | undefined {
   const context: Partial<StructuredLogContext> = {};
   for (const field of Object.keys(CONTEXT_FIELD_TYPES) as ContextFieldName[]) {
     const sanitized = sanitizeContextValue(
+      field,
       value[field],
       CONTEXT_FIELD_TYPES[field],
     );
@@ -427,6 +440,7 @@ function sanitizeContext(value: unknown): StructuredLogContext | undefined {
 }
 
 function sanitizeContextValue(
+  field: ContextFieldName,
   value: unknown,
   expectedType: ContextFieldType,
 ): string | number | boolean | undefined {
@@ -437,6 +451,9 @@ function sanitizeContextValue(
     return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
       ? value
       : undefined;
+  }
+  if (field === 'phase') {
+    return isAppInitializationPhase(value) ? value : undefined;
   }
   return typeof value === 'string'
     ? sanitizeIdentifier(value, MAX_CONTEXT_STRING_LENGTH)
@@ -485,11 +502,17 @@ function assignContextField(
     case 'success':
       if (typeof value === 'boolean') context.success = value;
       return;
+    case 'phase':
+      if (isAppInitializationPhase(value)) context.phase = value;
+      return;
     case 'appVersion':
       if (typeof value === 'string') context.appVersion = value;
       return;
     case 'platform':
       if (typeof value === 'string') context.platform = value;
+      return;
+    case 'arch':
+      if (typeof value === 'string') context.arch = value;
       return;
     case 'architecture':
       if (typeof value === 'string') context.architecture = value;
@@ -515,6 +538,10 @@ function sanitizeIdentifier(
 
 function containsSensitiveMarker(value: string): boolean {
   return /(api[_-]?key|authorization|bearer|token|secret|password|canary|sk-[A-Za-z0-9])/i.test(value);
+}
+
+function isAppInitializationPhase(value: unknown): value is AppInitializationPhase {
+  return typeof value === 'string' && APP_INITIALIZATION_PHASES.has(value as AppInitializationPhase);
 }
 
 function getSafeSystemErrorCode(error: unknown): string {
