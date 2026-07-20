@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTranslationOutput } from '../../src/main/ai/TranslationHtml';
+import { parseTranslationOutput } from '../../src/main/ai/provider/TranslationHtml';
 
 describe('parseTranslationOutput', () => {
   it('preserves the sanitized Reader structure and records applied local terms', () => {

@@ -3,8 +3,8 @@ import {
   buildInlineTranslationPrompt,
   InlineTranslationService,
   parseInlineTranslationOutput,
-} from '../../src/main/ai/InlineTranslationService';
-import type { SummaryProvider } from '../../src/main/ai/SummaryProvider';
+} from '../../src/main/ai/services/InlineTranslationService';
+import type { SummaryProvider } from '../../src/main/ai/provider/SummaryProvider';
 
 const request = {
   kind: 'selection' as const,

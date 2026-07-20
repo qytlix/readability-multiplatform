@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { TerminologyStore } from '../../src/main/ai/TerminologyStore';
+import { TerminologyStore } from '../../src/main/ai/stores/TerminologyStore';
 
 describe('TerminologyStore', () => {
   let store: TerminologyStore;

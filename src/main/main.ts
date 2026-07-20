@@ -9,8 +9,8 @@ import {
   getTranslationService,
   getSyncScheduler,
   initializeServices,
-  registerIpcHandlers,
-} from './ipc';
+} from './services';
+import { registerIpcHandlers } from './ipc';
 import { getApplicationMenuTemplate } from './application-menu';
 import { installMainWindowNavigationGuards } from './navigation-guards';
 import { initializePageZoom, installPageZoomInputGuard } from './page-zoom';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isLikelyAlreadyTargetLanguage } from '../../src/main/ai/TranslationLanguage';
+import { isLikelyAlreadyTargetLanguage } from '../../src/main/ai/provider/TranslationLanguage';
 
 describe('isLikelyAlreadyTargetLanguage', () => {
   it('recognizes Simplified Chinese even when product names are Latin text', () => {

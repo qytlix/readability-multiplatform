@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ContentSegmenter, CONTENT_SEGMENTER_VERSION } from '../../src/main/feed/ContentSegmenter';
+import { ContentSegmenter, CONTENT_SEGMENTER_VERSION } from '../../src/main/feed/services/ContentSegmenter';
 
 describe('ContentSegmenter', () => {
   it('builds deterministic Reader blocks and skips paragraphs nested in list items', () => {

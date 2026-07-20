@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ContentCleaner } from '../../src/main/feed/ContentCleaner';
-import { MarkdownConverter } from '../../src/main/feed/MarkdownConverter';
+import { ContentCleaner } from '../../src/main/feed/fetcher/ContentCleaner';
+import { MarkdownConverter } from '../../src/main/feed/fetcher/MarkdownConverter';
 
 const FIXTURES_DIR = path.resolve(__dirname, '../fixtures/articles');
 

@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type Database from 'better-sqlite3';
-import { MockSummaryProvider } from '../../src/main/ai/MockSummaryProvider';
-import { ProviderProfileStore } from '../../src/main/ai/ProviderProfileStore';
-import { SecretStore, type SafeStorageBackend } from '../../src/main/ai/SecretStore';
-import type { SummaryProvider, SummaryProviderRequest } from '../../src/main/ai/SummaryProvider';
-import { TranslationService } from '../../src/main/ai/TranslationService';
-import { TranslationStore } from '../../src/main/ai/TranslationStore';
-import type { TerminologyLookup } from '../../src/main/ai/TerminologyStore';
-import { ContentStore } from '../../src/main/feed/ContentStore';
+import { MockSummaryProvider } from '../../src/main/ai/provider/MockSummaryProvider';
+import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileStore';
+import { SecretStore, type SafeStorageBackend } from '../../src/main/ai/stores/SecretStore';
+import type { SummaryProvider, SummaryProviderRequest } from '../../src/main/ai/provider/SummaryProvider';
+import { TranslationService } from '../../src/main/ai/services/TranslationService';
+import { TranslationStore } from '../../src/main/ai/stores/TranslationStore';
+import type { TerminologyLookup } from '../../src/main/ai/stores/TerminologyStore';
+import { ContentStore } from '../../src/main/feed/stores/ContentStore';
 import { SUMMARY_ERROR_CODES, SummaryError } from '../../src/shared/errors/summary.errors';
 import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
 

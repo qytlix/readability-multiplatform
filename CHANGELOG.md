@@ -8,6 +8,58 @@ All notable changes to Shale will be documented in this file.
 
 - 安装和启动时按 Electron ABI 加载验证 `better-sqlite3`，发现错误原生模块时自动重建，避免依赖更新或 Node 测试后因遗留 Forge 元数据启动失败。
 
+## [0.2.4] - 2026-07-21
+
+### Added
+
+- 项目目录架构重构：#24 大规模重构完成
+  - `src/main/feed/` 拆分为 `fetcher/`、`parser/`、`services/`、`stores/` 子目录
+  - `src/main/ai/` 拆分为 `provider/`、`services/`、`stores/` 子目录
+  - `tests/unit/` 拆分为按模块组织的子目录
+- 新增 `src/main/services.ts` 统一服务初始化
+- 新增 `src/shared/domain-api.ts` 分离领域 API 类型
+- `src/main/feed/services/index.ts` 和 `src/main/feed/stores/index.ts` barrel export
+- Pane Layout 领域模块提取：模型、几何、序列化、存储、过渡、CSS 变量、焦点恢复等独立模块
+
+### Changed
+
+- Pane Layout 重构：`usePaneLayout` 从 469 行单体拆分为 9 个独立 hooks/modules
+- 整合相关单个 Feed/Service barrel 导出
+
+### Fixed
+
+- 受限布局下 pane 偏好保存与恢复
+- 折叠状态下 pane 宽度保持
+
+### Docs
+
+- 新增 `docs/refactor/refactor-issues-summary-24-23.md`
+- 新增 `docs/refactor/refactor-plan-24.md`
+- 新增 `docs/refactor/refactor-result-24.md`
+
+## [0.2.3] - 2026-07-17
+
+### Fixed
+
+- 构建文件恢复（#19 误删、#20 恢复后又误删的残留文件）
+- 文档恢复（#19 误删的文档文件）
+
+## [0.2.2] - 2026-07-16
+
+### Added
+
+- Summary 功能模块：GPT 模型选择、API Key 持久化（plaintext + keyring 双通道）
+
+### Fixed
+
+- macOS 代码签名（ad-hoc signing）
+- Windows 高 DPI 缩放问题
+- Windows & Wayland 跨平台构建修复
+
+### Docs
+
+- plaintext key fallback 工作机制说明
+
 ## [0.2.1] - 2026-07-16
 
 ### Fixed

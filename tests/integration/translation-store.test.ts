@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
-import { ProviderProfileStore } from '../../src/main/ai/ProviderProfileStore';
-import { TranslationStore } from '../../src/main/ai/TranslationStore';
+import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileStore';
+import { TranslationStore } from '../../src/main/ai/stores/TranslationStore';
 import { MIGRATION_001 } from '../../src/main/migrations/001_create_feeds';
 import { MIGRATION_002 } from '../../src/main/migrations/002_create_entries';
 import { MIGRATION_003 } from '../../src/main/migrations/003_create_contents';

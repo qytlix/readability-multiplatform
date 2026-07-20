@@ -18,15 +18,9 @@ import {
   TranslationError,
   toTranslationIpcError,
 } from '../../shared/errors/translation.errors';
-import { TranslationService } from '../ai/TranslationService';
-import { InlineTranslationService } from '../ai/InlineTranslationService';
+import type { TranslationServices } from '../services';
 
 type GetMainWindow = () => BrowserWindow | null;
-
-export interface TranslationServices {
-  translationService: TranslationService;
-  inlineTranslationService: InlineTranslationService;
-}
 
 export function registerTranslationIpcHandlers(
   getMainWindow: GetMainWindow,

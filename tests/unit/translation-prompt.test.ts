@@ -3,7 +3,7 @@ import {
   buildTranslationBatchPrompt,
   buildTranslationPrompt,
   TRANSLATION_PROMPT_VERSION,
-} from '../../src/main/ai/TranslationPrompt';
+} from '../../src/main/ai/provider/TranslationPrompt';
 
 describe('buildTranslationPrompt', () => {
   it('requests Simplified Chinese and isolates untrusted source text', () => {

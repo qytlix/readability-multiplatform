@@ -7,7 +7,7 @@ import type { ResizablePane } from './paneLayout';
 
 interface PaneDividerProps {
   pane: ResizablePane;
-  value: number;
+  effectiveWidth: number;
   minimum: number;
   maximum: number;
   isDragging: boolean;
@@ -31,7 +31,7 @@ const dividerLabels: Record<ResizablePane, string> = {
 export const PaneDivider = forwardRef<HTMLDivElement, PaneDividerProps>(function PaneDivider(
   {
     pane,
-    value,
+    effectiveWidth,
     minimum,
     maximum,
     isDragging,
@@ -60,7 +60,7 @@ export const PaneDivider = forwardRef<HTMLDivElement, PaneDividerProps>(function
       aria-label={dividerLabels[pane]}
       aria-valuemin={minimum}
       aria-valuemax={maximum}
-      aria-valuenow={Math.round(value)}
+      aria-valuenow={Math.round(effectiveWidth)}
       title={`${dividerLabels[pane]}. Press Enter to collapse.`}
       tabIndex={0}
       onPointerDown={(event) => onPointerDown(pane, event)}

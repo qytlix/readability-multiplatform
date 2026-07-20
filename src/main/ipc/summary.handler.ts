@@ -20,15 +20,9 @@ import {
   SummaryError,
   toSummaryIpcError,
 } from '../../shared/errors/summary.errors';
-import { ProviderService } from '../ai/ProviderService';
-import { SummaryService } from '../ai/SummaryService';
+import type { SummaryServices } from '../services';
 
 type GetMainWindow = () => BrowserWindow | null;
-
-export interface SummaryServices {
-  providerService: ProviderService;
-  summaryService: SummaryService;
-}
 
 export function registerSummaryIpcHandlers(
   getMainWindow: GetMainWindow,

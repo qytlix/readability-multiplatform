@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TranslationBatchStreamParser } from '../../src/main/ai/TranslationBatchStream';
+import { TranslationBatchStreamParser } from '../../src/main/ai/provider/TranslationBatchStream';
 
 describe('TranslationBatchStreamParser', () => {
   it('withholds partial output until the complete NDJSON object arrives', () => {
