@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { initializeServices, getSyncScheduler, getSummaryService } from './services';
 import { registerIpcHandlers } from './ipc';
-import type { FeedOperationLogger } from './feed/services';
+import type { ContentOperationLogger, FeedOperationLogger } from './feed/services';
 import { getApplicationMenuTemplate } from './application-menu';
 import { MAIN_LIFECYCLE_EVENTS } from './logging/MainLifecycleEvents';
 import { StructuredLogger, type AppInitializationPhase } from './logging/StructuredLogger';
@@ -119,14 +119,14 @@ async function initializeApplication(): Promise<void> {
   const secretStoragePath = path.join(app.getPath('userData'), 'ai-secrets.json');
   // Preserve startup behavior if logger construction itself was unavailable;
   // no second on-disk logger is created.
-  const feedLogger: FeedOperationLogger = lifecycleLogger ?? {
+  const operationLogger: FeedOperationLogger & ContentOperationLogger = lifecycleLogger ?? {
     info: () => undefined,
     error: () => undefined,
   };
   const databaseInitializationStartedAt = performance.now();
   lifecycleLogger?.info(MAIN_LIFECYCLE_EVENTS.databaseInitializeStarted, 'database.lifecycle');
   try {
-    initializeServices(dbPath, secretStoragePath, feedLogger);
+    initializeServices(dbPath, secretStoragePath, operationLogger);
   } catch (error) {
     lifecycleLogger?.error(MAIN_LIFECYCLE_EVENTS.databaseInitializeFailed, 'database.lifecycle', {
       durationMs: elapsedMilliseconds(databaseInitializationStartedAt),
@@ -145,7 +145,7 @@ async function initializeApplication(): Promise<void> {
   let phase: AppInitializationPhase = 'services';
   try {
     phase = 'ipc';
-    registerIpcHandlers(() => mainWindow, feedLogger);
+    registerIpcHandlers(() => mainWindow, operationLogger);
     phase = 'window';
     createWindow();
     phase = 'sync';

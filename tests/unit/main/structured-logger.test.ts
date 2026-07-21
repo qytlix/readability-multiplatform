@@ -18,6 +18,11 @@ import {
   type StructuredLogContext,
 } from '../../../src/main/logging/StructuredLogger';
 import { MAIN_LIFECYCLE_EVENTS } from '../../../src/main/logging/MainLifecycleEvents';
+import {
+  CONTENT_LOG_COMPONENTS,
+  CONTENT_LOG_EVENTS,
+  CONTENT_PIPELINE_ERROR_CODES,
+} from '../../../src/main/feed/services/ContentLogging';
 
 const filesystemControl = vi.hoisted(() => ({
   readdir: 0,
@@ -237,6 +242,70 @@ describe('StructuredLogger', () => {
     expect(readRecords(directory)[0].context).toEqual({
       feedId: 9,
       errorCode: 'FEED_FETCH_FAILED',
+    });
+  });
+
+  it('accepts the fixed Content failure context while dropping unsafe values', async () => {
+    const directory = createLogDirectory();
+    const logger = createLogger(directory);
+    const canary = 'CONTENT_FREE_TEXT_CANARY_MUST_NOT_APPEAR';
+    const safeContext = {
+      entryId: 41,
+      feedId: 12,
+      durationMs: 5,
+      success: false,
+      stage: 'fetch',
+      errorCode: CONTENT_PIPELINE_ERROR_CODES.fetchFailed,
+      html: canary,
+      markdown: canary,
+      sourceUrl: `https://${canary}.example.test`,
+      pipelineError: canary,
+      response: { body: canary },
+    } as unknown as StructuredLogContext;
+    const invalidStageContext = {
+      entryId: 42,
+      durationMs: 6,
+      success: false,
+      stage: 'free text stage',
+      errorCode: CONTENT_PIPELINE_ERROR_CODES.fetchFailed,
+      message: canary,
+    } as unknown as StructuredLogContext;
+
+    logger.error(
+      CONTENT_LOG_EVENTS.pipelineFailed,
+      CONTENT_LOG_COMPONENTS.pipeline,
+      safeContext,
+    );
+    logger.error(
+      CONTENT_LOG_EVENTS.pipelineFailed,
+      CONTENT_LOG_COMPONENTS.pipeline,
+      invalidStageContext,
+    );
+    await logger.flush();
+
+    const contents = readFileSync(
+      path.join(directory, getManagedFiles(directory)[0]),
+      'utf8',
+    );
+    const records = readRecords(directory);
+    expect(contents).not.toContain(canary);
+    expect(records[0]).toMatchObject({
+      event: CONTENT_LOG_EVENTS.pipelineFailed,
+      component: CONTENT_LOG_COMPONENTS.pipeline,
+      context: {
+        entryId: 41,
+        feedId: 12,
+        durationMs: 5,
+        success: false,
+        stage: 'fetch',
+        errorCode: CONTENT_PIPELINE_ERROR_CODES.fetchFailed,
+      },
+    });
+    expect(records[1].context).toEqual({
+      entryId: 42,
+      durationMs: 6,
+      success: false,
+      errorCode: CONTENT_PIPELINE_ERROR_CODES.fetchFailed,
     });
   });
 

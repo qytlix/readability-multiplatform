@@ -1,4 +1,5 @@
 export { ContentService } from './ContentService';
+export type { ContentOperationLogger } from './ContentLogging';
 export { FeedService } from './FeedService';
 export { OPMLExportService } from './OPMLExportService';
 export { OPMLImportService } from './OPMLImportService';

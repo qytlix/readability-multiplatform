@@ -9,6 +9,7 @@ import {
   OPMLImportService,
   SyncCoordinator,
   SyncScheduler,
+  type ContentOperationLogger,
   type FeedOperationLogger,
 } from './feed/services';
 import { OpenAICompatibleProvider } from './ai/provider/OpenAICompatibleProvider';
@@ -71,7 +72,7 @@ export function getSummaryService(): SummaryService | null {
 export function initializeServices(
   dbPath: string | undefined,
   secretStoragePath: string | undefined,
-  feedLogger: FeedOperationLogger,
+  operationLogger: FeedOperationLogger & ContentOperationLogger,
 ): FeedServices {
   const dbManager = new DatabaseManager(dbPath);
   dbManager.runMigrations();
@@ -80,8 +81,15 @@ export function initializeServices(
   const entryStore = new EntryStore(dbManager.getDb());
   const contentStore = new ContentStore(dbManager.getDb());
 
-  const feedService = new FeedService(feedStore, entryStore, feedLogger);
-  const contentService = new ContentService(contentStore, entryStore);
+  const feedService = new FeedService(feedStore, entryStore, operationLogger);
+  const contentService = new ContentService(
+    contentStore,
+    entryStore,
+    undefined,
+    undefined,
+    undefined,
+    operationLogger,
+  );
   const providerProfileStore = new ProviderProfileStore(dbManager.getDb());
   const summaryStore = new SummaryStore(dbManager.getDb());
   summaryStore.reconcileInterruptedRuns();
