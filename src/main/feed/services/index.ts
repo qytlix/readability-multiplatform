@@ -4,6 +4,7 @@ export { FeedService } from './FeedService';
 export { OPMLExportService } from './OPMLExportService';
 export { OPMLImportService } from './OPMLImportService';
 export type { OPMLOutline, OPMLImportResult } from './OPMLImportService';
+export type { OPMLOperationLogger } from './OPMLLogging';
 export { SyncCoordinator } from './SyncCoordinator';
 export type { SyncAllResult } from './SyncCoordinator';
 export { SyncScheduler } from './SyncScheduler';

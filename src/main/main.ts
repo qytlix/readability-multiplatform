@@ -6,7 +6,11 @@ import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { initializeServices, getSyncScheduler, getSummaryService } from './services';
 import { registerIpcHandlers } from './ipc';
-import type { ContentOperationLogger, FeedOperationLogger } from './feed/services';
+import type {
+  ContentOperationLogger,
+  FeedOperationLogger,
+  OPMLOperationLogger,
+} from './feed/services';
 import { getApplicationMenuTemplate } from './application-menu';
 import { MAIN_LIFECYCLE_EVENTS } from './logging/MainLifecycleEvents';
 import { StructuredLogger, type AppInitializationPhase } from './logging/StructuredLogger';
@@ -119,8 +123,9 @@ async function initializeApplication(): Promise<void> {
   const secretStoragePath = path.join(app.getPath('userData'), 'ai-secrets.json');
   // Preserve startup behavior if logger construction itself was unavailable;
   // no second on-disk logger is created.
-  const operationLogger: FeedOperationLogger & ContentOperationLogger = lifecycleLogger ?? {
+  const operationLogger: FeedOperationLogger & ContentOperationLogger & OPMLOperationLogger = lifecycleLogger ?? {
     info: () => undefined,
+    warn: () => undefined,
     error: () => undefined,
   };
   const databaseInitializationStartedAt = performance.now();

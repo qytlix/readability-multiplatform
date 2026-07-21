@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ContentOperationLogger, FeedOperationLogger } from '../../../src/main/feed/services';
+import type {
+  ContentOperationLogger,
+  FeedOperationLogger,
+  OPMLOperationLogger,
+} from '../../../src/main/feed/services';
 
 const capturedLoggers = vi.hoisted(() => ({
   content: undefined as unknown,
   feed: undefined as unknown,
+  opmlExport: undefined as unknown,
+  opmlImport: undefined as unknown,
 }));
 
 vi.mock('electron', () => ({ safeStorage: {} }));
@@ -37,8 +43,16 @@ vi.mock('../../../src/main/feed/services', () => ({
       capturedLoggers.feed = arguments_[2];
     }
   },
-  OPMLExportService: class {},
-  OPMLImportService: class {},
+  OPMLExportService: class {
+    constructor(...arguments_: unknown[]) {
+      capturedLoggers.opmlExport = arguments_[1];
+    }
+  },
+  OPMLImportService: class {
+    constructor(...arguments_: unknown[]) {
+      capturedLoggers.opmlImport = arguments_[1];
+    }
+  },
   SyncCoordinator: class {},
   SyncScheduler: class {},
 }));
@@ -70,13 +84,16 @@ import { initializeServices } from '../../../src/main/services';
 
 describe('Content logger service assembly', () => {
   beforeEach(() => {
-    capturedLoggers.content = undefined;
-    capturedLoggers.feed = undefined;
+  capturedLoggers.content = undefined;
+  capturedLoggers.feed = undefined;
+  capturedLoggers.opmlExport = undefined;
+  capturedLoggers.opmlImport = undefined;
   });
 
-  it('passes the same Main operation logger to FeedService and ContentService', () => {
-    const operationLogger: FeedOperationLogger & ContentOperationLogger = {
+  it('passes the same Main operation logger to Feed, Content, and OPML services', () => {
+    const operationLogger: FeedOperationLogger & ContentOperationLogger & OPMLOperationLogger = {
       info: () => undefined,
+      warn: () => undefined,
       error: () => undefined,
     };
 
@@ -84,5 +101,7 @@ describe('Content logger service assembly', () => {
 
     expect(capturedLoggers.feed).toBe(operationLogger);
     expect(capturedLoggers.content).toBe(operationLogger);
+    expect(capturedLoggers.opmlImport).toBe(operationLogger);
+    expect(capturedLoggers.opmlExport).toBe(operationLogger);
   });
 });

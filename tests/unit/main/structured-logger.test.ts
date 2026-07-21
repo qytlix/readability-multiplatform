@@ -23,6 +23,15 @@ import {
   CONTENT_LOG_EVENTS,
   CONTENT_PIPELINE_ERROR_CODES,
 } from '../../../src/main/feed/services/ContentLogging';
+import {
+  logOPMLExportCompleted,
+  logOPMLExportFailed,
+  logOPMLExportTempCleanupFailed,
+  logOPMLImportCompleted,
+  logOPMLImportFailed,
+  OPML_LOG_ERROR_CODES,
+  OPML_LOG_EVENTS,
+} from '../../../src/main/feed/services/OPMLLogging';
 
 const filesystemControl = vi.hoisted(() => ({
   readdir: 0,
@@ -104,6 +113,69 @@ function readRecords(directory: string): Array<Record<string, unknown>> {
 }
 
 describe('StructuredLogger', () => {
+  it('writes every legal OPML event with only its safe fields', async () => {
+    const directory = createLogDirectory();
+    const logger = createLogger(directory);
+
+    logOPMLImportCompleted(logger, {
+      durationMs: 1,
+      count: 4,
+      successCount: 2,
+      failureCount: 1,
+    });
+    logOPMLImportFailed(logger, {
+      durationMs: 2,
+      stage: 'parse',
+      errorCode: OPML_LOG_ERROR_CODES.importInvalid,
+    });
+    logOPMLExportCompleted(logger, { durationMs: 3, count: 4 });
+    logOPMLExportFailed(logger, {
+      durationMs: 4,
+      stage: 'rename',
+      errorCode: OPML_LOG_ERROR_CODES.exportRenameFailed,
+      count: 4,
+    });
+    logOPMLExportTempCleanupFailed(logger, {
+      durationMs: 5,
+      stage: 'cleanup',
+      errorCode: OPML_LOG_ERROR_CODES.exportTempCleanupFailed,
+    });
+    await logger.flush();
+
+    const records = readRecords(directory);
+    expect(records).toHaveLength(5);
+    expect(records.map((record) => record.event)).toEqual([
+      OPML_LOG_EVENTS.importCompleted,
+      OPML_LOG_EVENTS.importFailed,
+      OPML_LOG_EVENTS.exportCompleted,
+      OPML_LOG_EVENTS.exportFailed,
+      OPML_LOG_EVENTS.exportTempCleanupFailed,
+    ]);
+    expect(records[0].context).toEqual({
+      durationMs: 1,
+      count: 4,
+      successCount: 2,
+      failureCount: 1,
+    });
+    expect(records[1].context).toEqual({
+      durationMs: 2,
+      stage: 'parse',
+      errorCode: OPML_LOG_ERROR_CODES.importInvalid,
+    });
+    expect(records[2].context).toEqual({ durationMs: 3, count: 4 });
+    expect(records[3].context).toEqual({
+      durationMs: 4,
+      stage: 'rename',
+      errorCode: OPML_LOG_ERROR_CODES.exportRenameFailed,
+      count: 4,
+    });
+    expect(records[4].context).toEqual({
+      durationMs: 5,
+      stage: 'cleanup',
+      errorCode: OPML_LOG_ERROR_CODES.exportTempCleanupFailed,
+    });
+  });
+
   it('writes every Main lifecycle event as independently parseable JSONL', async () => {
     const directory = createLogDirectory();
     const logger = createLogger(directory);

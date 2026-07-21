@@ -1,5 +1,14 @@
+import { readFile } from 'node:fs/promises';
+import { performance } from 'node:perf_hooks';
 import { FeedStore } from '../stores';
 import { createFeedError } from '../../../shared/errors/feed.errors';
+import {
+  elapsedOPMLMilliseconds,
+  logOPMLImportCompleted,
+  logOPMLImportFailed,
+  OPML_LOG_ERROR_CODES,
+  type OPMLOperationLogger,
+} from './OPMLLogging';
 
 export interface OPMLOutline {
   title?: string;
@@ -16,6 +25,11 @@ export interface OPMLImportResult {
   failures: Array<{ title?: string; xmlUrl?: string; error: string }>;
   totalFound: number;
 }
+
+export type OPMLFileReader = (
+  filePath: string,
+  encoding: 'utf-8',
+) => Promise<string>;
 
 /**
  * Parse OPML XML content and extract feed outlines.
@@ -110,8 +124,45 @@ function flattenOutlines(outlines: OPMLOutline[]): Array<{ title?: string; xmlUr
 export class OPMLImportService {
   private feedStore: FeedStore;
 
-  constructor(feedStore: FeedStore) {
+  constructor(
+    feedStore: FeedStore,
+    private readonly logger?: OPMLOperationLogger,
+    private readonly readOPMLFile: OPMLFileReader = readFile,
+  ) {
     this.feedStore = feedStore;
+  }
+
+  /**
+   * Read and import one OPML file while recording only a safe file-level summary.
+   */
+  async importFromFile(
+    filePath: string,
+    mode: 'merge' | 'replace',
+  ): Promise<OPMLImportResult> {
+    const startedAt = performance.now();
+    let xml: string;
+
+    try {
+      xml = await this.readOPMLFile(filePath, 'utf-8');
+    } catch (error) {
+      this.logFailed(startedAt, 'read', OPML_LOG_ERROR_CODES.importReadFailed);
+      throw error;
+    }
+
+    try {
+      const result = await this.importFromContent(xml, mode);
+      logOPMLImportCompleted(this.logger, {
+        durationMs: elapsedOPMLMilliseconds(startedAt),
+        count: result.totalFound,
+        successCount: result.successCount,
+        failureCount: result.failures.length,
+      });
+      return result;
+    } catch (error) {
+      const classification = this.getFailureClassification(error);
+      this.logFailed(startedAt, classification.stage, classification.errorCode);
+      throw error;
+    }
   }
 
   /**
@@ -284,4 +335,56 @@ export class OPMLImportService {
 
     return result;
   }
+
+  private logFailed(
+    startedAt: number,
+    stage: 'read' | 'parse' | 'process',
+    errorCode: typeof OPML_LOG_ERROR_CODES.importReadFailed
+      | typeof OPML_LOG_ERROR_CODES.importInvalid
+      | typeof OPML_LOG_ERROR_CODES.importParseFailed
+      | typeof OPML_LOG_ERROR_CODES.importProcessFailed,
+  ): void {
+    logOPMLImportFailed(this.logger, {
+      durationMs: elapsedOPMLMilliseconds(startedAt),
+      stage,
+      errorCode,
+    });
+  }
+
+  private getFailureClassification(error: unknown): {
+    stage: 'parse' | 'process';
+    errorCode:
+      | typeof OPML_LOG_ERROR_CODES.importInvalid
+      | typeof OPML_LOG_ERROR_CODES.importParseFailed
+      | typeof OPML_LOG_ERROR_CODES.importProcessFailed;
+  } {
+    if (getErrorCode(error) === 'OPML_INVALID') {
+      return {
+        stage: 'parse',
+        errorCode: OPML_LOG_ERROR_CODES.importInvalid,
+      };
+    }
+    if (getErrorCode(error) === 'OPML_PARSE_FAILED') {
+      return {
+        stage: 'parse',
+        errorCode: OPML_LOG_ERROR_CODES.importParseFailed,
+      };
+    }
+    return {
+      stage: 'process',
+      errorCode: OPML_LOG_ERROR_CODES.importProcessFailed,
+    };
+  }
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  if (
+    error !== null
+    && typeof error === 'object'
+    && 'code' in error
+    && typeof error.code === 'string'
+  ) {
+    return error.code;
+  }
+  return undefined;
 }

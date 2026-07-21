@@ -324,10 +324,10 @@ export function registerFeedIpcHandlers(
       }
 
       try {
-        // Read file content in main process
-        const fs = await import('node:fs/promises');
-        const xml = await fs.readFile(request.filePath, 'utf-8');
-        const result = await opmlImportService.importFromContent(xml, request.mode);
+        const result = await opmlImportService.importFromFile(
+          request.filePath,
+          request.mode,
+        );
         return success(result);
       } catch (error) {
         return failure(error);
