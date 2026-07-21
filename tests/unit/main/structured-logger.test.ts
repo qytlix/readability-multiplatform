@@ -32,6 +32,15 @@ import {
   OPML_LOG_ERROR_CODES,
   OPML_LOG_EVENTS,
 } from '../../../src/main/feed/services/OPMLLogging';
+import {
+  logProviderConfigCompleted,
+  logProviderConfigFailed,
+  logProviderConnectionCompleted,
+  logProviderConnectionFailed,
+  logProviderSecretCleanupFailed,
+  PROVIDER_LOG_ERROR_CODES,
+  PROVIDER_LOG_EVENTS,
+} from '../../../src/main/ai/services/ProviderLogging';
 
 const filesystemControl = vi.hoisted(() => ({
   readdir: 0,
@@ -113,6 +122,72 @@ function readRecords(directory: string): Array<Record<string, unknown>> {
 }
 
 describe('StructuredLogger', () => {
+  it('writes every legal Provider event with only its safe fields', async () => {
+    const directory = createLogDirectory();
+    const logger = createLogger(directory);
+
+    logProviderConfigCompleted(logger, {
+      providerId: 8,
+      durationMs: 1,
+      success: true,
+    });
+    logProviderConfigFailed(logger, {
+      durationMs: 2,
+      success: false,
+      stage: 'key',
+      errorCode: PROVIDER_LOG_ERROR_CODES.keyStorageUnavailable,
+    });
+    logProviderConnectionCompleted(logger, {
+      providerId: 8,
+      durationMs: 3,
+      success: true,
+    });
+    logProviderConnectionFailed(logger, {
+      providerId: 8,
+      durationMs: 4,
+      success: false,
+      stage: 'request',
+      errorCode: PROVIDER_LOG_ERROR_CODES.providerAuth,
+    });
+    logProviderSecretCleanupFailed(logger, {
+      providerId: 8,
+      durationMs: 5,
+      stage: 'cleanup',
+      errorCode: PROVIDER_LOG_ERROR_CODES.secretCleanupFailed,
+    });
+    await logger.flush();
+
+    const records = readRecords(directory);
+    expect(records.map((record) => record.event)).toEqual([
+      PROVIDER_LOG_EVENTS.configCompleted,
+      PROVIDER_LOG_EVENTS.configFailed,
+      PROVIDER_LOG_EVENTS.connectionCompleted,
+      PROVIDER_LOG_EVENTS.connectionFailed,
+      PROVIDER_LOG_EVENTS.secretCleanupFailed,
+    ]);
+    expect(records[0].context).toEqual({ providerId: 8, durationMs: 1, success: true });
+    expect(records[1].context).toEqual({
+      durationMs: 2,
+      success: false,
+      stage: 'key',
+      errorCode: PROVIDER_LOG_ERROR_CODES.keyStorageUnavailable,
+    });
+    expect(records[2].context).toEqual({ providerId: 8, durationMs: 3, success: true });
+    expect(records[3].context).toEqual({
+      providerId: 8,
+      durationMs: 4,
+      success: false,
+      stage: 'request',
+      errorCode: PROVIDER_LOG_ERROR_CODES.providerAuth,
+    });
+    expect(records[4].context).toEqual({
+      providerId: 8,
+      durationMs: 5,
+      stage: 'cleanup',
+      errorCode: PROVIDER_LOG_ERROR_CODES.secretCleanupFailed,
+    });
+  });
+
   it('writes every legal OPML event with only its safe fields', async () => {
     const directory = createLogDirectory();
     const logger = createLogger(directory);

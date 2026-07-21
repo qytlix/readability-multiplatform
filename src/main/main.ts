@@ -11,6 +11,7 @@ import type {
   FeedOperationLogger,
   OPMLOperationLogger,
 } from './feed/services';
+import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
 import { getApplicationMenuTemplate } from './application-menu';
 import { MAIN_LIFECYCLE_EVENTS } from './logging/MainLifecycleEvents';
 import { StructuredLogger, type AppInitializationPhase } from './logging/StructuredLogger';
@@ -123,7 +124,10 @@ async function initializeApplication(): Promise<void> {
   const secretStoragePath = path.join(app.getPath('userData'), 'ai-secrets.json');
   // Preserve startup behavior if logger construction itself was unavailable;
   // no second on-disk logger is created.
-  const operationLogger: FeedOperationLogger & ContentOperationLogger & OPMLOperationLogger = lifecycleLogger ?? {
+  const operationLogger: FeedOperationLogger
+    & ContentOperationLogger
+    & OPMLOperationLogger
+    & ProviderOperationLogger = lifecycleLogger ?? {
     info: () => undefined,
     warn: () => undefined,
     error: () => undefined,

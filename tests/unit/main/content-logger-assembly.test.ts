@@ -4,12 +4,14 @@ import type {
   FeedOperationLogger,
   OPMLOperationLogger,
 } from '../../../src/main/feed/services';
+import type { ProviderOperationLogger } from '../../../src/main/ai/services/ProviderLogging';
 
 const capturedLoggers = vi.hoisted(() => ({
   content: undefined as unknown,
   feed: undefined as unknown,
   opmlExport: undefined as unknown,
   opmlImport: undefined as unknown,
+  provider: undefined as unknown,
 }));
 
 vi.mock('electron', () => ({ safeStorage: {} }));
@@ -64,7 +66,11 @@ vi.mock('../../../src/main/ai/stores/ProviderProfileStore', () => ({
   ProviderProfileStore: class {},
 }));
 vi.mock('../../../src/main/ai/services/ProviderService', () => ({
-  ProviderService: class {},
+  ProviderService: class {
+    constructor(...arguments_: unknown[]) {
+      capturedLoggers.provider = arguments_[3];
+    }
+  },
 }));
 vi.mock('../../../src/main/ai/stores/SecretStore', () => ({
   SecretStore: class {},
@@ -88,10 +94,14 @@ describe('Content logger service assembly', () => {
   capturedLoggers.feed = undefined;
   capturedLoggers.opmlExport = undefined;
   capturedLoggers.opmlImport = undefined;
+  capturedLoggers.provider = undefined;
   });
 
-  it('passes the same Main operation logger to Feed, Content, and OPML services', () => {
-    const operationLogger: FeedOperationLogger & ContentOperationLogger & OPMLOperationLogger = {
+  it('passes the same Main operation logger to Feed, Content, OPML, and Provider services', () => {
+    const operationLogger: FeedOperationLogger
+      & ContentOperationLogger
+      & OPMLOperationLogger
+      & ProviderOperationLogger = {
       info: () => undefined,
       warn: () => undefined,
       error: () => undefined,
@@ -103,5 +113,6 @@ describe('Content logger service assembly', () => {
     expect(capturedLoggers.content).toBe(operationLogger);
     expect(capturedLoggers.opmlImport).toBe(operationLogger);
     expect(capturedLoggers.opmlExport).toBe(operationLogger);
+    expect(capturedLoggers.provider).toBe(operationLogger);
   });
 });

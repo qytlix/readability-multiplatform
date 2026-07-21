@@ -13,6 +13,10 @@ const MAX_IDENTIFIER_LENGTH = 96;
 const MAX_CONTEXT_STRING_LENGTH = 96;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 const FAILURE_NOTICE_PREFIX = 'Structured logger failure [';
+const SAFE_IDENTIFIERS_WITH_SENSITIVE_MARKERS = new Set([
+  'provider.secret.cleanup.failed',
+  'PROVIDER_SECRET_CLEANUP_FAILED',
+]);
 
 const LOG_LEVEL_RANK = {
   debug: 10,
@@ -544,7 +548,10 @@ function sanitizeIdentifier(
     || value.length === 0
     || value.length > maxLength
     || !pattern.test(value)
-    || containsSensitiveMarker(value)
+    || (
+      containsSensitiveMarker(value)
+      && !SAFE_IDENTIFIERS_WITH_SENSITIVE_MARKERS.has(value)
+    )
   ) {
     return undefined;
   }

@@ -16,6 +16,7 @@ import {
 import { OpenAICompatibleProvider } from './ai/provider/OpenAICompatibleProvider';
 import { ProviderProfileStore } from './ai/stores/ProviderProfileStore';
 import { ProviderService } from './ai/services/ProviderService';
+import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
 import { SecretStore } from './ai/stores/SecretStore';
 import { SummaryService } from './ai/services/SummaryService';
 import { SummaryStore } from './ai/stores/SummaryStore';
@@ -73,7 +74,10 @@ export function getSummaryService(): SummaryService | null {
 export function initializeServices(
   dbPath: string | undefined,
   secretStoragePath: string | undefined,
-  operationLogger: FeedOperationLogger & ContentOperationLogger & OPMLOperationLogger,
+  operationLogger: FeedOperationLogger
+    & ContentOperationLogger
+    & OPMLOperationLogger
+    & ProviderOperationLogger,
 ): FeedServices {
   const dbManager = new DatabaseManager(dbPath);
   dbManager.runMigrations();
@@ -103,6 +107,7 @@ export function initializeServices(
     providerProfileStore,
     secretStore,
     provider,
+    operationLogger,
   );
   const summaryService = new SummaryService(
     contentStore,
