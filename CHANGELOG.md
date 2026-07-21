@@ -2,6 +2,12 @@
 
 All notable changes to Shale will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- 安装和启动时按 Electron ABI 加载验证 `better-sqlite3`，发现错误原生模块时自动重建，避免依赖更新或 Node 测试后因遗留 Forge 元数据启动失败。
+
 ## [0.2.4] - 2026-07-21
 
 ### Added

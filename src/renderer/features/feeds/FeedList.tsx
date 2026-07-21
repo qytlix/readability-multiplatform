@@ -43,6 +43,13 @@ const SyncErrorIcon = () => (
   </svg>
 );
 
+const SettingsIcon = () => (
+  <svg className="feed-settings-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" />
+    <path d="M19 13.4v-2.8l-2-.7a7.5 7.5 0 0 0-.7-1.7l.9-1.9-2-2-1.9.9a7.5 7.5 0 0 0-1.7-.7l-.7-2H8.1l-.7 2a7.5 7.5 0 0 0-1.7.7l-1.9-.9-2 2 .9 1.9a7.5 7.5 0 0 0-.7 1.7l-2 .7v2.8l2 .7a7.5 7.5 0 0 0 .7 1.7l-.9 1.9 2 2 1.9-.9a7.5 7.5 0 0 0 1.7.7l.7 2h2.8l.7-2a7.5 7.5 0 0 0 1.7-.7l1.9.9 2-2-.9-1.9a7.5 7.5 0 0 0 .7-1.7l2-.7Z" />
+  </svg>
+);
+
 const syncStatusLabels: Record<SyncStatus, string> = {
   idle: 'Sync all feeds',
   loading: 'Syncing…',
@@ -60,6 +67,8 @@ interface FeedListProps {
   onUnreadCount: (feedId: number) => number;
   loading: boolean;
   feedLoadStatus: FeedLoadStatus;
+  settingsActive: boolean;
+  onOpenSettings: () => void;
 }
 
 export const FeedList = ({
@@ -72,6 +81,8 @@ export const FeedList = ({
   onUnreadCount,
   loading,
   feedLoadStatus,
+  settingsActive,
+  onOpenSettings,
 }: FeedListProps) => {
   const [editFeed, setEditFeed] = useState<Feed | null>(null);
   const [showOPMLDialog, setShowOPMLDialog] = useState(false);
@@ -225,7 +236,7 @@ export const FeedList = ({
         <div className="feed-items">
           <button
             type="button"
-            className={`feed-item ${selectedFeedId === null ? 'active' : ''}`}
+            className={`feed-item ${selectedFeedId === null && !settingsActive ? 'active' : ''}`}
             onClick={() => onSelectFeed(null)}
           >
             <span className="feed-item-name" title="All Articles">
@@ -292,7 +303,7 @@ export const FeedList = ({
               <div key={feed.id} className="feed-item-wrapper">
                 <button
                   type="button"
-                  className={`feed-item ${selectedFeedId === feed.id ? 'active' : ''}`}
+                  className={`feed-item ${selectedFeedId === feed.id && !settingsActive ? 'active' : ''}`}
                   onClick={() => onSelectFeed(feed.id)}
                   onContextMenu={(e) => {
                     e.preventDefault();
@@ -361,6 +372,18 @@ export const FeedList = ({
       {(loading || feedLoadStatus === 'loading') && (
         <p className="feed-list-loading">Loading feeds...</p>
       )}
+
+      <nav className="feed-settings-navigation" aria-label="Application">
+        <button
+          type="button"
+          className={`feed-settings-button${settingsActive ? ' active' : ''}`}
+          onClick={onOpenSettings}
+          aria-current={settingsActive ? 'page' : undefined}
+        >
+          <SettingsIcon />
+          <span>Settings</span>
+        </button>
+      </nav>
 
       {editFeed && (
         <FeedEditDialog

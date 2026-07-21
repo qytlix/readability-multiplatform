@@ -95,6 +95,23 @@ vi.mock('../../../src/main/ai/stores/SummaryStore', () => ({
     }
   },
 }));
+vi.mock('../../../src/main/ai/services/TranslationService', () => ({
+  TranslationService: class {},
+}));
+vi.mock('../../../src/main/ai/services/InlineTranslationService', () => ({
+  InlineTranslationService: class {},
+}));
+vi.mock('../../../src/main/ai/stores/TranslationStore', () => ({
+  TranslationStore: class {
+    reconcileInterruptedRuns(): void {
+      return undefined;
+    }
+  },
+}));
+vi.mock('../../../src/main/ai/stores/TerminologyStore', () => ({
+  EmptyTerminologyLookup: class {},
+  TerminologyStore: class {},
+}));
 
 import { initializeServices } from '../../../src/main/services';
 

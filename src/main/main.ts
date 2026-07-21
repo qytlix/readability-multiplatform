@@ -4,7 +4,13 @@ import { env } from 'node:process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
-import { initializeServices, getSyncScheduler, getSummaryService } from './services';
+import {
+  getSummaryService,
+  getInlineTranslationService,
+  getTranslationService,
+  getSyncScheduler,
+  initializeServices,
+} from './services';
 import { registerIpcHandlers } from './ipc';
 import type {
   ContentOperationLogger,
@@ -40,6 +46,8 @@ const normalShutdownCoordinator = new NormalShutdownCoordinator({
   stopApplicationWork: () => {
     getSyncScheduler()?.stop();
     getSummaryService()?.abortActiveRun();
+    getInlineTranslationService()?.close();
+    getTranslationService()?.close();
   },
   requestQuit: () => app.quit(),
 });
@@ -47,6 +55,10 @@ const normalShutdownCoordinator = new NormalShutdownCoordinator({
 const linuxWindowIconPath = app.isPackaged
   ? path.join(process.resourcesPath, 'shale-app-icon-512.png')
   : path.join(__dirname, '../../assets/icons/linux/shale-app-icon-512.png');
+
+const terminologyDbPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'terminology.sqlite')
+  : path.join(__dirname, '../../resources/terminology/terminology.sqlite');
 
 const createWindow = (): void => {
   const applicationUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
@@ -137,7 +149,12 @@ async function initializeApplication(): Promise<void> {
   const databaseInitializationStartedAt = performance.now();
   lifecycleLogger?.info(MAIN_LIFECYCLE_EVENTS.databaseInitializeStarted, 'database.lifecycle');
   try {
-    initializeServices(dbPath, secretStoragePath, operationLogger);
+    initializeServices(
+      dbPath,
+      secretStoragePath,
+      operationLogger,
+      terminologyDbPath,
+    );
   } catch (error) {
     lifecycleLogger?.error(MAIN_LIFECYCLE_EVENTS.databaseInitializeFailed, 'database.lifecycle', {
       durationMs: elapsedMilliseconds(databaseInitializationStartedAt),

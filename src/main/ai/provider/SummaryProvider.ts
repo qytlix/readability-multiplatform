@@ -4,6 +4,7 @@ export interface SummaryProviderRequest {
   apiKey: string;
   prompt: string;
   signal: AbortSignal;
+  onTiming?: (phase: 'response-headers' | 'first-delta') => void;
 }
 
 export interface SummaryProvider {

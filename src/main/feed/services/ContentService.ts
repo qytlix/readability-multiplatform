@@ -12,6 +12,7 @@ import {
   type ContentPipelineErrorCode,
   type ContentPipelineStage,
 } from './ContentLogging';
+import { ContentSegmenter } from './ContentSegmenter';
 
 export class ContentService {
   private contentStore: ContentStore;
@@ -19,6 +20,7 @@ export class ContentService {
   private fetcher: ContentFetcher;
   private cleaner: ContentCleaner;
   private markdownConverter: MarkdownConverter;
+  private segmenter: ContentSegmenter;
 
   constructor(
     contentStore: ContentStore,
@@ -27,12 +29,14 @@ export class ContentService {
     cleaner?: ContentCleaner,
     markdownConverter?: MarkdownConverter,
     private readonly logger?: ContentOperationLogger,
+    segmenter?: ContentSegmenter,
   ) {
     this.contentStore = contentStore;
     this.entryStore = entryStore;
     this.fetcher = fetcher ?? new ContentFetcher();
     this.cleaner = cleaner ?? new ContentCleaner();
     this.markdownConverter = markdownConverter ?? new MarkdownConverter();
+    this.segmenter = segmenter ?? new ContentSegmenter();
   }
 
   /**
@@ -106,14 +110,17 @@ export class ContentService {
         fetchResult.url,
       );
 
-      // Phase 3: Convert to Markdown
+      // Phase 3: Convert to Markdown and derive Translation blocks.
       stage = 'persist';
       this.contentStore.updatePipelineStatus(entryId, 'converting');
       stage = 'convert';
       const markdown = this.markdownConverter.convert(cleanResult.content);
-
-      // Simple content hash for caching
-      const sourceContentHash = this.hashString(fetchResult.body);
+      const readerTitle = entry.title ?? cleanResult.title;
+      const readerByline = entry.author ?? cleanResult.byline;
+      const segmentedContent = this.segmenter.segment(cleanResult.content, {
+        title: readerTitle,
+        byline: readerByline,
+      });
 
       // Persist
       stage = 'persist';
@@ -122,33 +129,37 @@ export class ContentService {
         html: fetchResult.body,
         sourceUrl: fetchResult.url,
         cleanedHtml: cleanResult.content,
-        markdown: markdown,
+        markdown,
         readabilityTitle: cleanResult.title,
         readabilityByline: cleanResult.byline,
         documentBaseURL: cleanResult.documentBaseURL,
         pipelineStatus: 'success',
-        segmenterVersion: 'v1',
-        sourceContentHash,
+        segmenterVersion: segmentedContent.segmenterVersion,
+        sourceContentHash: segmentedContent.sourceContentHash,
+        segments: segmentedContent.segments,
       });
 
       // Update entry contentHash
       this.entryStore.createOrUpdate({
         feedId: entry.feedId,
         guid: entry.guid,
-        contentHash: sourceContentHash,
+        contentHash: segmentedContent.sourceContentHash,
       });
 
       return {
         entryId,
         sourceUrl: fetchResult.url,
+        readerTitle,
+        readerByline,
         html: fetchResult.body,
         cleanedHtml: cleanResult.content,
-        markdown: markdown,
+        markdown,
         readabilityTitle: cleanResult.title,
         readabilityByline: cleanResult.byline,
         pipelineStatus: 'success',
-        segmenterVersion: 'v1',
-        sourceContentHash,
+        segmenterVersion: segmentedContent.segmenterVersion,
+        sourceContentHash: segmentedContent.sourceContentHash,
+        segments: segmentedContent.segments,
       };
     } catch (error) {
       const failedStage = stage;
@@ -232,15 +243,5 @@ export class ContentService {
       case 'persist':
         return CONTENT_PIPELINE_ERROR_CODES.persistFailed;
     }
-  }
-
-  private hashString(str: string): string {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash |= 0; // Convert to 32bit integer
-    }
-    return Math.abs(hash).toString(16);
   }
 }

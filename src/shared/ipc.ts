@@ -1,4 +1,5 @@
 import type { ProviderAPI, SummaryAPI } from './contracts/summary.ipc';
+import type { TranslationAPI } from './contracts/translation.ipc';
 import type {
   FeedAPI,
   EntryAPI,
@@ -42,4 +43,5 @@ export interface ShaleAPI {
   external: ExternalAPI;
   provider: ProviderAPI;
   summary: SummaryAPI;
+  translation: TranslationAPI;
 }

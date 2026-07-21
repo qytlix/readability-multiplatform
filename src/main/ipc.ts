@@ -17,8 +17,12 @@ import {
   registerSummaryIpcHandlers,
 } from './ipc/summary.handler';
 import {
+  registerTranslationIpcHandlers,
+} from './ipc/translation.handler';
+import {
   getFeedServices,
   getSummaryServices,
+  getTranslationServices,
 } from './services';
 
 export type GetMainWindow = () => BrowserWindow | null;
@@ -135,5 +139,10 @@ export function registerIpcHandlers(
   const summaryServices = getSummaryServices();
   if (summaryServices) {
     registerSummaryIpcHandlers(getMainWindow, summaryServices);
+  }
+
+  const translationServices = getTranslationServices();
+  if (translationServices) {
+    registerTranslationIpcHandlers(getMainWindow, translationServices);
   }
 }

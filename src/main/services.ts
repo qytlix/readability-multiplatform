@@ -1,4 +1,5 @@
 import { safeStorage } from 'electron';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseManager } from './database/DatabaseManager';
 import { ContentStore, EntryStore, FeedStore } from './feed/stores';
@@ -21,6 +22,13 @@ import { SecretStore } from './ai/stores/SecretStore';
 import { SummaryService } from './ai/services/SummaryService';
 import type { SummaryOperationLogger } from './ai/services/SummaryLogging';
 import { SummaryStore } from './ai/stores/SummaryStore';
+import { TranslationService } from './ai/services/TranslationService';
+import { InlineTranslationService } from './ai/services/InlineTranslationService';
+import { TranslationStore } from './ai/stores/TranslationStore';
+import {
+  EmptyTerminologyLookup,
+  TerminologyStore,
+} from './ai/stores/TerminologyStore';
 
 // ── Service Interfaces ──────────────────────────────────
 
@@ -41,10 +49,16 @@ export interface SummaryServices {
   summaryService: SummaryService;
 }
 
+export interface TranslationServices {
+  translationService: TranslationService;
+  inlineTranslationService: InlineTranslationService;
+}
+
 // ── Module-level Singletons ─────────────────────────────
 
 let feedServicesSingleton: FeedServices | null = null;
 let summaryServicesSingleton: SummaryServices | null = null;
+let translationServicesSingleton: TranslationServices | null = null;
 
 /** Returns the feed services singleton (null before initializeServices). */
 export function getFeedServices(): FeedServices | null {
@@ -56,6 +70,11 @@ export function getSummaryServices(): SummaryServices | null {
   return summaryServicesSingleton;
 }
 
+/** Returns the Translation services singleton (null before initializeServices). */
+export function getTranslationServices(): TranslationServices | null {
+  return translationServicesSingleton;
+}
+
 /** Returns the feed sync scheduler for application lifecycle cleanup. */
 export function getSyncScheduler(): SyncScheduler | null {
   return feedServicesSingleton?.syncScheduler ?? null;
@@ -64,6 +83,16 @@ export function getSyncScheduler(): SyncScheduler | null {
 /** Returns the Summary runtime for application shutdown cleanup. */
 export function getSummaryService(): SummaryService | null {
   return summaryServicesSingleton?.summaryService ?? null;
+}
+
+/** Returns the persisted Translation runtime for application shutdown cleanup. */
+export function getTranslationService(): TranslationService | null {
+  return translationServicesSingleton?.translationService ?? null;
+}
+
+/** Returns the one-shot inline Translation runtime for shutdown cleanup. */
+export function getInlineTranslationService(): InlineTranslationService | null {
+  return translationServicesSingleton?.inlineTranslationService ?? null;
 }
 
 // ── Initialization ──────────────────────────────────────
@@ -80,6 +109,7 @@ export function initializeServices(
     & OPMLOperationLogger
     & ProviderOperationLogger
     & SummaryOperationLogger,
+  terminologyDbPath?: string,
 ): FeedServices {
   const dbManager = new DatabaseManager(dbPath);
   dbManager.runMigrations();
@@ -99,11 +129,16 @@ export function initializeServices(
   );
   const providerProfileStore = new ProviderProfileStore(dbManager.getDb());
   const summaryStore = new SummaryStore(dbManager.getDb());
+  const translationStore = new TranslationStore(dbManager.getDb());
+  translationStore.reconcileInterruptedRuns();
   const secretStore = new SecretStore(
     secretStoragePath ?? path.join(path.dirname(dbPath ?? '.'), 'ai-secrets.json'),
     safeStorage,
   );
   const provider = new OpenAICompatibleProvider();
+  const terminologyLookup = terminologyDbPath && existsSync(terminologyDbPath)
+    ? new TerminologyStore(terminologyDbPath)
+    : new EmptyTerminologyLookup();
   const providerService = new ProviderService(
     providerProfileStore,
     secretStore,
@@ -119,6 +154,20 @@ export function initializeServices(
     operationLogger,
   );
   summaryService.reconcileInterruptedRuns();
+  const translationService = new TranslationService(
+    contentStore,
+    providerProfileStore,
+    secretStore,
+    translationStore,
+    provider,
+    undefined,
+    terminologyLookup,
+  );
+  const inlineTranslationService = new InlineTranslationService(
+    providerProfileStore,
+    secretStore,
+    provider,
+  );
 
   feedServicesSingleton = {
     feedService,
@@ -132,5 +181,6 @@ export function initializeServices(
     opmlExportService: new OPMLExportService(feedStore, operationLogger),
   };
   summaryServicesSingleton = { providerService, summaryService };
+  translationServicesSingleton = { translationService, inlineTranslationService };
   return feedServicesSingleton;
 }

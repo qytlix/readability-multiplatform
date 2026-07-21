@@ -35,6 +35,22 @@ describe('OpenAICompatibleProvider', () => {
     );
   });
 
+  it('reports response-header and first-delta timing phases once', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      'data: {"choices":[{"delta":{"content":"First"}}]}\n\n',
+      { status: 200 },
+    )));
+    const onTiming = vi.fn();
+    const provider = new OpenAICompatibleProvider();
+
+    for await (const chunk of provider.stream({ ...request(), onTiming })) void chunk;
+
+    expect(onTiming.mock.calls).toEqual([
+      ['response-headers'],
+      ['first-delta'],
+    ]);
+  });
+
   it('maps authentication responses to a stable safe error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 401 })));
     const provider = new OpenAICompatibleProvider();

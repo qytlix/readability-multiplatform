@@ -1,5 +1,6 @@
 export { ContentService } from './ContentService';
 export type { ContentOperationLogger } from './ContentLogging';
+export { ContentSegmenter, CONTENT_SEGMENTER_VERSION } from './ContentSegmenter';
 export { FeedService } from './FeedService';
 export { OPMLExportService } from './OPMLExportService';
 export { OPMLImportService } from './OPMLImportService';

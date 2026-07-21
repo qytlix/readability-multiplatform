@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Feed } from '../shared/contracts/feed.types';
-import type { EntryListItem } from '../shared/contracts/feed.types';
-import type { Entry } from '../shared/contracts/feed.types';
+import type { Entry, EntryListItem, Feed } from '../shared/contracts/feed.types';
 import { FeedList } from './features/feeds/FeedList';
 import { EntryList } from './features/feeds/EntryList';
 import { EntryDetail } from './features/feeds/EntryDetail';
@@ -11,7 +9,15 @@ import {
   type FeedLoadStatus,
 } from './features/feeds/readerState';
 import { WorkspaceLayout } from './features/layout/WorkspaceLayout';
+import { AISettingsPage } from './features/settings/AISettingsPage';
+import {
+  loadAiPreferences,
+  saveAiPreferences,
+  type AiPreferences,
+} from './features/settings/aiPreferences';
 import shaleMark from './assets/brand/shale-mark.svg';
+
+type AppView = 'reader' | 'settings';
 
 export const App = () => {
   const [feeds, setFeeds] = useState<Feed[]>([]);
@@ -26,6 +32,9 @@ export const App = () => {
   const [entryLoadStatus, setEntryLoadStatus] = useState<EntryLoadStatus>('loading');
   const [entryLoadError, setEntryLoadError] = useState('');
   const [showAddFeedDialog, setShowAddFeedDialog] = useState(false);
+  const [activeView, setActiveView] = useState<AppView>('reader');
+  const [aiPreferences, setAiPreferences] = useState<AiPreferences>(() =>
+    loadAiPreferences(window.localStorage));
   const [entriesCursor, setEntriesCursor] = useState<
     { publishedAt: string; id: number } | undefined
   >(undefined);
@@ -112,6 +121,10 @@ export const App = () => {
     loadFeeds();
   }, [loadFeeds]);
 
+  useEffect(() => {
+    saveAiPreferences(window.localStorage, aiPreferences);
+  }, [aiPreferences]);
+
   // Reset entries when feed selection changes
   useEffect(() => {
     setEntries([]);
@@ -126,6 +139,7 @@ export const App = () => {
 
   const handleSelectEntry = useCallback(
     async (entryId: number) => {
+      setActiveView('reader');
       setSelectedEntryId(entryId);
 
       // Find entry details from the list
@@ -222,6 +236,7 @@ export const App = () => {
             feeds={feeds}
             selectedFeedId={selectedFeedId}
             onSelectFeed={(feedId) => {
+              setActiveView('reader');
               setSelectedFeedId(feedId);
             }}
             onRefresh={handleSyncAll}
@@ -236,6 +251,8 @@ export const App = () => {
             }}
             loading={loadingFeeds}
             feedLoadStatus={feedLoadStatus}
+            settingsActive={activeView === 'settings'}
+            onOpenSettings={() => setActiveView('settings')}
           />
         )}
         entryPane={(
@@ -249,7 +266,12 @@ export const App = () => {
             hasMore={hasNoFeeds ? false : hasMoreEntries}
           />
         )}
-        readerPane={(
+        readerPane={activeView === 'settings' ? (
+          <AISettingsPage
+            preferences={aiPreferences}
+            onPreferencesChange={setAiPreferences}
+          />
+        ) : (
           <EntryDetail
             entry={selectedEntry}
             feedLoadStatus={feedLoadStatus}
@@ -265,6 +287,7 @@ export const App = () => {
             onRetryEntries={() => {
               void loadEntries(true);
             }}
+            aiPreferences={aiPreferences}
           />
         )}
       />
