@@ -120,6 +120,13 @@ function getManagedFiles(directory: string): string[] {
     .sort();
 }
 
+function getManagedTotalBytes(directory: string): number {
+  return getManagedFiles(directory).reduce(
+    (total, name) => total + statSync(path.join(directory, name)).size,
+    0,
+  );
+}
+
 function readRecords(directory: string): Array<Record<string, unknown>> {
   return getManagedFiles(directory).flatMap((name) =>
     readFileSync(path.join(directory, name), 'utf8')
@@ -551,6 +558,49 @@ describe('StructuredLogger', () => {
     logger.info('test.scan.rotated', 'test.logger', { stage: 'y'.repeat(80) });
     await logger.flush();
     expect(filesystemControl.readdir).toBeGreaterThan(callsAfterInitialization);
+  });
+
+  it('enforces the total budget during an ordinary append without deleting the active file', async () => {
+    const directory = createLogDirectory();
+    const previousDayFile = path.join(directory, 'structured-2026-07-19.jsonl');
+    const activeFile = path.join(directory, 'structured-2026-07-20.jsonl');
+    writeFileSync(previousDayFile, 'p'.repeat(260));
+    writeFileSync(activeFile, 'a'.repeat(120));
+    const logger = createLogger(directory, {
+      retention: { maxFileBytes: 1_000, maxTotalBytes: 500 },
+    });
+    await logger.flush();
+
+    logger.info('test.capacity.append', 'test.logger', { stage: 'x'.repeat(80) });
+    await logger.flush();
+
+    expect(getManagedFiles(directory)).not.toContain('structured-2026-07-19.jsonl');
+    expect(getManagedFiles(directory)).toContain('structured-2026-07-20.jsonl');
+    expect(getManagedTotalBytes(directory)).toBeLessThanOrEqual(500);
+  });
+
+  it('keeps the in-queue capacity index correct after cleanup and later rotations', async () => {
+    const directory = createLogDirectory();
+    const previousDayFile = path.join(directory, 'structured-2026-07-19.jsonl');
+    writeFileSync(previousDayFile, 'p'.repeat(250));
+    const logger = createLogger(directory, {
+      retention: { maxFileBytes: 300, maxTotalBytes: 300 },
+    });
+
+    logger.info('test.capacity.first', 'test.logger', { stage: 'x'.repeat(80) });
+    await logger.flush();
+    expect(getManagedFiles(directory)).not.toContain('structured-2026-07-19.jsonl');
+    expect(getManagedTotalBytes(directory)).toBeLessThanOrEqual(300);
+
+    logger.info('test.capacity.second', 'test.logger', { stage: 'y'.repeat(80) });
+    await logger.flush();
+    expect(getManagedFiles(directory)).toContain('structured-2026-07-20-1.jsonl');
+    expect(getManagedTotalBytes(directory)).toBeLessThanOrEqual(300);
+
+    logger.info('test.capacity.third', 'test.logger', { stage: 'z'.repeat(80) });
+    await logger.flush();
+    expect(getManagedFiles(directory)).toContain('structured-2026-07-20-2.jsonl');
+    expect(getManagedTotalBytes(directory)).toBeLessThanOrEqual(300);
   });
 
   it('continues from a new shard after restart when the highest shard is full', async () => {

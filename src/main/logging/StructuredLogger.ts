@@ -143,6 +143,8 @@ export class StructuredLogger {
   private readonly writeLine: LogLineWriter;
   private readonly writeFailureNotice: LogFailureNoticeWriter;
   private activeFile: ActiveLogFile | null = null;
+  private managedFiles = new Map<string, ManagedLogFile>();
+  private managedTotalBytes = 0;
   private failureNoticeWritten = false;
   private queue: Promise<void>;
 
@@ -251,6 +253,8 @@ export class StructuredLogger {
     try {
       await this.writeLine(this.activeFile.filePath, line);
       this.activeFile.size += lineBytes;
+      this.recordManagedAppend(this.activeFile, lineBytes);
+      await this.enforceTotalCapacity();
     } catch (error: unknown) {
       // Logging failures are deliberately isolated from all application work.
       this.reportFailure(error);
@@ -266,7 +270,7 @@ export class StructuredLogger {
   }
 
   private async selectActiveFile(dateKey: string): Promise<void> {
-    const files = await this.listManagedFiles();
+    const files = await this.refreshManagedFiles();
     const matchingFiles = files
       .filter((file) => file.dateKey === dateKey)
       .sort(compareManagedFiles);
@@ -303,6 +307,7 @@ export class StructuredLogger {
       size: 0,
       filePath: path.join(this.options.directory, name),
     };
+    await this.refreshManagedFiles();
     await this.applyRetention();
   }
 
@@ -311,7 +316,7 @@ export class StructuredLogger {
     const cutoffTime = this.safeNow().getTime()
       - this.retention.maxAgeDays * MILLISECONDS_PER_DAY;
 
-    for (const file of await this.listManagedFiles()) {
+    for (const file of this.getManagedFiles()) {
       if (file.name === activeFileName || getDateStartTime(file.dateKey) >= cutoffTime) {
         continue;
       }
@@ -323,15 +328,37 @@ export class StructuredLogger {
 
   private async enforceTotalCapacity(): Promise<void> {
     const activeFileName = this.activeFile?.name;
-    const files = await this.listManagedFiles();
-    let totalSize = files.reduce((sum, file) => sum + file.size, 0);
-    for (const file of files.sort(compareManagedFiles)) {
-      if (totalSize <= this.retention.maxTotalBytes) break;
+    for (const file of this.getManagedFiles().sort(compareManagedFiles)) {
+      if (this.managedTotalBytes <= this.retention.maxTotalBytes) break;
       if (file.name === activeFileName) continue;
-      if (await this.deleteManagedFile(file)) {
-        totalSize -= file.size;
-      }
+      await this.deleteManagedFile(file);
     }
+  }
+
+  private recordManagedAppend(file: ActiveLogFile, lineBytes: number): void {
+    const managedFile = this.managedFiles.get(file.name);
+    if (managedFile) {
+      managedFile.size += lineBytes;
+    } else {
+      this.managedFiles.set(file.name, {
+        name: file.name,
+        dateKey: file.dateKey,
+        shard: file.shard,
+        size: lineBytes,
+      });
+    }
+    this.managedTotalBytes += lineBytes;
+  }
+
+  private getManagedFiles(): ManagedLogFile[] {
+    return [...this.managedFiles.values()];
+  }
+
+  private async refreshManagedFiles(): Promise<ManagedLogFile[]> {
+    const files = await this.listManagedFiles();
+    this.managedFiles = new Map(files.map((file) => [file.name, file]));
+    this.managedTotalBytes = files.reduce((sum, file) => sum + file.size, 0);
+    return files;
   }
 
   private async listManagedFiles(): Promise<ManagedLogFile[]> {
@@ -364,6 +391,8 @@ export class StructuredLogger {
   private async deleteManagedFile(file: ManagedLogFile): Promise<boolean> {
     try {
       await unlink(path.join(this.options.directory, file.name));
+      this.managedFiles.delete(file.name);
+      this.managedTotalBytes = Math.max(0, this.managedTotalBytes - file.size);
       return true;
     } catch (error: unknown) {
       this.reportFailure(error);

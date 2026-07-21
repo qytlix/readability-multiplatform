@@ -12,7 +12,8 @@ export const PROVIDER_LOG_COMPONENT = 'provider.service';
 
 export const PROVIDER_CONFIG_STAGES = [
   'validate',
-  'profile',
+  'profileLookup',
+  'profileSave',
   'key',
 ] as const;
 
@@ -74,7 +75,8 @@ export interface ProviderSecretCleanupFailedLogContext {
 
 const PROVIDER_CONFIG_ERROR_CODES_BY_STAGE = {
   validate: [PROVIDER_LOG_ERROR_CODES.invalidRequest],
-  profile: [PROVIDER_LOG_ERROR_CODES.profileSaveFailed],
+  profileLookup: [PROVIDER_LOG_ERROR_CODES.profileLookupFailed],
+  profileSave: [PROVIDER_LOG_ERROR_CODES.profileSaveFailed],
   key: [
     PROVIDER_LOG_ERROR_CODES.keyMissing,
     PROVIDER_LOG_ERROR_CODES.keyStorageUnavailable,

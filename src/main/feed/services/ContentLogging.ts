@@ -74,7 +74,13 @@ export function logContentPipelineFailure(
   logger: ContentOperationLogger | undefined,
   context: ContentLogContext,
 ): void {
-  if (!isAllowedContentPipelineFailure(context.stage, context.errorCode)) {
+  if (
+    !isSafeIdentifier(context.entryId)
+    || (context.feedId !== undefined && !isSafeIdentifier(context.feedId))
+    || !isSafeDuration(context.durationMs)
+    || context.success !== false
+    || !isAllowedContentPipelineFailure(context.stage, context.errorCode)
+  ) {
     return;
   }
 
@@ -82,7 +88,14 @@ export function logContentPipelineFailure(
     logger?.error(
       CONTENT_LOG_EVENTS.pipelineFailed,
       CONTENT_LOG_COMPONENTS.pipeline,
-      context,
+      {
+        entryId: context.entryId,
+        ...(context.feedId === undefined ? {} : { feedId: context.feedId }),
+        durationMs: context.durationMs,
+        success: false,
+        stage: context.stage,
+        errorCode: context.errorCode,
+      },
     );
   } catch {
     // Preserve the existing Content return, persistence, and error behavior.
@@ -101,4 +114,12 @@ function isAllowedContentPipelineFailure(
   return CONTENT_PIPELINE_ERROR_CODES_BY_STAGE[contentStage].includes(
     errorCode as never,
   );
+}
+
+function isSafeIdentifier(value: number): boolean {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
+function isSafeDuration(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
 }

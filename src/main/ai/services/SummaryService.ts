@@ -178,7 +178,7 @@ export class SummaryService {
       model: profile.model,
       apiKey,
       abortController,
-    }, startedAt);
+    });
     return { runId: run.id, reused: false };
   }
 
@@ -216,7 +216,6 @@ export class SummaryService {
       apiKey: string;
       abortController: AbortController;
     },
-    startedAt: number,
   ): Promise<void> {
     let stage: SummaryRunFailureStage = 'stream';
     try {
@@ -262,26 +261,26 @@ export class SummaryService {
         promptVersion: SUMMARY_PROMPT_VERSION,
         content: output.trim(),
       });
+      const activeRun = this.activeRun;
+      if (activeRun?.run.id === run.id) {
+        this.logRunCompleted(activeRun);
+      }
       this.emitCompleted(run, result);
-      logSummaryRunCompleted(this.logger, {
-        taskRunId: run.id,
-        durationMs: elapsedSummaryMilliseconds(startedAt),
-        success: true,
-      });
     } catch (error) {
-      if (this.activeRun?.run.id !== run.id) return;
+      const activeRun = this.activeRun;
+      if (
+        !activeRun
+        || activeRun.run.id !== run.id
+        || activeRun.terminalLogRecorded
+      ) {
+        return;
+      }
       const failure = toSummaryIpcError(error);
       this.summaryStore.markRunFailed(run.id, failure);
       if (failure.code === SUMMARY_ERROR_CODES.SUMMARY_INTERRUPTED) {
-        this.logRunInterrupted(this.activeRun);
+        this.logRunInterrupted(activeRun);
       } else {
-        logSummaryRunFailed(this.logger, {
-          taskRunId: run.id,
-          durationMs: elapsedSummaryMilliseconds(startedAt),
-          success: false,
-          stage,
-          errorCode: toSummaryRunFailureErrorCode(stage, failure.code),
-        });
+        this.logRunFailed(activeRun, stage, failure.code);
       }
       this.emit({
         type: 'failed',
@@ -316,6 +315,32 @@ export class SummaryService {
       success: false,
       stage: 'interrupt',
       errorCode: SUMMARY_LOG_ERROR_CODES.interrupted,
+    });
+  }
+
+  private logRunCompleted(activeRun: ActiveSummaryRun): void {
+    if (activeRun.terminalLogRecorded) return;
+    activeRun.terminalLogRecorded = true;
+    logSummaryRunCompleted(this.logger, {
+      taskRunId: activeRun.run.id,
+      durationMs: elapsedSummaryMilliseconds(activeRun.startedAt),
+      success: true,
+    });
+  }
+
+  private logRunFailed(
+    activeRun: ActiveSummaryRun,
+    stage: SummaryRunFailureStage,
+    errorCode: string,
+  ): void {
+    if (activeRun.terminalLogRecorded) return;
+    activeRun.terminalLogRecorded = true;
+    logSummaryRunFailed(this.logger, {
+      taskRunId: activeRun.run.id,
+      durationMs: elapsedSummaryMilliseconds(activeRun.startedAt),
+      success: false,
+      stage,
+      errorCode: toSummaryRunFailureErrorCode(stage, errorCode),
     });
   }
 

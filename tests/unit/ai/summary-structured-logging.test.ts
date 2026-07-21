@@ -128,9 +128,11 @@ function createSummaryStore(options: {
     createRun: ReturnType<typeof vi.fn>;
     markRunSucceededWithResult: ReturnType<typeof vi.fn>;
     markRunFailed: ReturnType<typeof vi.fn>;
+    getPersistedStatus(): 'running' | 'succeeded' | 'failed';
   };
 } {
   const runId = options.runId ?? 701;
+  let persistedStatus: 'running' | 'succeeded' | 'failed' = 'running';
   const double = {
     findResult: vi.fn(() => options.existingResult),
     createRun: vi.fn((params: {
@@ -155,6 +157,7 @@ function createSummaryStore(options: {
       content: string;
     }) => {
       if (options.persistError) throw options.persistError;
+      persistedStatus = 'succeeded';
       return {
         id: 801,
         runId: params.runId,
@@ -168,10 +171,13 @@ function createSummaryStore(options: {
         updatedAt: '2026-07-21T00:00:01.000Z',
       };
     }),
-    markRunFailed: vi.fn(),
+    markRunFailed: vi.fn(() => {
+      if (persistedStatus === 'running') persistedStatus = 'failed';
+    }),
     reconcileInterruptedRuns: vi.fn(() => options.reconcileCount ?? 0),
     findRunningRun: vi.fn(() => undefined),
     findLatestFailedRun: vi.fn(() => undefined),
+    getPersistedStatus: () => persistedStatus,
   };
   return {
     store: double as unknown as SummaryStore,
@@ -179,6 +185,7 @@ function createSummaryStore(options: {
       createRun: ReturnType<typeof vi.fn>;
       markRunSucceededWithResult: ReturnType<typeof vi.fn>;
       markRunFailed: ReturnType<typeof vi.fn>;
+      getPersistedStatus(): 'running' | 'succeeded' | 'failed';
     },
   };
 }
@@ -275,6 +282,32 @@ describe('SummaryService structured logging', () => {
     expect(logs[0].context).toEqual({ taskRunId: 711 });
     expect(logs[1].context).toMatchObject({ taskRunId: 711, success: true });
     expectDuration(logs[1]);
+  });
+
+  it('keeps a persisted success terminal when the completed listener throws', async () => {
+    const logs: CapturedSummaryLog[] = [];
+    const { store, double } = createSummaryStore({ runId: 712 });
+    const service = createService({
+      store,
+      provider: createProvider(streamChunks(['completed output'])),
+      logger: createCapturingLogger(logs),
+    });
+    const listenerError = new Error('COMPLETED_LISTENER_CANARY');
+    service.subscribe((event) => {
+      if (event.type === 'completed') throw listenerError;
+    });
+
+    expect(service.generate(request)).toEqual({ runId: 712, reused: false });
+    await vi.waitFor(() => {
+      expect(double.markRunSucceededWithResult).toHaveBeenCalledTimes(1);
+    });
+
+    expect(double.getPersistedStatus()).toBe('succeeded');
+    expect(double.markRunFailed).not.toHaveBeenCalled();
+    expect(logs.map((log) => log.event)).toEqual([
+      SUMMARY_LOG_EVENTS.runStarted,
+      SUMMARY_LOG_EVENTS.runCompleted,
+    ]);
   });
 
   it('records one fixed failed event after a provider timeout', async () => {

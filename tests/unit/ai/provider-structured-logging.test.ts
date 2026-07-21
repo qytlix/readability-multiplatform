@@ -92,9 +92,10 @@ function createPublicProfile(overrides: Partial<ProviderProfile> = {}): Provider
 function createProfileStore(
   activeProfile: ActiveProviderProfile | undefined,
   saveProfile: () => ProviderProfile = () => createPublicProfile(),
+  findActiveProfile: () => ActiveProviderProfile | undefined = () => activeProfile,
 ): ProviderProfileStore {
   const double = {
-    findActiveWithSecret: vi.fn(() => activeProfile),
+    findActiveWithSecret: vi.fn(() => findActiveProfile()),
     saveActive: vi.fn(() => saveProfile()),
   };
   return double as unknown as ProviderProfileStore;
@@ -188,7 +189,7 @@ describe('ProviderService structured logging', () => {
     expectDuration(logs[0]);
   });
 
-  it('records one secret failure and one profile persistence failure', () => {
+  it('records distinct secret, profile lookup, and profile save failures', () => {
     const secretLogs: CapturedProviderLog[] = [];
     const secretError = new SummaryError(
       SUMMARY_ERROR_CODES.SUMMARY_KEY_STORAGE_UNAVAILABLE,
@@ -209,6 +210,22 @@ describe('ProviderService structured logging', () => {
       errorCode: PROVIDER_LOG_ERROR_CODES.keyStorageUnavailable,
     });
 
+    const lookupLogs: CapturedProviderLog[] = [];
+    const lookupError = new Error('PROFILE_LOOKUP_CANARY');
+    const lookupService = new ProviderService(
+      createProfileStore(undefined, undefined, () => { throw lookupError; }),
+      createSecretStore(),
+      createProvider(),
+      createCapturingLogger(lookupLogs),
+    );
+
+    expect(captureThrown(() => lookupService.save(createRequest()))).toBe(lookupError);
+    expect(lookupLogs).toHaveLength(1);
+    expect(lookupLogs[0].context).toMatchObject({
+      stage: 'profileLookup',
+      errorCode: PROVIDER_LOG_ERROR_CODES.profileLookupFailed,
+    });
+
     const profileLogs: CapturedProviderLog[] = [];
     const profileError = new Error('PROFILE_PERSIST_CANARY');
     const profileService = new ProviderService(
@@ -221,7 +238,7 @@ describe('ProviderService structured logging', () => {
     expect(captureThrown(() => profileService.save(createRequest()))).toBe(profileError);
     expect(profileLogs).toHaveLength(1);
     expect(profileLogs[0].context).toMatchObject({
-      stage: 'profile',
+      stage: 'profileSave',
       errorCode: PROVIDER_LOG_ERROR_CODES.profileSaveFailed,
     });
   });

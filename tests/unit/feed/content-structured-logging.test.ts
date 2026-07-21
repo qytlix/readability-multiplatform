@@ -376,6 +376,29 @@ describe('Content structured logging', () => {
     expect(records).toEqual([]);
   });
 
+  it('validates Content IDs and duration before constructing a logger context', () => {
+    const { logger, records } = createContentLoggerSpy();
+    const validContext: ContentLogContext = {
+      entryId: Number.MAX_SAFE_INTEGER,
+      durationMs: 0,
+      success: false,
+      stage: 'fetch',
+      errorCode: CONTENT_PIPELINE_ERROR_CODES.fetchFailed,
+    };
+
+    logContentPipelineFailure(logger, validContext);
+    logContentPipelineFailure(logger, { ...validContext, entryId: 0 });
+    logContentPipelineFailure(logger, { ...validContext, feedId: 0 });
+    logContentPipelineFailure(logger, { ...validContext, durationMs: -1 });
+    logContentPipelineFailure(logger, { ...validContext, durationMs: Number.NaN });
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        context: validContext,
+      }),
+    ]);
+  });
+
   it('does not expose Content canaries to the injected logger or JSONL', async () => {
     const fakeLogger = createContentLoggerSpy();
     const directory = createLogDirectory();

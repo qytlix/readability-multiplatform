@@ -42,7 +42,7 @@ export class ProviderService {
     let stage: ProviderConfigStage = 'validate';
     try {
       const { baseUrl, model } = validateProviderRequest(request);
-      stage = 'profile';
+      stage = 'profileLookup';
       const existing = this.profileStore.findActiveWithSecret();
       const suppliedKey = request.apiKey?.trim();
       const apiKeyRef = suppliedKey ? randomUUID() : existing?.apiKeyRef;
@@ -59,7 +59,7 @@ export class ProviderService {
       if (suppliedKey) this.secretStore.save(apiKeyRef, suppliedKey);
 
       try {
-        stage = 'profile';
+        stage = 'profileSave';
         const profile = this.profileStore.saveActive({ baseUrl, model, apiKeyRef });
         if (suppliedKey && existing && existing.apiKeyRef !== apiKeyRef) {
           // The old encrypted value is harmless if cleanup fails; never remove the
@@ -174,7 +174,8 @@ function toConfigErrorCode(
   error: unknown,
 ): typeof PROVIDER_LOG_ERROR_CODES[keyof typeof PROVIDER_LOG_ERROR_CODES] {
   if (stage === 'validate') return PROVIDER_LOG_ERROR_CODES.invalidRequest;
-  if (stage === 'profile') return PROVIDER_LOG_ERROR_CODES.profileSaveFailed;
+  if (stage === 'profileLookup') return PROVIDER_LOG_ERROR_CODES.profileLookupFailed;
+  if (stage === 'profileSave') return PROVIDER_LOG_ERROR_CODES.profileSaveFailed;
 
   if (error instanceof SummaryError) {
     if (error.code === SUMMARY_ERROR_CODES.SUMMARY_KEY_MISSING) {
