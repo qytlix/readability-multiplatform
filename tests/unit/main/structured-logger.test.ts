@@ -41,6 +41,15 @@ import {
   PROVIDER_LOG_ERROR_CODES,
   PROVIDER_LOG_EVENTS,
 } from '../../../src/main/ai/services/ProviderLogging';
+import {
+  logSummaryRecoveryCompleted,
+  logSummaryRunCompleted,
+  logSummaryRunFailed,
+  logSummaryRunInterrupted,
+  logSummaryRunStarted,
+  SUMMARY_LOG_ERROR_CODES,
+  SUMMARY_LOG_EVENTS,
+} from '../../../src/main/ai/services/SummaryLogging';
 
 const filesystemControl = vi.hoisted(() => ({
   readdir: 0,
@@ -122,6 +131,60 @@ function readRecords(directory: string): Array<Record<string, unknown>> {
 }
 
 describe('StructuredLogger', () => {
+  it('writes every legal Summary event with only its safe fields', async () => {
+    const directory = createLogDirectory();
+    const logger = createLogger(directory);
+
+    logSummaryRunStarted(logger, { taskRunId: 12 });
+    logSummaryRunCompleted(logger, {
+      taskRunId: 12,
+      durationMs: 1,
+      success: true,
+    });
+    logSummaryRunFailed(logger, {
+      taskRunId: 13,
+      durationMs: 2,
+      success: false,
+      stage: 'stream',
+      errorCode: SUMMARY_LOG_ERROR_CODES.providerTimeout,
+    });
+    logSummaryRunInterrupted(logger, {
+      taskRunId: 14,
+      durationMs: 3,
+      success: false,
+      stage: 'interrupt',
+      errorCode: SUMMARY_LOG_ERROR_CODES.interrupted,
+    });
+    logSummaryRecoveryCompleted(logger, { durationMs: 4, count: 2 });
+    await logger.flush();
+
+    const records = readRecords(directory);
+    expect(records.map((record) => record.event)).toEqual([
+      SUMMARY_LOG_EVENTS.runStarted,
+      SUMMARY_LOG_EVENTS.runCompleted,
+      SUMMARY_LOG_EVENTS.runFailed,
+      SUMMARY_LOG_EVENTS.runInterrupted,
+      SUMMARY_LOG_EVENTS.recoveryCompleted,
+    ]);
+    expect(records[0].context).toEqual({ taskRunId: 12 });
+    expect(records[1].context).toEqual({ taskRunId: 12, durationMs: 1, success: true });
+    expect(records[2].context).toEqual({
+      taskRunId: 13,
+      durationMs: 2,
+      success: false,
+      stage: 'stream',
+      errorCode: SUMMARY_LOG_ERROR_CODES.providerTimeout,
+    });
+    expect(records[3].context).toEqual({
+      taskRunId: 14,
+      durationMs: 3,
+      success: false,
+      stage: 'interrupt',
+      errorCode: SUMMARY_LOG_ERROR_CODES.interrupted,
+    });
+    expect(records[4].context).toEqual({ durationMs: 4, count: 2 });
+  });
+
   it('writes every legal Provider event with only its safe fields', async () => {
     const directory = createLogDirectory();
     const logger = createLogger(directory);

@@ -5,6 +5,7 @@ import type {
   OPMLOperationLogger,
 } from '../../../src/main/feed/services';
 import type { ProviderOperationLogger } from '../../../src/main/ai/services/ProviderLogging';
+import type { SummaryOperationLogger } from '../../../src/main/ai/services/SummaryLogging';
 
 const capturedLoggers = vi.hoisted(() => ({
   content: undefined as unknown,
@@ -12,6 +13,7 @@ const capturedLoggers = vi.hoisted(() => ({
   opmlExport: undefined as unknown,
   opmlImport: undefined as unknown,
   provider: undefined as unknown,
+  summary: undefined as unknown,
 }));
 
 vi.mock('electron', () => ({ safeStorage: {} }));
@@ -76,7 +78,15 @@ vi.mock('../../../src/main/ai/stores/SecretStore', () => ({
   SecretStore: class {},
 }));
 vi.mock('../../../src/main/ai/services/SummaryService', () => ({
-  SummaryService: class {},
+  SummaryService: class {
+    constructor(...arguments_: unknown[]) {
+      capturedLoggers.summary = arguments_[5];
+    }
+
+    reconcileInterruptedRuns(): void {
+      return undefined;
+    }
+  },
 }));
 vi.mock('../../../src/main/ai/stores/SummaryStore', () => ({
   SummaryStore: class {
@@ -88,20 +98,22 @@ vi.mock('../../../src/main/ai/stores/SummaryStore', () => ({
 
 import { initializeServices } from '../../../src/main/services';
 
-describe('Content logger service assembly', () => {
+describe('Operation logger service assembly', () => {
   beforeEach(() => {
   capturedLoggers.content = undefined;
   capturedLoggers.feed = undefined;
   capturedLoggers.opmlExport = undefined;
   capturedLoggers.opmlImport = undefined;
   capturedLoggers.provider = undefined;
+  capturedLoggers.summary = undefined;
   });
 
-  it('passes the same Main operation logger to Feed, Content, OPML, and Provider services', () => {
+  it('passes the same Main operation logger to Feed, Content, OPML, Provider, and Summary services', () => {
     const operationLogger: FeedOperationLogger
       & ContentOperationLogger
       & OPMLOperationLogger
-      & ProviderOperationLogger = {
+      & ProviderOperationLogger
+      & SummaryOperationLogger = {
       info: () => undefined,
       warn: () => undefined,
       error: () => undefined,
@@ -114,5 +126,6 @@ describe('Content logger service assembly', () => {
     expect(capturedLoggers.opmlImport).toBe(operationLogger);
     expect(capturedLoggers.opmlExport).toBe(operationLogger);
     expect(capturedLoggers.provider).toBe(operationLogger);
+    expect(capturedLoggers.summary).toBe(operationLogger);
   });
 });

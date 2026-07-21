@@ -19,6 +19,7 @@ import { ProviderService } from './ai/services/ProviderService';
 import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
 import { SecretStore } from './ai/stores/SecretStore';
 import { SummaryService } from './ai/services/SummaryService';
+import type { SummaryOperationLogger } from './ai/services/SummaryLogging';
 import { SummaryStore } from './ai/stores/SummaryStore';
 
 // ── Service Interfaces ──────────────────────────────────
@@ -77,7 +78,8 @@ export function initializeServices(
   operationLogger: FeedOperationLogger
     & ContentOperationLogger
     & OPMLOperationLogger
-    & ProviderOperationLogger,
+    & ProviderOperationLogger
+    & SummaryOperationLogger,
 ): FeedServices {
   const dbManager = new DatabaseManager(dbPath);
   dbManager.runMigrations();
@@ -97,7 +99,6 @@ export function initializeServices(
   );
   const providerProfileStore = new ProviderProfileStore(dbManager.getDb());
   const summaryStore = new SummaryStore(dbManager.getDb());
-  summaryStore.reconcileInterruptedRuns();
   const secretStore = new SecretStore(
     secretStoragePath ?? path.join(path.dirname(dbPath ?? '.'), 'ai-secrets.json'),
     safeStorage,
@@ -115,7 +116,9 @@ export function initializeServices(
     secretStore,
     summaryStore,
     provider,
+    operationLogger,
   );
+  summaryService.reconcileInterruptedRuns();
 
   feedServicesSingleton = {
     feedService,

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import type { CleanedContent } from '../../../shared/contracts/content.types';
 import type {
   SummaryGenerateRequest,
@@ -23,6 +24,17 @@ import type { SecretStore } from '../stores/SecretStore';
 import { buildSummaryPrompt, SUMMARY_PROMPT_VERSION } from '../provider/SummaryPrompt';
 import type { SummaryProvider } from '../provider/SummaryProvider';
 import { SummaryStore } from '../stores/SummaryStore';
+import {
+  elapsedSummaryMilliseconds,
+  logSummaryRecoveryCompleted,
+  logSummaryRunCompleted,
+  logSummaryRunFailed,
+  logSummaryRunInterrupted,
+  logSummaryRunStarted,
+  SUMMARY_LOG_ERROR_CODES,
+  type SummaryOperationLogger,
+  type SummaryRunFailureStage,
+} from './SummaryLogging';
 
 export interface CleanedContentLookup {
   findByEntry(entryId: number): CleanedContent | undefined;
@@ -31,6 +43,8 @@ export interface CleanedContentLookup {
 interface ActiveSummaryRun {
   run: SummaryRun;
   abortController: AbortController;
+  startedAt: number;
+  terminalLogRecorded: boolean;
 }
 
 export class SummaryService {
@@ -43,6 +57,7 @@ export class SummaryService {
     private readonly secretStore: SecretStore,
     private readonly summaryStore: SummaryStore,
     private readonly provider: SummaryProvider,
+    private readonly logger?: SummaryOperationLogger,
   ) {}
 
   subscribe(listener: (event: SummaryStreamEvent) => void): () => void {
@@ -79,6 +94,15 @@ export class SummaryService {
       request.detailLevel,
     );
     return failedRun ? { state: 'failed', run: failedRun } : { state: 'idle' };
+  }
+
+  reconcileInterruptedRuns(): void {
+    const startedAt = performance.now();
+    const count = this.summaryStore.reconcileInterruptedRuns();
+    logSummaryRecoveryCompleted(this.logger, {
+      durationMs: elapsedSummaryMilliseconds(startedAt),
+      count,
+    });
   }
 
   generate(request: SummaryGenerateRequest): SummaryGenerateResponse {
@@ -134,7 +158,13 @@ export class SummaryService {
       inputMarkdownHash,
     });
     const abortController = new AbortController();
-    this.activeRun = { run, abortController };
+    const startedAt = performance.now();
+    this.activeRun = {
+      run,
+      abortController,
+      startedAt,
+      terminalLogRecorded: false,
+    };
     this.emit({
       type: 'started',
       runId: run.id,
@@ -142,12 +172,13 @@ export class SummaryService {
       targetLanguage: run.targetLanguage,
       detailLevel: run.detailLevel,
     });
+    logSummaryRunStarted(this.logger, { taskRunId: run.id });
     void this.executeRun(run, content.markdown, inputMarkdownHash, {
       baseUrl: profile.baseUrl,
       model: profile.model,
       apiKey,
       abortController,
-    });
+    }, startedAt);
     return { runId: run.id, reused: false };
   }
 
@@ -163,6 +194,7 @@ export class SummaryService {
     );
     activeRun.abortController.abort();
     this.summaryStore.markRunFailed(activeRun.run.id, error);
+    this.logRunInterrupted(activeRun);
     this.emit({
       type: 'failed',
       runId: activeRun.run.id,
@@ -184,7 +216,9 @@ export class SummaryService {
       apiKey: string;
       abortController: AbortController;
     },
+    startedAt: number,
   ): Promise<void> {
+    let stage: SummaryRunFailureStage = 'stream';
     try {
       const prompt = buildSummaryPrompt({
         articleMarkdown: markdown,
@@ -218,6 +252,7 @@ export class SummaryService {
         );
       }
 
+      stage = 'persist';
       const result = this.summaryStore.markRunSucceededWithResult({
         runId: run.id,
         entryId: run.entryId,
@@ -228,10 +263,26 @@ export class SummaryService {
         content: output.trim(),
       });
       this.emitCompleted(run, result);
+      logSummaryRunCompleted(this.logger, {
+        taskRunId: run.id,
+        durationMs: elapsedSummaryMilliseconds(startedAt),
+        success: true,
+      });
     } catch (error) {
       if (this.activeRun?.run.id !== run.id) return;
       const failure = toSummaryIpcError(error);
       this.summaryStore.markRunFailed(run.id, failure);
+      if (failure.code === SUMMARY_ERROR_CODES.SUMMARY_INTERRUPTED) {
+        this.logRunInterrupted(this.activeRun);
+      } else {
+        logSummaryRunFailed(this.logger, {
+          taskRunId: run.id,
+          durationMs: elapsedSummaryMilliseconds(startedAt),
+          success: false,
+          stage,
+          errorCode: toSummaryRunFailureErrorCode(stage, failure.code),
+        });
+      }
       this.emit({
         type: 'failed',
         runId: run.id,
@@ -256,8 +307,42 @@ export class SummaryService {
     });
   }
 
+  private logRunInterrupted(activeRun: ActiveSummaryRun): void {
+    if (activeRun.terminalLogRecorded) return;
+    activeRun.terminalLogRecorded = true;
+    logSummaryRunInterrupted(this.logger, {
+      taskRunId: activeRun.run.id,
+      durationMs: elapsedSummaryMilliseconds(activeRun.startedAt),
+      success: false,
+      stage: 'interrupt',
+      errorCode: SUMMARY_LOG_ERROR_CODES.interrupted,
+    });
+  }
+
   private emit(event: SummaryStreamEvent): void {
     this.listeners.forEach((listener) => listener(event));
+  }
+}
+
+function toSummaryRunFailureErrorCode(
+  stage: SummaryRunFailureStage,
+  errorCode: string,
+): typeof SUMMARY_LOG_ERROR_CODES[keyof typeof SUMMARY_LOG_ERROR_CODES] {
+  if (stage === 'persist') return SUMMARY_LOG_ERROR_CODES.unknownError;
+
+  switch (errorCode) {
+    case SUMMARY_ERROR_CODES.SUMMARY_EMPTY_OUTPUT:
+      return SUMMARY_LOG_ERROR_CODES.emptyOutput;
+    case SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_AUTH:
+      return SUMMARY_LOG_ERROR_CODES.providerAuth;
+    case SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_REQUEST_FAILED:
+      return SUMMARY_LOG_ERROR_CODES.providerRequestFailed;
+    case SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_TIMEOUT:
+      return SUMMARY_LOG_ERROR_CODES.providerTimeout;
+    case SUMMARY_ERROR_CODES.SUMMARY_NETWORK_ERROR:
+      return SUMMARY_LOG_ERROR_CODES.networkError;
+    default:
+      return SUMMARY_LOG_ERROR_CODES.unknownError;
   }
 }
 

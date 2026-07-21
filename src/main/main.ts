@@ -12,6 +12,7 @@ import type {
   OPMLOperationLogger,
 } from './feed/services';
 import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
+import type { SummaryOperationLogger } from './ai/services/SummaryLogging';
 import { getApplicationMenuTemplate } from './application-menu';
 import { MAIN_LIFECYCLE_EVENTS } from './logging/MainLifecycleEvents';
 import { StructuredLogger, type AppInitializationPhase } from './logging/StructuredLogger';
@@ -127,7 +128,8 @@ async function initializeApplication(): Promise<void> {
   const operationLogger: FeedOperationLogger
     & ContentOperationLogger
     & OPMLOperationLogger
-    & ProviderOperationLogger = lifecycleLogger ?? {
+    & ProviderOperationLogger
+    & SummaryOperationLogger = lifecycleLogger ?? {
     info: () => undefined,
     warn: () => undefined,
     error: () => undefined,
