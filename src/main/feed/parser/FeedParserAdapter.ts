@@ -64,11 +64,12 @@ export class FeedParserAdapter implements IFeedParserAdapter {
   /**
    * 解析 RSS/Atom (由 rss-parser 处理)
    */
-  private async parseXmlFeed(xml: string, sourceUrl: string): Promise<ParsedFeed> {
+  private async parseXmlFeed(rawXml: string, sourceUrl: string): Promise<ParsedFeed> {
     let result: ParsedFeed;
 
     try {
-      const parsed = await this.parser.parseString(xml);
+      const cleaned = this.cleanMalformedXml(rawXml);
+      const parsed = await this.parser.parseString(cleaned);
 
       result = {
         title: parsed.title ?? undefined,
@@ -89,6 +90,34 @@ export class FeedParserAdapter implements IFeedParserAdapter {
     }
 
     return result;
+  }
+
+  /**
+   * 修复常见 malformed XML 问题：将文本节点中裸 & 替换为 &amp;
+   * 跳过合法的 entity (&amp; &lt; &gt; &quot; &apos; &#xxx;) 和 CDATA 段。
+   */
+  private cleanMalformedXml(xml: string): string {
+    // 先把 CDATA 段保护起来（不做替换）
+    const cdataBlocks: string[] = [];
+    let processed = xml.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_match, content) => {
+      cdataBlocks.push(content);
+      return `\x00CDATA_${cdataBlocks.length - 1}\x00`;
+    });
+
+    // 在 >...< 之间的文本中，将裸 & 替换为 &amp;
+    // 裸 & = 后面跟的不是已知 entity 或 character reference
+    processed = processed.replace(
+      />([^<]*?)&(?!amp;|lt;|gt;|quot;|apos;|#[xX]?[0-9a-fA-F]{1,6};|[a-zA-Z][a-zA-Z0-9]*;)([^<]*?)</g,
+      '>$1&amp;$2<',
+    );
+
+    // 恢复 CDATA 段
+    processed = processed.replace(
+      /\x00CDATA_(\d+)\x00/g,
+      (_match, index) => `<!\[CDATA[${cdataBlocks[Number(index)]}\]\]>`,
+    );
+
+    return processed;
   }
 
   /**

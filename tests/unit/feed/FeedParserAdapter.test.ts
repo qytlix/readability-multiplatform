@@ -201,4 +201,65 @@ describe('FeedParserAdapter', () => {
       ).rejects.toThrow('JSON Feed parse failed');
     });
   });
+
+  describe('cleanMalformedXml', () => {
+    const VALID_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>Test Feed</title>
+  <item><title>Post &amp; Status</title></item>
+</channel></rss>`;
+
+    it('should parse feed with bare & in text content', async () => {
+      const malformedXml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>Test Feed</title>
+  <item><title>AT&T &amp; Verizon</title></item>
+  <item><description>foo & bar</description></item>
+</channel></rss>`;
+
+      const result = await adapter.parse(malformedXml, 'https://example.com/feed');
+      expect(result.title).toBe('Test Feed');
+      expect(result.entries).toHaveLength(2);
+      // After repair: `AT&T` → XML `AT&amp;T` → parser decodes back to `AT&T`
+      expect(result.entries[0].title).toBe('AT&T & Verizon');
+      expect(result.entries[1].summary).toBe('foo & bar');
+    });
+
+    it('should handle bare & inside attributes (CDATA-like)', async () => {
+      // Bare & in attributes is technically invalid XML too
+      // but most RSS feeds put special chars in CDATA or text nodes
+      const feedWithEntity = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>36kr-style Feed</title>
+  <item>
+    <title>某公司 &amp; 某公司合作 | 新产品发布 &amp; 测试</title>
+    <description>36kr的feed内容包含很多&符号</description>
+  </item>
+</channel></rss>`;
+
+      const result = await adapter.parse(feedWithEntity, 'https://36kr.com/feed');
+      expect(result.title).toBe('36kr-style Feed');
+      // The & in content gets repaired and then decoded back to &
+      expect(result.entries[0].title).toContain('&');
+    });
+
+    it('should preserve CDATA sections (content decoded by rss-parser)', async () => {
+      const xmlWithCdata = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>With CDATA</title>
+  <item><description><![CDATA[AT&T & Verizon are partners]]></description></item>
+</channel></rss>`;
+
+      const result = await adapter.parse(xmlWithCdata, 'https://example.com/feed');
+      // CDATA content is preserved; rss-parser decodes &amp; back to &
+      expect(result.entries[0].summary).toBe('AT&T & Verizon are partners');
+    });
+
+    it('should parse valid XML with entity decoding', async () => {
+      const result = await adapter.parse(VALID_XML, 'https://example.com/feed');
+      expect(result.title).toBe('Test Feed');
+      // rss-parser decodes &amp; back to &
+      expect(result.entries[0].title).toBe('Post & Status');
+    });
+  });
 });
