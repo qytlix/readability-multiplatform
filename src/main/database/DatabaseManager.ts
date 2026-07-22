@@ -8,7 +8,7 @@ import { MIGRATION_006 } from '../migrations/006_create_ai_profiles';
 import { MIGRATION_007 } from '../migrations/007_create_summary';
 import { MIGRATION_008 } from '../migrations/008_create_translation';
 import { MIGRATION_009 } from '../migrations/009_enhance_translation';
-import { runMigration010 } from '../migrations/010_create_dedup_key';
+import { MIGRATION_010_SQL, runMigration010 } from '../migrations/010_create_dedup_key';
 
 interface Migration {
   id: string;
@@ -28,7 +28,7 @@ const MIGRATIONS: Migration[] = [
   { id: '007_create_summary', sql: MIGRATION_007 },
   { id: '008_create_translation', sql: MIGRATION_008 },
   { id: '009_enhance_translation', sql: MIGRATION_009 },
-  { id: '010_create_dedup_key', sql: '', run: runMigration010 },
+  { id: '010_create_dedup_key', sql: MIGRATION_010_SQL, run: runMigration010 },
 ];
 
 export class DatabaseManager {
