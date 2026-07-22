@@ -10,12 +10,17 @@ import {
   OPMLImportService,
   SyncCoordinator,
   SyncScheduler,
+  type ContentOperationLogger,
+  type FeedOperationLogger,
+  type OPMLOperationLogger,
 } from './feed/services';
 import { OpenAICompatibleProvider } from './ai/provider/OpenAICompatibleProvider';
 import { ProviderProfileStore } from './ai/stores/ProviderProfileStore';
 import { ProviderService } from './ai/services/ProviderService';
+import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
 import { SecretStore } from './ai/stores/SecretStore';
 import { SummaryService } from './ai/services/SummaryService';
+import type { SummaryOperationLogger } from './ai/services/SummaryLogging';
 import { SummaryStore } from './ai/stores/SummaryStore';
 import { TranslationService } from './ai/services/TranslationService';
 import { InlineTranslationService } from './ai/services/InlineTranslationService';
@@ -97,8 +102,13 @@ export function getInlineTranslationService(): InlineTranslationService | null {
  * Must be called before registerIpcHandlers.
  */
 export function initializeServices(
-  dbPath?: string,
-  secretStoragePath?: string,
+  dbPath: string | undefined,
+  secretStoragePath: string | undefined,
+  operationLogger: FeedOperationLogger
+    & ContentOperationLogger
+    & OPMLOperationLogger
+    & ProviderOperationLogger
+    & SummaryOperationLogger,
   terminologyDbPath?: string,
 ): FeedServices {
   const dbManager = new DatabaseManager(dbPath);
@@ -108,11 +118,17 @@ export function initializeServices(
   const entryStore = new EntryStore(dbManager.getDb());
   const contentStore = new ContentStore(dbManager.getDb());
 
-  const feedService = new FeedService(feedStore, entryStore);
-  const contentService = new ContentService(contentStore, entryStore);
+  const feedService = new FeedService(feedStore, entryStore, operationLogger);
+  const contentService = new ContentService(
+    contentStore,
+    entryStore,
+    undefined,
+    undefined,
+    undefined,
+    operationLogger,
+  );
   const providerProfileStore = new ProviderProfileStore(dbManager.getDb());
   const summaryStore = new SummaryStore(dbManager.getDb());
-  summaryStore.reconcileInterruptedRuns();
   const translationStore = new TranslationStore(dbManager.getDb());
   translationStore.reconcileInterruptedRuns();
   const secretStore = new SecretStore(
@@ -127,6 +143,7 @@ export function initializeServices(
     providerProfileStore,
     secretStore,
     provider,
+    operationLogger,
   );
   const summaryService = new SummaryService(
     contentStore,
@@ -134,7 +151,9 @@ export function initializeServices(
     secretStore,
     summaryStore,
     provider,
+    operationLogger,
   );
+  summaryService.reconcileInterruptedRuns();
   const translationService = new TranslationService(
     contentStore,
     providerProfileStore,
@@ -158,8 +177,8 @@ export function initializeServices(
     feedStore,
     syncCoordinator: null as unknown as SyncCoordinator,
     syncScheduler: null as unknown as SyncScheduler,
-    opmlImportService: new OPMLImportService(feedStore),
-    opmlExportService: new OPMLExportService(feedStore),
+    opmlImportService: new OPMLImportService(feedStore, operationLogger),
+    opmlExportService: new OPMLExportService(feedStore, operationLogger),
   };
   summaryServicesSingleton = { providerService, summaryService };
   translationServicesSingleton = { translationService, inlineTranslationService };

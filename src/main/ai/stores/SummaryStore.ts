@@ -186,8 +186,8 @@ export class SummaryStore {
       .run(error.code, error.message, error.retryable ? 1 : 0, new Date().toISOString(), runId);
   }
 
-  reconcileInterruptedRuns(): void {
-    this.db
+  reconcileInterruptedRuns(): number {
+    const result = this.db
       .prepare(`
         UPDATE agent_task_run
         SET status = 'failed', errorCode = ?, errorMessage = ?, errorRetryable = 1,
@@ -199,6 +199,7 @@ export class SummaryStore {
         'Summary generation was interrupted before completion.',
         new Date().toISOString(),
       );
+    return result.changes;
   }
 }
 

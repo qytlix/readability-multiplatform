@@ -4,6 +4,7 @@ import { FeedStore } from '../../../src/main/feed/stores/FeedStore';
 import { EntryStore } from '../../../src/main/feed/stores/EntryStore';
 import { FeedParserAdapter } from '../../../src/main/feed/parser/FeedParserAdapter';
 import { buildTestDb } from '../../fixtures/databases/feed-fixture';
+import { createFeedLoggerSpy } from '../../fixtures/feed-logger';
 
 const MOCK_FEED_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
@@ -38,7 +39,7 @@ describe('FeedService (M2 extensions)', () => {
     feedStore = new FeedStore(db);
     entryStore = new EntryStore(db);
     const parser = new FeedParserAdapter();
-    service = new FeedService(feedStore, entryStore, parser);
+    service = new FeedService(feedStore, entryStore, createFeedLoggerSpy().logger, parser);
     global.fetch = mockFetch(200, MOCK_FEED_XML);
   });
 

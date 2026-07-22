@@ -1,5 +1,6 @@
 import { FeedStore } from '../stores';
 import { SyncCoordinator, type SyncAllResult } from './SyncCoordinator';
+import type { FeedSyncTrigger } from './FeedLogging';
 
 /**
  * Minimal periodic sync scheduler.
@@ -40,11 +41,11 @@ export class SyncScheduler {
     this.running = true;
 
     // First cycle immediately
-    this.runCycle();
+    this.runCycle('startup');
 
     // Subsequent cycles at interval
     this.timerId = setInterval(() => {
-      this.runCycle();
+      this.runCycle('scheduled');
     }, this.intervalMs);
   }
 
@@ -75,7 +76,7 @@ export class SyncScheduler {
     if (this.running && this.timerId !== null) {
       clearInterval(this.timerId);
       this.timerId = setInterval(() => {
-        this.runCycle();
+        this.runCycle('scheduled');
       }, this.intervalMs);
     }
   }
@@ -98,16 +99,16 @@ export class SyncScheduler {
    * Trigger an immediate sync cycle (won't overlap with an existing one).
    */
   async triggerNow(): Promise<SyncAllResult[]> {
-    return this.runCycle();
+    return this.runCycle('manual');
   }
 
-  private async runCycle(): Promise<SyncAllResult[]> {
+  private async runCycle(trigger: FeedSyncTrigger): Promise<SyncAllResult[]> {
     if (!this.running || this.cycleInProgress) return [];
 
     this.cycleInProgress = true;
 
     try {
-      const results = await this.coordinator.syncAll();
+      const results = await this.coordinator.syncAll(trigger);
       this.onCycleComplete?.(results);
       return results;
     } finally {

@@ -11,7 +11,7 @@ import {
   createSyncCoordinator,
   registerFeedIpcHandlers,
 } from './ipc/feed.handler';
-import { SyncScheduler } from './feed/services';
+import { SyncScheduler, type FeedOperationLogger } from './feed/services';
 import { registerExternalIpcHandlers } from './ipc/external.handler';
 import {
   registerSummaryIpcHandlers,
@@ -44,7 +44,10 @@ export const isAuthorizedSender = (
   );
 };
 
-export function registerIpcHandlers(getMainWindow: GetMainWindow): void {
+export function registerIpcHandlers(
+  getMainWindow: GetMainWindow,
+  feedLogger: FeedOperationLogger,
+): void {
   // System ping handler
   ipcMain.handle(IPC_CHANNELS.systemPing, (event): PingResponse => {
     if (!isAuthorizedSender(event, getMainWindow)) {
@@ -120,6 +123,7 @@ export function registerIpcHandlers(getMainWindow: GetMainWindow): void {
     const syncCoordinator = createSyncCoordinator(
       getMainWindow,
       feedServices.feedService,
+      feedLogger,
       6,
     );
     const syncScheduler = new SyncScheduler(feedServices.feedStore, syncCoordinator, {
