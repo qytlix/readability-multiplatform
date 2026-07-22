@@ -105,9 +105,10 @@ export class FeedParserAdapter implements IFeedParserAdapter {
     });
 
     // 在 >...< 之间的文本中，将裸 & 替换为 &amp;
-    // 裸 & = 后面跟的不是已知 entity 或 character reference
+    // 裸 & = 后面跟的不是 5 种标准 XML entity 或 numeric character reference
+    // &nbsp; &copy; 等 HTML entity 对 XML 也是非法的，同样替换。
     processed = processed.replace(
-      />([^<]*?)&(?!amp;|lt;|gt;|quot;|apos;|#[xX]?[0-9a-fA-F]{1,6};|[a-zA-Z][a-zA-Z0-9]*;)([^<]*?)</g,
+      />([^<]*?)&(?!amp;|lt;|gt;|quot;|apos;|#[xX]?[0-9a-fA-F]{1,6};)([^<]*?)</g,
       '>$1&amp;$2<',
     );
 
