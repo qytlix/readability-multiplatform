@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 import { FeedStore } from '../stores';
 import { createFeedError } from '../../../shared/errors/feed.errors';
+import { normalizeFeedURL } from './FeedIdentity';
 import {
   elapsedOPMLMilliseconds,
   logOPMLImportCompleted,
@@ -226,10 +227,6 @@ export class OPMLImportService {
       totalFound: feedsToImport.length,
     };
 
-    const existingUrls = new Set(
-      this.feedStore.findAll().map((f) => f.feedURL.toLowerCase()),
-    );
-
     for (const feed of feedsToImport) {
       try {
         if (!feed.xmlUrl) {
@@ -237,17 +234,10 @@ export class OPMLImportService {
           continue;
         }
 
-        if (existingUrls.has(feed.xmlUrl.toLowerCase())) {
-          result.skipCount++;
-          continue;
-        }
-
         // Validate URL format
         try {
-          new URL(feed.xmlUrl);
-          if (feed.xmlUrl.startsWith('http://') || feed.xmlUrl.startsWith('https://')) {
-            // Valid, proceed
-          } else {
+          const parsed = new URL(feed.xmlUrl);
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
             result.failures.push({
               title: feed.title,
               xmlUrl: feed.xmlUrl,
@@ -264,6 +254,14 @@ export class OPMLImportService {
           continue;
         }
 
+        // Check duplicate via normalized dedupKey
+        const dedupKey = normalizeFeedURL(feed.xmlUrl);
+        const existing = this.feedStore.findByDedupKey(dedupKey);
+        if (existing) {
+          result.skipCount++;
+          continue;
+        }
+
         // Create feed record (without syncing)
         this.feedStore.create({
           title: feed.title,
@@ -272,7 +270,6 @@ export class OPMLImportService {
         });
 
         result.successCount++;
-        existingUrls.add(feed.xmlUrl.toLowerCase());
       } catch (error) {
         result.failures.push({
           title: feed.title,
@@ -299,7 +296,15 @@ export class OPMLImportService {
       totalFound: feedsToImport.length,
     };
 
-    const newUrls = new Set(feedsToImport.map((f) => f.xmlUrl.toLowerCase()));
+    const newDedupKeys = new Set(
+      feedsToImport.map((f) => {
+        try {
+          return normalizeFeedURL(f.xmlUrl);
+        } catch {
+          return f.xmlUrl;
+        }
+      }),
+    );
 
     // Add all OPML feeds
     for (const feed of feedsToImport) {
@@ -312,7 +317,8 @@ export class OPMLImportService {
         // Validate URL
         new URL(feed.xmlUrl);
 
-        const existing = this.feedStore.findByUrl(feed.xmlUrl);
+        const dedupKey = normalizeFeedURL(feed.xmlUrl);
+        const existing = this.feedStore.findByDedupKey(dedupKey);
         if (!existing) {
           this.feedStore.create({
             title: feed.title,
@@ -330,8 +336,8 @@ export class OPMLImportService {
       }
     }
 
-    // Remove feeds not in OPML
-    this.feedStore.deleteAllExcept(newUrls);
+    // Remove feeds not in OPML (compare by dedupKey)
+    this.feedStore.deleteAllExcept(newDedupKeys);
 
     return result;
   }
