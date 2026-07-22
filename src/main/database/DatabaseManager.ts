@@ -8,10 +8,14 @@ import { MIGRATION_006 } from '../migrations/006_create_ai_profiles';
 import { MIGRATION_007 } from '../migrations/007_create_summary';
 import { MIGRATION_008 } from '../migrations/008_create_translation';
 import { MIGRATION_009 } from '../migrations/009_enhance_translation';
+import { runMigration010 } from '../migrations/010_create_dedup_key';
 
 interface Migration {
   id: string;
-  sql: string;
+  /** Raw SQL to execute (for simple migrations) */
+  sql?: string;
+  /** JS function to run (for complex migrations needing JS logic) */
+  run?: (db: Database.Database) => void;
 }
 
 const MIGRATIONS: Migration[] = [
@@ -24,6 +28,7 @@ const MIGRATIONS: Migration[] = [
   { id: '007_create_summary', sql: MIGRATION_007 },
   { id: '008_create_translation', sql: MIGRATION_008 },
   { id: '009_enhance_translation', sql: MIGRATION_009 },
+  { id: '010_create_dedup_key', sql: '', run: runMigration010 },
 ];
 
 export class DatabaseManager {
@@ -59,7 +64,13 @@ export class DatabaseManager {
       if (applied.has(migration.id)) continue;
 
       this.db.transaction(() => {
-        this.db.exec(migration.sql);
+        if (migration.sql) {
+          this.db.exec(migration.sql);
+        }
+        // Run JS callback if present (after SQL for composite migrations)
+        if (migration.run) {
+          migration.run(this.db);
+        }
         this.db
           .prepare('INSERT INTO _migrations (filename, appliedAt) VALUES (?, ?)')
           .run(migration.id, new Date().toISOString());
