@@ -186,6 +186,28 @@ describe('FeedParserAdapter', () => {
       ).rejects.toThrow('Unrecognized feed format');
     });
 
+    it('should reject HTML pages with clear message', async () => {
+      await expect(
+        adapter.parse('<html><body>not a feed</body></html>', 'https://example.com'),
+      ).rejects.toThrow('Not a feed');
+    });
+
+    it('should reject HTML pages with DOCTYPE', async () => {
+      await expect(
+        adapter.parse('<!DOCTYPE html><html><body>hi</body></html>', 'https://example.com'),
+      ).rejects.toThrow('Not a feed');
+    });
+
+    it('should reject HTML pages returned by common CMS login pages', async () => {
+      const htmlPage = `<html>
+    <head><link rel="icon" href="data:;base64,="></head>
+    <script src="https://example.com/captcha.js"></script>
+  </html>`;
+      await expect(
+        adapter.parse(htmlPage, 'http://36kr.com/'),
+      ).rejects.toThrow('Not a feed');
+    });
+
     it('should throw on invalid JSON', async () => {
       await expect(
         adapter.parse('{ invalid json', 'https://invalid.example.com'),

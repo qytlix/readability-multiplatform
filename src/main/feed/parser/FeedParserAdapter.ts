@@ -1,6 +1,8 @@
 import type { ParsedFeed, ParsedEntry } from '../../../shared/contracts/feed.types';
 import Parser from 'rss-parser';
 
+const CDATA_PLACEHOLDER = '__CDATA_BLOCK_';
+
 type FeedType = 'rss' | 'atom' | 'json';
 
 /**
@@ -53,6 +55,11 @@ export class FeedParserAdapter implements IFeedParserAdapter {
       return 'json';
     }
 
+    // Reject HTML pages early — they are not feeds
+    if (trimmed.startsWith('<html') || trimmed.startsWith('<!DOCTYPE html') || trimmed.startsWith('<!doctype html')) {
+      throw new Error('Not a feed: server returned HTML instead of RSS/Atom/JSON');
+    }
+
     if (trimmed.startsWith('<?xml') || trimmed.startsWith('<')) {
       // rss-parser 能自动区分 RSS 和 Atom
       return 'rss';
@@ -101,7 +108,7 @@ export class FeedParserAdapter implements IFeedParserAdapter {
     const cdataBlocks: string[] = [];
     let processed = xml.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_match, content) => {
       cdataBlocks.push(content);
-      return `\x00CDATA_${cdataBlocks.length - 1}\x00`;
+      return `${CDATA_PLACEHOLDER}${cdataBlocks.length - 1}_END`;
     });
 
     // 在 >...< 之间的文本中，将裸 & 替换为 &amp;
@@ -114,8 +121,8 @@ export class FeedParserAdapter implements IFeedParserAdapter {
 
     // 恢复 CDATA 段
     processed = processed.replace(
-      /\x00CDATA_(\d+)\x00/g,
-      (_match, index) => `<!\[CDATA[${cdataBlocks[Number(index)]}\]\]>`,
+      /__CDATA_BLOCK_(\d+)_END/g,
+      (_match, index) => `<![CDATA[${cdataBlocks[Number(index)]}]]>`,
     );
 
     return processed;
