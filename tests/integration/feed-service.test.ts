@@ -77,6 +77,47 @@ describe('FeedService', () => {
       ).rejects.toMatchObject({ code: 'FEED_DUPLICATE' });
     });
 
+    it('should reject duplicate feeds (case-insensitive host)', async () => {
+      global.fetch = mockFetch(200, MOCK_FEED_XML);
+      await service.addFeed('https://example.com/feed.xml');
+
+      await expect(
+        service.addFeed('HTTPS://EXAMPLE.COM/feed.xml'),
+      ).rejects.toMatchObject({ code: 'FEED_DUPLICATE' });
+    });
+
+    it('should reject duplicate feeds (trailing slash difference)', async () => {
+      global.fetch = mockFetch(200, MOCK_FEED_XML);
+      await service.addFeed('https://example.com/feed.xml');
+
+      await expect(
+        service.addFeed('https://example.com/feed.xml/'),
+      ).rejects.toMatchObject({ code: 'FEED_DUPLICATE' });
+    });
+
+    it('should allow feeds with different protocols', async () => {
+      global.fetch = mockFetch(200, MOCK_FEED_XML);
+      await service.addFeed('https://example.com/feed.xml');
+
+      global.fetch = mockFetch(200, MOCK_FEED_XML);
+      // http and https are treated as different feeds
+      await expect(
+        service.addFeed('http://example.com/feed.xml'),
+      ).resolves.toBeDefined();
+
+      const feeds = await service.getFeeds();
+      expect(feeds).toHaveLength(2);
+    });
+
+    it('should reject duplicate feeds (default port difference)', async () => {
+      global.fetch = mockFetch(200, MOCK_FEED_XML);
+      await service.addFeed('https://example.com/feed.xml');
+
+      await expect(
+        service.addFeed('https://example.com:443/feed.xml'),
+      ).rejects.toMatchObject({ code: 'FEED_DUPLICATE' });
+    });
+
     it('should successfully add a feed and return entries', async () => {
       global.fetch = mockFetch(200, MOCK_FEED_XML);
 

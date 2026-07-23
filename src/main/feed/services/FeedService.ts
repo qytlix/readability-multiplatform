@@ -3,6 +3,7 @@ import type { Feed, EntryListItem } from '../../../shared/contracts/feed.types';
 import { createFeedError } from '../../../shared/errors/feed.errors';
 import { FeedStore, EntryStore } from '../stores';
 import { FeedParserAdapter, type IFeedParserAdapter } from '../parser/FeedParserAdapter';
+import { normalizeFeedURL } from './FeedIdentity';
 import {
   elapsedMilliseconds,
   FEED_LOG_COMPONENTS,
@@ -44,8 +45,9 @@ export class FeedService {
         throw createFeedError('FEED_INVALID_URL', 'Invalid feed URL format', false);
       }
 
-      // 2. Check duplicate
-      const existing = this.feedStore.findByUrl(url);
+      // 2. Check duplicate (via normalized dedupKey)
+      const dedupKey = normalizeFeedURL(url);
+      const existing = this.feedStore.findByDedupKey(dedupKey);
       if (existing) {
         throw createFeedError(
           'FEED_DUPLICATE',

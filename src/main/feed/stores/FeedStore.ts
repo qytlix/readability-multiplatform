@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { Feed, SyncStatus } from '../../../shared/contracts/feed.types';
+import { normalizeFeedURL } from '../services/FeedIdentity';
 
 interface CreateFeedParams {
   title?: string;
@@ -20,14 +21,16 @@ export class FeedStore {
 
   create(params: CreateFeedParams): Feed {
     const now = new Date().toISOString();
+    const dedupKey = normalizeFeedURL(params.feedURL);
     const stmt = this.db.prepare(`
-      INSERT INTO feed (title, feedURL, siteURL, syncIntervalMin, createdAt)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO feed (title, feedURL, dedupKey, siteURL, syncIntervalMin, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
       params.title ?? null,
       params.feedURL,
+      dedupKey,
       params.siteURL ?? null,
       params.syncIntervalMin ?? 30,
       now,
@@ -45,6 +48,16 @@ export class FeedStore {
   findByUrl(url: string): Feed | undefined {
     const stmt = this.db.prepare('SELECT * FROM feed WHERE feedURL = ?');
     const row = stmt.get(url) as Record<string, unknown> | undefined;
+    return row ? normalizeFeed(row) : undefined;
+  }
+
+  /**
+   * Find a feed by its normalized dedupKey.
+   * Used for duplicate checking in addFeed and OPML import.
+   */
+  findByDedupKey(dedupKey: string): Feed | undefined {
+    const stmt = this.db.prepare('SELECT * FROM feed WHERE dedupKey = ?');
+    const row = stmt.get(dedupKey) as Record<string, unknown> | undefined;
     return row ? normalizeFeed(row) : undefined;
   }
 
@@ -123,10 +136,15 @@ export class FeedStore {
    * Delete all feeds except those whose URLs are in the keepUrls set.
    * Used for OPML replace mode.
    */
-  deleteAllExcept(keepUrls: Set<string>): number {
+  /**
+   * Delete all feeds except those whose dedupKeys are in the keep set.
+   * Used for OPML replace mode.
+   */
+  deleteAllExcept(keepDedupKeys: Set<string>): number {
     const allFeeds = this.findAll();
+    // Compute dedupKey for each feed in memory to match against keep set
     const toDelete = allFeeds.filter(
-      (f) => !keepUrls.has(f.feedURL.toLowerCase()),
+      (f) => !keepDedupKeys.has(normalizeFeedURL(f.feedURL)),
     );
 
     const deleteStmt = this.db.prepare('DELETE FROM feed WHERE id = ?');

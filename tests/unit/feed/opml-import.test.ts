@@ -72,6 +72,54 @@ describe('OPMLImportService', () => {
       expect(feedStore.findAll()).toHaveLength(3);
     });
 
+    it('should skip duplicates with different host case in merge mode', async () => {
+      await service.importFromContent(VALID_OPML, 'merge');
+
+      // Same URLs but with uppercased host
+      const mixedCaseOpml = `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>Mixed Case</title></head>
+  <body>
+    <outline text="Blog A" xmlUrl="HTTPS://A.EXAMPLE.COM/feed.xml" htmlUrl="https://a.example.com"/>
+    <outline text="Blog B" xmlUrl="https://B.EXAMPLE.COM/feed.xml"/>
+    <outline text="News Site" xmlUrl="HTTPS://NEWS.EXAMPLE.COM/rss"/>
+  </body>
+</opml>`;
+
+      const result = await service.importFromContent(mixedCaseOpml, 'merge');
+
+      expect(result.successCount).toBe(0);
+      expect(result.skipCount).toBe(3);
+      expect(feedStore.findAll()).toHaveLength(3);
+    });
+
+    it('should skip duplicates with trailing slash difference', async () => {
+      const opmlWithSlash = `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>With Slash</title></head>
+  <body>
+    <outline text="Blog A" xmlUrl="https://a.example.com/feed.xml/"/>
+  </body>
+</opml>`;
+
+      await service.importFromContent(opmlWithSlash, 'merge');
+      expect(feedStore.findAll()).toHaveLength(1);
+
+      // Same URL without trailing slash
+      const sameFeedOpml = `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>No Slash</title></head>
+  <body>
+    <outline text="Blog A" xmlUrl="https://a.example.com/feed.xml"/>
+  </body>
+</opml>`;
+
+      const result = await service.importFromContent(sameFeedOpml, 'merge');
+      expect(result.successCount).toBe(0);
+      expect(result.skipCount).toBe(1);
+      expect(feedStore.findAll()).toHaveLength(1);
+    });
+
     it('should merge new feeds with existing ones', async () => {
       await service.importFromContent(SINGLE_FEED_OPML, 'merge');
 

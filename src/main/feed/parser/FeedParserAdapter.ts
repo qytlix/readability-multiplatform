@@ -1,6 +1,8 @@
 import type { ParsedFeed, ParsedEntry } from '../../../shared/contracts/feed.types';
 import Parser from 'rss-parser';
 
+const CDATA_PLACEHOLDER = '__CDATA_BLOCK_';
+
 type FeedType = 'rss' | 'atom' | 'json';
 
 /**
@@ -53,6 +55,11 @@ export class FeedParserAdapter implements IFeedParserAdapter {
       return 'json';
     }
 
+    // Reject HTML pages early — they are not feeds
+    if (trimmed.startsWith('<html') || trimmed.startsWith('<!DOCTYPE html') || trimmed.startsWith('<!doctype html')) {
+      throw new Error('Not a feed: server returned HTML instead of RSS/Atom/JSON');
+    }
+
     if (trimmed.startsWith('<?xml') || trimmed.startsWith('<')) {
       // rss-parser 能自动区分 RSS 和 Atom
       return 'rss';
@@ -64,11 +71,12 @@ export class FeedParserAdapter implements IFeedParserAdapter {
   /**
    * 解析 RSS/Atom (由 rss-parser 处理)
    */
-  private async parseXmlFeed(xml: string, sourceUrl: string): Promise<ParsedFeed> {
+  private async parseXmlFeed(rawXml: string, sourceUrl: string): Promise<ParsedFeed> {
     let result: ParsedFeed;
 
     try {
-      const parsed = await this.parser.parseString(xml);
+      const cleaned = this.cleanMalformedXml(rawXml);
+      const parsed = await this.parser.parseString(cleaned);
 
       result = {
         title: parsed.title ?? undefined,
@@ -89,6 +97,35 @@ export class FeedParserAdapter implements IFeedParserAdapter {
     }
 
     return result;
+  }
+
+  /**
+   * 修复常见 malformed XML 问题：将文本节点中裸 & 替换为 &amp;
+   * 跳过合法的 entity (&amp; &lt; &gt; &quot; &apos; &#xxx;) 和 CDATA 段。
+   */
+  private cleanMalformedXml(xml: string): string {
+    // 先把 CDATA 段保护起来（不做替换）
+    const cdataBlocks: string[] = [];
+    let processed = xml.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_match, content) => {
+      cdataBlocks.push(content);
+      return `${CDATA_PLACEHOLDER}${cdataBlocks.length - 1}_END`;
+    });
+
+    // 在 >...< 之间的文本中，将裸 & 替换为 &amp;
+    // 裸 & = 后面跟的不是 5 种标准 XML entity 或 numeric character reference
+    // &nbsp; &copy; 等 HTML entity 对 XML 也是非法的，同样替换。
+    processed = processed.replace(
+      />([^<]*?)&(?!amp;|lt;|gt;|quot;|apos;|#[xX]?[0-9a-fA-F]{1,6};)([^<]*?)</g,
+      '>$1&amp;$2<',
+    );
+
+    // 恢复 CDATA 段
+    processed = processed.replace(
+      /__CDATA_BLOCK_(\d+)_END/g,
+      (_match, index) => `<![CDATA[${cdataBlocks[Number(index)]}]]>`,
+    );
+
+    return processed;
   }
 
   /**
