@@ -38,3 +38,23 @@ export function buildTestDbWithData() {
 
   return { dbManager, db };
 }
+
+/**
+ * Build a test database pre-populated with feed, entries, and entry_content.
+ * Entry 3 intentionally has no entry_content row (simulates un-cleaned entry).
+ */
+export function buildTestDbWithContent() {
+  const { dbManager, db } = buildTestDbWithData();
+  const now = new Date().toISOString();
+
+  const insertContent = db.prepare(`
+    INSERT INTO entry_content (entryId, html, cleanedHtml, markdown, pipelineStatus, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  insertContent.run(1, '<html>1</html>', '<p>cleaned one</p>', 'markdown body for first post', 'success', now, now);
+  insertContent.run(2, '<html>2</html>', '<p>cleaned two</p>', 'markdown body for second article', 'success', now, now);
+  // entry 3 intentionally left without entry_content
+
+  return { dbManager, db };
+}
