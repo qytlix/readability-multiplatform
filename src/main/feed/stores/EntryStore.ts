@@ -127,18 +127,20 @@ export class EntryStore {
     }
 
     if (options.search) {
-      const likeParam = `%${options.search}%`;
+      const escaped = escapeLike(options.search);
+      const likeParam = `%${escaped}%`;
+      const esc = " ESCAPE '\\'";
       conditions.push(
-        '(e.title LIKE ? OR e.summary LIKE ? OR ec.markdown LIKE ? OR f.title LIKE ?)'
+        `(e.title LIKE ?${esc} OR e.summary LIKE ?${esc} OR ec.markdown LIKE ?${esc} OR f.title LIKE ?${esc})`
       );
       whereParams.push(likeParam, likeParam, likeParam, likeParam);
 
       // SELECT-level relevance scoring — ? placeholders come before WHERE in SQL
       selectFields = `e.*, f.title AS feedTitle, ec.pipelineStatus,
-        (CASE WHEN e.title LIKE ?         THEN 3 ELSE 0 END +
-         CASE WHEN ec.markdown LIKE ?     THEN 2 ELSE 0 END +
-         CASE WHEN e.summary LIKE ?       THEN 1 ELSE 0 END +
-         CASE WHEN f.title LIKE ?         THEN 1 ELSE 0 END) AS relevance`;
+        (CASE WHEN e.title LIKE ?${esc}         THEN 3 ELSE 0 END +
+         CASE WHEN ec.markdown LIKE ?${esc}     THEN 2 ELSE 0 END +
+         CASE WHEN e.summary LIKE ?${esc}       THEN 1 ELSE 0 END +
+         CASE WHEN f.title LIKE ?${esc}         THEN 1 ELSE 0 END) AS relevance`;
       selectParams.push(likeParam, likeParam, likeParam, likeParam);
 
       orderBy = 'ORDER BY relevance DESC, e.publishedAt DESC, e.id DESC';
@@ -223,6 +225,18 @@ export class EntryStore {
     const row = this.db.prepare(sql).get(...params) as { cnt: number };
     return row.cnt;
   }
+}
+
+/**
+ * Escape LIKE special characters so user input is treated literally.
+ * SQLite default escape character: backslash.
+ * Order matters: escape backslash first, then % and _.
+ */
+function escapeLike(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/%/g, '\\%')
+    .replace(/_/g, '\\_');
 }
 
 function normalizeEntry(row: Record<string, unknown>): Entry {
