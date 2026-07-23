@@ -7,8 +7,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   TranslationResult,
+  TranslationSegment,
   TranslationState,
   TranslationStreamEvent,
   TranslationTargetLanguage,
@@ -18,12 +20,19 @@ import {
   getRestoredTranslationReaderMode,
   type TranslationReaderMode,
 } from './translationReaderMode';
+import {
+  matchesKeyboardShortcut,
+  type TranslationShortcut,
+} from '../settings/keyboardShortcut';
 
 interface TranslationPanelProps {
   entryId: number;
   isContentReady: boolean;
   targetLanguage: TranslationTargetLanguage;
+  useTerminology: boolean;
+  shortcut: TranslationShortcut;
   sourceHtml: string;
+  titleTarget: HTMLDivElement | null;
   children: ReactNode;
   onGeneratingChange: (isGenerating: boolean) => void;
   onBilingualChange: (isBilingual: boolean) => void;
@@ -38,7 +47,10 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   entryId,
   isContentReady,
   targetLanguage,
+  useTerminology,
+  shortcut,
   sourceHtml,
+  titleTarget,
   children,
   onGeneratingChange,
   onBilingualChange,
@@ -65,6 +77,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       const result = await window.shaleAPI.translation.get({
         entryId,
         targetLanguage,
+        useTerminology,
       });
       if (loadSequenceRef.current !== loadSequence) return;
       if (!result.ok) {
@@ -83,7 +96,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       if (loadSequenceRef.current !== loadSequence) return;
       setMessage('Unable to load the Translation state.');
     }
-  }, [entryId, isContentReady, targetLanguage]);
+  }, [entryId, isContentReady, targetLanguage, useTerminology]);
 
   useEffect(() => {
     activeRunIdRef.current = null;
@@ -132,6 +145,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       const result = await window.shaleAPI.translation.generate({
         entryId,
         targetLanguage,
+        useTerminology,
       });
       if (!result.ok) {
         setMessage(result.error.message);
@@ -144,7 +158,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     } catch {
       setMessage('Unable to start Translation generation.');
     }
-  }, [entryId, targetLanguage]);
+  }, [entryId, targetLanguage, useTerminology]);
 
   const activate = useCallback((): void => {
     if (translationState.state === 'succeeded') {
@@ -161,6 +175,23 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   useImperativeHandle(ref, () => ({ activate }), [activate]);
 
   useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent): void => {
+      if (
+        event.repeat
+        || !isContentReady
+        || !matchesKeyboardShortcut(event, shortcut)
+        || isEditableTarget(event.target)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      activate();
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, [activate, isContentReady, shortcut]);
+
+  useEffect(() => {
     onGeneratingChange(isGenerating);
   }, [isGenerating, onGeneratingChange]);
 
@@ -170,6 +201,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
 
   const result = getResult(translationState);
   const hasTranslation = Boolean(result);
+  const translatedTitle = getTranslatedTitleSegment(result, readerMode);
   const titleIsPending = readerMode === 'bilingual'
     && result?.status === 'running'
     && result.segments.some((segment) =>
@@ -188,12 +220,25 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       runId,
       entryId,
       targetLanguage,
+      useTerminology,
       sourceSegmentIds,
     }).catch(() => undefined);
-  }, [entryId, targetLanguage]);
+  }, [entryId, targetLanguage, useTerminology]);
 
   return (
     <>
+      {titleTarget && translatedTitle && createPortal(
+        <section
+          className="translation-bilingual-segment translation-segment-title"
+          data-segment-id={translatedTitle.sourceSegmentId}
+        >
+          <div
+            className="translation-bilingual-target entry-detail-html"
+            dangerouslySetInnerHTML={{ __html: translatedTitle.translatedHtml ?? '' }}
+          />
+        </section>,
+        titleTarget,
+      )}
       {showFeedback && translationState.state === 'failed' && (
         <p className="entry-detail-ai-error" role="status">
           {result?.error?.message ?? 'Translation generation failed.'}
@@ -216,6 +261,13 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
 
 TranslationPanel.displayName = 'TranslationPanel';
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (
+    target.isContentEditable
+    || target.matches('input, textarea, select')
+  );
+}
+
 function BilingualProjection({
   result,
   sourceHtml,
@@ -232,8 +284,6 @@ function BilingualProjection({
     showPendingIndicators: result.status === 'running',
   });
   const bodyHtml = bodyRoot.innerHTML;
-  const metadataSegments = result.segments.filter((segment) =>
-    segment.sourceType === 'title' || segment.sourceType === 'byline');
 
   useEffect(() => {
     const article = articleRef.current;
@@ -264,31 +314,23 @@ function BilingualProjection({
       aria-label="Bilingual translation"
       aria-busy={result.status === 'running'}
     >
-      {metadataSegments.filter((segment) =>
-        segment.status === 'succeeded' && Boolean(segment.translatedHtml)).map((segment) => (
-        <section
-          className={`translation-bilingual-segment translation-segment-${segment.sourceType}`}
-          key={segment.sourceSegmentId}
-          data-segment-id={segment.sourceSegmentId}
-        >
-          {segment.sourceType !== 'title' && segment.sourceType !== 'byline' && (
-            <div
-              className="translation-bilingual-source entry-detail-html"
-              dangerouslySetInnerHTML={{ __html: segment.sourceHtml }}
-            />
-          )}
-          <div
-            className="translation-bilingual-target entry-detail-html"
-            dangerouslySetInnerHTML={{ __html: segment.translatedHtml ?? '' }}
-          />
-        </section>
-      ))}
       <div
         className="translation-bilingual-body entry-detail-html"
         dangerouslySetInnerHTML={{ __html: bodyHtml }}
       />
     </article>
   );
+}
+
+export function getTranslatedTitleSegment(
+  result: TranslationResult | undefined,
+  readerMode: TranslationReaderMode,
+): TranslationSegment | undefined {
+  if (readerMode !== 'bilingual') return undefined;
+  return result?.segments.find((segment) =>
+    segment.sourceType === 'title'
+    && segment.status === 'succeeded'
+    && Boolean(segment.translatedHtml));
 }
 
 function mergeCompletedSegment(

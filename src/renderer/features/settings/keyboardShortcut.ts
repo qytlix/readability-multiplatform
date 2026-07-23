@@ -1,10 +1,12 @@
-export interface InlineTranslationShortcut {
+export interface TranslationShortcut {
   key: string;
   ctrlKey: boolean;
   altKey: boolean;
   shiftKey: boolean;
   metaKey: boolean;
 }
+
+export type InlineTranslationShortcut = TranslationShortcut;
 
 export interface ShortcutKeyboardEvent {
   key: string;
@@ -14,7 +16,15 @@ export interface ShortcutKeyboardEvent {
   metaKey: boolean;
 }
 
-export const DEFAULT_INLINE_TRANSLATION_SHORTCUT: InlineTranslationShortcut = {
+export const DEFAULT_FULL_TRANSLATION_SHORTCUT: TranslationShortcut = {
+  key: 'T',
+  ctrlKey: true,
+  altKey: true,
+  shiftKey: false,
+  metaKey: false,
+};
+
+export const DEFAULT_PARAGRAPH_TRANSLATION_SHORTCUT: TranslationShortcut = {
   key: 'Z',
   ctrlKey: true,
   altKey: false,
@@ -22,12 +32,23 @@ export const DEFAULT_INLINE_TRANSLATION_SHORTCUT: InlineTranslationShortcut = {
   metaKey: false,
 };
 
+export const DEFAULT_SELECTION_TRANSLATION_SHORTCUT: TranslationShortcut = {
+  key: 'S',
+  ctrlKey: true,
+  altKey: true,
+  shiftKey: false,
+  metaKey: false,
+};
+
+/** @deprecated Use the translation-mode-specific defaults. */
+export const DEFAULT_INLINE_TRANSLATION_SHORTCUT = DEFAULT_PARAGRAPH_TRANSLATION_SHORTCUT;
+
 const MODIFIER_KEYS = new Set(['Alt', 'AltGraph', 'Control', 'Meta', 'Shift']);
 const UNSUPPORTED_KEYS = new Set(['Dead', 'Process', 'Unidentified']);
 
 export function shortcutFromKeyboardEvent(
   event: ShortcutKeyboardEvent,
-): InlineTranslationShortcut | null {
+): TranslationShortcut | null {
   const key = normalizeShortcutKey(event.key);
   if (!key || (!event.ctrlKey && !event.altKey && !event.metaKey)) return null;
   return {
@@ -41,7 +62,7 @@ export function shortcutFromKeyboardEvent(
 
 export function matchesKeyboardShortcut(
   event: ShortcutKeyboardEvent,
-  shortcut: InlineTranslationShortcut,
+  shortcut: TranslationShortcut,
 ): boolean {
   return normalizeShortcutKey(event.key) === shortcut.key
     && event.ctrlKey === shortcut.ctrlKey
@@ -50,7 +71,7 @@ export function matchesKeyboardShortcut(
     && event.metaKey === shortcut.metaKey;
 }
 
-export function formatKeyboardShortcut(shortcut: InlineTranslationShortcut): string {
+export function formatKeyboardShortcut(shortcut: TranslationShortcut): string {
   const parts: string[] = [];
   if (shortcut.ctrlKey) parts.push('Ctrl');
   if (shortcut.metaKey) parts.push('Meta');
@@ -60,7 +81,7 @@ export function formatKeyboardShortcut(shortcut: InlineTranslationShortcut): str
   return parts.join('+');
 }
 
-export function parseStoredKeyboardShortcut(value: unknown): InlineTranslationShortcut | null {
+export function parseStoredKeyboardShortcut(value: unknown): TranslationShortcut | null {
   if (typeof value === 'string') return migrateLegacyModifierShortcut(value);
   if (!value || typeof value !== 'object') return null;
   const candidate = value as Partial<InlineTranslationShortcut>;
@@ -82,6 +103,17 @@ export function parseStoredKeyboardShortcut(value: unknown): InlineTranslationSh
   });
 }
 
+export function areKeyboardShortcutsEqual(
+  left: TranslationShortcut,
+  right: TranslationShortcut,
+): boolean {
+  return left.key === right.key
+    && left.ctrlKey === right.ctrlKey
+    && left.altKey === right.altKey
+    && left.shiftKey === right.shiftKey
+    && left.metaKey === right.metaKey;
+}
+
 function normalizeShortcutKey(key: string): string | null {
   if (MODIFIER_KEYS.has(key) || UNSUPPORTED_KEYS.has(key)) return null;
   if (key === ' ') return 'Space';
@@ -89,7 +121,7 @@ function normalizeShortcutKey(key: string): string | null {
   return key;
 }
 
-function migrateLegacyModifierShortcut(value: string): InlineTranslationShortcut | null {
+function migrateLegacyModifierShortcut(value: string): TranslationShortcut | null {
   if (value === 'Control') {
     return { ...DEFAULT_INLINE_TRANSLATION_SHORTCUT };
   }

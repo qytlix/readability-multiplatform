@@ -5,7 +5,7 @@ import type {
   ContentSegmentType,
 } from '../../../shared/contracts/content.types';
 
-export const CONTENT_SEGMENTER_VERSION = 'v2';
+export const CONTENT_SEGMENTER_VERSION = 'v3';
 
 export interface ContentSegmentMetadata {
   title?: string;
@@ -36,8 +36,7 @@ export class ContentSegmenter {
     );
     const segments: ContentSegment[] = [];
 
-    appendMetadataSegment(segments, 'title', metadata.title, 'h2');
-    appendMetadataSegment(segments, 'byline', metadata.byline, 'p');
+    appendTitleSegment(segments, metadata.title);
 
     for (const element of elements) {
       const tagName = element.tagName.toLowerCase();
@@ -98,19 +97,14 @@ function readTextWithBlockBoundaries(element: Element): string {
   return normalizeWhitespace(clone.textContent ?? '');
 }
 
-function appendMetadataSegment(
+function appendTitleSegment(
   segments: ContentSegment[],
-  type: 'title' | 'byline',
   value: string | undefined,
-  tagName: 'h2' | 'p',
 ): void {
   const sourceText = normalizeWhitespace(value ?? '');
   if (!sourceText) return;
-  const className = type === 'title'
-    ? 'translation-reader-title'
-    : 'translation-reader-byline';
-  const sourceHtml = `<${tagName} class="${className}">${escapeHtml(sourceText)}</${tagName}>`;
-  appendSegment(segments, type, sourceHtml, sourceText);
+  const sourceHtml = `<h2 class="translation-reader-title">${escapeHtml(sourceText)}</h2>`;
+  appendSegment(segments, 'title', sourceHtml, sourceText);
 }
 
 function appendSegment(

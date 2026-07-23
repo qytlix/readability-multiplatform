@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildInlineTranslationPrompt,
   InlineTranslationService,
   parseInlineTranslationOutput,
 } from '../../src/main/ai/services/InlineTranslationService';
 import type { SummaryProvider } from '../../src/main/ai/provider/SummaryProvider';
+import type { TerminologyLookup } from '../../src/main/ai/stores/TerminologyStore';
 
 const request = {
   kind: 'selection' as const,
@@ -43,11 +44,24 @@ describe('inline Translation', () => {
   });
 
   it('calls the configured provider and rejects oversized selections', async () => {
+    const prompts: string[] = [];
     const provider: SummaryProvider = {
-      async *stream() {
+      async *stream(providerRequest) {
+        prompts.push(providerRequest.prompt);
         yield '{"translation":"相关的","examples":[]}';
       },
       testConnection: () => Promise.resolve(),
+    };
+    const findCandidates = vi.fn(() => [{
+      sourceId: 'test-terms',
+      conceptId: 'related-concept',
+      sourceTerm: 'related',
+      targetTerm: '相关的',
+    }]);
+    const terminologyLookup: TerminologyLookup = {
+      getVersion: () => 'test-terms@1',
+      getInfo: () => ({ version: 'test-terms@1', sources: [] }),
+      findCandidates,
     };
     const service = new InlineTranslationService(
       {
@@ -64,9 +78,21 @@ describe('inline Translation', () => {
       },
       { read: () => 'secret' },
       provider,
+      terminologyLookup,
     );
 
     await expect(service.translate(request)).resolves.toMatchObject({ translation: '相关的' });
+    expect(findCandidates).toHaveBeenCalledWith(
+      expect.stringContaining('related'),
+      'zh-CN',
+    );
+    expect(prompts[0]).toContain('"targetTerm":"相关的"');
+
+    findCandidates.mockClear();
+    await service.translate({ ...request, useTerminology: false });
+    expect(findCandidates).not.toHaveBeenCalled();
+    expect(prompts[1]).not.toContain('"targetTerm":"相关的"');
+
     await expect(service.translate({ ...request, sourceText: 'x'.repeat(501) }))
       .rejects.toThrow('no more than 500 characters');
   });

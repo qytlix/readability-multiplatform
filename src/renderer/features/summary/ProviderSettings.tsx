@@ -14,6 +14,8 @@ interface ProviderSettingsProps {
   onClose?: () => void;
 }
 
+export const SAVED_API_KEY_MASK = '••••••••••••••••';
+
 /**
  * API keys can legitimately end in digits, so do not attempt to strip a
  * numeric suffix. Replacing the complete field on paste prevents a previous
@@ -35,6 +37,7 @@ export const ProviderSettings = ({
   const [baseUrl, setBaseUrl] = useState(profile?.baseUrl ?? 'https://api.openai.com/v1');
   const [model, setModel] = useState<GptSummaryModel>(toSelectableModel(profile?.model));
   const [status, setStatus] = useState('');
+  const [statusTone, setStatusTone] = useState<'neutral' | 'success' | 'error'>('neutral');
   const [saving, setSaving] = useState(false);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
 
@@ -46,6 +49,7 @@ export const ProviderSettings = ({
   const save = async (): Promise<ProviderProfile | null> => {
     setSaving(true);
     setStatus('');
+    setStatusTone('neutral');
     const apiKey = apiKeyInputRef.current?.value.trim();
     try {
       const result = await window.shaleAPI.provider.save({
@@ -55,6 +59,7 @@ export const ProviderSettings = ({
       });
       if (!result.ok) {
         setStatus(result.error.message);
+        setStatusTone('error');
         return null;
       }
       if (apiKeyInputRef.current) apiKeyInputRef.current.value = '';
@@ -67,6 +72,7 @@ export const ProviderSettings = ({
       return result.data;
     } catch {
       setStatus('Unable to save the provider configuration.');
+      setStatusTone('error');
       return null;
     } finally {
       setSaving(false);
@@ -76,11 +82,14 @@ export const ProviderSettings = ({
   const testConnection = async (): Promise<void> => {
     setSaving(true);
     setStatus('');
+    setStatusTone('neutral');
     try {
       const result = await window.shaleAPI.provider.test();
       setStatus(result.ok ? result.data.message : result.error.message);
+      setStatusTone(result.ok ? 'success' : 'error');
     } catch {
       setStatus('Unable to test the provider connection.');
+      setStatusTone('error');
     } finally {
       setSaving(false);
     }
@@ -103,25 +112,23 @@ export const ProviderSettings = ({
   };
 
   const titleId = `provider-settings-title-${mode}`;
-  const content = (
-    <>
-      <header className="provider-settings-header">
-        <div>
-          <p className="provider-settings-eyebrow">AI configuration</p>
-          <h2 id={titleId}>Provider</h2>
-        </div>
-        {mode === 'dialog' && (
-          <button
-            type="button"
-            className="provider-settings-close"
-            onClick={onClose}
-            aria-label="Close settings"
-          >
-            ×
-          </button>
-        )}
-      </header>
-      <form onSubmit={handleSubmit}>
+  const providerHeader = (
+    <header className="provider-settings-header">
+      <h2 id={titleId}>Provider</h2>
+      {mode === 'dialog' && (
+        <button
+          type="button"
+          className="provider-settings-close"
+          onClick={onClose}
+          aria-label="Close settings"
+        >
+          ×
+        </button>
+      )}
+    </header>
+  );
+  const providerForm = (
+    <form onSubmit={handleSubmit}>
         <label>
           Provider base URL
           <input
@@ -145,11 +152,12 @@ export const ProviderSettings = ({
           </select>
         </label>
         <label>
-          API key {hasApiKey ? <span>(leave empty to keep the current key)</span> : null}
+          API key
           <input
             ref={apiKeyInputRef}
             type="password"
             name="provider-api-key"
+            placeholder={hasApiKey ? SAVED_API_KEY_MASK : 'Enter API key'}
             autoComplete="new-password"
             spellCheck={false}
             data-1p-ignore="true"
@@ -158,12 +166,19 @@ export const ProviderSettings = ({
             required={!hasApiKey}
           />
         </label>
-        <p className="provider-settings-note">
-          {usesInsecureStorage
-            ? 'Secure operating-system key storage is unavailable. The API key is kept in a local file without encryption.'
-            : 'The key is sent only to the Main process and stored using operating-system encryption when available.'}
-        </p>
-        {status && <p className="provider-settings-status" role="status">{status}</p>}
+        {usesInsecureStorage && (
+          <p className="provider-settings-note">
+            Secure operating-system key storage is unavailable. The API key is kept in a local file without encryption.
+          </p>
+        )}
+        {status && (
+          <p
+            className={`provider-settings-status is-${statusTone}`}
+            role="status"
+          >
+            {status}
+          </p>
+        )}
         <footer className="provider-settings-actions">
           <button type="button" onClick={() => void testConnection()} disabled={saving || !hasApiKey}>
             Test connection
@@ -172,14 +187,16 @@ export const ProviderSettings = ({
             {saving ? 'Saving...' : 'Save provider'}
           </button>
         </footer>
-      </form>
-    </>
+    </form>
   );
 
   if (mode === 'embedded') {
     return (
-      <section className="settings-card provider-settings-embedded" aria-labelledby={titleId}>
-        {content}
+      <section className="settings-section provider-settings-section" aria-labelledby={titleId}>
+        {providerHeader}
+        <div className="settings-card provider-settings-embedded">
+          {providerForm}
+        </div>
       </section>
     );
   }
@@ -193,7 +210,8 @@ export const ProviderSettings = ({
         aria-labelledby={titleId}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        {content}
+        {providerHeader}
+        {providerForm}
       </section>
     </div>
   );

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EntryStore } from '../../src/main/feed/stores/EntryStore';
 import { FeedStore } from '../../src/main/feed/stores/FeedStore';
-import { buildTestDb } from '../fixtures/databases/feed-fixture';
+import { buildTestDb, buildTestDbWithContent } from '../fixtures/databases/feed-fixture';
 
 describe('EntryStore', () => {
   let entryStore: EntryStore;
@@ -142,6 +142,7 @@ describe('EntryStore', () => {
     it('should list all entries', () => {
       const result = entryStore.query({ limit: 50 });
       expect(result.entries).toHaveLength(3);
+      expect(result.entries[0].url).toBe('https://ex.com/1');
     });
 
     it('should filter by feedId', () => {
@@ -189,7 +190,16 @@ describe('EntryStore', () => {
       expect(entryStore.findById(id)!.isRead).toBe(false);
 
       entryStore.markRead([id], true);
-      expect(entryStore.findById(id)!.isRead).toBe(true);
+      expect(entryStore.findById(id)).toMatchObject({
+        isRead: true,
+        readingProgress: 1,
+      });
+
+      entryStore.markRead([id], false);
+      expect(entryStore.findById(id)).toMatchObject({
+        isRead: false,
+        readingProgress: 0,
+      });
     });
 
     it('should toggle star', () => {
@@ -202,6 +212,105 @@ describe('EntryStore', () => {
 
       entryStore.markStarred(id, false);
       expect(entryStore.findById(id)!.isStarred).toBe(false);
+    });
+  });
+
+  describe('reading progress', () => {
+    it('marks an entry read only at the bottom and keeps its maximum resume position', () => {
+      const { id } = entryStore.createOrUpdate({
+        feedId, guid: 'progress-1', title: 'Progress post',
+      });
+
+      expect(entryStore.updateReadingProgress(id, 0.5)).toEqual({
+        entryId: id,
+        readingProgress: 0.5,
+        isRead: false,
+        becameRead: false,
+      });
+      expect(entryStore.findById(id)).toMatchObject({
+        isRead: false,
+        readingProgress: 0.5,
+      });
+
+      expect(entryStore.updateReadingProgress(id, 0.25)).toEqual({
+        entryId: id,
+        readingProgress: 0.5,
+        isRead: false,
+        becameRead: false,
+      });
+
+      expect(entryStore.updateReadingProgress(id, 1)).toEqual({
+        entryId: id,
+        readingProgress: 1,
+        isRead: true,
+        becameRead: true,
+      });
+
+      expect(entryStore.updateReadingProgress(id, 0.25)).toEqual({
+        entryId: id,
+        readingProgress: 1,
+        isRead: true,
+        becameRead: false,
+      });
+      expect(entryStore.findById(id)).toMatchObject({
+        isRead: true,
+        readingProgress: 1,
+      });
+    });
+
+    it('rejects progress outside the persisted range', () => {
+      const { id } = entryStore.createOrUpdate({
+        feedId, guid: 'progress-invalid', title: 'Progress post',
+      });
+
+      expect(() => entryStore.updateReadingProgress(id, -0.01)).toThrow(RangeError);
+      expect(() => entryStore.updateReadingProgress(id, 1.01)).toThrow(RangeError);
+    });
+  });
+
+  describe('getReadStats', () => {
+    it('returns exact global and per-feed counts and percentages', () => {
+      const secondFeed = feedStore.create({
+        title: 'Second Feed',
+        feedURL: 'https://second.example.com/feed.xml',
+      });
+      const first = entryStore.createOrUpdate({
+        feedId, guid: 'stats-1', title: 'First',
+      });
+      entryStore.createOrUpdate({
+        feedId, guid: 'stats-2', title: 'Second',
+      });
+      const deleted = entryStore.createOrUpdate({
+        feedId: secondFeed.id, guid: 'stats-3', title: 'Deleted',
+      });
+      entryStore.createOrUpdate({
+        feedId: secondFeed.id, guid: 'stats-4', title: 'Unread',
+      });
+
+      entryStore.updateReadingProgress(first.id, 1);
+      entryStore.softDelete(deleted.id);
+
+      expect(entryStore.getReadStats()).toEqual({
+        all: {
+          total: 3,
+          unread: 2,
+          readPercentage: 33,
+        },
+        feeds: [
+          {
+            feedId,
+            total: 2,
+            unread: 1,
+            readPercentage: 50,
+          },
+          {
+            feedId: secondFeed.id,
+            total: 1,
+            unread: 1,
+            readPercentage: 0,
+          },
+        ],
+      });
     });
   });
 
@@ -232,6 +341,127 @@ describe('EntryStore', () => {
       entryStore.markRead([entries.entries[0].id], true);
 
       expect(entryStore.countUnread(feedId)).toBe(1);
+    });
+  });
+
+  describe('search with entry_content', () => {
+    let dbContent: ReturnType<typeof buildTestDbWithContent>['db'];
+    let entryStoreContent: EntryStore;
+    let feedIdContent: number;
+
+    beforeEach(() => {
+      const testDb = buildTestDbWithContent();
+      dbContent = testDb.db;
+      entryStoreContent = new EntryStore(dbContent);
+      const feedStoreContent = new FeedStore(dbContent);
+      const feeds = feedStoreContent.findAll();
+      feedIdContent = feeds[0].id;
+    });
+
+    it('should search by feed.title', () => {
+      const result = entryStoreContent.query({ search: 'Test Feed', limit: 50 });
+      expect(result.entries.length).toBeGreaterThanOrEqual(3);
+      for (const entry of result.entries) {
+        expect(entry.feedTitle).toBe('Test Feed');
+      }
+    });
+
+    it('should search by markdown content', () => {
+      const result = entryStoreContent.query({ search: 'first post', limit: 50 });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('First Post');
+    });
+
+    it('should rank title match above markdown match', () => {
+      // 'second' matches in: entry 2 title 'Second Post' (relevance 3),
+      // entry 2 markdown 'second article' (relevance 2)
+      // So entry 2 should be first (3+2=5), entry 1 markdown 'first post' (2) maybe
+      const result = entryStoreContent.query({ search: 'second', limit: 50 });
+      expect(result.entries.length).toBeGreaterThanOrEqual(1);
+      expect(result.entries[0].title).toBe('Second Post');
+    });
+
+    it('should rank markdown match above summary match', () => {
+      // 'First' matches: entry 1 title 'First Post' (3), summary 'First summary' (1)
+      // We need a case where markdown > summary
+      // 'article' matches entry 2 markdown 'second article' (2)
+      const result = entryStoreContent.query({ search: 'article', limit: 50 });
+      expect(result.entries.length).toBeGreaterThanOrEqual(1);
+      // Only entry 2's markdown contains 'article'
+      expect(result.entries[0].title).toBe('Second Post');
+    });
+
+    it('should handle LIKE special char %', () => {
+      const result = entryStoreContent.query({ search: '100%', limit: 50 });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('100% completion rate');
+    });
+
+    it('should handle LIKE special char _', () => {
+      const result = entryStoreContent.query({ search: 'test_data', limit: 50 });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('100% completion rate');
+    });
+
+    it('should handle LIKE special char backslash', () => {
+      const result = entryStoreContent.query({ search: 'backslash', limit: 50 });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('100% completion rate');
+    });
+  });
+
+  describe('search edge cases', () => {
+    let dbContent: ReturnType<typeof buildTestDbWithContent>['db'];
+    let entryStoreContent: EntryStore;
+
+    beforeEach(() => {
+      const testDb = buildTestDbWithContent();
+      dbContent = testDb.db;
+      entryStoreContent = new EntryStore(dbContent);
+    });
+
+    it('should handle undefined search', () => {
+      const result = entryStoreContent.query({ limit: 50 });
+      expect(result.entries.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('should handle empty string search', () => {
+      const result = entryStoreContent.query({ search: '', limit: 50 });
+      expect(result.entries.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('should handle whitespace-only search', () => {
+      const result = entryStoreContent.query({ search: '   ', limit: 50 });
+      expect(result.entries.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('should find un-cleaned entry by title', () => {
+      // Entry 3 has no entry_content but has title 'Third Post'
+      const result = entryStoreContent.query({ search: 'Third Post', limit: 50 });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('Third Post');
+    });
+
+    it('should not find un-cleaned entry by markdown', () => {
+      // 'body' appears only in entry 1 and 2 markdown, not in title/summary
+      // Entry 3 has no entry_content, so it should NOT match
+      const result = entryStoreContent.query({ search: 'body', limit: 50 });
+      expect(result.entries).toHaveLength(2);
+      expect(result.entries.map((e) => e.title)).toEqual(
+        expect.arrayContaining(['First Post', 'Second Post']),
+      );
+    });
+
+    it('should paginate search results', () => {
+      const page1 = entryStoreContent.query({ search: 'Post', limit: 2 });
+      expect(page1.entries).toHaveLength(2);
+      expect(page1.nextCursor).toBeDefined();
+
+      const page2 = entryStoreContent.query({
+        search: 'Post', limit: 2, cursor: page1.nextCursor,
+      });
+      expect(page2.entries).toHaveLength(1);
+      expect(page2.nextCursor).toBeUndefined();
     });
   });
 });

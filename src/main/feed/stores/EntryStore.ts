@@ -1,5 +1,13 @@
 import type Database from 'better-sqlite3';
-import type { Entry, EntryListItem, EntryQuery } from '../../../shared/contracts/feed.types';
+import type {
+  Entry,
+  EntryListItem,
+  EntryQuery,
+  EntryReadingProgress,
+  EntryReadStats,
+  EntryStats,
+  FeedEntryReadStats,
+} from '../../../shared/contracts/feed.types';
 import type { PipelineStatus } from '../../../shared/contracts/content.types';
 
 interface UpsertEntryParams {
@@ -105,47 +113,67 @@ export class EntryStore {
    */
   query(options: EntryQuery): { entries: EntryListItem[]; nextCursor?: { publishedAt: string; id: number } } {
     const conditions: string[] = ['e.isDeleted = 0'];
-    const params: unknown[] = [];
+    // Params ordered by SQL appearance: SELECT CASE WHEN ? first, then WHERE ?, then LIMIT ?
+    const selectParams: unknown[] = [];
+    const whereParams: unknown[] = [];
+    let selectFields = 'e.*, f.title AS feedTitle, ec.pipelineStatus';
+    let orderBy = 'ORDER BY e.publishedAt DESC, e.id DESC';
 
     if (options.feedId !== undefined) {
       conditions.push('e.feedId = ?');
-      params.push(options.feedId);
+      whereParams.push(options.feedId);
     }
 
     if (options.isRead !== undefined) {
       conditions.push('e.isRead = ?');
-      params.push(options.isRead ? 1 : 0);
+      whereParams.push(options.isRead ? 1 : 0);
     }
 
     if (options.isStarred !== undefined) {
       conditions.push('e.isStarred = ?');
-      params.push(options.isStarred ? 1 : 0);
+      whereParams.push(options.isStarred ? 1 : 0);
     }
 
-    if (options.search) {
-      conditions.push('(e.title LIKE ? OR e.summary LIKE ?)');
-      params.push(`%${options.search}%`, `%${options.search}%`);
+    if (options.search?.trim()) {
+      const escaped = escapeLike(options.search.trim());
+      const likeParam = `%${escaped}%`;
+      const esc = " ESCAPE '\\'";
+      conditions.push(
+        `(e.title LIKE ?${esc} OR e.summary LIKE ?${esc} OR ec.markdown LIKE ?${esc} OR f.title LIKE ?${esc})`
+      );
+      whereParams.push(likeParam, likeParam, likeParam, likeParam);
+
+      // SELECT-level relevance scoring — ? placeholders come before WHERE in SQL
+      selectFields = `e.*, f.title AS feedTitle, ec.pipelineStatus,
+        (CASE WHEN e.title LIKE ?${esc}         THEN 3 ELSE 0 END +
+         CASE WHEN ec.markdown LIKE ?${esc}     THEN 2 ELSE 0 END +
+         CASE WHEN e.summary LIKE ?${esc}       THEN 1 ELSE 0 END +
+         CASE WHEN f.title LIKE ?${esc}         THEN 1 ELSE 0 END) AS relevance`;
+      selectParams.push(likeParam, likeParam, likeParam, likeParam);
+
+      orderBy = 'ORDER BY relevance DESC, e.publishedAt DESC, e.id DESC';
     }
 
     // Keyset pagination
     if (options.cursor) {
       conditions.push('(e.publishedAt < ? OR (e.publishedAt = ? AND e.id < ?))');
-      params.push(options.cursor.publishedAt, options.cursor.publishedAt, options.cursor.id);
+      whereParams.push(options.cursor.publishedAt, options.cursor.publishedAt, options.cursor.id);
     }
 
     const limit = options.limit ?? 50;
     const query = `
-      SELECT e.*, f.title AS feedTitle, ec.pipelineStatus
+      SELECT ${selectFields}
       FROM entry e
       LEFT JOIN feed f ON f.id = e.feedId
       LEFT JOIN entry_content ec ON ec.entryId = e.id
       WHERE ${conditions.join(' AND ')}
-      ORDER BY e.publishedAt DESC, e.id DESC
+      ${orderBy}
       LIMIT ?
     `;
-    params.push(limit + 1); // Fetch one extra to detect next page
+    // Params order: SELECT CASE WHEN ? first, then WHERE ?, then LIMIT ?
+    const allParams = [...selectParams, ...whereParams, limit + 1];
 
-    const rows = this.db.prepare(query).all(...params) as Array<
+    const rows = this.db.prepare(query).all(...allParams) as Array<
       Record<string, unknown>
     >;
 
@@ -177,8 +205,83 @@ export class EntryStore {
     if (ids.length === 0) return;
     const placeholders = ids.map(() => '?').join(',');
     this.db
-      .prepare(`UPDATE entry SET isRead = ?, updatedAt = ? WHERE id IN (${placeholders})`)
-      .run(isRead ? 1 : 0, new Date().toISOString(), ...ids);
+      .prepare(`
+        UPDATE entry
+        SET isRead = ?,
+            readingProgress = ?,
+            updatedAt = ?
+        WHERE id IN (${placeholders})
+      `)
+      .run(isRead ? 1 : 0, isRead ? 1 : 0, new Date().toISOString(), ...ids);
+  }
+
+  updateReadingProgress(entryId: number, readingProgress: number): EntryReadingProgress {
+    if (
+      !Number.isInteger(entryId)
+      || entryId <= 0
+      || !Number.isFinite(readingProgress)
+      || readingProgress < 0
+      || readingProgress > 1
+    ) {
+      throw new RangeError('Reading progress must be between 0 and 1.');
+    }
+    const current = this.db.prepare(`
+      SELECT isRead, readingProgress
+      FROM entry
+      WHERE id = ? AND isDeleted = 0
+    `).get(entryId) as { isRead: number; readingProgress: number | null } | undefined;
+    if (!current) throw new Error('Entry not found.');
+
+    const persistedReadingProgress = Math.max(
+      current.readingProgress ?? 0,
+      readingProgress,
+    );
+    const isRead = current.isRead === 1 || persistedReadingProgress >= 1;
+    this.db.prepare(`
+      UPDATE entry
+      SET readingProgress = ?,
+          isRead = ?,
+          updatedAt = ?
+      WHERE id = ?
+    `).run(
+      persistedReadingProgress,
+      isRead ? 1 : 0,
+      new Date().toISOString(),
+      entryId,
+    );
+
+    return {
+      entryId,
+      readingProgress: persistedReadingProgress,
+      isRead,
+      becameRead: current.isRead !== 1 && isRead,
+    };
+  }
+
+  getReadStats(): EntryStats {
+    const allRow = this.db.prepare(`
+      SELECT COUNT(*) AS total,
+             SUM(CASE WHEN isRead = 0 THEN 1 ELSE 0 END) AS unread
+      FROM entry
+      WHERE isDeleted = 0
+    `).get() as { total: number; unread: number | null };
+    const feedRows = this.db.prepare(`
+      SELECT feedId,
+             COUNT(*) AS total,
+             SUM(CASE WHEN isRead = 0 THEN 1 ELSE 0 END) AS unread
+      FROM entry
+      WHERE isDeleted = 0
+      GROUP BY feedId
+      ORDER BY feedId
+    `).all() as Array<{ feedId: number; total: number; unread: number | null }>;
+
+    return {
+      all: toReadStats(allRow),
+      feeds: feedRows.map((row): FeedEntryReadStats => ({
+        feedId: row.feedId,
+        ...toReadStats(row),
+      })),
+    };
   }
 
   markStarred(id: number, isStarred: boolean): void {
@@ -207,6 +310,18 @@ export class EntryStore {
   }
 }
 
+/**
+ * Escape LIKE special characters so user input is treated literally.
+ * SQLite default escape character: backslash.
+ * Order matters: escape backslash first, then % and _.
+ */
+function escapeLike(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/%/g, '\\%')
+    .replace(/_/g, '\\_');
+}
+
 function normalizeEntry(row: Record<string, unknown>): Entry {
   return {
     id: row.id as number,
@@ -218,6 +333,7 @@ function normalizeEntry(row: Record<string, unknown>): Entry {
     publishedAt: (row.publishedAt as string) ?? undefined,
     summary: (row.summary as string) ?? undefined,
     isRead: row.isRead === 1,
+    readingProgress: (row.readingProgress as number) ?? 0,
     isStarred: row.isStarred === 1,
     isDeleted: row.isDeleted === 1,
     contentHash: (row.contentHash as string) ?? undefined,
@@ -231,13 +347,27 @@ function toEntryListItem(row: Record<string, unknown>): EntryListItem {
     id: row.id as number,
     feedId: row.feedId as number,
     feedTitle: (row.feedTitle as string) ?? undefined,
+    url: (row.url as string) ?? undefined,
     title: (row.title as string) ?? undefined,
     author: (row.author as string) ?? undefined,
     publishedAt: (row.publishedAt as string) ?? undefined,
     createdAt: row.createdAt as string,
     isRead: row.isRead === 1,
+    readingProgress: (row.readingProgress as number) ?? 0,
     isStarred: row.isStarred === 1,
     summary: (row.summary as string) ?? undefined,
     pipelineStatus: (row.pipelineStatus as PipelineStatus) ?? 'pending',
+  };
+}
+
+function toReadStats(row: { total: number; unread: number | null }): EntryReadStats {
+  const total = row.total;
+  const unread = row.unread ?? 0;
+  return {
+    total,
+    unread,
+    readPercentage: total === 0
+      ? 0
+      : Math.round(((total - unread) / total) * 100),
   };
 }

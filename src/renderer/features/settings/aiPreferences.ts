@@ -4,23 +4,32 @@ import type {
 } from '../../../shared/contracts/summary.types';
 import type { TranslationTargetLanguage } from '../../../shared/contracts/translation.types';
 import {
-  DEFAULT_INLINE_TRANSLATION_SHORTCUT,
+  areKeyboardShortcutsEqual,
+  DEFAULT_FULL_TRANSLATION_SHORTCUT,
+  DEFAULT_PARAGRAPH_TRANSLATION_SHORTCUT,
+  DEFAULT_SELECTION_TRANSLATION_SHORTCUT,
   parseStoredKeyboardShortcut,
-  type InlineTranslationShortcut,
+  type TranslationShortcut,
 } from './keyboardShortcut';
 
 export interface AiPreferences {
   summaryTargetLanguage: SummaryTargetLanguage;
   summaryDetailLevel: SummaryDetailLevel;
   translationTargetLanguage: TranslationTargetLanguage;
-  inlineTranslationShortcut: InlineTranslationShortcut;
+  useTerminology: boolean;
+  fullTranslationShortcut: TranslationShortcut;
+  paragraphTranslationShortcut: TranslationShortcut;
+  selectionTranslationShortcut: TranslationShortcut;
 }
 
 export const DEFAULT_AI_PREFERENCES: AiPreferences = {
   summaryTargetLanguage: 'zh-CN',
   summaryDetailLevel: 'medium',
   translationTargetLanguage: 'zh-CN',
-  inlineTranslationShortcut: DEFAULT_INLINE_TRANSLATION_SHORTCUT,
+  useTerminology: true,
+  fullTranslationShortcut: DEFAULT_FULL_TRANSLATION_SHORTCUT,
+  paragraphTranslationShortcut: DEFAULT_PARAGRAPH_TRANSLATION_SHORTCUT,
+  selectionTranslationShortcut: DEFAULT_SELECTION_TRANSLATION_SHORTCUT,
 };
 
 const STORAGE_KEY = 'shale.aiPreferences';
@@ -36,7 +45,41 @@ export function loadAiPreferences(storage: PreferenceStorage): AiPreferences {
   try {
     const stored = storage.getItem(STORAGE_KEY);
     if (!stored) return DEFAULT_AI_PREFERENCES;
-    const candidate = JSON.parse(stored) as Partial<AiPreferences>;
+    const candidate = JSON.parse(stored) as Partial<AiPreferences> & {
+      inlineTranslationShortcut?: unknown;
+    };
+    const legacyInlineShortcut = parseStoredKeyboardShortcut(
+      candidate.inlineTranslationShortcut,
+    );
+    const usedShortcuts: TranslationShortcut[] = [];
+    const paragraphTranslationShortcut = selectUniqueShortcut(
+      [
+        parseStoredKeyboardShortcut(candidate.paragraphTranslationShortcut),
+        legacyInlineShortcut,
+        DEFAULT_PARAGRAPH_TRANSLATION_SHORTCUT,
+        DEFAULT_FULL_TRANSLATION_SHORTCUT,
+        DEFAULT_SELECTION_TRANSLATION_SHORTCUT,
+      ],
+      usedShortcuts,
+    );
+    const fullTranslationShortcut = selectUniqueShortcut(
+      [
+        parseStoredKeyboardShortcut(candidate.fullTranslationShortcut),
+        DEFAULT_FULL_TRANSLATION_SHORTCUT,
+        DEFAULT_SELECTION_TRANSLATION_SHORTCUT,
+        DEFAULT_PARAGRAPH_TRANSLATION_SHORTCUT,
+      ],
+      usedShortcuts,
+    );
+    const selectionTranslationShortcut = selectUniqueShortcut(
+      [
+        parseStoredKeyboardShortcut(candidate.selectionTranslationShortcut),
+        DEFAULT_SELECTION_TRANSLATION_SHORTCUT,
+        DEFAULT_FULL_TRANSLATION_SHORTCUT,
+        DEFAULT_PARAGRAPH_TRANSLATION_SHORTCUT,
+      ],
+      usedShortcuts,
+    );
     return {
       summaryTargetLanguage: LANGUAGES.includes(candidate.summaryTargetLanguage as SummaryTargetLanguage)
         ? candidate.summaryTargetLanguage as SummaryTargetLanguage
@@ -47,12 +90,28 @@ export function loadAiPreferences(storage: PreferenceStorage): AiPreferences {
       translationTargetLanguage: LANGUAGES.includes(candidate.translationTargetLanguage as TranslationTargetLanguage)
         ? candidate.translationTargetLanguage as TranslationTargetLanguage
         : DEFAULT_AI_PREFERENCES.translationTargetLanguage,
-      inlineTranslationShortcut: parseStoredKeyboardShortcut(candidate.inlineTranslationShortcut)
-        ?? DEFAULT_AI_PREFERENCES.inlineTranslationShortcut,
+      useTerminology: candidate.useTerminology !== false,
+      fullTranslationShortcut,
+      paragraphTranslationShortcut,
+      selectionTranslationShortcut,
     };
   } catch {
     return DEFAULT_AI_PREFERENCES;
   }
+}
+
+function selectUniqueShortcut(
+  candidates: Array<TranslationShortcut | null>,
+  usedShortcuts: TranslationShortcut[],
+): TranslationShortcut {
+  const shortcut = candidates.find((candidate): candidate is TranslationShortcut =>
+    candidate !== null
+    && !usedShortcuts.some((used) => areKeyboardShortcutsEqual(used, candidate)));
+  if (!shortcut) {
+    throw new Error('Unable to assign distinct Translation shortcuts.');
+  }
+  usedShortcuts.push(shortcut);
+  return shortcut;
 }
 
 export function saveAiPreferences(

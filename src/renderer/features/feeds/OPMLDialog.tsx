@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { OPMLImportResult } from '../../../shared/contracts/feed.ipc';
 
 interface OPMLDialogProps {
@@ -72,7 +73,7 @@ export const OPMLDialog = ({ onImport, onExport, onClose }: OPMLDialogProps) => 
     }
   };
 
-  return (
+  const dialog = (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="dialog opml-dialog" onClick={(e) => e.stopPropagation()}>
         <h2>OPML</h2>
@@ -156,4 +157,7 @@ export const OPMLDialog = ({ onImport, onExport, onClose }: OPMLDialogProps) => 
       </div>
     </div>
   );
+
+  const pageRoot = document.querySelector<HTMLElement>('.reader-page');
+  return createPortal(dialog, pageRoot ?? document.body);
 };

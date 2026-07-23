@@ -48,6 +48,12 @@ const entryAPI = {
     limit: number;
     cursor?: { publishedAt: string; id: number };
   }) => ipcRenderer.invoke(FEED_IPC_CHANNELS.entryList, params),
+  stats: () => ipcRenderer.invoke(FEED_IPC_CHANNELS.entryStats),
+  updateReadingProgress: (entryId: number, readingProgress: number) =>
+    ipcRenderer.invoke(FEED_IPC_CHANNELS.entryUpdateReadingProgress, {
+      entryId,
+      readingProgress,
+    }),
   markRead: (ids: number[], isRead: boolean) =>
     ipcRenderer.invoke(FEED_IPC_CHANNELS.entryMarkRead, { ids, isRead }),
   markStarred: (id: number, isStarred: boolean) =>
@@ -119,10 +125,12 @@ const translationAPI = {
   get: (request: {
     entryId: number;
     targetLanguage: 'zh-CN' | 'en';
+    useTerminology?: boolean;
   }) => ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationGet, request),
   generate: (request: {
     entryId: number;
     targetLanguage: 'zh-CN' | 'en';
+    useTerminology?: boolean;
   }) => ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationGenerate, request),
   translateInline: (request: InlineTranslationRequest) =>
     ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.inlineTranslate, request),
@@ -130,6 +138,7 @@ const translationAPI = {
     runId: number;
     entryId: number;
     targetLanguage: 'zh-CN' | 'en';
+    useTerminology?: boolean;
     sourceSegmentIds: string[];
   }) => ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationPrioritize, request),
   onEvent: (listener: (event: TranslationStreamEvent) => void) => {

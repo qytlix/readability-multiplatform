@@ -1,4 +1,9 @@
-import type { Feed, EntryListItem } from './contracts/feed.types';
+import type {
+  EntryReadingProgress,
+  EntryStats,
+  Feed,
+  EntryListItem,
+} from './contracts/feed.types';
 import type { CleanedContent } from './contracts/content.types';
 import type {
   FeedSyncProgress,
@@ -54,6 +59,11 @@ export interface EntryAPI {
     entries: EntryListItem[];
     nextCursor?: { publishedAt: string; id: number };
   }>>;
+  stats: () => Promise<IPCResult<EntryStats>>;
+  updateReadingProgress: (
+    entryId: number,
+    readingProgress: number,
+  ) => Promise<IPCResult<EntryReadingProgress>>;
   markRead: (ids: number[], isRead: boolean) => Promise<IPCResult<void>>;
   markStarred: (id: number, isStarred: boolean) => Promise<IPCResult<void>>;
 }

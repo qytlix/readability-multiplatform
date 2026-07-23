@@ -167,6 +167,7 @@ export function initializeServices(
     providerProfileStore,
     secretStore,
     provider,
+    terminologyLookup,
   );
 
   feedServicesSingleton = {

@@ -91,13 +91,14 @@ export class TranslationService {
   getState(request: TranslationGetRequest): TranslationState {
     validateTranslationRequest(request);
     const source = this.getSource(request.entryId);
+    const terminologyPackVersion = this.getTerminologyVersion(request);
     const compatibleResult = this.translationStore.findCompatibleResult(
       request.entryId,
       request.targetLanguage,
       source.sourceContentHash,
       source.segmenterVersion,
       TRANSLATION_PROMPT_VERSION,
-      this.terminologyLookup.getVersion(),
+      terminologyPackVersion,
     );
     if (compatibleResult) return toState(compatibleResult);
 
@@ -112,13 +113,14 @@ export class TranslationService {
   generate(request: TranslationGenerateRequest): TranslationGenerateResponse {
     validateTranslationRequest(request);
     const source = this.getSource(request.entryId);
+    const terminologyPackVersion = this.getTerminologyVersion(request);
     const existingResult = this.translationStore.findCompatibleResult(
       request.entryId,
       request.targetLanguage,
       source.sourceContentHash,
       source.segmenterVersion,
       TRANSLATION_PROMPT_VERSION,
-      this.terminologyLookup.getVersion(),
+      terminologyPackVersion,
     );
     if (existingResult?.status === 'succeeded') {
       return { runId: existingResult.id, reused: true, result: existingResult };
@@ -129,6 +131,7 @@ export class TranslationService {
         this.activeRun.result.entryId === request.entryId
         && this.activeRun.result.targetLanguage === request.targetLanguage
         && this.activeRun.result.sourceContentHash === source.sourceContentHash
+        && this.activeRun.result.terminologyPackVersion === terminologyPackVersion
       ) {
         return {
           runId: this.activeRun.result.id,
@@ -162,7 +165,7 @@ export class TranslationService {
           sourceContentHash: source.sourceContentHash,
           segmenterVersion: source.segmenterVersion,
           promptVersion: TRANSLATION_PROMPT_VERSION,
-          terminologyPackVersion: this.terminologyLookup.getVersion(),
+          terminologyPackVersion,
           segments: source.segments,
         });
     const abortController = new AbortController();
@@ -198,6 +201,7 @@ export class TranslationService {
       || active.result.id !== request.runId
       || active.result.entryId !== request.entryId
       || active.result.targetLanguage !== request.targetLanguage
+      || active.result.terminologyPackVersion !== this.getTerminologyVersion(request)
     ) {
       return { accepted: false };
     }
@@ -480,6 +484,9 @@ export class TranslationService {
     result: TranslationResult,
     segment: TranslationSegment,
   ): SegmentTranslationInput {
+    if (result.terminologyPackVersion === 'none') {
+      return { segment, terminologyCandidates: [] };
+    }
     const segmentIndex = result.segments.findIndex((candidate) =>
       candidate.sourceSegmentId === segment.sourceSegmentId);
     const terminologyContext = [
@@ -514,7 +521,7 @@ export class TranslationService {
     const segmentedContent = content.segments?.length
       && content.segmenterVersion === CONTENT_SEGMENTER_VERSION
       && content.sourceContentHash
-      && hasCurrentMetadata(content.segments, content.readerTitle, content.readerByline)
+      && hasCurrentMetadata(content.segments, content.readerTitle)
       ? {
           segments: content.segments,
           sourceContentHash: content.sourceContentHash,
@@ -547,17 +554,20 @@ export class TranslationService {
   getTerminologyInfo(): TerminologyPackInfo {
     return this.terminologyLookup.getInfo();
   }
+
+  private getTerminologyVersion(request: TranslationGetRequest): string {
+    return request.useTerminology === false
+      ? 'none'
+      : this.terminologyLookup.getVersion();
+  }
 }
 
 function hasCurrentMetadata(
   segments: ContentSegment[],
   title: string | undefined,
-  byline: string | undefined,
 ): boolean {
   const storedTitle = segments.find((segment) => segment.type === 'title')?.sourceText;
-  const storedByline = segments.find((segment) => segment.type === 'byline')?.sourceText;
-  return normalizeMetadata(storedTitle) === normalizeMetadata(title)
-    && normalizeMetadata(storedByline) === normalizeMetadata(byline);
+  return normalizeMetadata(storedTitle) === normalizeMetadata(title);
 }
 
 function normalizeMetadata(value: string | undefined): string {
@@ -602,6 +612,7 @@ function validateTranslationRequest(request: TranslationGetRequest): void {
     !Number.isInteger(request.entryId)
     || request.entryId <= 0
     || !TRANSLATION_TARGET_LANGUAGES.includes(request.targetLanguage)
+    || (request.useTerminology !== undefined && typeof request.useTerminology !== 'boolean')
   ) {
     throw new TranslationError(
       TRANSLATION_ERROR_CODES.TRANSLATION_INVALID_REQUEST,

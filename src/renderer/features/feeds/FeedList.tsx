@@ -1,70 +1,53 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Feed } from '../../../shared/contracts/feed.types';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
+import type { EntryStats, Feed } from '../../../shared/contracts/feed.types';
+import {
+  CheckIcon,
+  DocumentIcon,
+  EditIcon,
+  ImportIcon,
+  InboxIcon,
+  PlusIcon,
+  SearchIcon,
+  SettingsIcon,
+  StarIcon,
+  SyncIcon,
+  TrashIcon,
+} from '../reader/ReaderIcons';
+import type { EntryFilter } from '../search/entrySearch';
 import { FeedEditDialog } from './FeedEditDialog';
 import { OPMLDialog } from './OPMLDialog';
 import type { FeedLoadStatus } from './readerState';
 
 type SyncStatus = 'idle' | 'loading' | 'success' | 'error';
-
-interface UnreadCountProps {
-  count: number;
-}
-
-const UnreadCount = ({ count }: UnreadCountProps) => {
-  if (count <= 0) return null;
-
-  const unreadLabel = `${count} unread article${count === 1 ? '' : 's'}`;
-
-  return (
-    <span className="feed-item-count" title={unreadLabel} aria-label={unreadLabel}>
-      <span aria-hidden="true">{count}</span>
-    </span>
-  );
-};
-
-const SyncCycleIcon = () => (
-  <svg className="sync-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path d="M20 8a7 7 0 0 0-12-3L6 7M6 3v4h4" />
-    <path d="M4 16a7 7 0 0 0 12 3l2-2M18 21v-4h-4" />
-  </svg>
-);
-
-const SyncSuccessIcon = () => (
-  <svg className="sync-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path d="m5 12.5 4.5 4.5L19 7" />
-  </svg>
-);
-
-const SyncErrorIcon = () => (
-  <svg className="sync-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path d="M12 4 21 20H3L12 4Z" />
-    <path d="M12 9v5" />
-    <path d="M12 17h.01" />
-  </svg>
-);
-
-const SettingsIcon = () => (
-  <svg className="feed-settings-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" />
-    <path d="M19 13.4v-2.8l-2-.7a7.5 7.5 0 0 0-.7-1.7l.9-1.9-2-2-1.9.9a7.5 7.5 0 0 0-1.7-.7l-.7-2H8.1l-.7 2a7.5 7.5 0 0 0-1.7.7l-1.9-.9-2 2 .9 1.9a7.5 7.5 0 0 0-.7 1.7l-2 .7v2.8l2 .7a7.5 7.5 0 0 0 .7 1.7l-.9 1.9 2 2 1.9-.9a7.5 7.5 0 0 0 1.7.7l.7 2h2.8l.7-2a7.5 7.5 0 0 0 1.7-.7l1.9.9 2-2-.9-1.9a7.5 7.5 0 0 0 .7-1.7l2-.7Z" />
-  </svg>
-);
+type SearchStatus = 'idle' | 'searching' | 'results' | 'no-results' | 'error';
 
 const syncStatusLabels: Record<SyncStatus, string> = {
-  idle: 'Sync all feeds',
-  loading: 'Syncing…',
-  success: 'Synced just now',
-  error: 'Sync failed. Click to retry.',
+  idle: '同步全部订阅源',
+  loading: '正在同步…',
+  success: '同步完成',
+  error: '同步失败，点击重试',
 };
 
 interface FeedListProps {
   feeds: Feed[];
   selectedFeedId: number | null;
+  selectedFilter: EntryFilter;
+  searchInput: string;
+  searchStatus: SearchStatus;
+  searchInputRef: RefObject<HTMLInputElement | null>;
+  onSearchInputChange: (query: string) => void;
+  onSelectFilter: (filter: EntryFilter) => void;
   onSelectFeed: (feedId: number | null) => void;
   onRefresh: () => Promise<boolean>;
   onLocalRefresh: () => Promise<void>;
   onOpenAddFeed: () => void;
-  onUnreadCount: (feedId: number) => number;
+  entryStats: EntryStats;
   loading: boolean;
   feedLoadStatus: FeedLoadStatus;
   settingsActive: boolean;
@@ -74,11 +57,17 @@ interface FeedListProps {
 export const FeedList = ({
   feeds,
   selectedFeedId,
+  selectedFilter,
+  searchInput,
+  searchStatus,
+  searchInputRef,
+  onSearchInputChange,
+  onSelectFilter,
   onSelectFeed,
   onRefresh,
   onLocalRefresh,
   onOpenAddFeed,
-  onUnreadCount,
+  entryStats,
   loading,
   feedLoadStatus,
   settingsActive,
@@ -88,14 +77,9 @@ export const FeedList = ({
   const [showOPMLDialog, setShowOPMLDialog] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [syncProgress, setSyncProgress] = useState<Record<number, string>>({});
-  const isMountedRef = useRef(true);
+  const mountedRef = useRef(true);
   const syncInFlightRef = useRef(false);
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cleanProgressRef = useRef<(() => void) | null>(null);
-  const totalUnreadCount = feeds.reduce(
-    (sum, feed) => sum + onUnreadCount(feed.id),
-    0,
-  );
 
   const clearSuccessTimer = useCallback(() => {
     if (successTimerRef.current !== null) {
@@ -105,76 +89,40 @@ export const FeedList = ({
   }, []);
 
   useEffect(() => {
-    isMountedRef.current = true;
-
-    // Listen for sync progress events
-    cleanProgressRef.current = window.shaleAPI.feed.onSyncProgress((progress) => {
-      if (!isMountedRef.current) return;
-      setSyncProgress((prev) => ({
-        ...prev,
+    mountedRef.current = true;
+    if (!window.shaleAPI) {
+      return () => {
+        mountedRef.current = false;
+      };
+    }
+    const unsubscribe = window.shaleAPI.feed.onSyncProgress((progress) => {
+      if (!mountedRef.current) return;
+      setSyncProgress((current) => ({
+        ...current,
         [progress.feedId]: progress.status,
       }));
 
-      // Clear progress after done/error
       if (progress.status === 'done' || progress.status === 'error') {
-        setTimeout(() => {
-          if (isMountedRef.current) {
-            setSyncProgress((prev) => {
-              const next = { ...prev };
-              delete next[progress.feedId];
-              return next;
-            });
-          }
+        window.setTimeout(() => {
+          if (!mountedRef.current) return;
+          setSyncProgress((current) => {
+            const next = { ...current };
+            delete next[progress.feedId];
+            return next;
+          });
         }, 3000);
       }
     });
 
     return () => {
-      isMountedRef.current = false;
+      mountedRef.current = false;
       clearSuccessTimer();
-      if (cleanProgressRef.current) {
-        cleanProgressRef.current();
-        cleanProgressRef.current = null;
-      }
+      unsubscribe();
     };
   }, [clearSuccessTimer]);
 
-  const handleEdit = useCallback(
-    async (params: { title?: string; siteURL?: string; syncIntervalMin?: number }) => {
-      if (!editFeed) return;
-      const result = await window.shaleAPI.feed.update(editFeed.id, params);
-      if (!result.ok) {
-        throw new Error(result.error?.message ?? 'Failed to update feed');
-      }
-      await onLocalRefresh();
-    },
-    [editFeed, onLocalRefresh],
-  );
-
-  const handleRemove = useCallback(
-    async (feedId: number) => {
-      if (!window.confirm('Remove this feed? All articles from this feed will be deleted.')) return;
-      const result = await window.shaleAPI.feed.remove(feedId);
-      if (!result.ok) {
-        console.error('Failed to remove feed:', result.error);
-        return;
-      }
-      if (selectedFeedId === feedId) {
-        onSelectFeed(null);
-      }
-      await onLocalRefresh();
-    },
-    [onLocalRefresh, onSelectFeed, selectedFeedId],
-  );
-
-  const handleSingleSync = useCallback(async (feedId: number) => {
-    await window.shaleAPI.feed.sync(feedId);
-    await onLocalRefresh();
-  }, [onLocalRefresh]);
-
   const handleSync = useCallback(async () => {
     if (syncInFlightRef.current) return;
-
     syncInFlightRef.current = true;
     clearSuccessTimer();
     setSyncStatus('loading');
@@ -182,206 +130,261 @@ export const FeedList = ({
     let succeeded = false;
     try {
       succeeded = await onRefresh();
-    } catch {
-      succeeded = false;
     } finally {
       syncInFlightRef.current = false;
     }
-
-    if (!isMountedRef.current) return;
+    if (!mountedRef.current) return;
 
     if (!succeeded) {
       setSyncStatus('error');
       return;
     }
-
     setSyncStatus('success');
     successTimerRef.current = setTimeout(() => {
-      if (isMountedRef.current) {
-        setSyncStatus('idle');
-      }
+      if (mountedRef.current) setSyncStatus('idle');
       successTimerRef.current = null;
-    }, 1000);
+    }, 1600);
   }, [clearSuccessTimer, onRefresh]);
 
-  const handleOPMLImport = useCallback(
-    async (filePath: string, mode: 'merge' | 'replace') => {
-      const result = await window.shaleAPI.opml.import(filePath, mode);
-      if (!result.ok) {
-        throw new Error(result.error?.message ?? 'OPML import failed');
-      }
-      await onRefresh();
-      return result.data;
-    },
-    [onRefresh],
-  );
+  const handleSingleSync = useCallback(async (feedId: number) => {
+    const result = await window.shaleAPI.feed.sync(feedId);
+    if (result.ok) await onLocalRefresh();
+  }, [onLocalRefresh]);
+
+  const handleEdit = useCallback(async (
+    params: { title?: string; siteURL?: string; syncIntervalMin?: number },
+  ) => {
+    if (!editFeed) return;
+    const result = await window.shaleAPI.feed.update(editFeed.id, params);
+    if (!result.ok) throw new Error(result.error.message);
+    await onLocalRefresh();
+  }, [editFeed, onLocalRefresh]);
+
+  const handleRemove = useCallback(async (feedId: number) => {
+    if (!window.confirm('移除此订阅源？它的本地文章也会被删除。')) return;
+    const result = await window.shaleAPI.feed.remove(feedId);
+    if (!result.ok) return;
+    if (selectedFeedId === feedId) onSelectFeed(null);
+    await onLocalRefresh();
+  }, [onLocalRefresh, onSelectFeed, selectedFeedId]);
+
+  const handleOPMLImport = useCallback(async (
+    filePath: string,
+    mode: 'merge' | 'replace',
+  ) => {
+    const result = await window.shaleAPI.opml.import(filePath, mode);
+    if (!result.ok) throw new Error(result.error.message);
+    await onRefresh();
+    return result.data;
+  }, [onRefresh]);
 
   const handleOPMLExport = useCallback(async (filePath: string) => {
     const result = await window.shaleAPI.opml.export(filePath);
-    if (!result.ok) {
-      throw new Error(result.error?.message ?? 'OPML export failed');
-    }
+    if (!result.ok) throw new Error(result.error.message);
   }, []);
 
-  const isSyncing = syncStatus === 'loading';
-  const syncLabel = syncStatusLabels[syncStatus];
+  const allSelected = selectedFeedId === null
+    && selectedFilter === 'all'
+    && !settingsActive
+    && searchInput.trim().length === 0;
+  const activeRangeIndex = settingsActive
+    || selectedFeedId !== null
+    || searchInput.trim().length > 0
+    ? null
+    : selectedFilter === 'all'
+      ? 0
+      : selectedFilter === 'unread'
+        ? 1
+        : 2;
 
   return (
-    <div className="feed-list">
-      <section className="feed-section" aria-labelledby="library-heading">
-        <div className="feed-list-header">
-          <h3 id="library-heading">Library</h3>
-        </div>
-
-        <div className="feed-items">
-          <button
-            type="button"
-            className={`feed-item ${selectedFeedId === null && !settingsActive ? 'active' : ''}`}
-            onClick={() => onSelectFeed(null)}
+    <div className="sidebar-content">
+      <label className="sidebar-search">
+        <SearchIcon />
+        <input
+          ref={searchInputRef}
+          type="search"
+          value={searchInput}
+          placeholder="搜索本地文章"
+          aria-label="搜索本地文章"
+          data-entry-search
+          onChange={(event) => onSearchInputChange(event.target.value)}
+        />
+        {searchStatus !== 'idle' && (
+          <span
+            className={`sidebar-search-status is-${searchStatus}`}
+            aria-label={searchStatus === 'searching' ? '正在搜索' : undefined}
           >
-            <span className="feed-item-name" title="All Articles">
-              All Articles
-            </span>
-            <UnreadCount count={totalUnreadCount} />
-          </button>
-        </div>
-      </section>
+            {searchStatus === 'searching' && <span className="mini-spinner" />}
+            {(searchStatus === 'results' || searchStatus === 'no-results') && <CheckIcon />}
+            {searchStatus === 'error' && <span aria-hidden="true">!</span>}
+          </span>
+        )}
+      </label>
 
-      <section className="feed-section" aria-labelledby="feeds-heading">
-        <div className="feed-list-header">
-          <h3 id="feeds-heading">Feeds</h3>
-          <div className="feed-list-actions">
+      <nav
+        className={[
+          'sidebar-navigation',
+          activeRangeIndex === null
+            ? 'is-indicator-hidden'
+            : `is-indicator-at-${activeRangeIndex}`,
+        ].join(' ')}
+        aria-label="文章范围"
+      >
+        <span className="sidebar-navigation-indicator" aria-hidden="true" />
+        <button
+          type="button"
+          className={`sidebar-item sidebar-all${allSelected ? ' is-active' : ''}`}
+          onClick={() => {
+            onSelectFeed(null);
+            onSelectFilter('all');
+          }}
+        >
+          <DocumentIcon />
+          <span>全部文章</span>
+          <span className="sidebar-count">{entryStats.all.total}</span>
+        </button>
+        <button
+          type="button"
+          className={`sidebar-item${selectedFilter === 'unread' && !settingsActive ? ' is-active' : ''}`}
+          onClick={() => onSelectFilter('unread')}
+        >
+          <InboxIcon />
+          <span>未读</span>
+          <span className="sidebar-count">{entryStats.all.unread}</span>
+        </button>
+        <button
+          type="button"
+          className={`sidebar-item${selectedFilter === 'starred' && !settingsActive ? ' is-active' : ''}`}
+          onClick={() => onSelectFilter('starred')}
+        >
+          <StarIcon />
+          <span>收藏</span>
+        </button>
+      </nav>
+
+      <section className="sidebar-feed-section" aria-labelledby="feed-heading">
+        <div className="sidebar-section-heading">
+          <h2 id="feed-heading">订阅源</h2>
+          <div className="sidebar-section-actions">
             <button
               type="button"
-              className={`sync-button ${syncStatus}`}
-              onClick={() => {
-                void handleSync();
-              }}
-              aria-busy={isSyncing}
-              aria-disabled={isSyncing}
-              aria-label={syncLabel}
-              title={syncLabel}
+              className={`icon-button sync-button is-${syncStatus}`}
+              aria-label={syncStatusLabels[syncStatus]}
+              title={syncStatusLabels[syncStatus]}
+              aria-busy={syncStatus === 'loading'}
+              onClick={() => void handleSync()}
             >
-              {syncStatus === 'success' && <SyncSuccessIcon />}
-              {syncStatus === 'error' && <SyncErrorIcon />}
-              {(syncStatus === 'idle' || syncStatus === 'loading') && <SyncCycleIcon />}
+              {syncStatus === 'success' ? <CheckIcon /> : <SyncIcon />}
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="添加订阅源"
+              title="添加订阅源"
+              onClick={onOpenAddFeed}
+            >
+              <PlusIcon />
             </button>
           </div>
         </div>
 
         {syncStatus === 'error' && (
-          <p className="sync-error-message" role="status">
-            Sync failed. Click to retry.
-          </p>
+          <button
+            type="button"
+            className="sidebar-inline-error"
+            onClick={() => void handleSync()}
+          >
+            同步失败，点击重试
+          </button>
         )}
 
-        <button
-          type="button"
-          className="add-feed-button"
-          onClick={onOpenAddFeed}
-        >
-          <span className="add-feed-button-icon" aria-hidden="true">＋</span>
-          Add Feed
-        </button>
-
-        <button
-          type="button"
-          className="add-feed-button"
-          onClick={() => setShowOPMLDialog(true)}
-          style={{ borderColor: 'var(--slate-border)', background: 'transparent', fontSize: '12px' }}
-        >
-          <span className="add-feed-button-icon" aria-hidden="true" style={{ fontSize: '14px' }}>≡</span>
-          OPML
-        </button>
-
-        <div className="feed-items">
+        <div className="sidebar-feed-list">
           {feeds.map((feed) => {
             const feedName = feed.title ?? feed.feedURL;
-            const feedSyncStatus = syncProgress[feed.id];
-
+            const progress = syncProgress[feed.id];
             return (
-              <div key={feed.id} className="feed-item-wrapper">
+              <div className="sidebar-feed-row" key={feed.id}>
                 <button
                   type="button"
-                  className={`feed-item ${selectedFeedId === feed.id && !settingsActive ? 'active' : ''}`}
+                  className={`sidebar-item sidebar-feed${
+                    selectedFeedId === feed.id && !settingsActive ? ' is-active' : ''
+                  }`}
                   onClick={() => onSelectFeed(feed.id)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
+                  onContextMenu={(event) => {
+                    event.preventDefault();
                     setEditFeed(feed);
                   }}
                 >
-                  <span className="feed-item-name" title={feedName}>
-                    {feedSyncStatus === 'fetching' && '⟳ '}
-                    {feedSyncStatus === 'parsing' && '⟳ '}
-                    {feedSyncStatus === 'done' && '✓ '}
-                    {feedSyncStatus === 'error' && '✗ '}
-                    {feedName}
-                  </span>
-                  {feed.lastSyncStatus === 'error' && !syncProgress[feed.id] && (
-                    <span className="feed-item-error" title={feed.lastSyncError}>
-                      ⚠️
+                  <span className="sidebar-feed-name" title={feedName}>{feedName}</span>
+                  {(progress === 'fetching'
+                    || progress === 'parsing'
+                    || progress === 'saving'
+                    || progress === 'done') && (
+                    <span className="sidebar-count">
+                      {progress === 'done' ? '✓' : <span className="mini-spinner" />}
                     </span>
                   )}
-                  <div className="feed-item-actions">
-                    <button
-                      type="button"
-                      className="feed-item-action"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSingleSync(feed.id);
-                      }}
-                      title="Refresh this feed"
-                    >
-                      ↻
-                    </button>
-                    <button
-                      type="button"
-                      className="feed-item-action"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditFeed(feed);
-                      }}
-                      title="Edit feed"
-                    >
-                      ✎
-                    </button>
-                    <button
-                      type="button"
-                      className="feed-item-action"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemove(feed.id);
-                      }}
-                      title="Remove feed"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <UnreadCount count={onUnreadCount(feed.id)} />
                 </button>
+                <div className="sidebar-feed-actions">
+                  <button
+                    type="button"
+                    aria-label={`同步 ${feedName}`}
+                    title="同步此订阅源"
+                    onClick={() => void handleSingleSync(feed.id)}
+                  >
+                    <SyncIcon />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`编辑 ${feedName}`}
+                    title="编辑订阅源"
+                    onClick={() => setEditFeed(feed)}
+                  >
+                    <EditIcon />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`移除 ${feedName}`}
+                    title="移除订阅源"
+                    onClick={() => void handleRemove(feed.id)}
+                  >
+                    <TrashIcon />
+                  </button>
+                </div>
               </div>
             );
           })}
         </div>
+
+        {feeds.length === 0 && feedLoadStatus === 'success' && (
+          <div className="sidebar-empty">
+            <p>还没有订阅源</p>
+            <button type="button" onClick={onOpenAddFeed}>添加第一个订阅</button>
+          </div>
+        )}
+        {(loading || feedLoadStatus === 'loading') && (
+          <p className="sidebar-loading"><span className="mini-spinner" /> 正在载入</p>
+        )}
       </section>
 
-      {feeds.length === 0 && feedLoadStatus === 'success' && (
-        <p className="feed-list-empty">No feeds yet. Add one to get started.</p>
-      )}
-
-      {(loading || feedLoadStatus === 'loading') && (
-        <p className="feed-list-loading">Loading feeds...</p>
-      )}
-
-      <nav className="feed-settings-navigation" aria-label="Application">
+      <nav className="sidebar-footer-navigation" aria-label="应用">
         <button
           type="button"
-          className={`feed-settings-button${settingsActive ? ' active' : ''}`}
-          onClick={onOpenSettings}
+          className="sidebar-footer-button"
+          onClick={() => setShowOPMLDialog(true)}
+        >
+          <ImportIcon />
+          <span>导入 / 导出 OPML</span>
+        </button>
+        <button
+          type="button"
+          className={`sidebar-footer-button${settingsActive ? ' is-active' : ''}`}
           aria-current={settingsActive ? 'page' : undefined}
+          onClick={onOpenSettings}
         >
           <SettingsIcon />
-          <span>Settings</span>
+          <span>AI 设置</span>
         </button>
       </nav>
 
@@ -392,7 +395,6 @@ export const FeedList = ({
           onClose={() => setEditFeed(null)}
         />
       )}
-
       {showOPMLDialog && (
         <OPMLDialog
           onImport={handleOPMLImport}
