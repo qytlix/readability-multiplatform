@@ -126,8 +126,8 @@ export class EntryStore {
       whereParams.push(options.isStarred ? 1 : 0);
     }
 
-    if (options.search) {
-      const escaped = escapeLike(options.search);
+    if (options.search?.trim()) {
+      const escaped = escapeLike(options.search.trim());
       const likeParam = `%${escaped}%`;
       const esc = " ESCAPE '\\'";
       conditions.push(
