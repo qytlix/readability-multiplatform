@@ -7,10 +7,35 @@ export type PipelineStatus =
   | 'success'
   | 'failed';
 
+/** Stable Reader block roles supported by Translation. */
+export type ContentSegmentType =
+  | 'title'
+  | 'byline'
+  | 'heading'
+  | 'paragraph'
+  | 'list'
+  | 'blockquote'
+  | 'caption';
+
+/**
+ * A deterministic, sanitized Reader block. Consumers use this contract rather
+ * than relying on the content cleaner's DOM implementation.
+ */
+export interface ContentSegment {
+  id: string;
+  orderIndex: number;
+  type: ContentSegmentType;
+  sourceHtml: string;
+  sourceText: string;
+}
+
 /** 清洗结果（Renderer 和 AI 可安全消费的契约） */
 export interface CleanedContent {
   entryId: number;
   sourceUrl: string;
+  /** Metadata currently used by Reader, sourced from the persisted Entry. */
+  readerTitle?: string;
+  readerByline?: string;
   /** 原始 HTML（从目标网页 fetch 回来的未经清洗的 HTML） */
   html?: string;
   /** Readability 清洗后的纯净 HTML */
@@ -22,6 +47,7 @@ export interface CleanedContent {
   pipelineError?: string;
   segmenterVersion?: string;
   sourceContentHash?: string;
+  segments?: ContentSegment[];
 }
 
 /** 正文提取结果 */

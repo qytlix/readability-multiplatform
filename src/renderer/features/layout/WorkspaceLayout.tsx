@@ -1,13 +1,17 @@
 import {
   useCallback,
-  useRef,
   type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
 import { PaneDivider } from './PaneDivider';
 import { PaneRail } from './PaneRail';
-import { getPaneBounds, type ResizablePane } from './paneLayout';
+import { getPaneBoundsFromTracks, type ResizablePane } from './paneLayout';
+import {
+  getWorkspaceCssVariables,
+  type WorkspaceCssVariables,
+} from './paneLayoutCssVariables';
+import { usePaneFocusRestoration } from './usePaneFocusRestoration';
 import { usePaneLayout } from './usePaneLayout';
 
 interface WorkspaceLayoutProps {
@@ -16,12 +20,7 @@ interface WorkspaceLayoutProps {
   readerPane: ReactNode;
 }
 
-type WorkspaceStyle = CSSProperties & {
-  '--workspace-feed-width': string;
-  '--workspace-feed-divider-width': string;
-  '--workspace-entry-width': string;
-  '--workspace-entry-divider-width': string;
-};
+type WorkspaceStyle = CSSProperties & WorkspaceCssVariables;
 
 export const WorkspaceLayout = ({
   feedPane,
@@ -30,7 +29,6 @@ export const WorkspaceLayout = ({
 }: WorkspaceLayoutProps) => {
   const {
     layoutRef,
-    preference,
     tracks,
     containerWidth,
     draggingPane,
@@ -44,32 +42,17 @@ export const WorkspaceLayout = ({
     onDividerLostPointerCapture,
     onDividerKeyDown,
   } = usePaneLayout();
-  const feedDividerRef = useRef<HTMLDivElement>(null);
-  const entryDividerRef = useRef<HTMLDivElement>(null);
-  const feedRailRef = useRef<HTMLButtonElement>(null);
-  const entryRailRef = useRef<HTMLButtonElement>(null);
-  const feedBounds = getPaneBounds('feed', preference, containerWidth);
-  const entryBounds = getPaneBounds('entry', preference, containerWidth);
-  const style: WorkspaceStyle = {
-    '--workspace-feed-width': `${tracks.feed.trackWidth}px`,
-    '--workspace-feed-divider-width': `${tracks.feed.dividerWidth}px`,
-    '--workspace-entry-width': `${tracks.entry.trackWidth}px`,
-    '--workspace-entry-divider-width': `${tracks.entry.dividerWidth}px`,
-  };
-
-  const focusRail = useCallback((pane: ResizablePane) => {
-    window.requestAnimationFrame(() => {
-      const rail = pane === 'feed' ? feedRailRef.current : entryRailRef.current;
-      rail?.focus();
-    });
-  }, []);
-
-  const focusDivider = useCallback((pane: ResizablePane) => {
-    window.requestAnimationFrame(() => {
-      const divider = pane === 'feed' ? feedDividerRef.current : entryDividerRef.current;
-      divider?.focus();
-    });
-  }, []);
+  const {
+    feedDividerRef,
+    entryDividerRef,
+    feedRailRef,
+    entryRailRef,
+    focusRail,
+    focusDivider,
+  } = usePaneFocusRestoration();
+  const feedBounds = getPaneBoundsFromTracks(tracks, 'feed', containerWidth);
+  const entryBounds = getPaneBoundsFromTracks(tracks, 'entry', containerWidth);
+  const style: WorkspaceStyle = getWorkspaceCssVariables(tracks);
 
   const handleRestore = useCallback((pane: ResizablePane) => {
     restorePane(pane);
@@ -114,7 +97,7 @@ export const WorkspaceLayout = ({
         <PaneDivider
           ref={feedDividerRef}
           pane="feed"
-          value={tracks.feed.expandedWidth}
+          effectiveWidth={tracks.feed.effectiveWidth}
           minimum={feedBounds.minWidth}
           maximum={feedBounds.maxWidth}
           isDragging={draggingPane === 'feed'}
@@ -147,7 +130,7 @@ export const WorkspaceLayout = ({
         <PaneDivider
           ref={entryDividerRef}
           pane="entry"
-          value={tracks.entry.expandedWidth}
+          effectiveWidth={tracks.entry.effectiveWidth}
           minimum={entryBounds.minWidth}
           maximum={entryBounds.maxWidth}
           isDragging={draggingPane === 'entry'}

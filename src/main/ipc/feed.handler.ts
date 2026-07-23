@@ -1,13 +1,10 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
-import { FeedStore } from '../feed/FeedStore';
-import { EntryStore } from '../feed/EntryStore';
-import { ContentStore } from '../feed/ContentStore';
-import { FeedService } from '../feed/FeedService';
-import { ContentService } from '../feed/ContentService';
-import { SyncCoordinator } from '../feed/SyncCoordinator';
-import { SyncScheduler } from '../feed/SyncScheduler';
-import { OPMLImportService } from '../feed/OPMLImportService';
-import { OPMLExportService } from '../feed/OPMLExportService';
+import {
+  FeedService,
+  SyncCoordinator,
+  type FeedOperationLogger,
+  type FeedSyncTrigger,
+} from '../feed/services';
 import { FEED_IPC_CHANNELS } from '../../shared/contracts/feed.ipc';
 import type { ShaleError } from '../../shared/errors/feed.errors';
 import type {
@@ -27,8 +24,11 @@ import type {
 } from '../../shared/contracts/feed.ipc';
 import type { Feed, EntryListItem } from '../../shared/contracts/feed.types';
 import type { CleanedContent } from '../../shared/contracts/content.types';
+import type { FeedServices } from '../services';
 
 type GetMainWindow = () => BrowserWindow | null;
+
+const MANUAL_FEED_SYNC_TRIGGER: FeedSyncTrigger = 'manual';
 
 const isAuthorizedSender = (
   event: IpcMainInvokeEvent,
@@ -51,18 +51,6 @@ function sendSyncProgress(
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(FEED_IPC_CHANNELS.feedSyncProgress, progress);
   }
-}
-
-export interface FeedServices {
-  feedService: FeedService;
-  contentService: ContentService;
-  entryStore: EntryStore;
-  contentStore: ContentStore;
-  feedStore: FeedStore;
-  syncCoordinator: SyncCoordinator;
-  syncScheduler: SyncScheduler;
-  opmlImportService: OPMLImportService;
-  opmlExportService: OPMLExportService;
 }
 
 function success<T>(data: T): IPCResult<T> {
@@ -147,12 +135,12 @@ export function registerFeedIpcHandlers(
       try {
         if (request.feedId !== undefined) {
           // Single feed sync via coordinator (which handles dedup)
-          const result = await syncCoordinator.syncFeed(request.feedId);
+          const result = await syncCoordinator.syncFeed(request.feedId, MANUAL_FEED_SYNC_TRIGGER);
           return success(result);
         }
 
         // Full sync via coordinator
-        const results = await syncCoordinator.syncAll();
+        const results = await syncCoordinator.syncAll(MANUAL_FEED_SYNC_TRIGGER);
         const feeds = await feedService.getFeeds();
         const allEntries = entryStore.query({ limit: 50 });
         return success({
@@ -336,10 +324,10 @@ export function registerFeedIpcHandlers(
       }
 
       try {
-        // Read file content in main process
-        const fs = await import('node:fs/promises');
-        const xml = await fs.readFile(request.filePath, 'utf-8');
-        const result = await opmlImportService.importFromContent(xml, request.mode);
+        const result = await opmlImportService.importFromFile(
+          request.filePath,
+          request.mode,
+        );
         return success(result);
       } catch (error) {
         return failure(error);
@@ -373,9 +361,10 @@ export function registerFeedIpcHandlers(
 export function createSyncCoordinator(
   getMainWindow: GetMainWindow,
   feedService: FeedService,
+  feedLogger: FeedOperationLogger,
   maxConcurrency?: number,
 ): SyncCoordinator {
-  return new SyncCoordinator(feedService, {
+  return new SyncCoordinator(feedService, feedLogger, {
     maxConcurrency,
     onFeedProgress: (feedId, status, feedTitle, newCount, error) => {
       sendSyncProgress(getMainWindow, {

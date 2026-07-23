@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { EntryStore } from '../../src/main/feed/EntryStore';
-import { FeedStore } from '../../src/main/feed/FeedStore';
+import { EntryStore } from '../../src/main/feed/stores/EntryStore';
+import { FeedStore } from '../../src/main/feed/stores/FeedStore';
 import { buildTestDb } from '../fixtures/databases/feed-fixture';
 
 describe('EntryStore', () => {

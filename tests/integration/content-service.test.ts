@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { FetcherStrategy } from '../../src/main/feed/FetchStrategy';
-import { ContentFetcher } from '../../src/main/feed/ContentFetcher';
-import { ContentService } from '../../src/main/feed/ContentService';
-import { ContentStore } from '../../src/main/feed/ContentStore';
-import { EntryStore } from '../../src/main/feed/EntryStore';
-import { FeedStore } from '../../src/main/feed/FeedStore';
-import { ContentCleaner } from '../../src/main/feed/ContentCleaner';
-import { MarkdownConverter } from '../../src/main/feed/MarkdownConverter';
+import type { FetcherStrategy } from '../../src/main/feed/fetcher/FetchStrategy';
+import { ContentFetcher } from '../../src/main/feed/fetcher/ContentFetcher';
+import { ContentService } from '../../src/main/feed/services/ContentService';
+import { ContentStore } from '../../src/main/feed/stores/ContentStore';
+import { EntryStore } from '../../src/main/feed/stores/EntryStore';
+import { FeedStore } from '../../src/main/feed/stores/FeedStore';
+import { ContentCleaner } from '../../src/main/feed/fetcher/ContentCleaner';
+import { MarkdownConverter } from '../../src/main/feed/fetcher/MarkdownConverter';
 import { buildTestDb } from '../fixtures/databases/feed-fixture';
 
 const SAMPLE_HTML =
@@ -85,6 +85,12 @@ describe('ContentService', () => {
       expect(result.markdown).toBeTruthy();
       expect(result.readabilityTitle).toBeDefined();
       expect(result.sourceContentHash).toBeDefined();
+      expect(result.sourceContentHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(result.segments?.map((segment) => segment.type)).toEqual([
+        'title',
+        'heading',
+        'paragraph',
+      ]);
     });
 
     it('should persist content to store', async () => {

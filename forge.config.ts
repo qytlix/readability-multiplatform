@@ -11,6 +11,7 @@ import path from 'node:path';
 
 const appIconBasePath = path.resolve(__dirname, 'assets/icons/shale-app-icon');
 const linuxIconPath = path.resolve(__dirname, 'assets/icons/linux/shale-app-icon-512.png');
+const terminologyDbPath = path.resolve(__dirname, 'resources/terminology/terminology.sqlite');
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -36,13 +37,17 @@ const config: ForgeConfig = {
     // Electron Packager selects `.icns` on macOS and `.ico` on Windows.
     icon: appIconBasePath,
     // Linux window icons need a PNG outside app.asar at runtime.
-    extraResource: linuxIconPath,
+    extraResource: [linuxIconPath, terminologyDbPath],
     // The Vite plugin normally packages only `.vite`. Main-process dependencies
     // are deliberately externalized in vite.main.config.ts, so let Forge retain
     // the application dependencies and prune development-only packages.
     ignore: () => false,
   },
-  rebuildConfig: {},
+  // The start hook validates the actual binary before Forge reads its metadata.
+  // Restrict Forge's native-module scan to our one production addon.
+  rebuildConfig: {
+    onlyModules: ['better-sqlite3'],
+  },
   makers: [
     new MakerSquirrel({}),
     new MakerZIP({}, ['darwin']),

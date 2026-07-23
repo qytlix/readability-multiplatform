@@ -1,15 +1,28 @@
 import { app, BrowserWindow, Menu } from 'electron';
+import { performance } from 'node:perf_hooks';
 import { env } from 'node:process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import {
   getSummaryService,
+  getInlineTranslationService,
+  getTranslationService,
   getSyncScheduler,
   initializeServices,
-  registerIpcHandlers,
-} from './ipc';
+} from './services';
+import { registerIpcHandlers } from './ipc';
+import type {
+  ContentOperationLogger,
+  FeedOperationLogger,
+  OPMLOperationLogger,
+} from './feed/services';
+import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
+import type { SummaryOperationLogger } from './ai/services/SummaryLogging';
 import { getApplicationMenuTemplate } from './application-menu';
+import { MAIN_LIFECYCLE_EVENTS } from './logging/MainLifecycleEvents';
+import { StructuredLogger, type AppInitializationPhase } from './logging/StructuredLogger';
+import { NormalShutdownCoordinator } from './logging/NormalShutdownCoordinator';
 import { installMainWindowNavigationGuards } from './navigation-guards';
 import { initializePageZoom, installPageZoomInputGuard } from './page-zoom';
 
@@ -26,10 +39,26 @@ if (env.XDG_SESSION_TYPE === 'wayland' || env.WAYLAND_DISPLAY) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let lifecycleLogger: StructuredLogger | null = null;
+
+const normalShutdownCoordinator = new NormalShutdownCoordinator({
+  getLogger: () => lifecycleLogger,
+  stopApplicationWork: () => {
+    getSyncScheduler()?.stop();
+    getSummaryService()?.abortActiveRun();
+    getInlineTranslationService()?.close();
+    getTranslationService()?.close();
+  },
+  requestQuit: () => app.quit(),
+});
 
 const linuxWindowIconPath = app.isPackaged
   ? path.join(process.resourcesPath, 'shale-app-icon-512.png')
   : path.join(__dirname, '../../assets/icons/linux/shale-app-icon-512.png');
+
+const terminologyDbPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'terminology.sqlite')
+  : path.join(__dirname, '../../resources/terminology/terminology.sqlite');
 
 const createWindow = (): void => {
   const applicationUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
@@ -74,21 +103,99 @@ const createWindow = (): void => {
   }
 };
 
-app.on('ready', () => {
+async function flushLifecycleLogger(): Promise<void> {
+  try {
+    await lifecycleLogger?.flush();
+  } catch {
+    // Logging must not replace the application's existing startup failure.
+  }
+}
+
+function elapsedMilliseconds(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt));
+}
+
+async function initializeApplication(): Promise<void> {
+  const applicationInitializationStartedAt = performance.now();
+  try {
+    lifecycleLogger = new StructuredLogger({
+      directory: path.join(app.getPath('logs'), 'structured'),
+    });
+  } catch {
+    lifecycleLogger = null;
+  }
+
+  lifecycleLogger?.info(MAIN_LIFECYCLE_EVENTS.starting, 'app.lifecycle', {
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+  });
+
   Menu.setApplicationMenu(Menu.buildFromTemplate(getApplicationMenuTemplate()));
   // Initialize database with persistent path
   const dbPath = path.join(app.getPath('userData'), 'shale.db');
   const secretStoragePath = path.join(app.getPath('userData'), 'ai-secrets.json');
-  initializeServices(dbPath, secretStoragePath);
-  registerIpcHandlers(() => mainWindow);
-  createWindow();
+  // Preserve startup behavior if logger construction itself was unavailable;
+  // no second on-disk logger is created.
+  const operationLogger: FeedOperationLogger
+    & ContentOperationLogger
+    & OPMLOperationLogger
+    & ProviderOperationLogger
+    & SummaryOperationLogger = lifecycleLogger ?? {
+    info: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+  };
+  const databaseInitializationStartedAt = performance.now();
+  lifecycleLogger?.info(MAIN_LIFECYCLE_EVENTS.databaseInitializeStarted, 'database.lifecycle');
+  try {
+    initializeServices(
+      dbPath,
+      secretStoragePath,
+      operationLogger,
+      terminologyDbPath,
+    );
+  } catch (error) {
+    lifecycleLogger?.error(MAIN_LIFECYCLE_EVENTS.databaseInitializeFailed, 'database.lifecycle', {
+      durationMs: elapsedMilliseconds(databaseInitializationStartedAt),
+      success: false,
+      errorCode: 'DATABASE_INITIALIZATION_FAILED',
+    });
+    await flushLifecycleLogger();
+    throw error;
+  }
 
-  getSyncScheduler()?.start();
-});
+  lifecycleLogger?.info(MAIN_LIFECYCLE_EVENTS.databaseInitializeCompleted, 'database.lifecycle', {
+    durationMs: elapsedMilliseconds(databaseInitializationStartedAt),
+    success: true,
+  });
 
-app.on('before-quit', () => {
-  getSyncScheduler()?.stop();
-  getSummaryService()?.abortActiveRun();
+  let phase: AppInitializationPhase = 'services';
+  try {
+    phase = 'ipc';
+    registerIpcHandlers(() => mainWindow, operationLogger);
+    phase = 'window';
+    createWindow();
+    phase = 'sync';
+    getSyncScheduler()?.start();
+  } catch (error) {
+    lifecycleLogger?.error(MAIN_LIFECYCLE_EVENTS.initializationFailed, 'app.lifecycle', {
+      errorCode: 'APP_INITIALIZATION_FAILED',
+      phase,
+    });
+    await flushLifecycleLogger();
+    throw error;
+  }
+
+  lifecycleLogger?.info(MAIN_LIFECYCLE_EVENTS.ready, 'app.lifecycle', {
+    durationMs: elapsedMilliseconds(applicationInitializationStartedAt),
+  });
+}
+
+void app.whenReady().then(initializeApplication);
+
+app.on('before-quit', (event) => {
+  normalShutdownCoordinator.handleBeforeQuit(event);
 });
 
 app.on('window-all-closed', () => {
