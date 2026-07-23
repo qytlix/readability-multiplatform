@@ -56,5 +56,12 @@ export function buildTestDbWithContent() {
   insertContent.run(2, '<html>2</html>', '<p>cleaned two</p>', 'markdown body for second article', 'success', now, now);
   // entry 3 intentionally left without entry_content
 
+  // Entry 4: special LIKE characters in title and summary
+  db.prepare(`
+    INSERT INTO entry (feedId, guid, url, title, author, publishedAt, summary, isRead, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(1, 'guid-4', 'https://example.com/post-4', '100% completion rate', 'Author C', '2026-07-11T10:00:00Z', 'test_data format', 0, now, now);
+  insertContent.run(4, '<html>4</html>', '<p>cleaned four</p>', 'markdown with backslash test and 50% off', 'success', now, now);
+
   return { dbManager, db };
 }

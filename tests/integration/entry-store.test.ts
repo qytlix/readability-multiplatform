@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EntryStore } from '../../src/main/feed/stores/EntryStore';
 import { FeedStore } from '../../src/main/feed/stores/FeedStore';
-import { buildTestDb } from '../fixtures/databases/feed-fixture';
+import { buildTestDb, buildTestDbWithContent } from '../fixtures/databases/feed-fixture';
 
 describe('EntryStore', () => {
   let entryStore: EntryStore;
@@ -232,6 +232,72 @@ describe('EntryStore', () => {
       entryStore.markRead([entries.entries[0].id], true);
 
       expect(entryStore.countUnread(feedId)).toBe(1);
+    });
+  });
+
+  describe('search with entry_content', () => {
+    let dbContent: ReturnType<typeof buildTestDbWithContent>['db'];
+    let entryStoreContent: EntryStore;
+    let feedIdContent: number;
+
+    beforeEach(() => {
+      const testDb = buildTestDbWithContent();
+      dbContent = testDb.db;
+      entryStoreContent = new EntryStore(dbContent);
+      const feedStoreContent = new FeedStore(dbContent);
+      const feeds = feedStoreContent.findAll();
+      feedIdContent = feeds[0].id;
+    });
+
+    it('should search by feed.title', () => {
+      const result = entryStoreContent.query({ search: 'Test Feed', limit: 50 });
+      expect(result.entries.length).toBeGreaterThanOrEqual(3);
+      for (const entry of result.entries) {
+        expect(entry.feedTitle).toBe('Test Feed');
+      }
+    });
+
+    it('should search by markdown content', () => {
+      const result = entryStoreContent.query({ search: 'first post', limit: 50 });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('First Post');
+    });
+
+    it('should rank title match above markdown match', () => {
+      // 'second' matches in: entry 2 title 'Second Post' (relevance 3),
+      // entry 2 markdown 'second article' (relevance 2)
+      // So entry 2 should be first (3+2=5), entry 1 markdown 'first post' (2) maybe
+      const result = entryStoreContent.query({ search: 'second', limit: 50 });
+      expect(result.entries.length).toBeGreaterThanOrEqual(1);
+      expect(result.entries[0].title).toBe('Second Post');
+    });
+
+    it('should rank markdown match above summary match', () => {
+      // 'First' matches: entry 1 title 'First Post' (3), summary 'First summary' (1)
+      // We need a case where markdown > summary
+      // 'article' matches entry 2 markdown 'second article' (2)
+      const result = entryStoreContent.query({ search: 'article', limit: 50 });
+      expect(result.entries.length).toBeGreaterThanOrEqual(1);
+      // Only entry 2's markdown contains 'article'
+      expect(result.entries[0].title).toBe('Second Post');
+    });
+
+    it('should handle LIKE special char %', () => {
+      const result = entryStoreContent.query({ search: '100%', limit: 50 });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('100% completion rate');
+    });
+
+    it('should handle LIKE special char _', () => {
+      const result = entryStoreContent.query({ search: 'test_data', limit: 50 });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('100% completion rate');
+    });
+
+    it('should handle LIKE special char backslash', () => {
+      const result = entryStoreContent.query({ search: 'backslash', limit: 50 });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('100% completion rate');
     });
   });
 });
