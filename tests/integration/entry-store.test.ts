@@ -300,4 +300,59 @@ describe('EntryStore', () => {
       expect(result.entries[0].title).toBe('100% completion rate');
     });
   });
+
+  describe('search edge cases', () => {
+    let dbContent: ReturnType<typeof buildTestDbWithContent>['db'];
+    let entryStoreContent: EntryStore;
+
+    beforeEach(() => {
+      const testDb = buildTestDbWithContent();
+      dbContent = testDb.db;
+      entryStoreContent = new EntryStore(dbContent);
+    });
+
+    it('should handle undefined search', () => {
+      const result = entryStoreContent.query({ limit: 50 });
+      expect(result.entries.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('should handle empty string search', () => {
+      const result = entryStoreContent.query({ search: '', limit: 50 });
+      expect(result.entries.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('should handle whitespace-only search', () => {
+      const result = entryStoreContent.query({ search: '   ', limit: 50 });
+      expect(result.entries.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('should find un-cleaned entry by title', () => {
+      // Entry 3 has no entry_content but has title 'Third Post'
+      const result = entryStoreContent.query({ search: 'Third Post', limit: 50 });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('Third Post');
+    });
+
+    it('should not find un-cleaned entry by markdown', () => {
+      // 'body' appears only in entry 1 and 2 markdown, not in title/summary
+      // Entry 3 has no entry_content, so it should NOT match
+      const result = entryStoreContent.query({ search: 'body', limit: 50 });
+      expect(result.entries).toHaveLength(2);
+      expect(result.entries.map((e) => e.title)).toEqual(
+        expect.arrayContaining(['First Post', 'Second Post']),
+      );
+    });
+
+    it('should paginate search results', () => {
+      const page1 = entryStoreContent.query({ search: 'Post', limit: 2 });
+      expect(page1.entries).toHaveLength(2);
+      expect(page1.nextCursor).toBeDefined();
+
+      const page2 = entryStoreContent.query({
+        search: 'Post', limit: 2, cursor: page1.nextCursor,
+      });
+      expect(page2.entries).toHaveLength(1);
+      expect(page2.nextCursor).toBeUndefined();
+    });
+  });
 });
