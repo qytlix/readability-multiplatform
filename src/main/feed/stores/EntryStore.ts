@@ -105,47 +105,65 @@ export class EntryStore {
    */
   query(options: EntryQuery): { entries: EntryListItem[]; nextCursor?: { publishedAt: string; id: number } } {
     const conditions: string[] = ['e.isDeleted = 0'];
-    const params: unknown[] = [];
+    // Params ordered by SQL appearance: SELECT CASE WHEN ? first, then WHERE ?, then LIMIT ?
+    const selectParams: unknown[] = [];
+    const whereParams: unknown[] = [];
+    let selectFields = 'e.*, f.title AS feedTitle, ec.pipelineStatus';
+    let orderBy = 'ORDER BY e.publishedAt DESC, e.id DESC';
 
     if (options.feedId !== undefined) {
       conditions.push('e.feedId = ?');
-      params.push(options.feedId);
+      whereParams.push(options.feedId);
     }
 
     if (options.isRead !== undefined) {
       conditions.push('e.isRead = ?');
-      params.push(options.isRead ? 1 : 0);
+      whereParams.push(options.isRead ? 1 : 0);
     }
 
     if (options.isStarred !== undefined) {
       conditions.push('e.isStarred = ?');
-      params.push(options.isStarred ? 1 : 0);
+      whereParams.push(options.isStarred ? 1 : 0);
     }
 
     if (options.search) {
-      conditions.push('(e.title LIKE ? OR e.summary LIKE ?)');
-      params.push(`%${options.search}%`, `%${options.search}%`);
+      const likeParam = `%${options.search}%`;
+      conditions.push(
+        '(e.title LIKE ? OR e.summary LIKE ? OR ec.markdown LIKE ? OR f.title LIKE ?)'
+      );
+      whereParams.push(likeParam, likeParam, likeParam, likeParam);
+
+      // SELECT-level relevance scoring — ? placeholders come before WHERE in SQL
+      selectFields = `e.*, f.title AS feedTitle, ec.pipelineStatus,
+        (CASE WHEN e.title LIKE ?         THEN 3 ELSE 0 END +
+         CASE WHEN ec.markdown LIKE ?     THEN 2 ELSE 0 END +
+         CASE WHEN e.summary LIKE ?       THEN 1 ELSE 0 END +
+         CASE WHEN f.title LIKE ?         THEN 1 ELSE 0 END) AS relevance`;
+      selectParams.push(likeParam, likeParam, likeParam, likeParam);
+
+      orderBy = 'ORDER BY relevance DESC, e.publishedAt DESC, e.id DESC';
     }
 
     // Keyset pagination
     if (options.cursor) {
       conditions.push('(e.publishedAt < ? OR (e.publishedAt = ? AND e.id < ?))');
-      params.push(options.cursor.publishedAt, options.cursor.publishedAt, options.cursor.id);
+      whereParams.push(options.cursor.publishedAt, options.cursor.publishedAt, options.cursor.id);
     }
 
     const limit = options.limit ?? 50;
     const query = `
-      SELECT e.*, f.title AS feedTitle, ec.pipelineStatus
+      SELECT ${selectFields}
       FROM entry e
       LEFT JOIN feed f ON f.id = e.feedId
       LEFT JOIN entry_content ec ON ec.entryId = e.id
       WHERE ${conditions.join(' AND ')}
-      ORDER BY e.publishedAt DESC, e.id DESC
+      ${orderBy}
       LIMIT ?
     `;
-    params.push(limit + 1); // Fetch one extra to detect next page
+    // Params order: SELECT CASE WHEN ? first, then WHERE ?, then LIMIT ?
+    const allParams = [...selectParams, ...whereParams, limit + 1];
 
-    const rows = this.db.prepare(query).all(...params) as Array<
+    const rows = this.db.prepare(query).all(...allParams) as Array<
       Record<string, unknown>
     >;
 
