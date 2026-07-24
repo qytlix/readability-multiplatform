@@ -1926,6 +1926,68 @@ body.workspace-is-resizing * {
   background: var(--reader-card);
 }
 
+.settings-card-heading {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.settings-card-heading h3 {
+  margin: 0;
+  color: #e2e8df;
+  font-size: 16px;
+  font-weight: 620;
+}
+
+.settings-card-heading p,
+.diagnostics-summary {
+  margin: 0;
+  color: var(--reader-text-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.diagnostics-summary {
+  margin-bottom: 14px;
+}
+
+.diagnostics-export-button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--reader-line);
+  border-radius: 7px;
+  color: var(--reader-text-soft);
+  background: var(--reader-input);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.diagnostics-export-button:hover:not(:disabled) {
+  border-color: var(--reader-accent);
+  color: var(--reader-text);
+}
+
+.diagnostics-export-button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.diagnostics-status {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.diagnostics-status-success {
+  color: var(--reader-success);
+}
+
+.diagnostics-status-error {
+  color: #dda094;
+}
+
 .settings-section-title,
 .provider-settings-header h2 {
   margin: 0;

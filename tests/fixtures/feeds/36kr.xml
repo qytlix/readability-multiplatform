@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>36kr News</title>
+  <link>https://36kr.com</link>
+  <description>36kr Feed</description>
+  <item>
+    <title>Test Article</title>
+    <link>https://36kr.com/p/test</link>
+    <description><![CDATA[
+      <p>Bare & in text is common in 36kr feeds.</p>
+      <p>Author&nbsp;|&nbsp;Test User</p>
+      <p>Price: $19.99 &amp; up</p>
+    ]]></description>
+  </item>
+  <item>
+    <title>Second Article with &amp; in title</title>
+    <link>https://36kr.com/p/test2</link>
+    <description><![CDATA[Some text with & in CDATA &nbsp; entities]]></description>
+  </item>
+</channel></rss>

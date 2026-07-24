@@ -16,6 +16,7 @@ import {
   formatKeyboardShortcut,
   shortcutFromKeyboardEvent,
 } from './keyboardShortcut';
+import { DiagnosticsSection } from './DiagnosticsSection';
 
 type ShortcutPreferenceKey =
   | 'fullTranslationShortcut'
@@ -198,6 +199,8 @@ export const AISettingsPage = ({
             {shortcutError && <p className="settings-shortcut-error" role="status">{shortcutError}</p>}
           </div>
         </section>
+
+        <DiagnosticsSection />
 
         {providerError && <p className="settings-page-error" role="status">{providerError}</p>}
         <ProviderSettings

@@ -9,6 +9,7 @@ import { SUMMARY_IPC_CHANNELS } from '../shared/contracts/summary.ipc';
 import type { SaveProviderRequest } from '../shared/contracts/provider.types';
 import type { SummaryStreamEvent } from '../shared/contracts/summary.types';
 import { TRANSLATION_IPC_CHANNELS } from '../shared/contracts/translation.ipc';
+import { DIAGNOSTICS_IPC_CHANNELS } from '../shared/contracts/diagnostics.ipc';
 import type {
   InlineTranslationRequest,
   TranslationStreamEvent,
@@ -150,6 +151,10 @@ const translationAPI = {
   },
 };
 
+const diagnosticsAPI = {
+  export: () => ipcRenderer.invoke(DIAGNOSTICS_IPC_CHANNELS.export),
+};
+
 const shaleAPI: ShaleAPI = {
   system: {
     ping,
@@ -163,6 +168,7 @@ const shaleAPI: ShaleAPI = {
   provider: providerAPI,
   summary: summaryAPI,
   translation: translationAPI,
+  diagnostics: diagnosticsAPI,
 };
 
 contextBridge.exposeInMainWorld('shaleAPI', shaleAPI);

@@ -11,6 +11,8 @@ import {
   OPMLImportService,
   type OPMLFileReader,
 } from '../../../src/main/feed/services/OPMLImportService';
+import { normalizeFeedURL } from '../../../src/main/feed/services/FeedIdentity';
+import type { Feed } from '../../../src/shared/contracts/feed.types';
 import {
   logOPMLExportFailed,
   logOPMLImportFailed,
@@ -79,11 +81,23 @@ function createImportFeedStore(options: {
   findAll?: () => Array<{ feedURL: string }>;
   deleteAllExcept?: () => void;
 } = {}): FeedStore {
+  const existingDedupKeys = new Set(
+    (options.existingUrls ?? []).map((url) => {
+      try {
+        return normalizeFeedURL(url);
+      } catch {
+        return url;
+      }
+    }),
+  );
   return {
     findAll: vi.fn(options.findAll ?? (() => (
       (options.existingUrls ?? []).map((feedURL) => ({ feedURL }))
     ))),
     findByUrl: vi.fn(() => undefined),
+    findByDedupKey: vi.fn((dedupKey: string) =>
+      existingDedupKeys.has(dedupKey) ? { id: 1, feedURL: 'https://existing.example.test/feed.xml', title: 'Existing', lastSyncStatus: 'success', syncIntervalMin: 30, createdAt: '2026-07-20T00:00:00.000Z' } as Feed : undefined,
+    ),
     create: vi.fn((params: { title?: string; feedURL: string; siteURL?: string }) => (
       options.create?.(params)
     )),
@@ -252,14 +266,11 @@ describe('OPML structured logging', () => {
         errorCode: OPML_LOG_ERROR_CODES.importParseFailed,
       },
       {
-        run: (logger: OPMLOperationLogger) => createImportService({
-          logger,
-          feedStore: createImportFeedStore({
-            findAll: () => {
-              throw new Error(ERROR_CANARY);
-            },
-          }),
-        }).importFromFile(FILE_PATH_CANARY, 'merge'),
+        run: (logger: OPMLOperationLogger) => {
+          const service = createImportService({ logger });
+          vi.spyOn(service, 'importFromContent').mockRejectedValue(new Error(ERROR_CANARY));
+          return service.importFromFile(FILE_PATH_CANARY, 'merge');
+        },
         stage: 'process',
         errorCode: OPML_LOG_ERROR_CODES.importProcessFailed,
       },

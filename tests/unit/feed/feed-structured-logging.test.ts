@@ -22,6 +22,7 @@ function createFeedServiceForAddTests() {
   const feedLogger = createFeedLoggerSpy();
   const feedStore = {
     findByUrl: vi.fn(() => undefined),
+    findByDedupKey: vi.fn(() => undefined),
     create: vi.fn(() => TEST_FEED),
     findById: vi.fn(() => TEST_FEED),
     updateSyncStatus: vi.fn(),
@@ -233,6 +234,7 @@ describe('Feed structured logging', () => {
   it('does not let a logger failure change a successful Feed add', async () => {
     const feedStore = {
       findByUrl: vi.fn(() => undefined),
+      findByDedupKey: vi.fn(() => undefined),
       create: vi.fn(() => TEST_FEED),
       findById: vi.fn(() => TEST_FEED),
       updateSyncStatus: vi.fn(),
