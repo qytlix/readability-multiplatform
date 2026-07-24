@@ -17,6 +17,9 @@ annotation's latest local update date and time. On narrow windows it falls back
 to the opposite margin or the viewport edge so the note remains usable. A
 non-interactive translucent projection in the annotation color visually joins
 the highlighted text to the open note without blocking article interaction.
+When a highlight wraps across lines, the projection uses the exact line fragment
+under the pointer instead of the inline element's multi-line bounding box, so
+sidebar and story-list width changes do not distort the projection.
 
 The first version applies only to cleaned Reader HTML. Raw Markdown, embedded
 video views, translated output, exports, synchronization, and overlapping

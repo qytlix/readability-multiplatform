@@ -166,8 +166,13 @@ describe('AnnotatedArticle', () => {
     const activeDom = dom;
     const article = fixture.mount.querySelector<HTMLElement>('.entry-detail-html');
     if (!article) throw new Error('Annotated article did not render.');
+    const firstLineRect = new activeDom.window.DOMRect(220, 180, 60, 18);
+    const secondLineRect = new activeDom.window.DOMRect(500, 240, 80, 18);
     Object.defineProperty(mark, 'getBoundingClientRect', {
-      value: () => new activeDom.window.DOMRect(220, 180, 60, 18),
+      value: () => new activeDom.window.DOMRect(220, 180, 360, 78),
+    });
+    Object.defineProperty(mark, 'getClientRects', {
+      value: () => [firstLineRect, secondLineRect],
     });
     Object.defineProperty(article, 'getBoundingClientRect', {
       value: () => new activeDom.window.DOMRect(100, 60, 500, 600),
@@ -175,6 +180,8 @@ describe('AnnotatedArticle', () => {
     await act(async () => {
       mark.dispatchEvent(new activeDom.window.MouseEvent('mouseover', {
         bubbles: true,
+        clientX: 240,
+        clientY: 190,
       }));
     });
 
@@ -199,6 +206,34 @@ describe('AnnotatedArticle', () => {
       .toBe('2026-07-24T00:00:00.000Z');
     expect(timestamp?.textContent)
       .toMatch(/^2026\/7\/24 \d{2}:\d{2}:\d{2}$/);
+
+    const rerenderedMark = fixture.mount.querySelector<HTMLElement>(
+      'mark[data-annotation-id="1"]',
+    );
+    if (!rerenderedMark) throw new Error('Highlight did not survive note rendering.');
+    Object.defineProperty(rerenderedMark, 'getBoundingClientRect', {
+      value: () => new activeDom.window.DOMRect(220, 180, 360, 78),
+    });
+    Object.defineProperty(rerenderedMark, 'getClientRects', {
+      value: () => [firstLineRect, secondLineRect],
+    });
+    await act(async () => {
+      rerenderedMark.dispatchEvent(new activeDom.window.MouseEvent('mouseover', {
+        bubbles: true,
+        clientX: 540,
+        clientY: 249,
+      }));
+    });
+    const secondLineNote = fixture.mount.querySelector<HTMLElement>(
+      '.annotation-note.is-preview',
+    );
+    const secondLineConnector = fixture.mount.querySelector<HTMLElement>(
+      '.annotation-note-connector',
+    );
+    expect(secondLineNote?.style.top).toBe('236px');
+    expect(secondLineConnector?.style.left).toBe('500px');
+    expect(secondLineConnector?.style.top).toBe('240px');
+    expect(secondLineConnector?.style.width).toBe('119px');
   });
 
   it('opens and saves a note outside annotation mode', async () => {

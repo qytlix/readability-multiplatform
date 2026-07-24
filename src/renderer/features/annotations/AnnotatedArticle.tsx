@@ -217,11 +217,13 @@ export const AnnotatedArticle = ({
   const openEditor = (
     annotation: EntryAnnotation,
     mark: HTMLElement,
+    clientX: number,
+    clientY: number,
   ): void => {
     const article = articleRef.current;
     if (!article) return;
     const layout = getNoteLayout(
-      mark.getBoundingClientRect(),
+      getHighlightLineRect(mark, clientX, clientY),
       article.getBoundingClientRect(),
       'edit',
     );
@@ -239,7 +241,7 @@ export const AnnotatedArticle = ({
     const mark = closestAnnotationMark(event.target);
     if (!annotation || !mark) return;
     event.preventDefault();
-    openEditor(annotation, mark);
+    openEditor(annotation, mark, event.clientX, event.clientY);
   };
 
   const handleMouseOver = (event: MouseEvent<HTMLDivElement>): void => {
@@ -260,7 +262,7 @@ export const AnnotatedArticle = ({
     const article = articleRef.current;
     if (!article) return;
     const layout = getNoteLayout(
-      mark.getBoundingClientRect(),
+      getHighlightLineRect(mark, event.clientX, event.clientY),
       article.getBoundingClientRect(),
       'preview',
     );
@@ -449,6 +451,39 @@ function findAnnotationFromTarget(
   return Number.isInteger(annotationId)
     ? annotations.find((annotation) => annotation.id === annotationId)
     : undefined;
+}
+
+function getHighlightLineRect(
+  mark: HTMLElement,
+  clientX: number,
+  clientY: number,
+): DOMRect {
+  const lineRects = Array.from(mark.getClientRects());
+  if (lineRects.length === 0) return mark.getBoundingClientRect();
+  const containingRect = lineRects.find((rect) => (
+    clientX >= rect.left
+    && clientX <= rect.right
+    && clientY >= rect.top
+    && clientY <= rect.bottom
+  ));
+  if (containingRect) return containingRect;
+
+  return lineRects.reduce((closest, candidate) => (
+    distanceToRect(clientX, clientY, candidate)
+      < distanceToRect(clientX, clientY, closest)
+      ? candidate
+      : closest
+  ));
+}
+
+function distanceToRect(
+  clientX: number,
+  clientY: number,
+  rect: DOMRect,
+): number {
+  const horizontalDistance = Math.max(rect.left - clientX, 0, clientX - rect.right);
+  const verticalDistance = Math.max(rect.top - clientY, 0, clientY - rect.bottom);
+  return horizontalDistance ** 2 + verticalDistance ** 2;
 }
 
 interface NoteLayout {
