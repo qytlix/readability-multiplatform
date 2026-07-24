@@ -184,6 +184,16 @@ describe('AnnotatedArticle', () => {
     expect(note?.textContent).toContain('Remember this.');
     expect(note?.style.left).toBe('618px');
     expect(note?.style.top).toBe('176px');
+    const connector = fixture.mount.querySelector<HTMLElement>(
+      '.annotation-note-connector',
+    );
+    expect(connector?.dataset.annotationColor).toBe('yellow');
+    expect(connector?.style.left).toBe('220px');
+    expect(connector?.style.top).toBe('180px');
+    expect(connector?.style.width).toBe('399px');
+    expect(connector?.style.height).toBe('50px');
+    expect(connector?.style.clipPath)
+      .toBe('polygon(0 0px, 100% 4px, 100% 50px, 0 18px)');
     const timestamp = note?.querySelector('time');
     expect(timestamp?.getAttribute('datetime'))
       .toBe('2026-07-24T00:00:00.000Z');
@@ -246,5 +256,6 @@ describe('AnnotatedArticle', () => {
       noteText: 'My note',
     });
     expect(fixture.mount.querySelector('.annotation-note')).toBeNull();
+    expect(fixture.mount.querySelector('.annotation-note-connector')).toBeNull();
   });
 });

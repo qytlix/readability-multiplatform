@@ -1569,6 +1569,29 @@ body.workspace-is-resizing * {
   outline: none;
 }
 
+.annotation-note-connector {
+  position: fixed;
+  z-index: 165;
+  pointer-events: none;
+  opacity: 0.42;
+}
+
+.annotation-note-connector[data-annotation-color="yellow"] {
+  background: var(--annotation-yellow);
+}
+
+.annotation-note-connector[data-annotation-color="green"] {
+  background: var(--annotation-green);
+}
+
+.annotation-note-connector[data-annotation-color="blue"] {
+  background: var(--annotation-blue);
+}
+
+.annotation-note-connector[data-annotation-color="pink"] {
+  background: var(--annotation-pink);
+}
+
 .annotation-note {
   position: fixed;
   z-index: 170;

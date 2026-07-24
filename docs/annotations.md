@@ -14,7 +14,9 @@ The Reader supports local, per-article text annotations:
 The note is vertically anchored to its highlight and is placed in the Reader
 margin beside the article whenever space allows. Its header shows the
 annotation's latest local update date and time. On narrow windows it falls back
-to the opposite margin or the viewport edge so the note remains usable.
+to the opposite margin or the viewport edge so the note remains usable. A
+non-interactive translucent projection in the annotation color visually joins
+the highlighted text to the open note without blocking article interaction.
 
 The first version applies only to cleaned Reader HTML. Raw Markdown, embedded
 video views, translated output, exports, synchronization, and overlapping

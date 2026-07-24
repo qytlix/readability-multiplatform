@@ -32,6 +32,7 @@ type NotePopover =
       annotationId: number;
       mode: 'preview' | 'edit';
       position: CSSProperties;
+      connector: CSSProperties | null;
     }
   | null;
 
@@ -219,15 +220,17 @@ export const AnnotatedArticle = ({
   ): void => {
     const article = articleRef.current;
     if (!article) return;
+    const layout = getNoteLayout(
+      mark.getBoundingClientRect(),
+      article.getBoundingClientRect(),
+      'edit',
+    );
     setNoteDraft(annotation.noteText);
     setPopover({
       annotationId: annotation.id,
       mode: 'edit',
-      position: getNotePosition(
-        mark.getBoundingClientRect(),
-        article.getBoundingClientRect(),
-        'edit',
-      ),
+      position: layout.position,
+      connector: layout.connector,
     });
   };
 
@@ -256,14 +259,16 @@ export const AnnotatedArticle = ({
     }
     const article = articleRef.current;
     if (!article) return;
+    const layout = getNoteLayout(
+      mark.getBoundingClientRect(),
+      article.getBoundingClientRect(),
+      'preview',
+    );
     setPopover({
       annotationId: annotation.id,
       mode: 'preview',
-      position: getNotePosition(
-        mark.getBoundingClientRect(),
-        article.getBoundingClientRect(),
-        'preview',
-      ),
+      position: layout.position,
+      connector: layout.connector,
     });
   };
 
@@ -366,53 +371,63 @@ export const AnnotatedArticle = ({
         <div className="annotation-feedback" role="status">{feedback}</div>
       )}
       {popover && activeAnnotation && (
-        <aside
-          ref={popoverRef}
-          className={`annotation-note is-${popover.mode}`}
-          style={popover.position}
-          role={popover.mode === 'edit' ? 'dialog' : 'tooltip'}
-          aria-label="批注便签"
-          onMouseEnter={() => {
-            if (hoverCloseTimerRef.current !== null) {
-              clearTimeout(hoverCloseTimerRef.current);
-            }
-          }}
-          onMouseLeave={schedulePreviewClose}
-        >
-          <header className="annotation-note-header">
-            <strong>批注</strong>
-            <time dateTime={activeAnnotation.updatedAt}>
-              {formatAnnotationTimestamp(activeAnnotation.updatedAt)}
-            </time>
-          </header>
-          <div className="annotation-note-body">
-            {popover.mode === 'edit' ? (
-              <textarea
-                autoFocus
-                value={noteDraft}
-                maxLength={20_000}
-                placeholder="写下你的想法…"
-                aria-label="批注内容"
-                onChange={(event) => setNoteDraft(event.target.value)}
-              />
-            ) : (
-              <p>{activeAnnotation.noteText}</p>
-            )}
-          </div>
-          <footer>
-            {popover.mode === 'edit' && (
-              <span>点击便签外任意位置自动保存</span>
-            )}
-            <button
-              type="button"
-              aria-label="删除批注"
-              title="删除批注"
-              onClick={() => deleteAnnotation(activeAnnotation.id)}
-            >
-              <TrashIcon />
-            </button>
-          </footer>
-        </aside>
+        <>
+          {popover.connector && (
+            <div
+              className="annotation-note-connector"
+              data-annotation-color={activeAnnotation.color}
+              style={popover.connector}
+              aria-hidden="true"
+            />
+          )}
+          <aside
+            ref={popoverRef}
+            className={`annotation-note is-${popover.mode}`}
+            style={popover.position}
+            role={popover.mode === 'edit' ? 'dialog' : 'tooltip'}
+            aria-label="批注便签"
+            onMouseEnter={() => {
+              if (hoverCloseTimerRef.current !== null) {
+                clearTimeout(hoverCloseTimerRef.current);
+              }
+            }}
+            onMouseLeave={schedulePreviewClose}
+          >
+            <header className="annotation-note-header">
+              <strong>批注</strong>
+              <time dateTime={activeAnnotation.updatedAt}>
+                {formatAnnotationTimestamp(activeAnnotation.updatedAt)}
+              </time>
+            </header>
+            <div className="annotation-note-body">
+              {popover.mode === 'edit' ? (
+                <textarea
+                  autoFocus
+                  value={noteDraft}
+                  maxLength={20_000}
+                  placeholder="写下你的想法…"
+                  aria-label="批注内容"
+                  onChange={(event) => setNoteDraft(event.target.value)}
+                />
+              ) : (
+                <p>{activeAnnotation.noteText}</p>
+              )}
+            </div>
+            <footer>
+              {popover.mode === 'edit' && (
+                <span>点击便签外任意位置自动保存</span>
+              )}
+              <button
+                type="button"
+                aria-label="删除批注"
+                title="删除批注"
+                onClick={() => deleteAnnotation(activeAnnotation.id)}
+              >
+                <TrashIcon />
+              </button>
+            </footer>
+          </aside>
+        </>
       )}
     </>
   );
@@ -436,11 +451,16 @@ function findAnnotationFromTarget(
     : undefined;
 }
 
-function getNotePosition(
+interface NoteLayout {
+  position: CSSProperties;
+  connector: CSSProperties | null;
+}
+
+function getNoteLayout(
   highlightRect: DOMRect,
   articleRect: DOMRect,
   mode: 'preview' | 'edit',
-): CSSProperties {
+): NoteLayout {
   const viewportPadding = 12;
   const articleGap = 18;
   const width = Math.min(320, Math.max(220, window.innerWidth - 24));
@@ -461,7 +481,55 @@ function getNotePosition(
     maximumTop,
     Math.max(viewportPadding, highlightRect.top - 4),
   );
-  return { left, top, width };
+  return {
+    position: { left, top, width },
+    connector: getNoteConnector(
+      highlightRect,
+      { left, top, right: left + width },
+    ),
+  };
+}
+
+function getNoteConnector(
+  highlightRect: DOMRect,
+  noteRect: { left: number; top: number; right: number },
+): CSSProperties | null {
+  const noteBandTop = noteRect.top + 8;
+  const noteBandBottom = noteRect.top + 54;
+  const top = Math.min(highlightRect.top, noteBandTop);
+  const bottom = Math.max(highlightRect.bottom, noteBandBottom);
+
+  if (noteRect.left >= highlightRect.right) {
+    const left = highlightRect.left;
+    const right = noteRect.left + 1;
+    return {
+      left,
+      top,
+      width: right - left,
+      height: bottom - top,
+      clipPath: `polygon(0 ${highlightRect.top - top}px, `
+        + `100% ${noteBandTop - top}px, `
+        + `100% ${noteBandBottom - top}px, `
+        + `0 ${highlightRect.bottom - top}px)`,
+    };
+  }
+
+  if (noteRect.right <= highlightRect.left) {
+    const left = noteRect.right - 1;
+    const right = highlightRect.right;
+    return {
+      left,
+      top,
+      width: right - left,
+      height: bottom - top,
+      clipPath: `polygon(0 ${noteBandTop - top}px, `
+        + `100% ${highlightRect.top - top}px, `
+        + `100% ${highlightRect.bottom - top}px, `
+        + `0 ${noteBandBottom - top}px)`,
+    };
+  }
+
+  return null;
 }
 
 function formatAnnotationTimestamp(timestamp: string): string {
