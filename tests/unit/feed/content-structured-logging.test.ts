@@ -39,6 +39,7 @@ const TEST_ENTRY: Entry = {
   title: ENTRY_TITLE,
   author: ENTRY_AUTHOR,
   isRead: false,
+  readingProgress: 0,
   isStarred: false,
   isDeleted: false,
   createdAt: '2026-07-21T00:00:00.000Z',

@@ -142,24 +142,81 @@ describe('TranslationService', () => {
     const state = service.getState(request);
     expect(state).toMatchObject({ state: 'succeeded' });
     if (state.state !== 'succeeded') throw new Error('Expected a completed Translation.');
-    expect(state.result.segments).toHaveLength(4);
+    expect(state.result.segments).toHaveLength(3);
     expect(state.result.segments.every((segment) =>
       segment.translatedText === 'Translated paragraph.')).toBe(true);
     expect(state.result.segments.map((segment) => segment.sourceType)).toEqual([
       'title',
-      'byline',
       'paragraph',
       'paragraph',
     ]);
     expect(events[0]).toBe('started');
     expect(events.at(-1)).toBe('completed');
     expect(events).not.toContain('segment-delta');
-    expect(events.filter((event) => event === 'segment-completed')).toHaveLength(4);
-    expect(persistedBeforeEvent).toEqual([true, true, true, true]);
+    expect(events.filter((event) => event === 'segment-completed')).toHaveLength(3);
+    expect(persistedBeforeEvent).toEqual([true, true, true]);
 
     expect(service.generate(request)).toMatchObject({ runId: started.runId, reused: true });
-    expect(stream).toHaveBeenCalledTimes(2);
-    expect(provider.maxActiveStreams).toBe(2);
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect(provider.maxActiveStreams).toBe(1);
+  });
+
+  it('recovers omissions in concurrent batches and continues queued Translation work', async () => {
+    const { db } = buildTestDbWithData();
+    const content = new ContentStore(db);
+    content.upsert({
+      entryId: 1,
+      cleanedHtml: Array.from({ length: 7 }, (_, index) =>
+        `<p>Article paragraph ${index + 1}.</p>`).join(''),
+      pipelineStatus: 'success',
+    });
+    const profiles = new ProviderProfileStore(db);
+    profiles.saveActive({
+      baseUrl: 'https://provider.example/v1',
+      model: 'mock-model',
+      apiKeyRef: 'key-omitted-segment',
+    });
+    memorySecrets.set('key-omitted-segment', 'not-a-real-key');
+    const prompts: BatchPromptSegment[][] = [];
+    const omittedSourceSegmentIds = new Set<string>();
+    const omittingProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        const segments = parseBatchPrompt(providerRequest.prompt);
+        prompts.push(segments);
+        const returnedSegments = segments.length > 1 ? segments.slice(0, -1) : segments;
+        if (segments.length > 1) {
+          const omittedSegment = segments.at(-1);
+          if (omittedSegment) omittedSourceSegmentIds.add(omittedSegment.sourceSegmentId);
+        }
+        for (const segment of returnedSegments) {
+          yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const recoveringService = new TranslationService(
+      content,
+      profiles,
+      new TestSecretStore(),
+      new TranslationStore(db),
+      omittingProvider,
+    );
+    const request = { entryId: 1, targetLanguage: 'zh-CN' as const };
+
+    recoveringService.generate(request);
+    await vi.waitFor(() => {
+      expect(recoveringService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    const state = recoveringService.getState(request);
+    if (state.state !== 'succeeded') throw new Error('Expected a recovered Translation.');
+    expect(state.result.segments).toHaveLength(8);
+    expect(state.result.segments.every((segment) => segment.status === 'succeeded')).toBe(true);
+    expect(prompts.map((segments) => segments.length).sort()).toEqual([1, 1, 1, 2, 3, 3]);
+    const recoverySourceSegmentIds = prompts
+      .filter((segments) => segments.length === 1)
+      .map((segments) => segments[0]?.sourceSegmentId);
+    expect(new Set(recoverySourceSegmentIds)).toEqual(omittedSourceSegmentIds);
   });
 
   it('persists already-target-language segments without calling the provider', async () => {
@@ -181,7 +238,7 @@ describe('TranslationService', () => {
     const state = service.getState(request);
     if (state.state !== 'succeeded') throw new Error('Expected a completed Translation.');
     expect(stream).not.toHaveBeenCalled();
-    expect(state.result.segments).toHaveLength(4);
+    expect(state.result.segments).toHaveLength(3);
     expect(state.result.segments.every((segment) =>
       segment.status === 'succeeded'
       && segment.translatedText === segment.sourceText
@@ -204,7 +261,7 @@ describe('TranslationService', () => {
     expect(service.getState(request)).toEqual({ state: 'stale' });
   });
 
-  it('rebuilds v2 segments when current Reader metadata changes', async () => {
+  it('rebuilds current segments when Reader title metadata changes', async () => {
     const request = { entryId: 1, targetLanguage: 'en' as const };
     service.generate(request);
     await vi.waitFor(() => {
@@ -285,6 +342,24 @@ describe('TranslationService', () => {
     );
     expect(lookupContexts.some((context) => context.includes('First article paragraph.')))
       .toBe(true);
+
+    lookupContexts.length = 0;
+    contextualService.generate({ ...request, useTerminology: false });
+    await vi.waitFor(() => {
+      expect(contextualService.getState({ ...request, useTerminology: false }))
+        .toMatchObject({ state: 'succeeded' });
+    });
+    const terminologyDisabledState = contextualService.getState({
+      ...request,
+      useTerminology: false,
+    });
+    if (terminologyDisabledState.state !== 'succeeded') {
+      throw new Error('Expected a completed Translation without terminology.');
+    }
+    expect(terminologyDisabledState.result.terminologyPackVersion).toBe('none');
+    expect(terminologyDisabledState.result.segments.every((segment) =>
+      segment.terminologyMatches.length === 0)).toBe(true);
+    expect(lookupContexts).toEqual([]);
   });
 
   it('prioritizes a visible batch before queued off-screen work', async () => {

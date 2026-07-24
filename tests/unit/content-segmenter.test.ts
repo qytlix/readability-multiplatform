@@ -57,7 +57,6 @@ describe('ContentSegmenter', () => {
 
     expect(result.segments.map((segment) => segment.type)).toEqual([
       'title',
-      'byline',
       'heading',
       'blockquote',
       'list',
@@ -65,13 +64,13 @@ describe('ContentSegmenter', () => {
     ]);
     expect(result.segments.map((segment) => segment.sourceText)).toEqual([
       'Reader title',
-      'Ada Author',
       'Section',
       'Quoted text. Source',
       'Nested heading List item',
       'Figure caption',
     ]);
-    expect(result.segments[3]?.sourceHtml).toContain('<strong>Quoted</strong>');
+    expect(result.segments[2]?.sourceHtml).toContain('<strong>Quoted</strong>');
+    expect(result.segments.some((segment) => segment.type === 'byline')).toBe(false);
     expect(result.segments.filter((segment) => segment.type === 'heading'))
       .toHaveLength(1);
   });

@@ -13,16 +13,19 @@ import type {
 } from '../../../shared/contracts/translation.types';
 import {
   matchesKeyboardShortcut,
-  type InlineTranslationShortcut,
+  type ShortcutKeyboardEvent,
+  type TranslationShortcut,
 } from '../settings/keyboardShortcut';
 
 interface InlineTranslationOverlayProps {
   containerRef: RefObject<HTMLElement | null>;
-  shortcut: InlineTranslationShortcut;
+  paragraphShortcut: TranslationShortcut;
+  selectionShortcut: TranslationShortcut;
   targetLanguage: TranslationTargetLanguage;
+  useTerminology: boolean;
 }
 
-interface TranslationTarget {
+export interface TranslationTarget {
   kind: InlineTranslationKind;
   sourceText: string;
   context?: string;
@@ -38,15 +41,16 @@ type OverlayState =
 
 const BLOCK_SELECTOR = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre';
 const TRANSLATABLE_ROOT_SELECTOR = [
-  '.entry-detail-header h2',
-  '.entry-detail-html',
+  '[data-inline-translation-root]',
   '.translation-bilingual-content',
 ].join(', ');
 
 export const InlineTranslationOverlay = ({
   containerRef,
-  shortcut,
+  paragraphShortcut,
+  selectionShortcut,
   targetLanguage,
+  useTerminology,
 }: InlineTranslationOverlayProps) => {
   const [overlay, setOverlay] = useState<OverlayState>({ state: 'closed' });
   const [copied, setCopied] = useState(false);
@@ -103,6 +107,7 @@ export const InlineTranslationOverlay = ({
         kind: target.kind,
         sourceText: target.sourceText,
         targetLanguage,
+        useTerminology,
         ...(target.context ? { context: target.context } : {}),
       };
       try {
@@ -155,13 +160,19 @@ export const InlineTranslationOverlay = ({
     };
 
     const handleShortcut = (event: KeyboardEvent): void => {
-      if (event.repeat || !matchesKeyboardShortcut(event, shortcut) || isEditableTarget(event.target)) {
+      if (event.repeat || isEditableTarget(event.target)) {
         return;
       }
       const container = containerRef.current;
       if (!container) return;
-      const target = getSelectionTranslationTarget(window.getSelection(), container)
-        ?? getParagraphTranslationTarget(hoveredBlockRef.current, container);
+      const target = getShortcutTranslationTarget(
+        event,
+        selectionShortcut,
+        paragraphShortcut,
+        window.getSelection(),
+        hoveredBlockRef.current,
+        container,
+      );
       if (!target) return;
       event.preventDefault();
       void translateTarget(target);
@@ -183,7 +194,13 @@ export const InlineTranslationOverlay = ({
       window.removeEventListener('keydown', handleShortcut);
       window.removeEventListener('keydown', handleEscape);
     };
-  }, [containerRef, shortcut, targetLanguage]);
+  }, [
+    containerRef,
+    paragraphShortcut,
+    selectionShortcut,
+    targetLanguage,
+    useTerminology,
+  ]);
 
   useEffect(() => {
     const close = (): void => {
@@ -295,6 +312,23 @@ export function findHoveredTranslationBlock(
     return null;
   }
   return block;
+}
+
+export function getShortcutTranslationTarget(
+  event: ShortcutKeyboardEvent,
+  selectionShortcut: TranslationShortcut,
+  paragraphShortcut: TranslationShortcut,
+  selection: Selection | null,
+  hoveredBlock: HTMLElement | null,
+  container: HTMLElement,
+): TranslationTarget | null {
+  if (matchesKeyboardShortcut(event, selectionShortcut)) {
+    return getSelectionTranslationTarget(selection, container);
+  }
+  if (matchesKeyboardShortcut(event, paragraphShortcut)) {
+    return getParagraphTranslationTarget(hoveredBlock, container);
+  }
+  return null;
 }
 
 export function getSelectionTranslationTarget(

@@ -16,13 +16,19 @@ import type {
   ContentGetRequest,
   EntryListRequest,
   EntryMarkReadRequest,
+  EntryUpdateReadingProgressRequest,
   EntryMarkStarredRequest,
   IPCResult,
   FeedSyncProgress,
   OPMLImportRequest,
   OPMLExportRequest,
 } from '../../shared/contracts/feed.ipc';
-import type { Feed, EntryListItem } from '../../shared/contracts/feed.types';
+import type {
+  EntryReadingProgress,
+  EntryStats,
+  Feed,
+  EntryListItem,
+} from '../../shared/contracts/feed.types';
 import type { CleanedContent } from '../../shared/contracts/content.types';
 import type { FeedServices } from '../services';
 
@@ -228,6 +234,52 @@ export function registerFeedIpcHandlers(
 
       try {
         return success(entryStore.query(request));
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    FEED_IPC_CHANNELS.entryStats,
+    async (event: IpcMainInvokeEvent): Promise<IPCResult<EntryStats>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) {
+        return failure({ code: 'UNAUTHORIZED', message: 'Unauthorized IPC sender.' });
+      }
+      try {
+        return success(entryStore.getReadStats());
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    FEED_IPC_CHANNELS.entryUpdateReadingProgress,
+    async (
+      event: IpcMainInvokeEvent,
+      request: EntryUpdateReadingProgressRequest,
+    ): Promise<IPCResult<EntryReadingProgress>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) {
+        return failure({ code: 'UNAUTHORIZED', message: 'Unauthorized IPC sender.' });
+      }
+      if (
+        !Number.isInteger(request?.entryId)
+        || request.entryId <= 0
+        || !Number.isFinite(request?.readingProgress)
+        || request.readingProgress < 0
+        || request.readingProgress > 1
+      ) {
+        return failure({
+          code: 'INVALID_REQUEST',
+          message: 'Reading progress must be between 0 and 1.',
+        });
+      }
+      try {
+        return success(entryStore.updateReadingProgress(
+          request.entryId,
+          request.readingProgress,
+        ));
       } catch (error) {
         return failure(error);
       }

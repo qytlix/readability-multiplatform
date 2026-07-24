@@ -27,6 +27,7 @@ export interface Entry {
   publishedAt?: string;                 // ISO-8601 datetime
   summary?: string;
   isRead: boolean;
+  readingProgress: number;
   isStarred: boolean;
   isDeleted: boolean;                   // tombstone 标记
   contentHash?: string;
@@ -41,11 +42,13 @@ export interface EntryListItem {
   id: number;
   feedId: number;
   feedTitle?: string;
+  url?: string;
   title?: string;
   author?: string;
   publishedAt?: string;
   createdAt: string;
   isRead: boolean;
+  readingProgress: number;
   isStarred: boolean;
   summary?: string;
   pipelineStatus: PipelineStatus;
@@ -80,4 +83,26 @@ export interface ParsedEntry {
   publishedAt?: string;                 // ISO-8601
   summary?: string;
   contentHtml?: string;                 // Feed 内嵌 HTML
+}
+
+export interface EntryReadStats {
+  total: number;
+  unread: number;
+  readPercentage: number;
+}
+
+export interface FeedEntryReadStats extends EntryReadStats {
+  feedId: number;
+}
+
+export interface EntryStats {
+  all: EntryReadStats;
+  feeds: FeedEntryReadStats[];
+}
+
+export interface EntryReadingProgress {
+  entryId: number;
+  readingProgress: number;
+  isRead: boolean;
+  becameRead: boolean;
 }

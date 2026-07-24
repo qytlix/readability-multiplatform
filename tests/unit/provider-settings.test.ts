@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { replaceApiKeyInputValue } from '../../src/renderer/features/summary/ProviderSettings';
+import {
+  replaceApiKeyInputValue,
+  SAVED_API_KEY_MASK,
+} from '../../src/renderer/features/summary/ProviderSettings';
+
+describe('saved API key mask', () => {
+  it('uses a fixed mask that does not reveal the saved key length', () => {
+    expect(SAVED_API_KEY_MASK).toBe('••••••••••••••••');
+  });
+});
 
 describe('replaceApiKeyInputValue', () => {
   it('replaces an existing field value instead of appending the pasted key', () => {

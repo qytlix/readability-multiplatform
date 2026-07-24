@@ -3,7 +3,9 @@ import {
   SimpleFetchStrategy,
   EnhancedFetchStrategy,
   BrowserFetchStrategy,
+  installBrowserFetchNavigationGuards,
 } from '../../../src/main/feed/fetcher/FetchStrategy';
+import type { WebContents } from 'electron';
 
 // ── Mock helpers ────────────────────────────────────────────────
 
@@ -257,5 +259,59 @@ describe('BrowserFetchStrategy', () => {
 
   it('should be named "browser"', () => {
     expect(strategy.name).toBe('browser');
+  });
+
+  it('blocks subframe navigation and ignores subframe load failures', () => {
+    const listeners = new Map<string, (...args: unknown[]) => void>();
+    const setWindowOpenHandler = vi.fn();
+    const webContents = {
+      on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+        listeners.set(event, listener);
+        return webContents;
+      }),
+      setWindowOpenHandler,
+    } as unknown as WebContents;
+    const onMainFrameLoadFailure = vi.fn();
+
+    installBrowserFetchNavigationGuards(
+      webContents,
+      onMainFrameLoadFailure,
+    );
+
+    const preventDefault = vi.fn();
+    listeners.get('will-frame-navigate')?.({
+      isMainFrame: false,
+      preventDefault,
+    });
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+
+    listeners.get('did-fail-load')?.(
+      {},
+      -100,
+      'ERR_CONNECTION_CLOSED',
+      'https://ads.example.com/frame.html',
+      false,
+      1,
+      1,
+    );
+    expect(onMainFrameLoadFailure).not.toHaveBeenCalled();
+
+    listeners.get('did-fail-load')?.(
+      {},
+      -202,
+      'ERR_CERT_AUTHORITY_INVALID',
+      'https://example.com/article',
+      true,
+      1,
+      1,
+    );
+    expect(onMainFrameLoadFailure).toHaveBeenCalledWith(
+      'ERR_CERT_AUTHORITY_INVALID',
+    );
+
+    const windowOpenHandler = setWindowOpenHandler.mock.calls[0][0] as () => {
+      action: string;
+    };
+    expect(windowOpenHandler()).toEqual({ action: 'deny' });
   });
 });

@@ -70,6 +70,8 @@ export type TranslationState =
 export interface TranslationGetRequest {
   entryId: number;
   targetLanguage: TranslationTargetLanguage;
+  /** Defaults to true when omitted for backward compatibility. */
+  useTerminology?: boolean;
 }
 
 export type TranslationGenerateRequest = TranslationGetRequest;
@@ -96,6 +98,8 @@ export interface InlineTranslationRequest {
   sourceText: string;
   context?: string;
   targetLanguage: TranslationTargetLanguage;
+  /** Defaults to true when omitted for backward compatibility. */
+  useTerminology?: boolean;
 }
 
 export interface InlineTranslationExample {

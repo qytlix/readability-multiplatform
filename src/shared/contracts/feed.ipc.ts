@@ -71,6 +71,11 @@ export interface EntryMarkReadRequest {
   isRead: boolean;
 }
 
+export interface EntryUpdateReadingProgressRequest {
+  entryId: number;
+  readingProgress: number;
+}
+
 export interface EntryMarkStarredRequest {
   id: number;
   isStarred: boolean;
@@ -150,6 +155,8 @@ export const FEED_IPC_CHANNELS = {
   contentFetch: 'content:fetch-and-clean',
   contentGet: 'content:get',
   entryList: 'entry:list',
+  entryStats: 'entry:stats',
+  entryUpdateReadingProgress: 'entry:update-reading-progress',
   entryMarkRead: 'entry:mark-read',
   entryMarkStarred: 'entry:mark-starred',
 } as const;

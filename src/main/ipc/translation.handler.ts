@@ -119,7 +119,9 @@ function isAuthorizedSender(
 function isTranslationRequest(value: unknown): value is TranslationGetRequest & TranslationGenerateRequest {
   if (!value || typeof value !== 'object') return false;
   const request = value as Record<string, unknown>;
-  return typeof request.entryId === 'number' && typeof request.targetLanguage === 'string';
+  return typeof request.entryId === 'number'
+    && typeof request.targetLanguage === 'string'
+    && (request.useTerminology === undefined || typeof request.useTerminology === 'boolean');
 }
 
 function isInlineTranslationRequest(value: unknown): value is InlineTranslationRequest {
@@ -130,6 +132,7 @@ function isInlineTranslationRequest(value: unknown): value is InlineTranslationR
     && typeof request.sourceText === 'string'
     && (request.context === undefined || typeof request.context === 'string')
     && typeof request.targetLanguage === 'string'
+    && (request.useTerminology === undefined || typeof request.useTerminology === 'boolean')
   );
 }
 

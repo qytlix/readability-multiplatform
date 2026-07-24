@@ -4,6 +4,12 @@ export type TranslationReaderMode = 'original' | 'bilingual';
 
 export function getRestoredTranslationReaderMode(
   translationState: TranslationState,
+  wasBilingualVisible: boolean,
 ): TranslationReaderMode {
-  return translationState.state === 'succeeded' ? 'bilingual' : 'original';
+  if (!wasBilingualVisible) return 'original';
+  return translationState.state === 'running'
+    || translationState.state === 'failed'
+    || translationState.state === 'succeeded'
+    ? 'bilingual'
+    : 'original';
 }

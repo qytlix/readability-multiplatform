@@ -26,11 +26,26 @@ describe('AI preferences', () => {
       summaryTargetLanguage: 'en',
       summaryDetailLevel: 'unknown',
       translationTargetLanguage: 'en',
-      inlineTranslationShortcut: {
+      useTerminology: false,
+      fullTranslationShortcut: {
         key: 'K',
         ctrlKey: true,
         altKey: false,
         shiftKey: true,
+        metaKey: false,
+      },
+      paragraphTranslationShortcut: {
+        key: 'P',
+        ctrlKey: true,
+        altKey: true,
+        shiftKey: false,
+        metaKey: false,
+      },
+      selectionTranslationShortcut: {
+        key: 'S',
+        ctrlKey: true,
+        altKey: true,
+        shiftKey: false,
         metaKey: false,
       },
     }));
@@ -39,11 +54,26 @@ describe('AI preferences', () => {
       summaryTargetLanguage: 'en',
       summaryDetailLevel: 'medium',
       translationTargetLanguage: 'en',
-      inlineTranslationShortcut: {
+      useTerminology: false,
+      fullTranslationShortcut: {
         key: 'K',
         ctrlKey: true,
         altKey: false,
         shiftKey: true,
+        metaKey: false,
+      },
+      paragraphTranslationShortcut: {
+        key: 'P',
+        ctrlKey: true,
+        altKey: true,
+        shiftKey: false,
+        metaKey: false,
+      },
+      selectionTranslationShortcut: {
+        key: 'S',
+        ctrlKey: true,
+        altKey: true,
+        shiftKey: false,
         metaKey: false,
       },
     });
@@ -52,13 +82,41 @@ describe('AI preferences', () => {
   it('migrates the previous single-modifier setting to a valid chord', () => {
     const storage = createStorage(JSON.stringify({ inlineTranslationShortcut: 'Alt' }));
 
-    expect(loadAiPreferences(storage).inlineTranslationShortcut).toEqual({
+    const preferences = loadAiPreferences(storage);
+
+    expect(preferences.useTerminology).toBe(true);
+    expect(preferences.paragraphTranslationShortcut).toEqual({
       key: 'Z',
       ctrlKey: false,
       altKey: true,
       shiftKey: false,
       metaKey: false,
     });
+    expect(preferences.fullTranslationShortcut)
+      .toEqual(DEFAULT_AI_PREFERENCES.fullTranslationShortcut);
+    expect(preferences.selectionTranslationShortcut)
+      .toEqual(DEFAULT_AI_PREFERENCES.selectionTranslationShortcut);
+  });
+
+  it('replaces duplicate saved shortcuts with distinct defaults', () => {
+    const duplicate = {
+      key: 'K',
+      ctrlKey: true,
+      altKey: false,
+      shiftKey: false,
+      metaKey: false,
+    };
+    const preferences = loadAiPreferences(createStorage(JSON.stringify({
+      fullTranslationShortcut: duplicate,
+      paragraphTranslationShortcut: duplicate,
+      selectionTranslationShortcut: duplicate,
+    })));
+
+    expect(new Set([
+      JSON.stringify(preferences.fullTranslationShortcut),
+      JSON.stringify(preferences.paragraphTranslationShortcut),
+      JSON.stringify(preferences.selectionTranslationShortcut),
+    ]).size).toBe(3);
   });
 
   it('serializes preferences for the next app session', () => {
@@ -67,10 +125,25 @@ describe('AI preferences', () => {
       summaryTargetLanguage: 'en' as const,
       summaryDetailLevel: 'detailed' as const,
       translationTargetLanguage: 'zh-CN' as const,
-      inlineTranslationShortcut: {
+      useTerminology: true,
+      fullTranslationShortcut: {
         key: 'T',
         ctrlKey: true,
-        altKey: false,
+        altKey: true,
+        shiftKey: false,
+        metaKey: false,
+      },
+      paragraphTranslationShortcut: {
+        key: 'P',
+        ctrlKey: true,
+        altKey: true,
+        shiftKey: false,
+        metaKey: false,
+      },
+      selectionTranslationShortcut: {
+        key: 'S',
+        ctrlKey: true,
+        altKey: true,
         shiftKey: false,
         metaKey: false,
       },
