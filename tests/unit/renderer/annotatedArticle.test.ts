@@ -37,7 +37,11 @@ afterEach(async () => {
 
 function setup(initialAnnotations: EntryAnnotation[] = []) {
   dom = new JSDOM(
-    '<div id="app"></div><div id="toolbar"></div>',
+    '<div class="reader-page">'
+      + '<div class="article-pane"><div id="app"></div></div>'
+      + '<div id="toolbar"></div>'
+      + '<div class="annotation-overlay-root"></div>'
+      + '</div>',
     { url: 'https://reader.example.test' },
   );
   vi.stubGlobal('window', dom.window);
@@ -86,9 +90,23 @@ function setup(initialAnnotations: EntryAnnotation[] = []) {
   });
   const mount = dom.window.document.querySelector<HTMLElement>('#app');
   const toolbar = dom.window.document.querySelector<HTMLDivElement>('#toolbar');
-  if (!mount || !toolbar) throw new Error('Missing annotation component fixture.');
+  const readerPage = dom.window.document.querySelector<HTMLElement>('.reader-page');
+  const overlayRoot = dom.window.document.querySelector<HTMLElement>(
+    '.annotation-overlay-root',
+  );
+  if (!mount || !toolbar || !readerPage || !overlayRoot) {
+    throw new Error('Missing annotation component fixture.');
+  }
   root = createRoot(mount);
-  return { mount, toolbar, create, remove, updateNote };
+  return {
+    mount,
+    overlayRoot,
+    readerPage,
+    toolbar,
+    create,
+    remove,
+    updateNote,
+  };
 }
 
 describe('AnnotatedArticle', () => {
@@ -145,10 +163,10 @@ describe('AnnotatedArticle', () => {
         clientY: 50,
       }));
     });
-    expect(fixture.mount.querySelector('textarea[aria-label="批注内容"]'))
+    expect(fixture.readerPage.querySelector('textarea[aria-label="批注内容"]'))
       .not.toBeNull();
 
-    const deleteButton = fixture.mount.querySelector<HTMLButtonElement>(
+    const deleteButton = fixture.readerPage.querySelector<HTMLButtonElement>(
       '[aria-label="删除批注"]',
     );
     if (!deleteButton) throw new Error('Delete annotation button did not render.');
@@ -199,13 +217,13 @@ describe('AnnotatedArticle', () => {
       }));
     });
 
-    const note = fixture.mount.querySelector<HTMLElement>(
+    const note = fixture.readerPage.querySelector<HTMLElement>(
       '.annotation-note.is-preview',
     );
     expect(note?.textContent).toContain('Remember this.');
     expect(note?.style.left).toBe('618px');
     expect(note?.style.top).toBe('176px');
-    const connector = fixture.mount.querySelector<HTMLElement>(
+    const connector = fixture.readerPage.querySelector<HTMLElement>(
       '.annotation-note-connector',
     );
     expect(connector?.dataset.annotationColor).toBe('yellow');
@@ -238,10 +256,10 @@ describe('AnnotatedArticle', () => {
         clientY: 249,
       }));
     });
-    const secondLineNote = fixture.mount.querySelector<HTMLElement>(
+    const secondLineNote = fixture.readerPage.querySelector<HTMLElement>(
       '.annotation-note.is-preview',
     );
-    const secondLineConnector = fixture.mount.querySelector<HTMLElement>(
+    const secondLineConnector = fixture.readerPage.querySelector<HTMLElement>(
       '.annotation-note-connector',
     );
     expect(secondLineNote?.style.top).toBe('236px');
@@ -266,7 +284,7 @@ describe('AnnotatedArticle', () => {
         clientY: 309,
       }));
     });
-    const correctedConnector = fixture.mount.querySelector<HTMLElement>(
+    const correctedConnector = fixture.readerPage.querySelector<HTMLElement>(
       '.annotation-note-connector',
     );
     expect(correctedConnector?.style.display).toBe('none');
@@ -314,10 +332,10 @@ describe('AnnotatedArticle', () => {
       }));
     });
 
-    const note = fixture.mount.querySelector<HTMLElement>(
+    const note = fixture.readerPage.querySelector<HTMLElement>(
       '.annotation-note.is-preview',
     );
-    const connector = fixture.mount.querySelector<HTMLElement>(
+    const connector = fixture.readerPage.querySelector<HTMLElement>(
       '.annotation-note-connector',
     );
     expect(note?.style.left).toBe('368px');
@@ -347,8 +365,12 @@ describe('AnnotatedArticle', () => {
     }
     const activeDom = dom;
     let highlightTop = 160;
+    Object.defineProperty(activeDom.window, 'innerWidth', {
+      configurable: true,
+      value: 1600,
+    });
     const getHighlightRect = () => new activeDom.window.DOMRect(
-      200,
+      800,
       highlightTop,
       50,
       18,
@@ -362,10 +384,10 @@ describe('AnnotatedArticle', () => {
       },
     });
     Object.defineProperty(fixture.mount, 'getBoundingClientRect', {
-      value: () => new activeDom.window.DOMRect(100, 0, 600, 700),
+      value: () => new activeDom.window.DOMRect(700, 0, 600, 700),
     });
     Object.defineProperty(article, 'getBoundingClientRect', {
-      value: () => new activeDom.window.DOMRect(150, 50, 500, 600),
+      value: () => new activeDom.window.DOMRect(750, 50, 500, 600),
     });
     Object.defineProperty(mark, 'getBoundingClientRect', {
       value: getHighlightRect,
@@ -376,7 +398,7 @@ describe('AnnotatedArticle', () => {
     await act(async () => {
       mark.dispatchEvent(new activeDom.window.MouseEvent('contextmenu', {
         bubbles: true,
-        clientX: 225,
+        clientX: 825,
         clientY: 169,
       }));
     });
@@ -391,13 +413,18 @@ describe('AnnotatedArticle', () => {
     Object.defineProperty(anchoredMark, 'getClientRects', {
       value: () => [getHighlightRect()],
     });
-    const note = fixture.mount.querySelector<HTMLElement>(
+    const note = fixture.readerPage.querySelector<HTMLElement>(
       '.annotation-note.is-edit',
     );
-    const connector = fixture.mount.querySelector<HTMLElement>(
+    const connector = fixture.readerPage.querySelector<HTMLElement>(
       '.annotation-note-connector',
     );
+    expect(article.classList.contains('has-open-annotation-note')).toBe(true);
+    expect(note?.parentElement).toBe(fixture.overlayRoot);
+    expect(connector?.parentElement).toBe(fixture.overlayRoot);
+    expect(note?.style.left).toBe('968px');
     expect(note?.style.top).toBe('156px');
+    expect(connector?.style.left).toBe('849px');
     expect(connector?.style.top).toBe('160px');
 
     highlightTop = 80;
@@ -405,7 +432,9 @@ describe('AnnotatedArticle', () => {
       fixture.mount.dispatchEvent(new activeDom.window.Event('scroll'));
       await Promise.resolve();
     });
+    expect(note?.style.left).toBe('968px');
     expect(note?.style.top).toBe('76px');
+    expect(connector?.style.left).toBe('849px');
     expect(connector?.style.top).toBe('80px');
 
     highlightTop = 240;
@@ -413,7 +442,9 @@ describe('AnnotatedArticle', () => {
       fixture.mount.dispatchEvent(new activeDom.window.Event('scroll'));
       await Promise.resolve();
     });
+    expect(note?.style.left).toBe('968px');
     expect(note?.style.top).toBe('236px');
+    expect(connector?.style.left).toBe('849px');
     expect(connector?.style.top).toBe('240px');
   });
 
@@ -445,7 +476,7 @@ describe('AnnotatedArticle', () => {
       }));
     });
 
-    const textarea = fixture.mount.querySelector<HTMLTextAreaElement>(
+    const textarea = fixture.readerPage.querySelector<HTMLTextAreaElement>(
       'textarea[aria-label="批注内容"]',
     );
     if (!textarea) throw new Error('Annotation editor did not open.');
@@ -471,7 +502,7 @@ describe('AnnotatedArticle', () => {
       annotationId: 1,
       noteText: 'My note',
     });
-    expect(fixture.mount.querySelector('.annotation-note')).toBeNull();
-    expect(fixture.mount.querySelector('.annotation-note-connector')).toBeNull();
+    expect(fixture.readerPage.querySelector('.annotation-note')).toBeNull();
+    expect(fixture.readerPage.querySelector('.annotation-note-connector')).toBeNull();
   });
 });

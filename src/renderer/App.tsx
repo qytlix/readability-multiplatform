@@ -898,6 +898,8 @@ export const App = () => {
         </main>
       </div>
 
+      <div className="annotation-overlay-root" />
+
       {readerFeedback && (
         <div className="reader-toast" role="status">{readerFeedback}</div>
       )}

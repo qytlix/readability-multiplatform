@@ -489,7 +489,9 @@ export const AnnotatedArticle = ({
       {toolbar}
       <div
         ref={articleRef}
-        className={`entry-detail-html${annotationMode ? ' is-annotating' : ''}`}
+        className={`entry-detail-html${annotationMode ? ' is-annotating' : ''}${
+          popover?.mode === 'edit' ? ' has-open-annotation-note' : ''
+        }`}
         data-inline-translation-root
         dangerouslySetInnerHTML={{ __html: highlightedHtml }}
         onClick={onClick}
@@ -501,7 +503,7 @@ export const AnnotatedArticle = ({
       {feedback && (
         <div className="annotation-feedback" role="status">{feedback}</div>
       )}
-      {popover && activeAnnotation && (
+      {popover && activeAnnotation && createPortal(
         <>
           <div
             ref={connectorRef}
@@ -557,7 +559,9 @@ export const AnnotatedArticle = ({
               </button>
             </footer>
           </aside>
-        </>
+        </>,
+        document.querySelector<HTMLElement>('.annotation-overlay-root')
+          ?? document.body,
       )}
     </>
   );

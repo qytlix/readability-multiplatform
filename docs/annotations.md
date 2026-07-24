@@ -27,7 +27,9 @@ edge and is never mirrored backward.
 While the Reader scrolls, the open note and projection are remeasured against
 that same fragment on the next animation frame. Their initial vertical offset
 is preserved, so the note follows the article instead of drifting in viewport
-coordinates.
+coordinates. Both elements are rendered in the Reader root overlay rather than
+inside the paint-contained article pane, ensuring initial placement and scroll
+updates use the same viewport coordinate system with either sidebar open.
 While a note is being edited, the article body yields a responsive right-side
 rail when its normal margin is too narrow, keeping the note and projection in
 the same left-to-right arrangement with either Reader sidebar open. The note is
