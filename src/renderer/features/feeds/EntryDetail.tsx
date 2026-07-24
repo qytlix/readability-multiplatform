@@ -156,6 +156,7 @@ export const EntryDetail = ({
 
   useEffect(() => {
     if (!entry) {
+      prevEntryId.current = null;
       setContent(null);
       setStatus('idle');
       setLinkError('');
