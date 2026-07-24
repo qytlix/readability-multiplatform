@@ -20,12 +20,14 @@ the highlighted text to the open note without blocking article interaction.
 When a highlight wraps across lines, the projection uses the exact line fragment
 under the pointer instead of the inline element's multi-line bounding box, so
 sidebar and story-list width changes do not distort the projection. If the
-current wrapped fragment falls to the right of the note, the nearest fragment
-from the same annotation on the note's left is used, keeping the projection
-directed from highlighted text toward the note instead of mirroring backward.
+layout must reflow, the component keeps the original mark ordinal and wrapped
+line ordinal, then remeasures that same fragment instead of switching to a
+different highlighted phrase. The projection begins at the fragment's right
+edge and is never mirrored backward.
 While a note is being edited, the article body yields a responsive right-side
 rail when its normal margin is too narrow, keeping the note and projection in
-the same left-to-right arrangement with either Reader sidebar open.
+the same left-to-right arrangement with either Reader sidebar open. The note is
+also clamped to the actual Reader pane rather than the full application window.
 
 The first version applies only to cleaned Reader HTML. Raw Markdown, embedded
 video views, translated output, exports, synchronization, and overlapping

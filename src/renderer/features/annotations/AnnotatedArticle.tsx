@@ -34,8 +34,8 @@ type NotePopover =
       mode: 'preview' | 'edit';
       position: CSSProperties;
       connector: CSSProperties | null;
-      anchorClientX: number;
-      anchorClientY: number;
+      anchorMarkIndex: number;
+      anchorLineIndex: number;
     }
   | null;
 
@@ -126,33 +126,31 @@ export const AnnotatedArticle = ({
 
   const popoverAnnotationId = popover?.annotationId;
   const popoverMode = popover?.mode;
-  const popoverAnchorClientX = popover?.anchorClientX;
-  const popoverAnchorClientY = popover?.anchorClientY;
+  const popoverAnchorMarkIndex = popover?.anchorMarkIndex;
+  const popoverAnchorLineIndex = popover?.anchorLineIndex;
 
   useLayoutEffect(() => {
     if (
       popoverAnnotationId === undefined
       || popoverMode !== 'edit'
-      || popoverAnchorClientX === undefined
-      || popoverAnchorClientY === undefined
+      || popoverAnchorMarkIndex === undefined
+      || popoverAnchorLineIndex === undefined
     ) {
       return;
     }
     const article = articleRef.current;
     if (!article) return;
-    const anchorMark = findClosestAnnotationMark(
+    const highlightRect = getStoredHighlightRect(
       article,
       popoverAnnotationId,
-      popoverAnchorClientX,
-      popoverAnchorClientY,
+      popoverAnchorMarkIndex,
+      popoverAnchorLineIndex,
     );
-    if (!anchorMark) return;
-    const layout = getResolvedNoteLayout(
-      article,
-      popoverAnnotationId,
-      anchorMark,
-      popoverAnchorClientX,
-      popoverAnchorClientY,
+    if (!highlightRect) return;
+    const layout = getNoteLayout(
+      highlightRect,
+      article.getBoundingClientRect(),
+      getNoteHostBounds(article),
       popoverMode,
     );
     setPopover((current) => current
@@ -163,8 +161,8 @@ export const AnnotatedArticle = ({
         }
       : null);
   }, [
-    popoverAnchorClientX,
-    popoverAnchorClientY,
+    popoverAnchorLineIndex,
+    popoverAnchorMarkIndex,
     popoverAnnotationId,
     popoverMode,
   ]);
@@ -270,12 +268,18 @@ export const AnnotatedArticle = ({
   ): void => {
     const article = articleRef.current;
     if (!article) return;
-    const layout = getResolvedNoteLayout(
+    const anchor = getHighlightAnchor(
       article,
       annotation.id,
       mark,
       clientX,
       clientY,
+    );
+    if (!anchor) return;
+    const layout = getNoteLayout(
+      anchor.rect,
+      article.getBoundingClientRect(),
+      getNoteHostBounds(article),
       'edit',
     );
     setNoteDraft(annotation.noteText);
@@ -284,8 +288,8 @@ export const AnnotatedArticle = ({
       mode: 'edit',
       position: layout.position,
       connector: layout.connector,
-      anchorClientX: clientX,
-      anchorClientY: clientY,
+      anchorMarkIndex: anchor.markIndex,
+      anchorLineIndex: anchor.lineIndex,
     });
   };
 
@@ -314,12 +318,18 @@ export const AnnotatedArticle = ({
     }
     const article = articleRef.current;
     if (!article) return;
-    const layout = getResolvedNoteLayout(
+    const anchor = getHighlightAnchor(
       article,
       annotation.id,
       mark,
       event.clientX,
       event.clientY,
+    );
+    if (!anchor) return;
+    const layout = getNoteLayout(
+      anchor.rect,
+      article.getBoundingClientRect(),
+      getNoteHostBounds(article),
       'preview',
     );
     setPopover({
@@ -327,8 +337,8 @@ export const AnnotatedArticle = ({
       mode: 'preview',
       position: layout.position,
       connector: layout.connector,
-      anchorClientX: event.clientX,
-      anchorClientY: event.clientY,
+      anchorMarkIndex: anchor.markIndex,
+      anchorLineIndex: anchor.lineIndex,
     });
   };
 
@@ -511,29 +521,6 @@ function findAnnotationFromTarget(
     : undefined;
 }
 
-function getHighlightLineRect(
-  mark: HTMLElement,
-  clientX: number,
-  clientY: number,
-): DOMRect {
-  const lineRects = Array.from(mark.getClientRects());
-  if (lineRects.length === 0) return mark.getBoundingClientRect();
-  const containingRect = lineRects.find((rect) => (
-    clientX >= rect.left
-    && clientX <= rect.right
-    && clientY >= rect.top
-    && clientY <= rect.bottom
-  ));
-  if (containingRect) return containingRect;
-
-  return lineRects.reduce((closest, candidate) => (
-    distanceToRect(clientX, clientY, candidate)
-      < distanceToRect(clientX, clientY, closest)
-      ? candidate
-      : closest
-  ));
-}
-
 function distanceToRect(
   clientX: number,
   clientY: number,
@@ -549,101 +536,102 @@ interface NoteLayout {
   connector: CSSProperties | null;
 }
 
-function getResolvedNoteLayout(
+interface HighlightAnchor {
+  rect: DOMRect;
+  markIndex: number;
+  lineIndex: number;
+}
+
+interface NoteHostBounds {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+function getHighlightAnchor(
   article: HTMLElement,
   annotationId: number,
   mark: HTMLElement,
   clientX: number,
   clientY: number,
-  mode: 'preview' | 'edit',
-): NoteLayout {
-  const articleRect = article.getBoundingClientRect();
-  const pointerRect = getHighlightLineRect(mark, clientX, clientY);
-  const pointerLayout = getNoteLayout(pointerRect, articleRect, mode);
-  const noteLeft = Number(pointerLayout.position.left);
-  if (!Number.isFinite(noteLeft) || pointerRect.right <= noteLeft) {
-    return pointerLayout;
-  }
-
-  const rightwardAnchor = getAnnotationLineRects(article, annotationId)
-    .filter((rect) => rect.right <= noteLeft)
-    .reduce<DOMRect | null>((closest, candidate) => {
-      if (!closest) return candidate;
-      return distanceToRect(clientX, clientY, candidate)
-        < distanceToRect(clientX, clientY, closest)
-        ? candidate
-        : closest;
-    }, null);
-  return rightwardAnchor
-    ? getNoteLayout(rightwardAnchor, articleRect, mode)
-    : pointerLayout;
+): HighlightAnchor | null {
+  const marks = Array.from(article.querySelectorAll<HTMLElement>(
+    `mark[data-annotation-id="${annotationId}"]`,
+  ));
+  const markIndex = marks.indexOf(mark);
+  if (markIndex < 0) return null;
+  const lineRects = getMarkLineRects(mark);
+  const containingLineIndex = lineRects.findIndex((rect) => (
+    clientX >= rect.left
+    && clientX <= rect.right
+    && clientY >= rect.top
+    && clientY <= rect.bottom
+  ));
+  const lineIndex = containingLineIndex >= 0
+    ? containingLineIndex
+    : lineRects.reduce((closestIndex, candidate, candidateIndex) => (
+      distanceToRect(clientX, clientY, candidate)
+        < distanceToRect(clientX, clientY, lineRects[closestIndex])
+        ? candidateIndex
+        : closestIndex
+    ), 0);
+  return { rect: lineRects[lineIndex], markIndex, lineIndex };
 }
 
-function getAnnotationLineRects(
+function getStoredHighlightRect(
   article: HTMLElement,
   annotationId: number,
-): DOMRect[] {
-  return Array.from(article.querySelectorAll<HTMLElement>(
+  markIndex: number,
+  lineIndex: number,
+): DOMRect | null {
+  const mark = Array.from(article.querySelectorAll<HTMLElement>(
     `mark[data-annotation-id="${annotationId}"]`,
-  )).flatMap((annotationMark) => {
-    const lineRects = Array.from(annotationMark.getClientRects());
-    return lineRects.length > 0
-      ? lineRects
-      : [annotationMark.getBoundingClientRect()];
-  });
+  ))[markIndex];
+  if (!mark) return null;
+  const lineRects = getMarkLineRects(mark);
+  return lineRects[Math.min(lineIndex, lineRects.length - 1)] ?? null;
 }
 
-function findClosestAnnotationMark(
-  article: HTMLElement,
-  annotationId: number,
-  clientX: number,
-  clientY: number,
-): HTMLElement | null {
-  return Array.from(article.querySelectorAll<HTMLElement>(
-    `mark[data-annotation-id="${annotationId}"]`,
-  )).reduce<HTMLElement | null>((closest, candidate) => {
-    if (!closest) return candidate;
-    return distanceToMark(clientX, clientY, candidate)
-      < distanceToMark(clientX, clientY, closest)
-      ? candidate
-      : closest;
-  }, null);
-}
-
-function distanceToMark(
-  clientX: number,
-  clientY: number,
-  mark: HTMLElement,
-): number {
+function getMarkLineRects(mark: HTMLElement): DOMRect[] {
   const lineRects = Array.from(mark.getClientRects());
-  const rects = lineRects.length > 0 ? lineRects : [mark.getBoundingClientRect()];
-  return Math.min(...rects.map((rect) => distanceToRect(clientX, clientY, rect)));
+  return lineRects.length > 0 ? lineRects : [mark.getBoundingClientRect()];
+}
+
+function getNoteHostBounds(article: HTMLElement): NoteHostBounds {
+  const readerPane = article.closest<HTMLElement>('.entry-detail');
+  if (readerPane) return readerPane.getBoundingClientRect();
+  return {
+    left: 0,
+    top: 0,
+    right: window.innerWidth,
+    bottom: window.innerHeight,
+  };
 }
 
 function getNoteLayout(
   highlightRect: DOMRect,
   articleRect: DOMRect,
+  hostBounds: NoteHostBounds,
   mode: 'preview' | 'edit',
 ): NoteLayout {
   const viewportPadding = 12;
   const articleGap = 18;
-  const width = Math.min(320, Math.max(220, window.innerWidth - 24));
+  const hostLeft = Math.max(0, hostBounds.left) + viewportPadding;
+  const hostRight = Math.min(window.innerWidth, hostBounds.right)
+    - viewportPadding;
+  const hostTop = Math.max(0, hostBounds.top) + viewportPadding;
+  const hostBottom = Math.min(window.innerHeight, hostBounds.bottom)
+    - viewportPadding;
+  const width = Math.min(320, Math.max(0, hostRight - hostLeft));
   const rightOfArticle = articleRect.right + articleGap;
-  const leftOfArticle = articleRect.left - width - articleGap;
-  const viewportRight = window.innerWidth - viewportPadding;
-  const left = rightOfArticle + width <= viewportRight
-    ? rightOfArticle
-    : leftOfArticle >= viewportPadding
-      ? leftOfArticle
-      : Math.max(viewportPadding, viewportRight - width);
+  const maximumLeft = Math.max(hostLeft, hostRight - width);
+  const left = Math.min(Math.max(hostLeft, rightOfArticle), maximumLeft);
   const estimatedHeight = mode === 'edit' ? 270 : 180;
-  const maximumTop = Math.max(
-    viewportPadding,
-    window.innerHeight - estimatedHeight - viewportPadding,
-  );
+  const maximumTop = Math.max(hostTop, hostBottom - estimatedHeight);
   const top = Math.min(
     maximumTop,
-    Math.max(viewportPadding, highlightRect.top - 4),
+    Math.max(hostTop, highlightRect.top - 4),
   );
   return {
     position: { left, top, width },
@@ -664,7 +652,7 @@ function getNoteConnector(
   const bottom = Math.max(highlightRect.bottom, noteBandBottom);
 
   if (noteRect.left >= highlightRect.right) {
-    const left = highlightRect.left;
+    const left = highlightRect.right - 1;
     const right = noteRect.left + 1;
     return {
       left,
@@ -675,21 +663,6 @@ function getNoteConnector(
         + `100% ${noteBandTop - top}px, `
         + `100% ${noteBandBottom - top}px, `
         + `0 ${highlightRect.bottom - top}px)`,
-    };
-  }
-
-  if (noteRect.right <= highlightRect.left) {
-    const left = noteRect.right - 1;
-    const right = highlightRect.right;
-    return {
-      left,
-      top,
-      width: right - left,
-      height: bottom - top,
-      clipPath: `polygon(0 ${noteBandTop - top}px, `
-        + `100% ${highlightRect.top - top}px, `
-        + `100% ${highlightRect.bottom - top}px, `
-        + `0 ${noteBandBottom - top}px)`,
     };
   }
 

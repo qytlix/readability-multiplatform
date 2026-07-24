@@ -196,9 +196,9 @@ describe('AnnotatedArticle', () => {
       '.annotation-note-connector',
     );
     expect(connector?.dataset.annotationColor).toBe('yellow');
-    expect(connector?.style.left).toBe('220px');
+    expect(connector?.style.left).toBe('279px');
     expect(connector?.style.top).toBe('180px');
-    expect(connector?.style.width).toBe('399px');
+    expect(connector?.style.width).toBe('340px');
     expect(connector?.style.height).toBe('50px');
     expect(connector?.style.clipPath)
       .toBe('polygon(0 0px, 100% 4px, 100% 50px, 0 18px)');
@@ -232,9 +232,9 @@ describe('AnnotatedArticle', () => {
       '.annotation-note-connector',
     );
     expect(secondLineNote?.style.top).toBe('236px');
-    expect(secondLineConnector?.style.left).toBe('500px');
+    expect(secondLineConnector?.style.left).toBe('579px');
     expect(secondLineConnector?.style.top).toBe('240px');
-    expect(secondLineConnector?.style.width).toBe('119px');
+    expect(secondLineConnector?.style.width).toBe('40px');
 
     const rightSideMark = fixture.mount.querySelector<HTMLElement>(
       'mark[data-annotation-id="1"]',
@@ -256,8 +256,60 @@ describe('AnnotatedArticle', () => {
     const correctedConnector = fixture.mount.querySelector<HTMLElement>(
       '.annotation-note-connector',
     );
-    expect(correctedConnector?.style.left).toBe('500px');
-    expect(correctedConnector?.style.width).toBe('119px');
+    expect(correctedConnector).toBeNull();
+  });
+
+  it('keeps the note inside the Reader pane boundary', async () => {
+    const fixture = setup([{ ...baseAnnotation, noteText: 'Bounded note.' }]);
+    fixture.mount.classList.add('entry-detail');
+    await act(async () => {
+      root?.render(createElement(AnnotatedArticle, {
+        entryId: 1,
+        sourceHtml: '<p>Hello world</p>',
+        toolbarTarget: fixture.toolbar,
+        onClick: () => undefined,
+      }));
+      await Promise.resolve();
+    });
+
+    const article = fixture.mount.querySelector<HTMLElement>('.entry-detail-html');
+    const mark = fixture.mount.querySelector<HTMLElement>(
+      'mark[data-annotation-id="1"]',
+    );
+    if (!article || !mark || !dom) {
+      throw new Error('Bounded annotation fixture did not render.');
+    }
+    const activeDom = dom;
+    const highlightRect = new activeDom.window.DOMRect(200, 160, 50, 18);
+    Object.defineProperty(fixture.mount, 'getBoundingClientRect', {
+      value: () => new activeDom.window.DOMRect(100, 0, 600, 700),
+    });
+    Object.defineProperty(article, 'getBoundingClientRect', {
+      value: () => new activeDom.window.DOMRect(150, 50, 500, 600),
+    });
+    Object.defineProperty(mark, 'getBoundingClientRect', {
+      value: () => highlightRect,
+    });
+    Object.defineProperty(mark, 'getClientRects', {
+      value: () => [highlightRect],
+    });
+    await act(async () => {
+      mark.dispatchEvent(new activeDom.window.MouseEvent('mouseover', {
+        bubbles: true,
+        clientX: 225,
+        clientY: 169,
+      }));
+    });
+
+    const note = fixture.mount.querySelector<HTMLElement>(
+      '.annotation-note.is-preview',
+    );
+    const connector = fixture.mount.querySelector<HTMLElement>(
+      '.annotation-note-connector',
+    );
+    expect(note?.style.left).toBe('368px');
+    expect(Number(note?.style.left.replace('px', '')) + 320).toBeLessThan(700);
+    expect(connector?.style.left).toBe('249px');
   });
 
   it('opens and saves a note outside annotation mode', async () => {
