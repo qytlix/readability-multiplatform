@@ -16,6 +16,10 @@
   --reader-accent-ink: #0f211a;
   --reader-accent-glow: rgba(75, 116, 102, 0.16);
   --reader-success: #7bd88f;
+  --reader-danger: #c96f62;
+  --reader-danger-strong: #dc7d6f;
+  --reader-danger-ink: #fff7f5;
+  --reader-danger-soft: rgba(201, 111, 98, 0.12);
   --reader-toolbar: rgba(17, 20, 16, 0.88);
   --reader-toolbar-solid: rgba(17, 20, 16, 0.96);
   --reader-hover: rgba(255, 255, 255, 0.07);
@@ -2608,6 +2612,188 @@ body.workspace-is-resizing * {
   opacity: 0.4;
 }
 
+.feed-delete-overlay {
+  animation: feed-delete-overlay-in 140ms ease-out both;
+}
+
+.feed-delete-dialog {
+  width: min(438px, 100%);
+  padding: 26px;
+  overflow: hidden;
+  animation: feed-delete-dialog-in 180ms cubic-bezier(0.2, 0.78, 0.25, 1) both;
+}
+
+.dialog.feed-delete-dialog h2 {
+  margin: 0;
+  color: var(--reader-text);
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.feed-delete-target {
+  display: flex;
+  min-width: 0;
+  margin-top: 22px;
+  padding: 12px 13px;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid var(--reader-line);
+  border-radius: 9px;
+  background: var(--reader-hover-soft);
+}
+
+.feed-delete-target-mark {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--reader-accent-ink);
+  background: var(--reader-accent);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.feed-delete-target-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.feed-delete-target-copy strong,
+.feed-delete-target-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-delete-target-copy strong {
+  color: var(--reader-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.feed-delete-target-copy span {
+  color: var(--reader-text-muted);
+  font-size: 10px;
+}
+
+.feed-delete-description {
+  margin: 16px 1px 0;
+  color: var(--reader-text-soft);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.feed-delete-warning {
+  display: flex;
+  margin-top: 13px;
+  padding: 10px 11px;
+  align-items: flex-start;
+  gap: 9px;
+  border: 1px solid rgba(201, 111, 98, 0.2);
+  border-radius: 8px;
+  color: var(--reader-text-soft);
+  background: var(--reader-danger-soft);
+}
+
+.feed-delete-warning > span {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--reader-danger-ink);
+  background: var(--reader-danger);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.feed-delete-warning p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.feed-delete-warning strong {
+  color: var(--reader-danger-strong);
+  font-weight: 650;
+}
+
+.feed-delete-error {
+  margin: 12px 1px 0;
+}
+
+.feed-delete-actions {
+  margin-top: 22px;
+}
+
+.dialog-actions .feed-delete-cancel,
+.dialog-actions .feed-delete-confirm {
+  min-width: 92px;
+  min-height: 37px;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease,
+    transform 100ms ease;
+}
+
+.dialog-actions .feed-delete-cancel:hover {
+  color: var(--reader-text);
+  background: var(--reader-hover);
+}
+
+.dialog-actions .feed-delete-confirm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: var(--reader-danger);
+  color: var(--reader-danger-ink);
+  background: var(--reader-danger);
+  gap: 7px;
+}
+
+.dialog-actions .feed-delete-confirm:hover:not(:disabled) {
+  border-color: var(--reader-danger-strong);
+  background: var(--reader-danger-strong);
+}
+
+.dialog-actions .feed-delete-confirm:active:not(:disabled),
+.dialog-actions .feed-delete-cancel:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.feed-delete-confirm .mini-spinner {
+  width: 12px;
+  height: 12px;
+  border-color: rgba(255, 255, 255, 0.38);
+  border-top-color: currentColor;
+}
+
+@keyframes feed-delete-overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes feed-delete-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feed-delete-overlay,
+  .feed-delete-dialog {
+    animation: none;
+  }
+}
+
 .opml-section + .opml-section {
   margin-top: 24px;
   padding-top: 20px;
@@ -2666,6 +2852,10 @@ body.workspace-is-resizing * {
   --reader-accent-ink: #f3eee2;
   --reader-accent-glow: rgba(95, 125, 114, 0.16);
   --reader-success: #557a63;
+  --reader-danger: #a84f45;
+  --reader-danger-strong: #8f3f36;
+  --reader-danger-ink: #fff8f5;
+  --reader-danger-soft: rgba(168, 79, 69, 0.1);
   --reader-toolbar: rgba(243, 238, 226, 0.9);
   --reader-toolbar-solid: rgba(243, 238, 226, 0.97);
   --reader-hover: rgba(95, 125, 114, 0.11);
