@@ -36,6 +36,7 @@ type NotePopover =
       connector: CSSProperties | null;
       anchorMarkIndex: number;
       anchorLineIndex: number;
+      anchorTopOffset: number;
     }
   | null;
 
@@ -61,6 +62,7 @@ export const AnnotatedArticle = ({
   const [loading, setLoading] = useState(true);
   const articleRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLElement>(null);
+  const connectorRef = useRef<HTMLDivElement>(null);
   const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -128,6 +130,7 @@ export const AnnotatedArticle = ({
   const popoverMode = popover?.mode;
   const popoverAnchorMarkIndex = popover?.anchorMarkIndex;
   const popoverAnchorLineIndex = popover?.anchorLineIndex;
+  const popoverAnchorTopOffset = popover?.anchorTopOffset;
 
   useLayoutEffect(() => {
     if (
@@ -158,11 +161,67 @@ export const AnnotatedArticle = ({
           ...current,
           position: layout.position,
           connector: layout.connector,
+          anchorTopOffset: Number(layout.position.top) - highlightRect.top,
         }
       : null);
   }, [
     popoverAnchorLineIndex,
     popoverAnchorMarkIndex,
+    popoverAnnotationId,
+    popoverMode,
+  ]);
+
+  useEffect(() => {
+    if (
+      popoverAnnotationId === undefined
+      || popoverMode === undefined
+      || popoverAnchorMarkIndex === undefined
+      || popoverAnchorLineIndex === undefined
+      || popoverAnchorTopOffset === undefined
+    ) {
+      return;
+    }
+    const article = articleRef.current;
+    const scrollContainer = article?.closest<HTMLElement>('.entry-detail-scroll');
+    if (!article || !scrollContainer) return;
+    let animationFrame: number | null = null;
+    const refreshLayout = (): void => {
+      const highlightRect = getStoredHighlightRect(
+        article,
+        popoverAnnotationId,
+        popoverAnchorMarkIndex,
+        popoverAnchorLineIndex,
+      );
+      if (!highlightRect) return;
+      const layout = getNoteLayout(
+        highlightRect,
+        article.getBoundingClientRect(),
+        getNoteHostBounds(article),
+        popoverMode,
+        popoverAnchorTopOffset,
+      );
+      applyPopoverLayout(popoverRef.current, connectorRef.current, layout);
+    };
+    const scheduleRefresh = (): void => {
+      if (animationFrame !== null) return;
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null;
+        refreshLayout();
+      });
+    };
+    scrollContainer.addEventListener('scroll', scheduleRefresh, { passive: true });
+    window.addEventListener('resize', scheduleRefresh);
+    return () => {
+      scrollContainer.removeEventListener('scroll', scheduleRefresh);
+      window.removeEventListener('resize', scheduleRefresh);
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, [
+    popoverAnchorLineIndex,
+    popoverAnchorMarkIndex,
+    popoverAnchorTopOffset,
     popoverAnnotationId,
     popoverMode,
   ]);
@@ -290,6 +349,7 @@ export const AnnotatedArticle = ({
       connector: layout.connector,
       anchorMarkIndex: anchor.markIndex,
       anchorLineIndex: anchor.lineIndex,
+      anchorTopOffset: Number(layout.position.top) - anchor.rect.top,
     });
   };
 
@@ -339,6 +399,7 @@ export const AnnotatedArticle = ({
       connector: layout.connector,
       anchorMarkIndex: anchor.markIndex,
       anchorLineIndex: anchor.lineIndex,
+      anchorTopOffset: Number(layout.position.top) - anchor.rect.top,
     });
   };
 
@@ -442,14 +503,13 @@ export const AnnotatedArticle = ({
       )}
       {popover && activeAnnotation && (
         <>
-          {popover.connector && (
-            <div
-              className="annotation-note-connector"
-              data-annotation-color={activeAnnotation.color}
-              style={popover.connector}
-              aria-hidden="true"
-            />
-          )}
+          <div
+            ref={connectorRef}
+            className="annotation-note-connector"
+            data-annotation-color={activeAnnotation.color}
+            style={popover.connector ?? { display: 'none' }}
+            aria-hidden="true"
+          />
           <aside
             ref={popoverRef}
             className={`annotation-note is-${popover.mode}`}
@@ -614,6 +674,7 @@ function getNoteLayout(
   articleRect: DOMRect,
   hostBounds: NoteHostBounds,
   mode: 'preview' | 'edit',
+  anchorTopOffset?: number,
 ): NoteLayout {
   const viewportPadding = 12;
   const articleGap = 18;
@@ -629,10 +690,9 @@ function getNoteLayout(
   const left = Math.min(Math.max(hostLeft, rightOfArticle), maximumLeft);
   const estimatedHeight = mode === 'edit' ? 270 : 180;
   const maximumTop = Math.max(hostTop, hostBottom - estimatedHeight);
-  const top = Math.min(
-    maximumTop,
-    Math.max(hostTop, highlightRect.top - 4),
-  );
+  const top = anchorTopOffset === undefined
+    ? Math.min(maximumTop, Math.max(hostTop, highlightRect.top - 4))
+    : highlightRect.top + anchorTopOffset;
   return {
     position: { left, top, width },
     connector: getNoteConnector(
@@ -667,6 +727,41 @@ function getNoteConnector(
   }
 
   return null;
+}
+
+function applyPopoverLayout(
+  note: HTMLElement | null,
+  connector: HTMLElement | null,
+  layout: NoteLayout,
+): void {
+  if (note) {
+    setStyleValue(note, 'left', layout.position.left);
+    setStyleValue(note, 'top', layout.position.top);
+    setStyleValue(note, 'width', layout.position.width);
+  }
+  if (!connector) return;
+  if (!layout.connector) {
+    connector.style.display = 'none';
+    return;
+  }
+  connector.style.display = '';
+  setStyleValue(connector, 'left', layout.connector.left);
+  setStyleValue(connector, 'top', layout.connector.top);
+  setStyleValue(connector, 'width', layout.connector.width);
+  setStyleValue(connector, 'height', layout.connector.height);
+  connector.style.clipPath = String(layout.connector.clipPath ?? '');
+}
+
+function setStyleValue(
+  element: HTMLElement,
+  property: 'left' | 'top' | 'width' | 'height',
+  value: string | number | undefined,
+): void {
+  if (value === undefined || value === null) return;
+  element.style.setProperty(
+    property,
+    typeof value === 'number' ? `${value}px` : String(value),
+  );
 }
 
 function formatAnnotationTimestamp(timestamp: string): string {

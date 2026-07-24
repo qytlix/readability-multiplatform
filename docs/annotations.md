@@ -24,6 +24,10 @@ layout must reflow, the component keeps the original mark ordinal and wrapped
 line ordinal, then remeasures that same fragment instead of switching to a
 different highlighted phrase. The projection begins at the fragment's right
 edge and is never mirrored backward.
+While the Reader scrolls, the open note and projection are remeasured against
+that same fragment on the next animation frame. Their initial vertical offset
+is preserved, so the note follows the article instead of drifting in viewport
+coordinates.
 While a note is being edited, the article body yields a responsive right-side
 rail when its normal margin is too narrow, keeping the note and projection in
 the same left-to-right arrangement with either Reader sidebar open. The note is

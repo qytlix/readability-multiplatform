@@ -54,6 +54,19 @@ function setup(initialAnnotations: EntryAnnotation[] = []) {
     attachEvent: { value: () => undefined, configurable: true },
     detachEvent: { value: () => undefined, configurable: true },
   });
+  Object.defineProperties(dom.window, {
+    requestAnimationFrame: {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        dom?.window.queueMicrotask(() => callback(0));
+        return 1;
+      },
+    },
+    cancelAnimationFrame: {
+      configurable: true,
+      value: () => undefined,
+    },
+  });
 
   const create = vi.fn(async () => ({ ok: true as const, data: baseAnnotation }));
   const remove = vi.fn(async () => ({ ok: true as const, data: undefined }));
@@ -256,7 +269,7 @@ describe('AnnotatedArticle', () => {
     const correctedConnector = fixture.mount.querySelector<HTMLElement>(
       '.annotation-note-connector',
     );
-    expect(correctedConnector).toBeNull();
+    expect(correctedConnector?.style.display).toBe('none');
   });
 
   it('keeps the note inside the Reader pane boundary', async () => {
@@ -310,6 +323,98 @@ describe('AnnotatedArticle', () => {
     expect(note?.style.left).toBe('368px');
     expect(Number(note?.style.left.replace('px', '')) + 320).toBeLessThan(700);
     expect(connector?.style.left).toBe('249px');
+  });
+
+  it('keeps the note and connector aligned with the highlight while scrolling', async () => {
+    const fixture = setup([{ ...baseAnnotation, noteText: 'Scrolling note.' }]);
+    fixture.mount.classList.add('entry-detail', 'entry-detail-scroll');
+    await act(async () => {
+      root?.render(createElement(AnnotatedArticle, {
+        entryId: 1,
+        sourceHtml: '<p>Hello world</p>',
+        toolbarTarget: fixture.toolbar,
+        onClick: () => undefined,
+      }));
+      await Promise.resolve();
+    });
+
+    const article = fixture.mount.querySelector<HTMLElement>('.entry-detail-html');
+    const mark = fixture.mount.querySelector<HTMLElement>(
+      'mark[data-annotation-id="1"]',
+    );
+    if (!article || !mark || !dom) {
+      throw new Error('Scrollable annotation fixture did not render.');
+    }
+    const activeDom = dom;
+    let highlightTop = 160;
+    const getHighlightRect = () => new activeDom.window.DOMRect(
+      200,
+      highlightTop,
+      50,
+      18,
+    );
+    Object.defineProperty(activeDom.window.HTMLElement.prototype, 'getClientRects', {
+      configurable: true,
+      value(this: HTMLElement) {
+        return this.matches('mark[data-annotation-id="1"]')
+          ? [getHighlightRect()]
+          : [];
+      },
+    });
+    Object.defineProperty(fixture.mount, 'getBoundingClientRect', {
+      value: () => new activeDom.window.DOMRect(100, 0, 600, 700),
+    });
+    Object.defineProperty(article, 'getBoundingClientRect', {
+      value: () => new activeDom.window.DOMRect(150, 50, 500, 600),
+    });
+    Object.defineProperty(mark, 'getBoundingClientRect', {
+      value: getHighlightRect,
+    });
+    Object.defineProperty(mark, 'getClientRects', {
+      value: () => [getHighlightRect()],
+    });
+    await act(async () => {
+      mark.dispatchEvent(new activeDom.window.MouseEvent('contextmenu', {
+        bubbles: true,
+        clientX: 225,
+        clientY: 169,
+      }));
+    });
+
+    const anchoredMark = fixture.mount.querySelector<HTMLElement>(
+      'mark[data-annotation-id="1"]',
+    );
+    if (!anchoredMark) throw new Error('Highlight did not survive note rendering.');
+    Object.defineProperty(anchoredMark, 'getBoundingClientRect', {
+      value: getHighlightRect,
+    });
+    Object.defineProperty(anchoredMark, 'getClientRects', {
+      value: () => [getHighlightRect()],
+    });
+    const note = fixture.mount.querySelector<HTMLElement>(
+      '.annotation-note.is-edit',
+    );
+    const connector = fixture.mount.querySelector<HTMLElement>(
+      '.annotation-note-connector',
+    );
+    expect(note?.style.top).toBe('156px');
+    expect(connector?.style.top).toBe('160px');
+
+    highlightTop = 80;
+    await act(async () => {
+      fixture.mount.dispatchEvent(new activeDom.window.Event('scroll'));
+      await Promise.resolve();
+    });
+    expect(note?.style.top).toBe('76px');
+    expect(connector?.style.top).toBe('80px');
+
+    highlightTop = 240;
+    await act(async () => {
+      fixture.mount.dispatchEvent(new activeDom.window.Event('scroll'));
+      await Promise.resolve();
+    });
+    expect(note?.style.top).toBe('236px');
+    expect(connector?.style.top).toBe('240px');
   });
 
   it('opens and saves a note outside annotation mode', async () => {
