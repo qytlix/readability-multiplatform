@@ -40,6 +40,7 @@ import {
   getNativeVideoHtml,
   getTrustedVideoEmbed,
 } from './trustedVideoEmbed';
+import { AnnotatedArticle } from '../annotations/AnnotatedArticle';
 
 interface EntryDetailProps {
   entry: Entry | null;
@@ -155,6 +156,7 @@ export const EntryDetail = ({
 
   useEffect(() => {
     if (!entry) {
+      prevEntryId.current = null;
       setContent(null);
       setStatus('idle');
       setLinkError('');
@@ -776,10 +778,10 @@ export const EntryDetail = ({
               {showRaw ? (
                 <pre className="entry-detail-markdown">{content.markdown}</pre>
               ) : (
-                <div
-                  className="entry-detail-html"
-                  data-inline-translation-root
-                  dangerouslySetInnerHTML={{ __html: content.cleanedHtml }}
+                <AnnotatedArticle
+                  entryId={entry.id}
+                  sourceHtml={content.cleanedHtml}
+                  toolbarTarget={aiToolbarTarget}
                   onClick={handleContentClick}
                 />
               )}

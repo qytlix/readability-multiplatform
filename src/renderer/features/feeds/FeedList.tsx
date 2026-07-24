@@ -21,6 +21,7 @@ import {
   TrashIcon,
 } from '../reader/ReaderIcons';
 import type { EntryFilter } from '../search/entrySearch';
+import { FeedDeleteDialog } from './FeedDeleteDialog';
 import { FeedEditDialog } from './FeedEditDialog';
 import { OPMLDialog } from './OPMLDialog';
 import type { FeedLoadStatus } from './readerState';
@@ -75,6 +76,7 @@ export const FeedList = ({
   onOpenSettings,
 }: FeedListProps) => {
   const [editFeed, setEditFeed] = useState<Feed | null>(null);
+  const [deleteFeed, setDeleteFeed] = useState<Feed | null>(null);
   const [showOPMLDialog, setShowOPMLDialog] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [syncProgress, setSyncProgress] = useState<Record<number, string>>({});
@@ -182,13 +184,14 @@ export const FeedList = ({
     await onLocalRefresh();
   }, [editFeed, onLocalRefresh]);
 
-  const handleRemove = useCallback(async (feedId: number) => {
-    if (!window.confirm('移除此订阅源？它的本地文章也会被删除。')) return;
-    const result = await window.shaleAPI.feed.remove(feedId);
-    if (!result.ok) return;
-    if (selectedFeedId === feedId) onSelectFeed(null);
+  const handleRemove = useCallback(async () => {
+    if (!deleteFeed) return;
+
+    const result = await window.shaleAPI.feed.remove(deleteFeed.id);
+    if (!result.ok) throw new Error(result.error.message);
+    if (selectedFeedId === deleteFeed.id) onSelectFeed(null);
     await onLocalRefresh();
-  }, [onLocalRefresh, onSelectFeed, selectedFeedId]);
+  }, [deleteFeed, onLocalRefresh, onSelectFeed, selectedFeedId]);
 
   const handleOPMLImport = useCallback(async (
     filePath: string,
@@ -380,7 +383,7 @@ export const FeedList = ({
                     type="button"
                     aria-label={`移除 ${feedName}`}
                     title="移除订阅源"
-                    onClick={() => void handleRemove(feed.id)}
+                    onClick={() => setDeleteFeed(feed)}
                   >
                     <TrashIcon />
                   </button>
@@ -426,6 +429,13 @@ export const FeedList = ({
           feed={editFeed}
           onSave={handleEdit}
           onClose={() => setEditFeed(null)}
+        />
+      )}
+      {deleteFeed && (
+        <FeedDeleteDialog
+          feed={deleteFeed}
+          onConfirm={handleRemove}
+          onClose={() => setDeleteFeed(null)}
         />
       )}
       {showOPMLDialog && (

@@ -60,6 +60,14 @@ export const TranslateIcon = () => (
   </Icon>
 );
 
+export const HighlighterIcon = () => (
+  <Icon size={19}>
+    <path d="m7 15 7.8-7.8 3 3L10 18H7z" />
+    <path d="m13.8 8.2 2-2a1.4 1.4 0 0 1 2 0l1 1a1.4 1.4 0 0 1 0 2l-2 2" />
+    <path d="M4 20h12" />
+  </Icon>
+);
+
 export const InboxIcon = () => (
   <Icon>
     <path d="M4 5h16v14H4zM4 14h5l1.5 2h3L15 14h5" />
@@ -195,6 +203,17 @@ export const EditIcon = () => (
 export const TrashIcon = () => (
   <Icon size={16}>
     <path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" />
+  </Icon>
+);
+
+export const LockIcon = ({ locked }: { locked: boolean }) => (
+  <Icon size={16}>
+    <rect x="6" y="10" width="12" height="10" rx="2" />
+    {locked ? (
+      <path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10" />
+    ) : (
+      <path d="M9 10V7.5a3.5 3.5 0 0 1 6.8-1.2" />
+    )}
   </Icon>
 );
 

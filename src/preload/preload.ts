@@ -10,6 +10,13 @@ import type { SaveProviderRequest } from '../shared/contracts/provider.types';
 import type { SummaryStreamEvent } from '../shared/contracts/summary.types';
 import { TRANSLATION_IPC_CHANNELS } from '../shared/contracts/translation.ipc';
 import { DIAGNOSTICS_IPC_CHANNELS } from '../shared/contracts/diagnostics.ipc';
+import { ANNOTATION_IPC_CHANNELS } from '../shared/contracts/annotation.ipc';
+import type {
+  AnnotationIdRequest,
+  AnnotationListRequest,
+  CreateAnnotationRequest,
+  UpdateAnnotationNoteRequest,
+} from '../shared/contracts/annotation.types';
 import type {
   InlineTranslationRequest,
   TranslationStreamEvent,
@@ -155,6 +162,17 @@ const diagnosticsAPI = {
   export: () => ipcRenderer.invoke(DIAGNOSTICS_IPC_CHANNELS.export),
 };
 
+const annotationAPI = {
+  list: (request: AnnotationListRequest) =>
+    ipcRenderer.invoke(ANNOTATION_IPC_CHANNELS.list, request),
+  create: (request: CreateAnnotationRequest) =>
+    ipcRenderer.invoke(ANNOTATION_IPC_CHANNELS.create, request),
+  updateNote: (request: UpdateAnnotationNoteRequest) =>
+    ipcRenderer.invoke(ANNOTATION_IPC_CHANNELS.updateNote, request),
+  delete: (request: AnnotationIdRequest) =>
+    ipcRenderer.invoke(ANNOTATION_IPC_CHANNELS.delete, request),
+};
+
 const shaleAPI: ShaleAPI = {
   system: {
     ping,
@@ -169,6 +187,7 @@ const shaleAPI: ShaleAPI = {
   summary: summaryAPI,
   translation: translationAPI,
   diagnostics: diagnosticsAPI,
+  annotation: annotationAPI,
 };
 
 contextBridge.exposeInMainWorld('shaleAPI', shaleAPI);
