@@ -15,6 +15,7 @@ import {
   formatKeyboardShortcut,
   shortcutFromKeyboardEvent,
 } from './keyboardShortcut';
+import { DiagnosticsSection } from './DiagnosticsSection';
 
 interface AISettingsPageProps {
   preferences: AiPreferences;
@@ -154,6 +155,8 @@ export const AISettingsPage = ({
           </p>
           {shortcutError && <p className="settings-shortcut-error" role="status">{shortcutError}</p>}
         </section>
+
+        <DiagnosticsSection />
 
         {providerError && <p className="settings-page-error" role="status">{providerError}</p>}
         <ProviderSettings

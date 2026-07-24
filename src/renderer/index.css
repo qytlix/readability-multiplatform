@@ -1240,6 +1240,48 @@ body.workspace-is-resizing * {
   line-height: 1.45;
 }
 
+.diagnostics-summary {
+  margin: 0 0 14px;
+  color: var(--paper-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.diagnostics-export-button {
+  padding: 8px 14px;
+  border: 1px solid var(--paper-border);
+  border-radius: 5px;
+  background: var(--paper-bg);
+  color: var(--paper-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.diagnostics-export-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.diagnostics-export-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.diagnostics-status {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.diagnostics-status-success {
+  color: var(--accent-strong);
+}
+
+.diagnostics-status-error {
+  color: var(--error);
+}
+
 .settings-inline-help {
   margin-top: 14px;
   color: var(--paper-muted);
