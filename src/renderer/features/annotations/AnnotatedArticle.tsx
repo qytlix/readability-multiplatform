@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -33,6 +34,8 @@ type NotePopover =
       mode: 'preview' | 'edit';
       position: CSSProperties;
       connector: CSSProperties | null;
+      anchorClientX: number;
+      anchorClientY: number;
     }
   | null;
 
@@ -120,6 +123,51 @@ export const AnnotatedArticle = ({
   const activeAnnotation = popover
     ? annotations.find((annotation) => annotation.id === popover.annotationId)
     : undefined;
+
+  const popoverAnnotationId = popover?.annotationId;
+  const popoverMode = popover?.mode;
+  const popoverAnchorClientX = popover?.anchorClientX;
+  const popoverAnchorClientY = popover?.anchorClientY;
+
+  useLayoutEffect(() => {
+    if (
+      popoverAnnotationId === undefined
+      || popoverMode !== 'edit'
+      || popoverAnchorClientX === undefined
+      || popoverAnchorClientY === undefined
+    ) {
+      return;
+    }
+    const article = articleRef.current;
+    if (!article) return;
+    const anchorMark = findClosestAnnotationMark(
+      article,
+      popoverAnnotationId,
+      popoverAnchorClientX,
+      popoverAnchorClientY,
+    );
+    if (!anchorMark) return;
+    const layout = getResolvedNoteLayout(
+      article,
+      popoverAnnotationId,
+      anchorMark,
+      popoverAnchorClientX,
+      popoverAnchorClientY,
+      popoverMode,
+    );
+    setPopover((current) => current
+      ? {
+          ...current,
+          position: layout.position,
+          connector: layout.connector,
+        }
+      : null);
+  }, [
+    popoverAnchorClientX,
+    popoverAnchorClientY,
+    popoverAnnotationId,
+    popoverMode,
+  ]);
 
   const persistNote = useCallback((
     annotationId: number,
@@ -222,9 +270,12 @@ export const AnnotatedArticle = ({
   ): void => {
     const article = articleRef.current;
     if (!article) return;
-    const layout = getNoteLayout(
-      getHighlightLineRect(mark, clientX, clientY),
-      article.getBoundingClientRect(),
+    const layout = getResolvedNoteLayout(
+      article,
+      annotation.id,
+      mark,
+      clientX,
+      clientY,
       'edit',
     );
     setNoteDraft(annotation.noteText);
@@ -233,6 +284,8 @@ export const AnnotatedArticle = ({
       mode: 'edit',
       position: layout.position,
       connector: layout.connector,
+      anchorClientX: clientX,
+      anchorClientY: clientY,
     });
   };
 
@@ -261,9 +314,12 @@ export const AnnotatedArticle = ({
     }
     const article = articleRef.current;
     if (!article) return;
-    const layout = getNoteLayout(
-      getHighlightLineRect(mark, event.clientX, event.clientY),
-      article.getBoundingClientRect(),
+    const layout = getResolvedNoteLayout(
+      article,
+      annotation.id,
+      mark,
+      event.clientX,
+      event.clientY,
       'preview',
     );
     setPopover({
@@ -271,6 +327,8 @@ export const AnnotatedArticle = ({
       mode: 'preview',
       position: layout.position,
       connector: layout.connector,
+      anchorClientX: event.clientX,
+      anchorClientY: event.clientY,
     });
   };
 
@@ -489,6 +547,77 @@ function distanceToRect(
 interface NoteLayout {
   position: CSSProperties;
   connector: CSSProperties | null;
+}
+
+function getResolvedNoteLayout(
+  article: HTMLElement,
+  annotationId: number,
+  mark: HTMLElement,
+  clientX: number,
+  clientY: number,
+  mode: 'preview' | 'edit',
+): NoteLayout {
+  const articleRect = article.getBoundingClientRect();
+  const pointerRect = getHighlightLineRect(mark, clientX, clientY);
+  const pointerLayout = getNoteLayout(pointerRect, articleRect, mode);
+  const noteLeft = Number(pointerLayout.position.left);
+  if (!Number.isFinite(noteLeft) || pointerRect.right <= noteLeft) {
+    return pointerLayout;
+  }
+
+  const rightwardAnchor = getAnnotationLineRects(article, annotationId)
+    .filter((rect) => rect.right <= noteLeft)
+    .reduce<DOMRect | null>((closest, candidate) => {
+      if (!closest) return candidate;
+      return distanceToRect(clientX, clientY, candidate)
+        < distanceToRect(clientX, clientY, closest)
+        ? candidate
+        : closest;
+    }, null);
+  return rightwardAnchor
+    ? getNoteLayout(rightwardAnchor, articleRect, mode)
+    : pointerLayout;
+}
+
+function getAnnotationLineRects(
+  article: HTMLElement,
+  annotationId: number,
+): DOMRect[] {
+  return Array.from(article.querySelectorAll<HTMLElement>(
+    `mark[data-annotation-id="${annotationId}"]`,
+  )).flatMap((annotationMark) => {
+    const lineRects = Array.from(annotationMark.getClientRects());
+    return lineRects.length > 0
+      ? lineRects
+      : [annotationMark.getBoundingClientRect()];
+  });
+}
+
+function findClosestAnnotationMark(
+  article: HTMLElement,
+  annotationId: number,
+  clientX: number,
+  clientY: number,
+): HTMLElement | null {
+  return Array.from(article.querySelectorAll<HTMLElement>(
+    `mark[data-annotation-id="${annotationId}"]`,
+  )).reduce<HTMLElement | null>((closest, candidate) => {
+    if (!closest) return candidate;
+    return distanceToMark(clientX, clientY, candidate)
+      < distanceToMark(clientX, clientY, closest)
+      ? candidate
+      : closest;
+  }, null);
+}
+
+function distanceToMark(
+  clientX: number,
+  clientY: number,
+  mark: HTMLElement,
+): number {
+  const lineRects = Array.from(mark.getClientRects());
+  const rects = lineRects.length > 0 ? lineRects : [mark.getBoundingClientRect()];
+  return Math.min(...rects.map((rect) => distanceToRect(clientX, clientY, rect)));
 }
 
 function getNoteLayout(

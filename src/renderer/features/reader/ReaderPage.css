@@ -1526,6 +1526,16 @@ body.workspace-is-resizing * {
   margin-left: auto;
 }
 
+.entry-detail-content:has(.annotation-note.is-edit) {
+  width: min(1020px, calc(100% - 40px));
+}
+
+.entry-detail-content:has(.annotation-note.is-edit) > .entry-detail-html {
+  width: min(680px, max(280px, calc(100% - 340px)));
+  margin-right: auto;
+  margin-left: 0;
+}
+
 .translation-title-slot:not(:empty) {
   margin-bottom: 36px;
 }

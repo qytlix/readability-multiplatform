@@ -168,11 +168,12 @@ describe('AnnotatedArticle', () => {
     if (!article) throw new Error('Annotated article did not render.');
     const firstLineRect = new activeDom.window.DOMRect(220, 180, 60, 18);
     const secondLineRect = new activeDom.window.DOMRect(500, 240, 80, 18);
+    const rightOfNoteRect = new activeDom.window.DOMRect(700, 300, 80, 18);
     Object.defineProperty(mark, 'getBoundingClientRect', {
-      value: () => new activeDom.window.DOMRect(220, 180, 360, 78),
+      value: () => new activeDom.window.DOMRect(220, 180, 560, 138),
     });
     Object.defineProperty(mark, 'getClientRects', {
-      value: () => [firstLineRect, secondLineRect],
+      value: () => [firstLineRect, secondLineRect, rightOfNoteRect],
     });
     Object.defineProperty(article, 'getBoundingClientRect', {
       value: () => new activeDom.window.DOMRect(100, 60, 500, 600),
@@ -212,10 +213,10 @@ describe('AnnotatedArticle', () => {
     );
     if (!rerenderedMark) throw new Error('Highlight did not survive note rendering.');
     Object.defineProperty(rerenderedMark, 'getBoundingClientRect', {
-      value: () => new activeDom.window.DOMRect(220, 180, 360, 78),
+      value: () => new activeDom.window.DOMRect(220, 180, 560, 138),
     });
     Object.defineProperty(rerenderedMark, 'getClientRects', {
-      value: () => [firstLineRect, secondLineRect],
+      value: () => [firstLineRect, secondLineRect, rightOfNoteRect],
     });
     await act(async () => {
       rerenderedMark.dispatchEvent(new activeDom.window.MouseEvent('mouseover', {
@@ -234,6 +235,29 @@ describe('AnnotatedArticle', () => {
     expect(secondLineConnector?.style.left).toBe('500px');
     expect(secondLineConnector?.style.top).toBe('240px');
     expect(secondLineConnector?.style.width).toBe('119px');
+
+    const rightSideMark = fixture.mount.querySelector<HTMLElement>(
+      'mark[data-annotation-id="1"]',
+    );
+    if (!rightSideMark) throw new Error('Highlight did not survive line change.');
+    Object.defineProperty(rightSideMark, 'getBoundingClientRect', {
+      value: () => new activeDom.window.DOMRect(220, 180, 560, 138),
+    });
+    Object.defineProperty(rightSideMark, 'getClientRects', {
+      value: () => [firstLineRect, secondLineRect, rightOfNoteRect],
+    });
+    await act(async () => {
+      rightSideMark.dispatchEvent(new activeDom.window.MouseEvent('mouseover', {
+        bubbles: true,
+        clientX: 740,
+        clientY: 309,
+      }));
+    });
+    const correctedConnector = fixture.mount.querySelector<HTMLElement>(
+      '.annotation-note-connector',
+    );
+    expect(correctedConnector?.style.left).toBe('500px');
+    expect(correctedConnector?.style.width).toBe('119px');
   });
 
   it('opens and saves a note outside annotation mode', async () => {

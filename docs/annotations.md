@@ -19,7 +19,13 @@ non-interactive translucent projection in the annotation color visually joins
 the highlighted text to the open note without blocking article interaction.
 When a highlight wraps across lines, the projection uses the exact line fragment
 under the pointer instead of the inline element's multi-line bounding box, so
-sidebar and story-list width changes do not distort the projection.
+sidebar and story-list width changes do not distort the projection. If the
+current wrapped fragment falls to the right of the note, the nearest fragment
+from the same annotation on the note's left is used, keeping the projection
+directed from highlighted text toward the note instead of mirroring backward.
+While a note is being edited, the article body yields a responsive right-side
+rail when its normal margin is too narrow, keeping the note and projection in
+the same left-to-right arrangement with either Reader sidebar open.
 
 The first version applies only to cleaned Reader HTML. Raw Markdown, embedded
 video views, translated output, exports, synchronization, and overlapping
