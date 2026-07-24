@@ -9,6 +9,8 @@ The Reader supports local, per-article text annotations:
 - right-click any highlighted text to edit its note, even outside annotation mode;
 - click outside the note to save and close it;
 - hover a highlight with a non-empty note to preview the note;
+- lock an open note from its lower-left control to prevent automatic dismissal
+  until the user unlocks it;
 - delete the annotation from the note, removing both its highlight and note.
 
 The note is vertically anchored to its highlight and is placed in the Reader
@@ -17,6 +19,8 @@ annotation's latest local update date and time. On narrow windows it falls back
 to the opposite margin or the viewport edge so the note remains usable. A
 non-interactive translucent projection in the annotation color visually joins
 the highlighted text to the open note without blocking article interaction.
+The note keeps a small right-side gutter from the article so it does not cover
+the final glyph on long lines.
 When a highlight wraps across lines, the projection uses the exact line fragment
 under the pointer instead of the inline element's multi-line bounding box, so
 sidebar and story-list width changes do not distort the projection. If the

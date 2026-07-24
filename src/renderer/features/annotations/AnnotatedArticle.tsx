@@ -14,7 +14,7 @@ import {
   type AnnotationColor,
   type EntryAnnotation,
 } from '../../../shared/contracts/annotation.types';
-import { HighlighterIcon, TrashIcon } from '../reader/ReaderIcons';
+import { HighlighterIcon, LockIcon, TrashIcon } from '../reader/ReaderIcons';
 import {
   applyAnnotationHighlights,
   createAnnotationRequestFromSelection,
@@ -37,6 +37,7 @@ type NotePopover =
       anchorMarkIndex: number;
       anchorLineIndex: number;
       anchorTopOffset: number;
+      locked: boolean;
     }
   | null;
 
@@ -110,7 +111,7 @@ export const AnnotatedArticle = ({
     const handleEscape = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
       setAnnotationMode(false);
-      setPopover(null);
+      setPopover((current) => current?.locked ? current : null);
       window.getSelection()?.removeAllRanges();
     };
     window.addEventListener('keydown', handleEscape);
@@ -264,7 +265,7 @@ export const AnnotatedArticle = ({
   }, [annotations, showFeedback]);
 
   useEffect(() => {
-    if (popover?.mode !== 'edit') return;
+    if (popover?.mode !== 'edit' || popover.locked) return;
     const closeOnOutsidePointer = (event: PointerEvent): void => {
       if (
         event.target instanceof Node
@@ -283,7 +284,7 @@ export const AnnotatedArticle = ({
   const chooseColor = (color: AnnotationColor): void => {
     setSelectedColor(color);
     setAnnotationMode(true);
-    setPopover(null);
+    setPopover((current) => current?.locked ? current : null);
     showFeedback(`批注模式已开启：${COLOR_LABELS[color]}荧光笔`);
   };
 
@@ -350,6 +351,7 @@ export const AnnotatedArticle = ({
       anchorMarkIndex: anchor.markIndex,
       anchorLineIndex: anchor.lineIndex,
       anchorTopOffset: Number(layout.position.top) - anchor.rect.top,
+      locked: false,
     });
   };
 
@@ -358,11 +360,12 @@ export const AnnotatedArticle = ({
     const mark = closestAnnotationMark(event.target);
     if (!annotation || !mark) return;
     event.preventDefault();
+    if (popover?.locked) return;
     openEditor(annotation, mark, event.clientX, event.clientY);
   };
 
   const handleMouseOver = (event: MouseEvent<HTMLDivElement>): void => {
-    if (popover?.mode === 'edit') return;
+    if (popover?.mode === 'edit' || popover?.locked) return;
     const annotation = findAnnotationFromTarget(event.target, annotations);
     if (!annotation?.noteText.trim()) return;
     const mark = closestAnnotationMark(event.target);
@@ -400,11 +403,12 @@ export const AnnotatedArticle = ({
       anchorMarkIndex: anchor.markIndex,
       anchorLineIndex: anchor.lineIndex,
       anchorTopOffset: Number(layout.position.top) - anchor.rect.top,
+      locked: false,
     });
   };
 
   const schedulePreviewClose = (): void => {
-    if (popover?.mode !== 'preview') return;
+    if (popover?.mode !== 'preview' || popover.locked) return;
     if (hoverCloseTimerRef.current !== null) {
       clearTimeout(hoverCloseTimerRef.current);
     }
@@ -421,6 +425,16 @@ export const AnnotatedArticle = ({
       return;
     }
     schedulePreviewClose();
+  };
+
+  const togglePopoverLock = (): void => {
+    if (hoverCloseTimerRef.current !== null) {
+      clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+    setPopover((current) => current
+      ? { ...current, locked: !current.locked }
+      : null);
   };
 
   const deleteAnnotation = (annotationId: number): void => {
@@ -546,11 +560,26 @@ export const AnnotatedArticle = ({
               )}
             </div>
             <footer>
+              <button
+                type="button"
+                className={`annotation-note-lock${popover.locked ? ' is-active' : ''}`}
+                aria-label={popover.locked ? '解除批注锁定' : '锁定批注'}
+                aria-pressed={popover.locked}
+                title={popover.locked ? '解除锁定' : '锁定便签'}
+                onClick={togglePopoverLock}
+              >
+                <LockIcon locked={popover.locked} />
+              </button>
               {popover.mode === 'edit' && (
-                <span>点击便签外任意位置自动保存</span>
+                <span>
+                  {popover.locked
+                    ? '便签已锁定，解除后可自动保存并收起'
+                    : '点击便签外任意位置自动保存'}
+                </span>
               )}
               <button
                 type="button"
+                className="annotation-note-delete"
                 aria-label="删除批注"
                 title="删除批注"
                 onClick={() => deleteAnnotation(activeAnnotation.id)}
@@ -681,7 +710,7 @@ function getNoteLayout(
   anchorTopOffset?: number,
 ): NoteLayout {
   const viewportPadding = 12;
-  const articleGap = 18;
+  const articleGap = 26;
   const hostLeft = Math.max(0, hostBounds.left) + viewportPadding;
   const hostRight = Math.min(window.innerWidth, hostBounds.right)
     - viewportPadding;

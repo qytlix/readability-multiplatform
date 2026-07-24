@@ -32,6 +32,7 @@ afterEach(async () => {
   root = null;
   dom?.window.close();
   dom = null;
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -221,7 +222,7 @@ describe('AnnotatedArticle', () => {
       '.annotation-note.is-preview',
     );
     expect(note?.textContent).toContain('Remember this.');
-    expect(note?.style.left).toBe('618px');
+    expect(note?.style.left).toBe('626px');
     expect(note?.style.top).toBe('176px');
     const connector = fixture.readerPage.querySelector<HTMLElement>(
       '.annotation-note-connector',
@@ -229,7 +230,7 @@ describe('AnnotatedArticle', () => {
     expect(connector?.dataset.annotationColor).toBe('yellow');
     expect(connector?.style.left).toBe('279px');
     expect(connector?.style.top).toBe('180px');
-    expect(connector?.style.width).toBe('340px');
+    expect(connector?.style.width).toBe('348px');
     expect(connector?.style.height).toBe('50px');
     expect(connector?.style.clipPath)
       .toBe('polygon(0 0px, 100% 4px, 100% 50px, 0 18px)');
@@ -265,7 +266,7 @@ describe('AnnotatedArticle', () => {
     expect(secondLineNote?.style.top).toBe('236px');
     expect(secondLineConnector?.style.left).toBe('579px');
     expect(secondLineConnector?.style.top).toBe('240px');
-    expect(secondLineConnector?.style.width).toBe('40px');
+    expect(secondLineConnector?.style.width).toBe('48px');
 
     const rightSideMark = fixture.mount.querySelector<HTMLElement>(
       'mark[data-annotation-id="1"]',
@@ -288,6 +289,72 @@ describe('AnnotatedArticle', () => {
       '.annotation-note-connector',
     );
     expect(correctedConnector?.style.display).toBe('none');
+  });
+
+  it('keeps a locked preview visible after leaving its highlight', async () => {
+    const fixture = setup([{ ...baseAnnotation, noteText: 'Pinned preview.' }]);
+    await act(async () => {
+      root?.render(createElement(AnnotatedArticle, {
+        entryId: 1,
+        sourceHtml: '<p>Hello world</p>',
+        toolbarTarget: fixture.toolbar,
+        onClick: () => undefined,
+      }));
+      await Promise.resolve();
+    });
+
+    if (!dom) throw new Error('Locked preview fixture did not render.');
+    const activeDom = dom;
+    const mark = fixture.mount.querySelector<HTMLElement>(
+      'mark[data-annotation-id="1"]',
+    );
+    if (!mark) throw new Error('Persisted highlight did not render.');
+    await act(async () => {
+      mark.dispatchEvent(new activeDom.window.MouseEvent('mouseover', {
+        bubbles: true,
+        clientX: 40,
+        clientY: 50,
+      }));
+    });
+
+    const lockButton = fixture.readerPage.querySelector<HTMLButtonElement>(
+      '[aria-label="锁定批注"]',
+    );
+    if (!lockButton) throw new Error('Preview lock button did not render.');
+    await act(async () => lockButton.click());
+    vi.useFakeTimers();
+
+    const lockedMark = fixture.mount.querySelector<HTMLElement>(
+      'mark[data-annotation-id="1"]',
+    );
+    if (!lockedMark) throw new Error('Highlight did not survive preview locking.');
+    await act(async () => {
+      lockedMark.dispatchEvent(new activeDom.window.MouseEvent('mouseout', {
+        bubbles: true,
+        relatedTarget: activeDom.window.document.body,
+      }));
+      vi.advanceTimersByTime(200);
+    });
+    expect(fixture.readerPage.querySelector('.annotation-note.is-preview'))
+      .not.toBeNull();
+
+    const unlockButton = fixture.readerPage.querySelector<HTMLButtonElement>(
+      '[aria-label="解除批注锁定"]',
+    );
+    if (!unlockButton) throw new Error('Preview unlock button did not render.');
+    await act(async () => unlockButton.click());
+    const unlockedMark = fixture.mount.querySelector<HTMLElement>(
+      'mark[data-annotation-id="1"]',
+    );
+    if (!unlockedMark) throw new Error('Highlight did not survive preview unlocking.');
+    await act(async () => {
+      unlockedMark.dispatchEvent(new activeDom.window.MouseEvent('mouseout', {
+        bubbles: true,
+        relatedTarget: activeDom.window.document.body,
+      }));
+      vi.advanceTimersByTime(200);
+    });
+    expect(fixture.readerPage.querySelector('.annotation-note')).toBeNull();
   });
 
   it('keeps the note inside the Reader pane boundary', async () => {
@@ -446,6 +513,90 @@ describe('AnnotatedArticle', () => {
     expect(note?.style.top).toBe('236px');
     expect(connector?.style.left).toBe('849px');
     expect(connector?.style.top).toBe('240px');
+  });
+
+  it('keeps a locked note open until the user unlocks it', async () => {
+    const fixture = setup([baseAnnotation]);
+    await act(async () => {
+      root?.render(createElement(AnnotatedArticle, {
+        entryId: 1,
+        sourceHtml: '<p>Hello world</p>',
+        toolbarTarget: fixture.toolbar,
+        onClick: () => undefined,
+      }));
+      await Promise.resolve();
+    });
+
+    if (!dom) throw new Error('Locked annotation fixture did not render.');
+    const activeDom = dom;
+    const mark = fixture.mount.querySelector<HTMLElement>(
+      'mark[data-annotation-id="1"]',
+    );
+    if (!mark) throw new Error('Persisted highlight did not render.');
+    await act(async () => {
+      mark.dispatchEvent(new activeDom.window.MouseEvent('contextmenu', {
+        bubbles: true,
+        clientX: 40,
+        clientY: 50,
+      }));
+    });
+
+    const lockButton = fixture.readerPage.querySelector<HTMLButtonElement>(
+      '[aria-label="锁定批注"]',
+    );
+    if (!lockButton) throw new Error('Annotation lock button did not render.');
+    await act(async () => lockButton.click());
+    const unlockButton = fixture.readerPage.querySelector<HTMLButtonElement>(
+      '[aria-label="解除批注锁定"]',
+    );
+    expect(unlockButton?.getAttribute('aria-pressed')).toBe('true');
+
+    const textarea = fixture.readerPage.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="批注内容"]',
+    );
+    if (!textarea) throw new Error('Locked annotation editor did not remain open.');
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(
+        activeDom.window.HTMLTextAreaElement.prototype,
+        'value',
+      )?.set;
+      valueSetter?.call(textarea, 'Pinned note');
+      textarea.dispatchEvent(new activeDom.window.KeyboardEvent('keyup', {
+        bubbles: true,
+        key: 'e',
+      }));
+    });
+    await act(async () => {
+      activeDom.window.document.body.dispatchEvent(
+        new activeDom.window.Event('pointerdown', { bubbles: true }),
+      );
+      activeDom.window.dispatchEvent(
+        new activeDom.window.KeyboardEvent('keydown', {
+          bubbles: true,
+          key: 'Escape',
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(fixture.updateNote).not.toHaveBeenCalled();
+    expect(fixture.readerPage.querySelector('.annotation-note.is-edit'))
+      .not.toBeNull();
+
+    if (!unlockButton) throw new Error('Annotation unlock button did not render.');
+    await act(async () => unlockButton.click());
+    await act(async () => {
+      activeDom.window.document.body.dispatchEvent(
+        new activeDom.window.Event('pointerdown', { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(fixture.updateNote).toHaveBeenCalledWith({
+      annotationId: 1,
+      noteText: 'Pinned note',
+    });
+    expect(fixture.readerPage.querySelector('.annotation-note')).toBeNull();
   });
 
   it('opens and saves a note outside annotation mode', async () => {

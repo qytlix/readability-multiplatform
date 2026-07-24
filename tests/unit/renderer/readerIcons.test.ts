@@ -3,6 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   HighlighterIcon,
+  LockIcon,
   ReadIcon,
   TranslateIcon,
 } from '../../../src/renderer/features/reader/ReaderIcons';
@@ -34,5 +35,14 @@ describe('reader toolbar icons', () => {
     expect(markup).toContain('width="19"');
     expect(markup).toContain('d="m7 15 7.8-7.8 3 3L10 18H7z"');
     expect(markup).toContain('d="M4 20h12"');
+  });
+
+  it('renders distinct locked and unlocked annotation states', () => {
+    const locked = renderToStaticMarkup(createElement(LockIcon, { locked: true }));
+    const unlocked = renderToStaticMarkup(createElement(LockIcon, { locked: false }));
+
+    expect(locked).toContain('<rect x="6" y="10" width="12" height="10" rx="2"');
+    expect(locked).toContain('d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"');
+    expect(unlocked).toContain('d="M9 10V7.5a3.5 3.5 0 0 1 6.8-1.2"');
   });
 });

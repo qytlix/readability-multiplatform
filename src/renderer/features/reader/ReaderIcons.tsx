@@ -206,6 +206,17 @@ export const TrashIcon = () => (
   </Icon>
 );
 
+export const LockIcon = ({ locked }: { locked: boolean }) => (
+  <Icon size={16}>
+    <rect x="6" y="10" width="12" height="10" rx="2" />
+    {locked ? (
+      <path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10" />
+    ) : (
+      <path d="M9 10V7.5a3.5 3.5 0 0 1 6.8-1.2" />
+    )}
+  </Icon>
+);
+
 export const CloseIcon = () => (
   <Icon size={16}>
     <path d="m6 6 12 12M18 6 6 18" />
