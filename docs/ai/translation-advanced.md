@@ -347,6 +347,25 @@ Gate:
   logs or fixtures;
 - affected public-contract owners complete review.
 
+M6 implementation record (2026-07-25):
+
+- added a full upgrade fixture that starts from the migration-011 schema,
+  applies 012 through 015 in order, preserves profile/result/segment identity
+  and foreign keys, reconciles an interrupted run, and verifies an idempotent
+  restart;
+- changed oversized smart-context input from a 48,000-character prefix to
+  deterministic whole-document sampling under the same eight-by-6,000
+  character budget; bumped the cache identity to `translation-context-v2`;
+- added diagnostic canaries proving Translation timing/recovery logs exclude
+  API keys, Authorization/Bearer values, and article content;
+- verified all 89 test files / 662 tests, typecheck, lint (0 errors / 120
+  pre-existing warnings), production dependency audit (0 vulnerabilities),
+  Electron native ABI, Windows x64 packaging, packaged startup, and offline
+  terminology artifact integrity;
+- recorded remaining real-provider, GUI, public-boundary review, and native
+  Wayland checks in `translation-advanced-verification.md`. The milestone is in
+  Review until those human-owned checks are signed off.
+
 ## Verification matrix
 
 | Area | Automated verification | Manual verification |

@@ -171,6 +171,44 @@ describe('TranslationService', () => {
     expect(provider.providerKinds).toEqual(['openai']);
   });
 
+  it('keeps API keys and article content out of Translation diagnostics', async () => {
+    const apiKeyCanary = 'sk-m6-private-api-key-canary';
+    const articleCanary = 'M6_PRIVATE_ARTICLE_BODY_CANARY';
+    memorySecrets.set('key-1', apiKeyCanary);
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: `<p>${articleCanary}</p>`,
+      markdown: articleCanary,
+      pipelineStatus: 'success',
+    });
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'fr' as const,
+    };
+
+    try {
+      service.generate(request);
+      await vi.waitFor(() => {
+        expect(service.getState(request)).toMatchObject({ state: 'succeeded' });
+      });
+
+      const diagnostics = JSON.stringify([
+        ...info.mock.calls,
+        ...warn.mock.calls,
+      ]);
+      expect(diagnostics).toContain('[translation:timing]');
+      expect(diagnostics).not.toContain(apiKeyCanary);
+      expect(diagnostics).not.toContain(articleCanary);
+      expect(diagnostics).not.toMatch(/authorization|bearer/i);
+    } finally {
+      info.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
   it('keeps manual and automatic source-language cache identities separate', async () => {
     const automaticRequest = {
       entryId: 1,
@@ -204,6 +242,69 @@ describe('TranslationService', () => {
       prompt.includes('Detect the source language'))).toBe(true);
     expect(provider.prompts.some((prompt) =>
       prompt.includes('The source language is English.'))).toBe(true);
+  });
+
+  it('runs all target languages across the five provider presets', async () => {
+    const combinations = [
+      { providerKind: 'openai', sourceLanguage: 'de', targetLanguage: 'en' },
+      { providerKind: 'deepseek', sourceLanguage: 'en', targetLanguage: 'zh-CN' },
+      { providerKind: 'openrouter', sourceLanguage: 'en', targetLanguage: 'zh-HK' },
+      { providerKind: 'anthropic', sourceLanguage: 'en', targetLanguage: 'ja' },
+      { providerKind: 'gemini', sourceLanguage: 'en', targetLanguage: 'ko' },
+      { providerKind: 'openai', sourceLanguage: 'en', targetLanguage: 'de' },
+      { providerKind: 'anthropic', sourceLanguage: 'en', targetLanguage: 'fr' },
+      { providerKind: 'gemini', sourceLanguage: 'en', targetLanguage: 'es' },
+    ] as const;
+
+    for (const [index, combination] of combinations.entries()) {
+      const { db } = buildTestDbWithData();
+      const content = new ContentStore(db);
+      content.upsert({
+        entryId: 1,
+        cleanedHtml: combination.sourceLanguage === 'de'
+          ? '<p>Diese Anwendung verarbeitet Nachrichten zuverlässig.</p>'
+          : '<p>This application processes messages reliably.</p>',
+        pipelineStatus: 'success',
+      });
+      const profiles = new ProviderProfileStore(db);
+      const keyReference = `matrix-key-${index}`;
+      profiles.saveActive({
+        providerKind: combination.providerKind,
+        baseUrl: 'https://provider.example/v1',
+        model: 'matrix-model',
+        apiKeyRef: keyReference,
+      });
+      memorySecrets.set(keyReference, 'not-a-real-key');
+      const matrixProvider = new BatchMockProvider();
+      const matrixService = new TranslationService(
+        content,
+        profiles,
+        new TestSecretStore(),
+        new TranslationStore(db),
+        matrixProvider,
+      );
+      const request = {
+        entryId: 1,
+        sourceLanguage: combination.sourceLanguage,
+        targetLanguage: combination.targetLanguage,
+      };
+
+      matrixService.generate(request);
+      await vi.waitFor(() => {
+        expect(matrixService.getState(request)).toMatchObject({ state: 'succeeded' });
+      });
+      expect(matrixProvider.providerKinds).toContain(combination.providerKind);
+      db.close();
+    }
+
+    expect(new Set(combinations.map(({ targetLanguage }) => targetLanguage)).size).toBe(8);
+    expect(new Set(combinations.map(({ providerKind }) => providerKind))).toEqual(new Set([
+      'openai',
+      'deepseek',
+      'openrouter',
+      'anthropic',
+      'gemini',
+    ]));
   });
 
   it('recovers omissions in concurrent batches and continues queued Translation work', async () => {

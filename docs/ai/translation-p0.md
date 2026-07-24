@@ -40,6 +40,13 @@ the application database. Cache identity is the deterministic enabled-library
 ID/version/content-hash set. Upstream `zh-TW` entries remain marked and are
 only a lowest-priority Traditional Chinese reference for a `zh-HK` target.
 
+Smart context uses a fixed maximum input budget of eight 6,000-character
+chunks. Documents within that budget retain paragraph-aware sequential chunks.
+Oversized documents use deterministic representative windows covering the
+beginning, intermediate regions, and end instead of silently truncating the
+document tail. This behavior is cache-identified by
+`translation-context-v2`.
+
 - `translation:get`
 - `translation:generate`
 - `translation:inline`: translates a bounded text selection or hovered paragraph without persistence

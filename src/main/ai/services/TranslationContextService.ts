@@ -74,11 +74,11 @@ export class TranslationContextService {
     }, CONTEXT_TIMEOUT_MS);
 
     try {
-      const articleText = request.articleText.slice(
-        0,
-        CONTEXT_CHUNK_CHARACTERS * MAX_CONTEXT_CHUNKS,
+      const chunks = selectRepresentativeChunks(
+        request.articleText,
+        CONTEXT_CHUNK_CHARACTERS,
+        MAX_CONTEXT_CHUNKS,
       );
-      const chunks = chunkText(articleText, CONTEXT_CHUNK_CHARACTERS);
       const context = chunks.length <= 1
         ? await this.generateContext(
             buildAnalysisPrompt(request, chunks[0] ?? ''),
@@ -270,6 +270,31 @@ function chunkText(text: string, maximumCharacters: number): string[] {
     offset = end;
   }
   return chunks;
+}
+
+function selectRepresentativeChunks(
+  text: string,
+  maximumCharacters: number,
+  maximumChunks: number,
+): string[] {
+  if (text.length <= maximumCharacters * maximumChunks) {
+    return chunkText(text, maximumCharacters);
+  }
+
+  return Array.from({ length: maximumChunks }, (_, index) => {
+    if (index === 0) return text.slice(0, maximumCharacters);
+    if (index === maximumChunks - 1) return text.slice(-maximumCharacters);
+
+    const regionCenter = ((index + 0.5) * text.length) / maximumChunks;
+    const start = Math.max(
+      0,
+      Math.min(
+        text.length - maximumCharacters,
+        Math.round(regionCenter - (maximumCharacters / 2)),
+      ),
+    );
+    return text.slice(start, start + maximumCharacters);
+  });
 }
 
 function parseKeyTerm(value: unknown): TranslationContextKeyTerm | undefined {

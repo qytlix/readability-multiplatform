@@ -4,7 +4,7 @@ import type {
 } from './translation.types';
 
 export const TRANSLATION_CONTEXT_SCHEMA_VERSION = 1;
-export const TRANSLATION_CONTEXT_PROMPT_VERSION = 'translation-context-v1';
+export const TRANSLATION_CONTEXT_PROMPT_VERSION = 'translation-context-v2';
 
 export interface TranslationContextKeyTerm {
   source: string;

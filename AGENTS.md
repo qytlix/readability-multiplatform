@@ -299,11 +299,14 @@ Issue 只有同时满足以下条件才能进入 `Done`：
 - 三人分工、主要依赖、成本等级和风险已经团队确认；
 - `PLAN.md` Baseline v1 已完成；
 - 基础阅读、Summary 与 Translation P0 已形成可自动验证的实现；
-- Advanced Translation 的 AT-M0～AT-M2 已完成，AT-M3～AT-M5 已进入 Review；
+- Advanced Translation 的 AT-M0～AT-M2 已完成，AT-M3～AT-M6 已进入 Review；
 - AT-M3 已固定并离线编译 29 个内置专家，支持受限 YAML 用户专家与全文上下文缓存/降级；
 - AT-M4 已离线编译 34 个内置术语库，保留 AGROVOC 默认行为，支持逐库持久化开关与事务 CSV 导入；
 - AT-M5 已升级严格的单词/短语/句子划词结果、源语言发音、多义项、上下文释义、专家/术语接入和主动取消；
-- 下一步是人工验收 AT-M3～AT-M5；AT-M6 保持 Backlog，按验收结果滚动细化。
+- AT-M6 已补齐组合回归、旧库连续升级/重启、敏感日志哨兵、超长文章全文代表采样、
+  Windows x64 打包与启动验证以及发布文档；
+- 下一步是人工验收 AT-M3～AT-M6，并在原生 Wayland 与真实 Provider 环境完成
+  最终冒烟。
 
 本节必须在每个里程碑结束后更新，不得长期保留已经失真的状态。
 
@@ -349,6 +352,10 @@ Issue 只有同时满足以下条件才能进入 `Done`：
   用户或原生 `zh-HK` 条目优先。
 - 划词翻译拒绝非结构化 Provider 输出；源语言发音体系进入 typed 结果，
   选区/配置/生命周期变化通过 `translation:inline-cancel` 中止 Main 请求。
+- 智能上下文缓存版本升级为 `translation-context-v2`；超过 48,000 字符时不再
+  只截取开头，而是在相同 8 × 6,000 字符预算内确定性采样全文。
+- AT-M6 自动化记录和未完成的人工验收项见
+  `docs/ai/translation-advanced-verification.md`。
 
 ## 17. Roadmap
 

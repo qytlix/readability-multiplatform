@@ -103,6 +103,34 @@ describe('TranslationContextService', () => {
     expect(provider.prompts[3]).toContain('Merge partial document analyses');
   });
 
+  it('samples the beginning, middle regions, and end of an oversized article', async () => {
+    const { db } = buildTestDb();
+    const profileId = new ProviderProfileStore(db).saveActive({
+      providerKind: 'openai',
+      baseUrl: 'https://provider.example/v1',
+      model: 'mock-model',
+      apiKeyRef: 'key',
+    }).id;
+    const provider = new ContextProvider();
+    const service = new TranslationContextService(new TranslationContextStore(db), provider);
+    const articleText = [
+      'DOCUMENT-BEGIN',
+      'A'.repeat(59_980),
+      'B'.repeat(59_980),
+      'DOCUMENT-END',
+    ].join('\n');
+
+    await service.resolve(createRequest(profileId, articleText));
+
+    const analysisPrompts = provider.prompts.slice(0, -1);
+    expect(analysisPrompts).toHaveLength(8);
+    expect(analysisPrompts[0]).toContain('DOCUMENT-BEGIN');
+    expect(analysisPrompts.at(-1)).toContain('DOCUMENT-END');
+    expect(analysisPrompts.slice(1, -1).some((prompt) =>
+      prompt.includes('B'.repeat(100)))).toBe(true);
+    expect(provider.prompts.at(-1)).toContain('Merge partial document analyses');
+  });
+
   it('returns a non-fatal warning and does not cache invalid model output', async () => {
     const { db } = buildTestDb();
     const profileId = new ProviderProfileStore(db).saveActive({

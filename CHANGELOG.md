@@ -4,9 +4,28 @@ All notable changes to Shale will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Advanced Translation：支持 `auto + 8` 语言、OpenAI/DeepSeek/OpenRouter/
+  Anthropic/Gemini Provider、智能全文上下文、29 个离线 AI 专家、34 个离线
+  术语库、用户 YAML/CSV 导入，以及结构化单词/短语/句子划词翻译。
+- 增加旧数据库从迁移 011 连续升级到 015、重启恢复、超长文章全文代表采样和
+  Translation 敏感日志哨兵的集成回归。
+
+### Changed
+
+- 超过 48,000 字符的智能上下文由“只分析开头”改为固定预算下覆盖文章开头、
+  中间区域和结尾的确定性采样；上下文缓存版本升级为
+  `translation-context-v2`。
+
 ### Fixed
 
 - 安装和启动时按 Electron ABI 加载验证 `better-sqlite3`，发现错误原生模块时自动重建，避免依赖更新或 Node 测试后因遗留 Forge 元数据启动失败。
+
+### Security
+
+- 生产依赖审计为 0 漏洞；新增自动化断言，确保 Translation 诊断不包含 API
+  Key、Authorization/Bearer 信息或文章正文。
 
 ## [0.2.4] - 2026-07-21
 

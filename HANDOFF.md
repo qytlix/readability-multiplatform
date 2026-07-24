@@ -3,7 +3,7 @@
 > 最后更新：2026-07-25  
 > 当前分支：`cyj-translation-advanced`  
 > 跟踪 Issue：<https://github.com/qytlix/readability-multiplatform/issues/60>  
-> 当前阶段：AT-M3、AT-M4 与 AT-M5 已完成代码和自动化验证，状态为 `Review`；下一实现阶段是 AT-M6。
+> 当前阶段：AT-M3～AT-M6 已完成代码和自动化验证，状态为 `Review`；下一步是人工验收、公共边界 Review 和原生 Wayland/真实 Provider 冒烟。
 
 ## 1. 接手前必须阅读
 
@@ -23,10 +23,8 @@
 ## 2. Git 与工作树状态
 
 - 分支：`cyj-translation-advanced`
-- 当前没有由本轮 AI 创建的 commit、push 或 PR。
-- M1/M2 的不少文件已经在暂存区。
-- M3 改动主要仍在工作区或为 untracked 文件。
-- `MM` 表示同一文件同时包含已暂存的早期改动和未暂存的 M3 改动。
+- AT-M1～AT-M5 已由提交 `0011153` 交付；AT-M6 使用其后的独立收尾提交。
+- 当前没有 PR，Issue #60 仍为 Open。
 - 不要运行 `git reset --hard`、`git checkout --`、全量还原或其他会覆盖用户改动的命令。
 - 未经用户要求，不要擅自改变当前暂存状态。
 
@@ -38,7 +36,7 @@ git status --short
 git diff --check
 ```
 
-如果准备提交，必须先区分 M1/M2 已暂存内容与 M3/M4 新内容，确认用户希望采用一个累计提交还是按 milestone 拆分。
+后续修订保持 AT-M6 提交独立，不要未经 Review 把 M1～M6 压成一个提交。
 
 ## 3. Milestone 状态
 
@@ -50,9 +48,10 @@ git diff --check
 | AT-M3 | Review | 智能上下文、29 个内置专家、用户 YAML 专家、设置和缓存 |
 | AT-M4 | Review | 34 个内置库、逐库开关、用户 CSV 事务导入 |
 | AT-M5 | Review | 单词/短语/句子结构化结果、源语言发音、多义项、上下文释义、专家/术语和主动取消 |
-| AT-M6 | Backlog | 集成、迁移、安全、双平台和发布加固 |
+| AT-M6 | Review | 组合回归、旧库连续升级/重启、安全审计、全文代表采样、Windows x64 打包/启动和发布文档 |
 
-除非用户明确改变顺序，下一步从 AT-M6 开始。
+除非用户明确改变顺序，下一步按
+`docs/ai/translation-advanced-verification.md` 完成人工验收。
 
 ## 4. M1：Provider 抽象
 
@@ -143,7 +142,9 @@ git diff --check
 
 已知边界：
 
-- 当前只分析文章文本的前 `48,000` 个字符，即 `8 × 6,000`。AT-M3 Review 时应确认这是否满足“全文理解”；如需覆盖超长文章，可在不放大请求上限的前提下改为全篇代表性采样或分层摘要。
+- 当前最多分析 `8 × 6,000` 个字符。超过 48,000 字符时使用覆盖开头、
+  中间区域和结尾的确定性全文代表采样，不再只截取文章开头；缓存版本为
+  `translation-context-v2`。
 - 上下文总超时为 45 秒，覆盖所有 chunk 和 merge。
 - 智能上下文会增加模型调用次数，设置页已明确提示。
 
@@ -288,8 +289,8 @@ npm run typecheck
   通过
 
 npm test
-  88 test files passed
-  658 tests passed
+  89 test files passed
+  662 tests passed
 
 npm run lint
   0 errors
@@ -332,7 +333,7 @@ git diff --check
 
 ## 11. 尚未完成的人工验证
 
-AT-M3～AT-M5 仍为 `Review`，需要人类完成：
+AT-M3～AT-M6 仍为 `Review`，需要人类完成：
 
 - Windows 11 设置页实际交互
 - 原生 Wayland 设置页实际交互
@@ -340,7 +341,7 @@ AT-M3～AT-M5 仍为 `Review`，需要人类完成：
 - 选择内置专家后的真实翻译质量
 - 智能上下文的成本和等待状态是否清晰
 - 使用真实 OpenAI/Anthropic/DeepSeek/Gemini/OpenRouter 的按需测试
-- 超长文章的 48,000 字符边界是否可接受
+- 超长文章固定 48,000 字符代表采样的质量是否可接受
 - Windows 11 与原生 Wayland 的 34 库列表、逐库开关和重启恢复
 - 用户 CSV preview、替换、删除及格式帮助页实际交互
 - `zh-TW` 参考条目用于 `zh-HK` 时的香港用语质量
@@ -362,7 +363,10 @@ Electron Forge 打包情况：
 依赖情况：
 
 - M3 新增 runtime dependency：`yaml@2.9.0`。
-- 安装时 npm 报告 31 个依赖漏洞（3 low、1 moderate、26 high、1 critical）；本次未运行自动修复，因为依赖升级不在 M3 范围，且可能影响 Electron 构建。后续应单独审计。
+- `npm audit --omit=dev` 报告生产依赖 0 漏洞。
+- 完整 `npm audit` 仍报告 31 个仅开发/构建工具链告警（3 low、1 moderate、
+  26 high、1 critical）；未运行自动修复，因为建议修复会降级或跨 major
+  改动 Electron Forge/Vite，需独立升级验证。
 
 ## 12. 已完成：AT-M4 多术语库
 
@@ -495,7 +499,18 @@ Shale,,
 - 不要自动执行 `npm audit fix`。
 - 不要覆盖当前混合 staged/unstaged 工作树。
 
-## 15. 完成 M4 时的交付格式
+## 15. AT-M6 收尾记录
+
+- 新增旧 Schema 011 → 012～015 连续升级、外键/身份保留、Interrupted
+  恢复与二次启动幂等测试。
+- 新增 Translation 诊断日志敏感信息哨兵。
+- 超长文章上下文改为相同预算下的全篇代表采样。
+- Windows x64 `ensure:native`、Forge package、打包后进程启动和术语资源
+  SHA-256 一致性已验证。
+- 自动化与人工验证状态统一记录在
+  `docs/ai/translation-advanced-verification.md`。
+
+## 16. 最终交付格式
 
 最终汇报至少包含：
 
