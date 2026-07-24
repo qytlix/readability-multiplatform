@@ -191,7 +191,7 @@ describe('AnnotatedArticle', () => {
       .toMatch(/^2026\/7\/24 \d{2}:\d{2}:\d{2}$/);
   });
 
-  it('saves an edited note when the user clicks outside the sticky note', async () => {
+  it('opens and saves a note outside annotation mode', async () => {
     const fixture = setup([baseAnnotation]);
     await act(async () => {
       root?.render(createElement(AnnotatedArticle, {
@@ -203,14 +203,10 @@ describe('AnnotatedArticle', () => {
       await Promise.resolve();
     });
 
-    const modeButton = fixture.toolbar.querySelector<HTMLButtonElement>(
-      '[aria-label="开启批注模式"]',
-    );
-    if (!modeButton || !dom) {
+    if (!dom) {
       throw new Error('Persisted annotation controls did not render.');
     }
     const activeDom = dom;
-    await act(async () => modeButton.click());
     const mark = fixture.mount.querySelector<HTMLElement>(
       'mark[data-annotation-id="1"]',
     );

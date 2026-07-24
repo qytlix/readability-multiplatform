@@ -6,7 +6,7 @@ The Reader supports local, per-article text annotations:
 
 - choose one of four highlighter colors from the Reader toolbar;
 - select rendered article text to create a persistent highlight;
-- right-click highlighted text while annotation mode is active to edit its note;
+- right-click any highlighted text to edit its note, even outside annotation mode;
 - click outside the note to save and close it;
 - hover a highlight with a non-empty note to preview the note;
 - delete the annotation from the note, removing both its highlight and note.

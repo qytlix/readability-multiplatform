@@ -232,7 +232,6 @@ export const AnnotatedArticle = ({
   };
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>): void => {
-    if (!annotationMode) return;
     const annotation = findAnnotationFromTarget(event.target, annotations);
     const mark = closestAnnotationMark(event.target);
     if (!annotation || !mark) return;
