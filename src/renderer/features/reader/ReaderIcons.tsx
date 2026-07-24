@@ -60,6 +60,14 @@ export const TranslateIcon = () => (
   </Icon>
 );
 
+export const HighlighterIcon = () => (
+  <Icon size={19}>
+    <path d="m7 15 7.8-7.8 3 3L10 18H7z" />
+    <path d="m13.8 8.2 2-2a1.4 1.4 0 0 1 2 0l1 1a1.4 1.4 0 0 1 0 2l-2 2" />
+    <path d="M4 20h12" />
+  </Icon>
+);
+
 export const InboxIcon = () => (
   <Icon>
     <path d="M4 5h16v14H4zM4 14h5l1.5 2h3L15 14h5" />

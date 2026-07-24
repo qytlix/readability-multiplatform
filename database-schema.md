@@ -66,6 +66,7 @@
 - `entry` N : 1 `feed`
 - `entry` 1 : 1 `content`（文章正文）
 - `entry` 1 : N `content_html_cache`（渲染缓存，每种主题一条）
+- `entry` 1 : N `entry_annotation`（任意文本范围的高亮批注，当前已实现）
 - `entry` 1 : 1 `entry_note`（全文笔记）
 - `entry` 1 : N `entry_note_anchor`（段锚定笔记）
 - `entry` M : N `tag`（通过 `entry_tag`）
@@ -110,6 +111,31 @@
 | `updatedAt` | DATETIME | NOT NULL | 更新时间 |
 
 **主键：** `(themeId, entryId)`
+
+---
+
+### entry_annotation — 文本范围高亮批注（一对多，当前实现）
+
+用户在清洗后的 Reader 正文中选择任意文本范围并添加高亮与可选便签。
+批注独立于 `entry_content` 保存，不把 `<mark>` 写回清洗 HTML。
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | INTEGER | PK, 自增 | 批注身份 |
+| `entryId` | INTEGER | NOT NULL → entry(id) CASCADE | 所属文章 |
+| `startOffset` / `endOffset` | INTEGER | NOT NULL | 基于 Reader `textContent` 的 UTF-16 半开区间 |
+| `selectedText` | TEXT | NOT NULL | 创建批注时的精确选中文本 |
+| `prefixText` / `suffixText` | TEXT | NOT NULL | 锚点前后文，用于正文偏移变化后的恢复 |
+| `color` | TEXT | NOT NULL | `yellow` / `green` / `blue` / `pink` |
+| `noteText` | TEXT | NOT NULL | 便签纯文本，可为空 |
+| `createdAt` / `updatedAt` | TEXT | NOT NULL | 创建与最近更新时间 |
+
+**唯一约束：** `(entryId, startOffset, endOffset)`
+
+**索引：** `idx_entry_annotation_entry` — `(entryId, startOffset, endOffset)`
+
+当前实现不允许范围重叠。删除批注时，高亮与便签作为一个实体同时删除。
+详细锚点恢复与验证方式见 `docs/annotations.md`。
 
 ---
 

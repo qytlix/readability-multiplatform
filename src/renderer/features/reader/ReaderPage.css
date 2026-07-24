@@ -30,6 +30,12 @@
   --reader-example: #1d221d;
   --reader-overlay: rgba(5, 7, 5, 0.74);
   --reader-shadow: rgba(0, 0, 0, 0.35);
+  --annotation-yellow: rgba(244, 211, 94, 0.58);
+  --annotation-green: rgba(126, 211, 145, 0.5);
+  --annotation-blue: rgba(105, 181, 235, 0.5);
+  --annotation-pink: rgba(236, 132, 171, 0.5);
+  --annotation-note: #f4eab2;
+  --annotation-note-text: #332f20;
 }
 
 .reader-page {
@@ -1299,6 +1305,146 @@ body.workspace-is-resizing * {
   opacity: 0.35;
 }
 
+.annotation-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: 5px;
+  padding-left: 5px;
+  border-left: 1px solid var(--reader-line);
+}
+
+.annotation-tool-trigger {
+  position: relative;
+}
+
+.annotation-tool-trigger::after {
+  display: none;
+}
+
+.annotation-tool-button {
+  position: relative;
+}
+
+.annotation-tool-button.is-active {
+  border-color: color-mix(in srgb, var(--reader-accent) 50%, transparent);
+  color: var(--reader-text);
+  background: var(--reader-panel-raised);
+  box-shadow: 0 8px 24px var(--reader-shadow);
+}
+
+.annotation-active-color {
+  position: absolute;
+  right: 5px;
+  bottom: 4px;
+  width: 13px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.annotation-color-palette {
+  position: absolute;
+  z-index: 120;
+  top: calc(100% + 9px);
+  right: -8px;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--reader-line);
+  border-radius: 10px;
+  background: var(--reader-menu);
+  box-shadow: 0 12px 34px var(--reader-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.annotation-tool-trigger:hover .annotation-color-palette,
+.annotation-tool-trigger:focus-within .annotation-color-palette {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.annotation-color-palette button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.annotation-color-palette button:hover,
+.annotation-color-palette button.is-selected {
+  border-color: var(--reader-text-muted);
+  background: var(--reader-hover);
+}
+
+.annotation-color-palette button span {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.annotation-color-palette [data-annotation-color="yellow"] {
+  color: var(--annotation-yellow);
+}
+
+.annotation-color-palette [data-annotation-color="yellow"] span {
+  background-color: var(--annotation-yellow);
+}
+
+.annotation-active-color[data-annotation-color="yellow"],
+.annotation-highlight[data-annotation-color="yellow"] {
+  background-color: var(--annotation-yellow);
+}
+
+.annotation-color-palette [data-annotation-color="green"] {
+  color: var(--annotation-green);
+}
+
+.annotation-color-palette [data-annotation-color="green"] span {
+  background-color: var(--annotation-green);
+}
+
+.annotation-active-color[data-annotation-color="green"],
+.annotation-highlight[data-annotation-color="green"] {
+  background-color: var(--annotation-green);
+}
+
+.annotation-color-palette [data-annotation-color="blue"] {
+  color: var(--annotation-blue);
+}
+
+.annotation-color-palette [data-annotation-color="blue"] span {
+  background-color: var(--annotation-blue);
+}
+
+.annotation-active-color[data-annotation-color="blue"],
+.annotation-highlight[data-annotation-color="blue"] {
+  background-color: var(--annotation-blue);
+}
+
+.annotation-color-palette [data-annotation-color="pink"] {
+  color: var(--annotation-pink);
+}
+
+.annotation-color-palette [data-annotation-color="pink"] span {
+  background-color: var(--annotation-pink);
+}
+
+.annotation-active-color[data-annotation-color="pink"],
+.annotation-highlight[data-annotation-color="pink"] {
+  background-color: var(--annotation-pink);
+}
+
 .entry-detail-meta {
   display: flex;
   margin-top: 24px;
@@ -1394,6 +1540,129 @@ body.workspace-is-resizing * {
   font-size: 18px;
   line-height: 1.85;
   overflow-wrap: anywhere;
+}
+
+.entry-detail-html.is-annotating {
+  cursor: text;
+}
+
+.annotation-highlight {
+  margin: 0 -0.04em;
+  padding: 0.05em 0.04em;
+  border-radius: 0.18em;
+  color: inherit;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  cursor: pointer;
+  transition: filter 130ms ease, box-shadow 130ms ease;
+}
+
+.entry-detail-html.is-annotating .annotation-highlight {
+  cursor: context-menu;
+}
+
+.annotation-highlight:hover,
+.annotation-highlight:focus-visible {
+  filter: saturate(1.12) brightness(1.08);
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 28%, transparent);
+  outline: none;
+}
+
+.annotation-note {
+  position: fixed;
+  z-index: 170;
+  display: grid;
+  min-height: 112px;
+  max-height: min(340px, calc(100vh - 24px));
+  padding: 14px;
+  border: 1px solid rgba(85, 75, 34, 0.2);
+  border-radius: 5px 5px 12px 5px;
+  color: var(--annotation-note-text);
+  background:
+    linear-gradient(
+      135deg,
+      transparent 0 12px,
+      rgba(255, 255, 255, 0.18) 12px 13px,
+      transparent 13px
+    ),
+    var(--annotation-note);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28);
+  transform: rotate(-0.35deg);
+}
+
+.annotation-note p {
+  margin: 0;
+  overflow-y: auto;
+  font-family: "Segoe UI", "Noto Sans SC", sans-serif;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.annotation-note textarea {
+  width: 100%;
+  min-height: 126px;
+  padding: 0;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  background: transparent;
+  font: 13px/1.55 "Segoe UI", "Noto Sans SC", sans-serif;
+}
+
+.annotation-note textarea::placeholder {
+  color: rgba(51, 47, 32, 0.52);
+}
+
+.annotation-note footer {
+  display: flex;
+  min-height: 28px;
+  margin-top: 10px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(85, 75, 34, 0.14);
+}
+
+.annotation-note footer span {
+  color: rgba(51, 47, 32, 0.58);
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.annotation-note footer button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  place-items: center;
+  border-radius: 7px;
+  color: rgba(88, 55, 39, 0.72);
+  background: transparent;
+  cursor: pointer;
+}
+
+.annotation-note footer button:hover {
+  color: #853d34;
+  background: rgba(133, 61, 52, 0.1);
+}
+
+.annotation-feedback {
+  position: fixed;
+  z-index: 180;
+  right: 22px;
+  bottom: 22px;
+  max-width: min(360px, calc(100vw - 44px));
+  padding: 9px 13px;
+  border: 1px solid var(--reader-line);
+  border-radius: 9px;
+  color: var(--reader-text);
+  background: var(--reader-menu);
+  box-shadow: 0 12px 34px var(--reader-shadow);
+  font-size: 11px;
 }
 
 .entry-detail-html > :first-child {
@@ -2332,6 +2601,12 @@ body.workspace-is-resizing * {
   --reader-example: #e8e3d6;
   --reader-overlay: rgba(50, 58, 54, 0.36);
   --reader-shadow: rgba(48, 55, 51, 0.16);
+  --annotation-yellow: rgba(235, 195, 45, 0.48);
+  --annotation-green: rgba(78, 177, 103, 0.4);
+  --annotation-blue: rgba(60, 147, 208, 0.38);
+  --annotation-pink: rgba(214, 92, 142, 0.38);
+  --annotation-note: #f8edb6;
+  --annotation-note-text: #342f1f;
 }
 
 .reader-page[data-theme="light"] .entry-detail-ai-actions button.is-active {

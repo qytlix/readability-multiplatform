@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
+  HighlighterIcon,
   ReadIcon,
   TranslateIcon,
 } from '../../../src/renderer/features/reader/ReaderIcons';
@@ -25,5 +26,13 @@ describe('reader toolbar icons', () => {
     expect(markup).toContain('height="19"');
     expect(markup).toContain('<circle cx="12" cy="12" r="8.25"');
     expect(markup).toContain('d="m8.2 12.1 2.5 2.5 5.2-5.4"');
+  });
+
+  it('renders the annotation action as a highlighter nib', () => {
+    const markup = renderToStaticMarkup(createElement(HighlighterIcon));
+
+    expect(markup).toContain('width="19"');
+    expect(markup).toContain('d="m7 15 7.8-7.8 3 3L10 18H7z"');
+    expect(markup).toContain('d="M4 20h12"');
   });
 });

@@ -10,6 +10,7 @@ import { MIGRATION_008 } from '../migrations/008_create_translation';
 import { MIGRATION_009 } from '../migrations/009_enhance_translation';
 import { MIGRATION_010 as MIGRATION_010_READING_PROGRESS } from '../migrations/010_add_entry_reading_progress';
 import { MIGRATION_010_SQL, runMigration010 } from '../migrations/010_create_dedup_key';
+import { MIGRATION_011 } from '../migrations/011_create_entry_annotations';
 
 interface Migration {
   id: string;
@@ -34,6 +35,7 @@ const MIGRATIONS: Migration[] = [
     sql: MIGRATION_010_READING_PROGRESS,
   },
   { id: '010_create_dedup_key', sql: MIGRATION_010_SQL, run: runMigration010 },
+  { id: '011_create_entry_annotations', sql: MIGRATION_011 },
 ];
 
 export class DatabaseManager {

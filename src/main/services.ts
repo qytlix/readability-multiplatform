@@ -29,6 +29,8 @@ import {
   EmptyTerminologyLookup,
   TerminologyStore,
 } from './ai/stores/TerminologyStore';
+import { AnnotationStore } from './annotations/AnnotationStore';
+import { AnnotationService } from './annotations/AnnotationService';
 
 // ── Service Interfaces ──────────────────────────────────
 
@@ -54,11 +56,16 @@ export interface TranslationServices {
   inlineTranslationService: InlineTranslationService;
 }
 
+export interface AnnotationServices {
+  annotationService: AnnotationService;
+}
+
 // ── Module-level Singletons ─────────────────────────────
 
 let feedServicesSingleton: FeedServices | null = null;
 let summaryServicesSingleton: SummaryServices | null = null;
 let translationServicesSingleton: TranslationServices | null = null;
+let annotationServicesSingleton: AnnotationServices | null = null;
 
 /** Returns the feed services singleton (null before initializeServices). */
 export function getFeedServices(): FeedServices | null {
@@ -73,6 +80,10 @@ export function getSummaryServices(): SummaryServices | null {
 /** Returns the Translation services singleton (null before initializeServices). */
 export function getTranslationServices(): TranslationServices | null {
   return translationServicesSingleton;
+}
+
+export function getAnnotationServices(): AnnotationServices | null {
+  return annotationServicesSingleton;
 }
 
 /** Returns the feed sync scheduler for application lifecycle cleanup. */
@@ -130,6 +141,7 @@ export function initializeServices(
   const providerProfileStore = new ProviderProfileStore(dbManager.getDb());
   const summaryStore = new SummaryStore(dbManager.getDb());
   const translationStore = new TranslationStore(dbManager.getDb());
+  const annotationStore = new AnnotationStore(dbManager.getDb());
   translationStore.reconcileInterruptedRuns();
   const secretStore = new SecretStore(
     secretStoragePath ?? path.join(path.dirname(dbPath ?? '.'), 'ai-secrets.json'),
@@ -169,6 +181,7 @@ export function initializeServices(
     provider,
     terminologyLookup,
   );
+  const annotationService = new AnnotationService(annotationStore, entryStore);
 
   feedServicesSingleton = {
     feedService,
@@ -183,5 +196,6 @@ export function initializeServices(
   };
   summaryServicesSingleton = { providerService, summaryService };
   translationServicesSingleton = { translationService, inlineTranslationService };
+  annotationServicesSingleton = { annotationService };
   return feedServicesSingleton;
 }
