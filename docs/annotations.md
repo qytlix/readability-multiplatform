@@ -11,6 +11,11 @@ The Reader supports local, per-article text annotations:
 - hover a highlight with a non-empty note to preview the note;
 - delete the annotation from the note, removing both its highlight and note.
 
+The note is vertically anchored to its highlight and is placed in the Reader
+margin beside the article whenever space allows. Its header shows the
+annotation's latest local update date and time. On narrow windows it falls back
+to the opposite margin or the viewport edge so the note remains usable.
+
 The first version applies only to cleaned Reader HTML. Raw Markdown, embedded
 video views, translated output, exports, synchronization, and overlapping
 highlights are outside this scope.

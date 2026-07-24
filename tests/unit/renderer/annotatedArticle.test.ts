@@ -164,8 +164,13 @@ describe('AnnotatedArticle', () => {
     );
     if (!mark || !dom) throw new Error('Persisted highlight did not render.');
     const activeDom = dom;
+    const article = fixture.mount.querySelector<HTMLElement>('.entry-detail-html');
+    if (!article) throw new Error('Annotated article did not render.');
     Object.defineProperty(mark, 'getBoundingClientRect', {
-      value: () => new activeDom.window.DOMRect(24, 30, 60, 18),
+      value: () => new activeDom.window.DOMRect(220, 180, 60, 18),
+    });
+    Object.defineProperty(article, 'getBoundingClientRect', {
+      value: () => new activeDom.window.DOMRect(100, 60, 500, 600),
     });
     await act(async () => {
       mark.dispatchEvent(new activeDom.window.MouseEvent('mouseover', {
@@ -173,8 +178,17 @@ describe('AnnotatedArticle', () => {
       }));
     });
 
-    expect(fixture.mount.querySelector('.annotation-note.is-preview')?.textContent)
-      .toContain('Remember this.');
+    const note = fixture.mount.querySelector<HTMLElement>(
+      '.annotation-note.is-preview',
+    );
+    expect(note?.textContent).toContain('Remember this.');
+    expect(note?.style.left).toBe('618px');
+    expect(note?.style.top).toBe('176px');
+    const timestamp = note?.querySelector('time');
+    expect(timestamp?.getAttribute('datetime'))
+      .toBe('2026-07-24T00:00:00.000Z');
+    expect(timestamp?.textContent)
+      .toMatch(/^2026\/7\/24 \d{2}:\d{2}:\d{2}$/);
   });
 
   it('saves an edited note when the user clicks outside the sticky note', async () => {

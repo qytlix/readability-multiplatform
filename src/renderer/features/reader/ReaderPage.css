@@ -35,6 +35,7 @@
   --annotation-blue: rgba(105, 181, 235, 0.5);
   --annotation-pink: rgba(236, 132, 171, 0.5);
   --annotation-note: #f4eab2;
+  --annotation-note-body: #fffdf3;
   --annotation-note-text: #332f20;
 }
 
@@ -1572,27 +1573,54 @@ body.workspace-is-resizing * {
   position: fixed;
   z-index: 170;
   display: grid;
-  min-height: 112px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 164px;
   max-height: min(340px, calc(100vh - 24px));
-  padding: 14px;
-  border: 1px solid rgba(85, 75, 34, 0.2);
-  border-radius: 5px 5px 12px 5px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(115, 96, 22, 0.42);
+  border-radius: 6px;
   color: var(--annotation-note-text);
-  background:
-    linear-gradient(
-      135deg,
-      transparent 0 12px,
-      rgba(255, 255, 255, 0.18) 12px 13px,
-      transparent 13px
-    ),
-    var(--annotation-note);
+  background: var(--annotation-note);
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28);
-  transform: rotate(-0.35deg);
+}
+
+.annotation-note.is-edit {
+  min-height: 250px;
+}
+
+.annotation-note-header {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px 7px;
+  border-bottom: 1px solid rgba(115, 96, 22, 0.32);
+  background: var(--annotation-note);
+  font: 11px/1.2 "Segoe UI", "Noto Sans SC", sans-serif;
+}
+
+.annotation-note-header strong {
+  font-size: 12px;
+}
+
+.annotation-note-header time {
+  overflow: hidden;
+  color: rgba(51, 47, 32, 0.72);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.annotation-note-body {
+  min-height: 0;
+  padding: 10px;
+  overflow: auto;
+  background: var(--annotation-note-body);
 }
 
 .annotation-note p {
   margin: 0;
-  overflow-y: auto;
   font-family: "Segoe UI", "Noto Sans SC", sans-serif;
   font-size: 13px;
   line-height: 1.55;
@@ -1601,7 +1629,8 @@ body.workspace-is-resizing * {
 
 .annotation-note textarea {
   width: 100%;
-  min-height: 126px;
+  height: 100%;
+  min-height: 146px;
   padding: 0;
   resize: vertical;
   border: 0;
@@ -1618,12 +1647,13 @@ body.workspace-is-resizing * {
 .annotation-note footer {
   display: flex;
   min-height: 28px;
-  margin-top: 10px;
-  align-items: flex-end;
+  margin: 0;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(85, 75, 34, 0.14);
+  padding: 6px 8px;
+  border-top: 1px solid rgba(115, 96, 22, 0.3);
+  background: var(--annotation-note);
 }
 
 .annotation-note footer span {
@@ -2606,6 +2636,7 @@ body.workspace-is-resizing * {
   --annotation-blue: rgba(60, 147, 208, 0.38);
   --annotation-pink: rgba(214, 92, 142, 0.38);
   --annotation-note: #f8edb6;
+  --annotation-note-body: #fffef7;
   --annotation-note-text: #342f1f;
 }
 

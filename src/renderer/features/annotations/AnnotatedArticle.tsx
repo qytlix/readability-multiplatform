@@ -215,23 +215,29 @@ export const AnnotatedArticle = ({
 
   const openEditor = (
     annotation: EntryAnnotation,
-    clientX: number,
-    clientY: number,
+    mark: HTMLElement,
   ): void => {
+    const article = articleRef.current;
+    if (!article) return;
     setNoteDraft(annotation.noteText);
     setPopover({
       annotationId: annotation.id,
       mode: 'edit',
-      position: getNotePosition(clientX, clientY),
+      position: getNotePosition(
+        mark.getBoundingClientRect(),
+        article.getBoundingClientRect(),
+        'edit',
+      ),
     });
   };
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>): void => {
     if (!annotationMode) return;
     const annotation = findAnnotationFromTarget(event.target, annotations);
-    if (!annotation) return;
+    const mark = closestAnnotationMark(event.target);
+    if (!annotation || !mark) return;
     event.preventDefault();
-    openEditor(annotation, event.clientX, event.clientY);
+    openEditor(annotation, mark);
   };
 
   const handleMouseOver = (event: MouseEvent<HTMLDivElement>): void => {
@@ -249,11 +255,16 @@ export const AnnotatedArticle = ({
     if (hoverCloseTimerRef.current !== null) {
       clearTimeout(hoverCloseTimerRef.current);
     }
-    const rect = mark.getBoundingClientRect();
+    const article = articleRef.current;
+    if (!article) return;
     setPopover({
       annotationId: annotation.id,
       mode: 'preview',
-      position: getNotePosition(rect.left, rect.bottom + 8),
+      position: getNotePosition(
+        mark.getBoundingClientRect(),
+        article.getBoundingClientRect(),
+        'preview',
+      ),
     });
   };
 
@@ -369,18 +380,26 @@ export const AnnotatedArticle = ({
           }}
           onMouseLeave={schedulePreviewClose}
         >
-          {popover.mode === 'edit' ? (
-            <textarea
-              autoFocus
-              value={noteDraft}
-              maxLength={20_000}
-              placeholder="写下你的想法…"
-              aria-label="批注内容"
-              onChange={(event) => setNoteDraft(event.target.value)}
-            />
-          ) : (
-            <p>{activeAnnotation.noteText}</p>
-          )}
+          <header className="annotation-note-header">
+            <strong>批注</strong>
+            <time dateTime={activeAnnotation.updatedAt}>
+              {formatAnnotationTimestamp(activeAnnotation.updatedAt)}
+            </time>
+          </header>
+          <div className="annotation-note-body">
+            {popover.mode === 'edit' ? (
+              <textarea
+                autoFocus
+                value={noteDraft}
+                maxLength={20_000}
+                placeholder="写下你的想法…"
+                aria-label="批注内容"
+                onChange={(event) => setNoteDraft(event.target.value)}
+              />
+            ) : (
+              <p>{activeAnnotation.noteText}</p>
+            )}
+          </div>
           <footer>
             {popover.mode === 'edit' && (
               <span>点击便签外任意位置自动保存</span>
@@ -418,12 +437,40 @@ function findAnnotationFromTarget(
     : undefined;
 }
 
-function getNotePosition(clientX: number, clientY: number): CSSProperties {
-  const width = Math.min(300, window.innerWidth - 24);
-  const left = Math.max(12, Math.min(clientX, window.innerWidth - width - 12));
-  const estimatedHeight = 210;
-  const top = clientY + estimatedHeight > window.innerHeight - 12
-    ? Math.max(12, clientY - estimatedHeight - 12)
-    : Math.max(12, clientY);
+function getNotePosition(
+  highlightRect: DOMRect,
+  articleRect: DOMRect,
+  mode: 'preview' | 'edit',
+): CSSProperties {
+  const viewportPadding = 12;
+  const articleGap = 18;
+  const width = Math.min(320, Math.max(220, window.innerWidth - 24));
+  const rightOfArticle = articleRect.right + articleGap;
+  const leftOfArticle = articleRect.left - width - articleGap;
+  const viewportRight = window.innerWidth - viewportPadding;
+  const left = rightOfArticle + width <= viewportRight
+    ? rightOfArticle
+    : leftOfArticle >= viewportPadding
+      ? leftOfArticle
+      : Math.max(viewportPadding, viewportRight - width);
+  const estimatedHeight = mode === 'edit' ? 270 : 180;
+  const maximumTop = Math.max(
+    viewportPadding,
+    window.innerHeight - estimatedHeight - viewportPadding,
+  );
+  const top = Math.min(
+    maximumTop,
+    Math.max(viewportPadding, highlightRect.top - 4),
+  );
   return { left, top, width };
+}
+
+function formatAnnotationTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp;
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return [
+    `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`,
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
+  ].join(' ');
 }
