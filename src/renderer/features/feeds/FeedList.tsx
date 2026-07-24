@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type RefObject,
@@ -77,9 +78,15 @@ export const FeedList = ({
   const [showOPMLDialog, setShowOPMLDialog] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [syncProgress, setSyncProgress] = useState<Record<number, string>>({});
+  const [syncingFeedIds, setSyncingFeedIds] = useState<Set<number>>(() => new Set());
   const mountedRef = useRef(true);
   const syncInFlightRef = useRef(false);
+  const singleSyncInFlightRef = useRef<Set<number>>(new Set());
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unreadCountsByFeed = useMemo(
+    () => new Map(entryStats.feeds.map(({ feedId, unread }) => [feedId, unread])),
+    [entryStats.feeds],
+  );
 
   const clearSuccessTimer = useCallback(() => {
     if (successTimerRef.current !== null) {
@@ -147,8 +154,23 @@ export const FeedList = ({
   }, [clearSuccessTimer, onRefresh]);
 
   const handleSingleSync = useCallback(async (feedId: number) => {
-    const result = await window.shaleAPI.feed.sync(feedId);
-    if (result.ok) await onLocalRefresh();
+    if (singleSyncInFlightRef.current.has(feedId)) return;
+    singleSyncInFlightRef.current.add(feedId);
+    setSyncingFeedIds((current) => new Set(current).add(feedId));
+
+    try {
+      const result = await window.shaleAPI.feed.sync(feedId);
+      if (result.ok) await onLocalRefresh();
+    } finally {
+      singleSyncInFlightRef.current.delete(feedId);
+      if (mountedRef.current) {
+        setSyncingFeedIds((current) => {
+          const next = new Set(current);
+          next.delete(feedId);
+          return next;
+        });
+      }
+    }
   }, [onLocalRefresh]);
 
   const handleEdit = useCallback(async (
@@ -303,6 +325,12 @@ export const FeedList = ({
           {feeds.map((feed) => {
             const feedName = feed.title ?? feed.feedURL;
             const progress = syncProgress[feed.id];
+            const unreadCount = unreadCountsByFeed.get(feed.id) ?? 0;
+            const isSingleSyncing = syncingFeedIds.has(feed.id);
+            const hasVisibleProgress = progress === 'fetching'
+              || progress === 'parsing'
+              || progress === 'saving'
+              || progress === 'done';
             return (
               <div className="sidebar-feed-row" key={feed.id}>
                 <button
@@ -317,20 +345,25 @@ export const FeedList = ({
                   }}
                 >
                   <span className="sidebar-feed-name" title={feedName}>{feedName}</span>
-                  {(progress === 'fetching'
-                    || progress === 'parsing'
-                    || progress === 'saving'
-                    || progress === 'done') && (
-                    <span className="sidebar-count">
-                      {progress === 'done' ? '✓' : <span className="mini-spinner" />}
-                    </span>
-                  )}
+                  <span
+                    className="sidebar-count sidebar-feed-unread-count"
+                    aria-label={hasVisibleProgress
+                      ? undefined
+                      : `${unreadCount} 篇未读文章`}
+                  >
+                    {hasVisibleProgress
+                      ? progress === 'done' ? '✓' : <span className="mini-spinner" />
+                      : unreadCount}
+                  </span>
                 </button>
                 <div className="sidebar-feed-actions">
                   <button
                     type="button"
+                    className={`sync-button${isSingleSyncing ? ' is-loading' : ''}`}
                     aria-label={`同步 ${feedName}`}
                     title="同步此订阅源"
+                    aria-busy={isSingleSyncing}
+                    disabled={isSingleSyncing}
                     onClick={() => void handleSingleSync(feed.id)}
                   >
                     <SyncIcon />

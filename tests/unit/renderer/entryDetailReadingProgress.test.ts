@@ -108,6 +108,7 @@ describe('EntryDetail reading-progress restoration', () => {
       await act(async () => {
         root.render(createElement(EntryDetail, {
           entry: selectedEntry,
+          aiViewState: { summaryVisible: false, translationVisible: false },
           feedLoadStatus: 'success',
           feedLoadError: '',
           feedCount: 1,
@@ -119,6 +120,7 @@ describe('EntryDetail reading-progress restoration', () => {
           onRetryEntries: vi.fn(),
           aiPreferences: DEFAULT_AI_PREFERENCES,
           aiToolbarTarget: null,
+          onAIViewStateChange: vi.fn(),
           onReadingProgressChange,
         }));
         await Promise.resolve();
@@ -153,6 +155,7 @@ describe('EntryDetail reading-progress restoration', () => {
       await act(async () => {
         root.render(createElement(EntryDetail, {
           entry,
+          aiViewState: { summaryVisible: false, translationVisible: false },
           feedLoadStatus: 'success',
           feedLoadError: '',
           feedCount: 1,
@@ -164,6 +167,7 @@ describe('EntryDetail reading-progress restoration', () => {
           onRetryEntries: vi.fn(),
           aiPreferences: DEFAULT_AI_PREFERENCES,
           aiToolbarTarget: null,
+          onAIViewStateChange: vi.fn(),
           onReadingProgressChange,
         }));
         await Promise.resolve();
@@ -221,6 +225,7 @@ describe('EntryDetail reading-progress restoration', () => {
     await act(async () => {
       root.render(createElement(EntryDetail, {
         entry,
+        aiViewState: { summaryVisible: false, translationVisible: false },
         feedLoadStatus: 'success',
         feedLoadError: '',
         feedCount: 1,
@@ -232,6 +237,7 @@ describe('EntryDetail reading-progress restoration', () => {
         onRetryEntries: vi.fn(),
         aiPreferences: DEFAULT_AI_PREFERENCES,
         aiToolbarTarget: null,
+        onAIViewStateChange: vi.fn(),
         onReadingProgressChange,
       }));
       await Promise.resolve();
@@ -249,5 +255,58 @@ describe('EntryDetail reading-progress restoration', () => {
     act(() => resizeCallbacks.forEach((notifyResize) => notifyResize()));
 
     expect(scrollContainer?.scrollTop).toBe(500);
+  });
+
+  it('renders only the player when cleaned article content contains a video', async () => {
+    const videoContent: CleanedContent = {
+      ...cleanedContent,
+      cleanedHtml: `
+        <h2>Cranky Geeks 1987</h2>
+        <img src="https://example.com/oversized-placeholder.png">
+        <video controls>
+          <source src="https://example.com/episode.mp4" type="video/mp4">
+        </video>
+        <p>0:00 / 7:35</p>
+        <a href="https://example.com/full">观看完整版视频</a>
+      `,
+      markdown: 'Cranky Geeks 1987\n\n0:00 / 7:35\n\n观看完整版视频',
+    };
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        content: {
+          get: vi.fn().mockResolvedValue({ ok: true, data: videoContent }),
+          fetchAndClean: vi.fn(),
+        },
+      } as unknown as typeof window.shaleAPI,
+    });
+
+    await act(async () => {
+      root.render(createElement(EntryDetail, {
+        entry,
+        aiViewState: { summaryVisible: false, translationVisible: false },
+        feedLoadStatus: 'success',
+        feedLoadError: '',
+        feedCount: 1,
+        entryLoadStatus: 'success',
+        entryLoadError: '',
+        entryCount: 1,
+        onAddFeed: vi.fn(),
+        onRetryFeeds: vi.fn(),
+        onRetryEntries: vi.fn(),
+        aiPreferences: DEFAULT_AI_PREFERENCES,
+        aiToolbarTarget: null,
+        onAIViewStateChange: vi.fn(),
+        onReadingProgressChange: vi.fn().mockResolvedValue(undefined),
+      }));
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('.entry-detail-video-embed video')).not.toBeNull();
+    expect(container.querySelector('.btn-toggle-raw')).toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.textContent).not.toContain('Cranky Geeks 1987');
+    expect(container.textContent).not.toContain('0:00 / 7:35');
+    expect(container.textContent).not.toContain('观看完整版视频');
   });
 });

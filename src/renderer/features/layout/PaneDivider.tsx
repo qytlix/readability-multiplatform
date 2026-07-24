@@ -7,6 +7,9 @@ import type { ResizablePane } from './paneLayout';
 
 interface PaneDividerProps {
   pane: ResizablePane;
+  className?: string;
+  ariaLabel?: string;
+  canCollapse?: boolean;
   effectiveWidth: number;
   minimum: number;
   maximum: number;
@@ -31,6 +34,9 @@ const dividerLabels: Record<ResizablePane, string> = {
 export const PaneDivider = forwardRef<HTMLDivElement, PaneDividerProps>(function PaneDivider(
   {
     pane,
+    className: customClassName,
+    ariaLabel,
+    canCollapse = true,
     effectiveWidth,
     minimum,
     maximum,
@@ -47,6 +53,7 @@ export const PaneDivider = forwardRef<HTMLDivElement, PaneDividerProps>(function
 ) {
   const className = [
     'pane-divider',
+    customClassName,
     isDragging ? 'is-dragging' : '',
     isCollapseArmed ? 'is-collapse-armed' : '',
   ].filter(Boolean).join(' ');
@@ -57,11 +64,13 @@ export const PaneDivider = forwardRef<HTMLDivElement, PaneDividerProps>(function
       className={className}
       role="separator"
       aria-orientation="vertical"
-      aria-label={dividerLabels[pane]}
+      aria-label={ariaLabel ?? dividerLabels[pane]}
       aria-valuemin={minimum}
       aria-valuemax={maximum}
       aria-valuenow={Math.round(effectiveWidth)}
-      title={`${dividerLabels[pane]}. Press Enter to collapse.`}
+      title={canCollapse
+        ? `${ariaLabel ?? dividerLabels[pane]}. Press Enter to collapse.`
+        : ariaLabel ?? dividerLabels[pane]}
       tabIndex={0}
       onPointerDown={(event) => onPointerDown(pane, event)}
       onPointerMove={(event) => onPointerMove(pane, event)}
@@ -70,9 +79,11 @@ export const PaneDivider = forwardRef<HTMLDivElement, PaneDividerProps>(function
       onLostPointerCapture={(event) => onLostPointerCapture(pane, event)}
       onKeyDown={(event) => onKeyDown(pane, event)}
     >
-      <svg className="pane-divider-collapse-icon" viewBox="0 0 16 16" aria-hidden="true">
-        <path d="m9.5 3.5-4 4.5 4 4.5" />
-      </svg>
+      {canCollapse && (
+        <svg className="pane-divider-collapse-icon" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="m9.5 3.5-4 4.5 4 4.5" />
+        </svg>
+      )}
     </div>
   );
 });

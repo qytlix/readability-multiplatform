@@ -378,23 +378,25 @@ export class TranslationService {
     }));
 
     const inputs = batch.segments.map((segment) => this.buildSegmentInput(result, segment));
-    const prompt = buildTranslationBatchPrompt({
-      targetLanguage: result.targetLanguage,
-      articleTitle: result.segments.find((segment) => segment.sourceType === 'title')?.sourceText,
-      segments: inputs.map(({ segment, terminologyCandidates }) => ({
-        sourceSegmentId: segment.sourceSegmentId,
-        sourceHtml: segment.sourceHtml,
-        sourceType: segment.sourceType,
-        terminologyCandidates,
-      })),
-    });
+    const buildPrompt = (selectedInputs: SegmentTranslationInput[]): string =>
+      buildTranslationBatchPrompt({
+        targetLanguage: result.targetLanguage,
+        articleTitle: result.segments.find((segment) =>
+          segment.sourceType === 'title')?.sourceText,
+        segments: selectedInputs.map(({ segment, terminologyCandidates }) => ({
+          sourceSegmentId: segment.sourceSegmentId,
+          sourceHtml: segment.sourceHtml,
+          sourceType: segment.sourceType,
+          terminologyCandidates,
+        })),
+      });
     const requestStartedAt = Date.now();
     let responseHeadersAt: number | undefined;
     let firstDeltaAt: number | undefined;
     let lastDeltaAt: number | undefined;
     let outputCharacters = 0;
+    let providerRequestCount = 0;
     const completedIds = new Set<string>();
-    const parser = new TranslationBatchStreamParser();
 
     const persistOutputs = (outputs: TranslationBatchOutput[]): void => {
       outputs.forEach((output) => {
@@ -433,34 +435,51 @@ export class TranslationService {
       });
     };
 
-    for await (const delta of this.provider.stream({
-      baseUrl: providerConfig.baseUrl,
-      model: providerConfig.model,
-      apiKey: providerConfig.apiKey,
-      prompt,
-      signal: providerConfig.abortController.signal,
-      onTiming: (phase) => {
-        if (phase === 'response-headers') responseHeadersAt ??= Date.now();
-        if (phase === 'first-delta') firstDeltaAt ??= Date.now();
-      },
-    })) {
-      lastDeltaAt = Date.now();
-      outputCharacters += delta.length;
-      let completedOutputs: ReturnType<TranslationBatchStreamParser['append']>;
+    const streamPrompt = async (prompt: string): Promise<void> => {
+      const parser = new TranslationBatchStreamParser();
+      providerRequestCount += 1;
+      for await (const delta of this.provider.stream({
+        baseUrl: providerConfig.baseUrl,
+        model: providerConfig.model,
+        apiKey: providerConfig.apiKey,
+        prompt,
+        signal: providerConfig.abortController.signal,
+        onTiming: (phase) => {
+          if (phase === 'response-headers') responseHeadersAt ??= Date.now();
+          if (phase === 'first-delta') firstDeltaAt ??= Date.now();
+        },
+      })) {
+        lastDeltaAt = Date.now();
+        outputCharacters += delta.length;
+        let completedOutputs: ReturnType<TranslationBatchStreamParser['append']>;
+        try {
+          completedOutputs = parser.append(delta);
+        } catch {
+          throw invalidBatchOutput('The provider returned invalid Translation NDJSON.');
+        }
+        persistOutputs(completedOutputs);
+      }
+      let finalOutputs: TranslationBatchOutput[];
       try {
-        completedOutputs = parser.append(delta);
+        finalOutputs = parser.finish();
       } catch {
         throw invalidBatchOutput('The provider returned invalid Translation NDJSON.');
       }
-      persistOutputs(completedOutputs);
+      persistOutputs(finalOutputs);
+    };
+
+    await streamPrompt(buildPrompt(inputs));
+    const missingInputs = inputs.filter(({ segment }) =>
+      !completedIds.has(segment.sourceSegmentId));
+    if (missingInputs.length) {
+      console.warn('[translation:missing-segment-recovery]', JSON.stringify({
+        runId: result.id,
+        sourceSegmentIds: missingInputs.map(({ segment }) => segment.sourceSegmentId),
+      }));
+      for (const missingInput of missingInputs) {
+        await streamPrompt(buildPrompt([missingInput]));
+      }
     }
-    let finalOutputs: TranslationBatchOutput[];
-    try {
-      finalOutputs = parser.finish();
-    } catch {
-      throw invalidBatchOutput('The provider returned invalid Translation NDJSON.');
-    }
-    persistOutputs(finalOutputs);
     if (completedIds.size !== inputs.length) {
       throw invalidBatchOutput('The provider omitted a Translation segment.');
     }
@@ -475,6 +494,7 @@ export class TranslationService {
       lastDeltaMs: lastDeltaAt === undefined ? undefined : lastDeltaAt - requestStartedAt,
       persistedMs: persistedAt - requestStartedAt,
       persistenceMs: lastDeltaAt === undefined ? undefined : persistedAt - lastDeltaAt,
+      providerRequestCount,
       inputCharacters: inputs.reduce((total, input) => total + input.segment.sourceText.length, 0),
       outputCharacters,
     }));

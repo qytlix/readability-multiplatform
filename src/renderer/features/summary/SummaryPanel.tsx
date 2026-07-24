@@ -17,6 +17,7 @@ import type {
 interface SummaryPanelProps {
   entryId: number;
   isContentReady: boolean;
+  isVisible: boolean;
   targetLanguage: SummaryTargetLanguage;
   detailLevel: SummaryDetailLevel;
   onGeneratingChange: (isGenerating: boolean) => void;
@@ -30,6 +31,7 @@ export interface SummaryPanelHandle {
 export const SummaryPanel = forwardRef<SummaryPanelHandle, SummaryPanelProps>(({
   entryId,
   isContentReady,
+  isVisible,
   targetLanguage,
   detailLevel,
   onGeneratingChange,
@@ -39,7 +41,6 @@ export const SummaryPanel = forwardRef<SummaryPanelHandle, SummaryPanelProps>(({
   const [profile, setProfile] = useState<ProviderProfile | null>(null);
   const [streamedText, setStreamedText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
   const [message, setMessage] = useState('');
   const activeRunIdRef = useRef<number | null>(null);
 
@@ -79,7 +80,6 @@ export const SummaryPanel = forwardRef<SummaryPanelHandle, SummaryPanelProps>(({
     activeRunIdRef.current = null;
     setStreamedText('');
     setIsGenerating(false);
-    setIsVisible(false);
     void loadState();
   }, [loadState]);
 
@@ -116,13 +116,14 @@ export const SummaryPanel = forwardRef<SummaryPanelHandle, SummaryPanelProps>(({
 
   const generate = useCallback(async (): Promise<void> => {
     if (!profile || !profile.hasApiKey) {
-      setIsVisible(true);
+      onVisibleChange(true);
       setMessage('Configure an AI provider in Settings before generating a Summary.');
       return;
     }
-    setIsVisible(true);
+    onVisibleChange(true);
     setMessage('');
     setStreamedText('');
+    setIsGenerating(true);
     try {
       const result = await window.shaleAPI.summary.generate({
         entryId,
@@ -130,40 +131,43 @@ export const SummaryPanel = forwardRef<SummaryPanelHandle, SummaryPanelProps>(({
         detailLevel,
       });
       if (!result.ok) {
+        setIsGenerating(false);
         setMessage(result.error.message);
         return;
       }
       activeRunIdRef.current = result.data.runId;
       if (result.data.reused) {
         await loadState();
-      } else {
-        setIsGenerating(true);
       }
     } catch {
+      setIsGenerating(false);
       setMessage('Unable to start Summary generation.');
     }
-  }, [detailLevel, entryId, loadState, profile, targetLanguage]);
+  }, [
+    detailLevel,
+    entryId,
+    loadState,
+    onVisibleChange,
+    profile,
+    targetLanguage,
+  ]);
 
   const hasFreshSummary = summaryState.state === 'succeeded'
     && summaryState.freshness === 'fresh';
 
   const activate = useCallback((): void => {
     if (hasFreshSummary) {
-      setIsVisible((current) => !current);
+      onVisibleChange(!isVisible);
       return;
     }
     void generate();
-  }, [generate, hasFreshSummary]);
+  }, [generate, hasFreshSummary, isVisible, onVisibleChange]);
 
   useImperativeHandle(ref, () => ({ activate }), [activate]);
 
   useEffect(() => {
     onGeneratingChange(isGenerating);
   }, [isGenerating, onGeneratingChange]);
-
-  useEffect(() => {
-    onVisibleChange(isVisible);
-  }, [isVisible, onVisibleChange]);
 
   const summaryText = isGenerating
     ? streamedText
@@ -173,8 +177,14 @@ export const SummaryPanel = forwardRef<SummaryPanelHandle, SummaryPanelProps>(({
 
   return (
     <>
-      {isVisible && (summaryText || message || summaryState.state === 'failed') && (
+      {isVisible && (
+        isGenerating
+        || summaryText
+        || message
+        || summaryState.state === 'failed'
+      ) && (
         <section id="summary-result" className="summary-result" aria-label="Summary" aria-live="polite">
+          <h2 className="summary-result-title">AI SUMMARY</h2>
           {summaryState.state === 'failed' && (
             <p className="entry-detail-ai-error">
               {summaryState.run.error?.message ?? 'Summary generation failed.'}
@@ -182,6 +192,17 @@ export const SummaryPanel = forwardRef<SummaryPanelHandle, SummaryPanelProps>(({
           )}
           {message && <p className="entry-detail-ai-error" role="status">{message}</p>}
           {summaryText && <div className="summary-result-content">{summaryText}</div>}
+          {isGenerating && (
+            <div
+              className="summary-loading-dots"
+              role="status"
+              aria-label="正在生成摘要"
+            >
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+            </div>
+          )}
         </section>
       )}
 

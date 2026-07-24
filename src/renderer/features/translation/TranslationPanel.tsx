@@ -33,6 +33,7 @@ interface TranslationPanelProps {
   shortcut: TranslationShortcut;
   sourceHtml: string;
   titleTarget: HTMLDivElement | null;
+  isBilingualVisible: boolean;
   children: ReactNode;
   onGeneratingChange: (isGenerating: boolean) => void;
   onBilingualChange: (isBilingual: boolean) => void;
@@ -51,6 +52,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   shortcut,
   sourceHtml,
   titleTarget,
+  isBilingualVisible,
   children,
   onGeneratingChange,
   onBilingualChange,
@@ -59,7 +61,6 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   const [translationState, setTranslationState] = useState<TranslationState>({ state: 'idle' });
   const [isGenerating, setIsGenerating] = useState(false);
   const [message, setMessage] = useState('');
-  const [readerMode, setReaderMode] = useState<TranslationReaderMode>('original');
   const [showFeedback, setShowFeedback] = useState(false);
   const activeRunIdRef = useRef<number | null>(null);
   const loadSequenceRef = useRef(0);
@@ -85,7 +86,6 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         return;
       }
       setTranslationState(result.data);
-      setReaderMode(getRestoredTranslationReaderMode(result.data));
       if (result.data.state === 'running') {
         activeRunIdRef.current = result.data.result.id;
         setIsGenerating(true);
@@ -100,7 +100,6 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
 
   useEffect(() => {
     activeRunIdRef.current = null;
-    setReaderMode('original');
     setShowFeedback(false);
     void loadState();
   }, [loadState]);
@@ -116,13 +115,13 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       }
       if (event.type === 'segment-completed') {
         setTranslationState((current) => mergeCompletedSegment(current, event.segment));
-        setReaderMode('bilingual');
+        onBilingualChange(true);
         return;
       }
       if (event.type === 'completed') {
         setTranslationState({ state: 'succeeded', result: event.result });
         setIsGenerating(false);
-        setReaderMode('bilingual');
+        onBilingualChange(true);
         activeRunIdRef.current = null;
         return;
       }
@@ -135,12 +134,12 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       }
     });
     return unsubscribe;
-  }, [entryId, loadState, targetLanguage]);
+  }, [entryId, loadState, onBilingualChange, targetLanguage]);
 
   const generate = useCallback(async (): Promise<void> => {
     setShowFeedback(true);
     setMessage('');
-    setReaderMode('original');
+    onBilingualChange(false);
     try {
       const result = await window.shaleAPI.translation.generate({
         entryId,
@@ -154,23 +153,23 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       activeRunIdRef.current = result.data.runId;
       setTranslationState(toTranslationState(result.data.result));
       setIsGenerating(result.data.result.status === 'running');
-      setReaderMode('bilingual');
+      onBilingualChange(true);
     } catch {
       setMessage('Unable to start Translation generation.');
     }
-  }, [entryId, targetLanguage, useTerminology]);
+  }, [entryId, onBilingualChange, targetLanguage, useTerminology]);
 
   const activate = useCallback((): void => {
     if (translationState.state === 'succeeded') {
-      setReaderMode((current) => current === 'bilingual' ? 'original' : 'bilingual');
+      onBilingualChange(!isBilingualVisible);
       return;
     }
     if (translationState.state === 'running') {
-      setReaderMode('bilingual');
+      onBilingualChange(true);
       return;
     }
     void generate();
-  }, [generate, translationState.state]);
+  }, [generate, isBilingualVisible, onBilingualChange, translationState.state]);
 
   useImperativeHandle(ref, () => ({ activate }), [activate]);
 
@@ -195,11 +194,11 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     onGeneratingChange(isGenerating);
   }, [isGenerating, onGeneratingChange]);
 
-  useEffect(() => {
-    onBilingualChange(readerMode === 'bilingual');
-  }, [onBilingualChange, readerMode]);
-
   const result = getResult(translationState);
+  const readerMode: TranslationReaderMode = getRestoredTranslationReaderMode(
+    translationState,
+    isBilingualVisible,
+  );
   const hasTranslation = Boolean(result);
   const translatedTitle = getTranslatedTitleSegment(result, readerMode);
   const titleIsPending = readerMode === 'bilingual'

@@ -2,6 +2,7 @@ import {
   useCallback,
   useState,
   useEffect,
+  useMemo,
   useRef,
   type MouseEvent,
   type UIEvent,
@@ -30,13 +31,19 @@ import type { AiPreferences } from '../settings/aiPreferences';
 import { InlineTranslationOverlay } from '../translation/InlineTranslationOverlay';
 import { SummaryIcon, TranslateIcon } from '../reader/ReaderIcons';
 import { formatArticleDate, getArticleDateLocale } from './articleMetadata';
+import type { EntryAIViewState } from './entryAIViewState';
 import {
   calculateReadingProgress,
   getScrollTopForReadingProgress,
 } from './readingProgress';
+import {
+  getNativeVideoHtml,
+  getTrustedVideoEmbed,
+} from './trustedVideoEmbed';
 
 interface EntryDetailProps {
   entry: Entry | null;
+  aiViewState: EntryAIViewState;
   feedLoadStatus: FeedLoadStatus;
   feedLoadError: string;
   feedCount: number;
@@ -48,6 +55,10 @@ interface EntryDetailProps {
   onRetryEntries: () => void;
   aiPreferences: AiPreferences;
   aiToolbarTarget: HTMLDivElement | null;
+  onAIViewStateChange: (
+    entryId: number,
+    change: Partial<EntryAIViewState>,
+  ) => void;
   onReadingProgressChange: (entryId: number, readingProgress: number) => Promise<void>;
 }
 
@@ -57,6 +68,7 @@ const WINDOW_TOP_REVEAL_ZONE = 60;
 
 export const EntryDetail = ({
   entry,
+  aiViewState,
   feedLoadStatus,
   feedLoadError,
   feedCount,
@@ -68,6 +80,7 @@ export const EntryDetail = ({
   onRetryEntries,
   aiPreferences,
   aiToolbarTarget,
+  onAIViewStateChange,
   onReadingProgressChange,
 }: EntryDetailProps) => {
   const [content, setContent] = useState<CleanedContent | null>(null);
@@ -76,10 +89,8 @@ export const EntryDetail = ({
   const [linkError, setLinkError] = useState('');
   const [showRaw, setShowRaw] = useState(false);
   const [isSummaryGenerating, setIsSummaryGenerating] = useState(false);
-  const [isSummaryVisible, setIsSummaryVisible] = useState(false);
   const [isTranslationGenerating, setIsTranslationGenerating] = useState(false);
   const [isTitleTranslating, setIsTitleTranslating] = useState(false);
-  const [isBilingualVisible, setIsBilingualVisible] = useState(false);
   const [titleTranslationTarget, setTitleTranslationTarget] = useState<HTMLDivElement | null>(null);
   const [isFloatingHeaderVisible, setIsFloatingHeaderVisible] = useState(false);
   const prevEntryId = useRef<number | null>(null);
@@ -106,6 +117,26 @@ export const EntryDetail = ({
     entryCount,
     hasSelectedEntry: entry !== null,
   });
+  const trustedVideoEmbed = useMemo(
+    () => getTrustedVideoEmbed(
+      entry?.url ?? content?.sourceUrl,
+      content?.html,
+    ),
+    [content?.html, content?.sourceUrl, entry?.url],
+  );
+  const nativeVideoHtml = useMemo(
+    () => getNativeVideoHtml(content?.cleanedHtml),
+    [content?.cleanedHtml],
+  );
+  const hasArticleVideo = trustedVideoEmbed !== null || nativeVideoHtml !== null;
+  const handleSummaryVisibleChange = useCallback((summaryVisible: boolean): void => {
+    if (!entry) return;
+    onAIViewStateChange(entry.id, { summaryVisible });
+  }, [entry?.id, onAIViewStateChange]);
+  const handleBilingualChange = useCallback((translationVisible: boolean): void => {
+    if (!entry) return;
+    onAIViewStateChange(entry.id, { translationVisible });
+  }, [entry?.id, onAIViewStateChange]);
 
   const flushReadingProgress = useCallback((): void => {
     if (progressSaveTimerRef.current !== null) {
@@ -208,11 +239,10 @@ export const EntryDetail = ({
     hasUserScrolledSinceRestoreRef.current = false;
     isFloatingHeaderHoveredRef.current = false;
     setIsFloatingHeaderVisible(false);
+    setShowRaw(false);
     setIsSummaryGenerating(false);
-    setIsSummaryVisible(false);
     setIsTranslationGenerating(false);
     setIsTitleTranslating(false);
-    setIsBilingualVisible(false);
   }, [entry?.id]);
 
   useEffect(() => () => {
@@ -553,8 +583,12 @@ export const EntryDetail = ({
     programmaticScrollRef.current = null;
   };
 
-  const isSummaryReady = status === 'success' && Boolean(content?.markdown.trim());
-  const isTranslationReady = status === 'success' && Boolean(content?.cleanedHtml.trim());
+  const isSummaryReady = status === 'success'
+    && !hasArticleVideo
+    && Boolean(content?.markdown.trim());
+  const isTranslationReady = status === 'success'
+    && !hasArticleVideo
+    && Boolean(content?.cleanedHtml.trim());
   const articleDateLocale = getArticleDateLocale(
     entry.title,
     content?.markdown ?? entry.summary,
@@ -616,10 +650,10 @@ export const EntryDetail = ({
       <div className="entry-detail-ai-actions" aria-label="AI reading aids">
         <button
           type="button"
-          className={isSummaryVisible ? 'is-active' : ''}
+          className={aiViewState.summaryVisible ? 'is-active' : ''}
           aria-label={isSummaryGenerating ? '正在生成摘要' : '生成或显示摘要'}
           aria-controls="summary-result"
-          aria-expanded={isSummaryVisible}
+          aria-expanded={aiViewState.summaryVisible}
           aria-busy={isSummaryGenerating}
           disabled={!isSummaryReady || isSummaryGenerating}
           title={isSummaryGenerating
@@ -633,9 +667,9 @@ export const EntryDetail = ({
         </button>
         <button
           type="button"
-          className={isBilingualVisible ? 'is-active' : ''}
+          className={aiViewState.translationVisible ? 'is-active' : ''}
           aria-label={isTranslationGenerating ? '正在翻译' : '翻译或切换双语视图'}
-          aria-pressed={isBilingualVisible}
+          aria-pressed={aiViewState.translationVisible}
           disabled={!isTranslationReady || isTranslationGenerating}
           title={isTranslationGenerating
             ? 'Translating...'
@@ -671,15 +705,18 @@ export const EntryDetail = ({
             className="translation-title-slot"
           />
           <SummaryPanel
+            key={`${entry.id}:${aiPreferences.summaryTargetLanguage}:${aiPreferences.summaryDetailLevel}`}
             ref={summaryPanelRef}
             entryId={entry.id}
             isContentReady={isSummaryReady}
+            isVisible={aiViewState.summaryVisible}
             targetLanguage={aiPreferences.summaryTargetLanguage}
             detailLevel={aiPreferences.summaryDetailLevel}
             onGeneratingChange={setIsSummaryGenerating}
-            onVisibleChange={setIsSummaryVisible}
+            onVisibleChange={handleSummaryVisibleChange}
           />
           <TranslationPanel
+            key={`${entry.id}:${aiPreferences.translationTargetLanguage}:${aiPreferences.useTerminology}`}
             ref={translationPanelRef}
             entryId={entry.id}
             isContentReady={isTranslationReady}
@@ -688,18 +725,38 @@ export const EntryDetail = ({
             shortcut={aiPreferences.fullTranslationShortcut}
             sourceHtml={content?.cleanedHtml ?? ''}
             titleTarget={titleTranslationTarget}
+            isBilingualVisible={aiViewState.translationVisible}
             onGeneratingChange={setIsTranslationGenerating}
-            onBilingualChange={setIsBilingualVisible}
+            onBilingualChange={handleBilingualChange}
             onTitleTranslatingChange={setIsTitleTranslating}
           >
         <div className="entry-detail-body">
-          {status === 'loading' && (
+          {trustedVideoEmbed && (
+            <div className="entry-detail-video-embed">
+              <iframe
+                src={trustedVideoEmbed.src}
+                title={trustedVideoEmbed.title}
+                loading="lazy"
+                allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                sandbox="allow-scripts allow-same-origin allow-presentation"
+                allowFullScreen
+              />
+            </div>
+          )}
+          {!trustedVideoEmbed && nativeVideoHtml && (
+            <div
+              className="entry-detail-video-embed entry-detail-html is-native"
+              dangerouslySetInnerHTML={{ __html: nativeVideoHtml }}
+            />
+          )}
+          {!hasArticleVideo && status === 'loading' && (
             <div className="entry-detail-loading">
               <p>Fetching and cleaning article content...</p>
             </div>
           )}
 
-          {status === 'error' && (
+          {!hasArticleVideo && status === 'error' && (
             <div className="entry-detail-error">
               <p>⚠️ {error}</p>
               {entry.url && (
@@ -714,7 +771,7 @@ export const EntryDetail = ({
             </div>
           )}
 
-          {status === 'success' && content && (
+          {!hasArticleVideo && status === 'success' && content && (
             <div className="entry-detail-content">
               {showRaw ? (
                 <pre className="entry-detail-markdown">{content.markdown}</pre>
@@ -736,7 +793,7 @@ export const EntryDetail = ({
             </div>
           )}
 
-          {status === 'success' && !content && (
+          {!hasArticleVideo && status === 'success' && !content && (
             <div className="entry-detail-error">
               <p>No content available</p>
               {entry.url && (

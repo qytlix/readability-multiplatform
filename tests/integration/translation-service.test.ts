@@ -161,6 +161,64 @@ describe('TranslationService', () => {
     expect(provider.maxActiveStreams).toBe(1);
   });
 
+  it('recovers omissions in concurrent batches and continues queued Translation work', async () => {
+    const { db } = buildTestDbWithData();
+    const content = new ContentStore(db);
+    content.upsert({
+      entryId: 1,
+      cleanedHtml: Array.from({ length: 7 }, (_, index) =>
+        `<p>Article paragraph ${index + 1}.</p>`).join(''),
+      pipelineStatus: 'success',
+    });
+    const profiles = new ProviderProfileStore(db);
+    profiles.saveActive({
+      baseUrl: 'https://provider.example/v1',
+      model: 'mock-model',
+      apiKeyRef: 'key-omitted-segment',
+    });
+    memorySecrets.set('key-omitted-segment', 'not-a-real-key');
+    const prompts: BatchPromptSegment[][] = [];
+    const omittedSourceSegmentIds = new Set<string>();
+    const omittingProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        const segments = parseBatchPrompt(providerRequest.prompt);
+        prompts.push(segments);
+        const returnedSegments = segments.length > 1 ? segments.slice(0, -1) : segments;
+        if (segments.length > 1) {
+          const omittedSegment = segments.at(-1);
+          if (omittedSegment) omittedSourceSegmentIds.add(omittedSegment.sourceSegmentId);
+        }
+        for (const segment of returnedSegments) {
+          yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const recoveringService = new TranslationService(
+      content,
+      profiles,
+      new TestSecretStore(),
+      new TranslationStore(db),
+      omittingProvider,
+    );
+    const request = { entryId: 1, targetLanguage: 'zh-CN' as const };
+
+    recoveringService.generate(request);
+    await vi.waitFor(() => {
+      expect(recoveringService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    const state = recoveringService.getState(request);
+    if (state.state !== 'succeeded') throw new Error('Expected a recovered Translation.');
+    expect(state.result.segments).toHaveLength(8);
+    expect(state.result.segments.every((segment) => segment.status === 'succeeded')).toBe(true);
+    expect(prompts.map((segments) => segments.length).sort()).toEqual([1, 1, 1, 2, 3, 3]);
+    const recoverySourceSegmentIds = prompts
+      .filter((segments) => segments.length === 1)
+      .map((segments) => segments[0]?.sourceSegmentId);
+    expect(new Set(recoverySourceSegmentIds)).toEqual(omittedSourceSegmentIds);
+  });
+
   it('persists already-target-language segments without calling the provider', async () => {
     database.prepare('UPDATE entry SET title = ?, author = ? WHERE id = 1')
       .run('这是中文标题', '测试作者');

@@ -61,6 +61,35 @@ describe('ContentCleaner', () => {
 
     expect(result.content).not.toContain('<script');
   });
+
+  it('keeps native video playable with safe absolute media URLs', () => {
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Video article</title></head>
+        <body>
+          <article>
+            <h1>Video article</h1>
+            <p>This article contains enough explanatory text for the reader extraction.</p>
+            <video data-src="/media/movie.mp4" poster="../poster.jpg" autoplay>
+              <source src="clips/fallback.webm" type="video/webm">
+            </video>
+            <p>The video above demonstrates the complete workflow described here.</p>
+          </article>
+        </body>
+      </html>`,
+      'https://example.com/posts/article',
+    );
+
+    expect(result.content).toContain('controls');
+    expect(result.content).toContain('preload="metadata"');
+    expect(result.content).toContain('src="https://example.com/media/movie.mp4"');
+    expect(result.content).toContain('poster="https://example.com/poster.jpg"');
+    expect(result.content).toContain(
+      'src="https://example.com/posts/clips/fallback.webm"',
+    );
+    expect(result.content).not.toContain('autoplay');
+    expect(result.content).not.toContain('data-src');
+  });
 });
 
 describe('MarkdownConverter', () => {

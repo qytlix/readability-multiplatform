@@ -11,22 +11,36 @@ const completedResult = {
 } as TranslationResult;
 
 describe('getRestoredTranslationReaderMode', () => {
-  it('restores the bilingual view for a completed saved translation', () => {
+  it('keeps a completed saved translation hidden when it was hidden on exit', () => {
     const state: TranslationState = {
       state: 'succeeded',
       result: completedResult,
     };
 
-    expect(getRestoredTranslationReaderMode(state)).toBe('bilingual');
+    expect(getRestoredTranslationReaderMode(state, false)).toBe('original');
+  });
+
+  it('restores the bilingual view when it was visible on exit', () => {
+    const state: TranslationState = {
+      state: 'succeeded',
+      result: completedResult,
+    };
+
+    expect(getRestoredTranslationReaderMode(state, true)).toBe('bilingual');
+  });
+
+  it.each<TranslationState>([
+    { state: 'running', result: { ...completedResult, status: 'running' } },
+    { state: 'failed', result: { ...completedResult, status: 'failed' } },
+  ])('restores a visible in-progress or partial translation', (state) => {
+    expect(getRestoredTranslationReaderMode(state, true)).toBe('bilingual');
   });
 
   it.each<TranslationState>([
     { state: 'idle' },
     { state: 'stale' },
-    { state: 'running', result: { ...completedResult, status: 'running' } },
-    { state: 'failed', result: { ...completedResult, status: 'failed' } },
-  ])('keeps incomplete translation state in the original view', (state) => {
-    expect(getRestoredTranslationReaderMode(state)).toBe('original');
+  ])('keeps a translation without displayable content in the original view', (state) => {
+    expect(getRestoredTranslationReaderMode(state, true)).toBe('original');
   });
 });
 

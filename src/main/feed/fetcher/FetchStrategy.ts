@@ -1,3 +1,4 @@
+import type { WebContents } from 'electron';
 import type { FetchResult } from '../../../shared/contracts/content.types';
 
 // ── Strategy Interface ─────────────────────────────────────────
@@ -329,6 +330,39 @@ function electron(): typeof import('electron') | null {
 }
 
 /**
+ * Keep the hidden article-fetch window focused on the main document.
+ *
+ * Readability cannot consume cross-origin frame contents, so loading advertising
+ * and tracking frames only adds noise, latency, and avoidable TLS failures.
+ * A failed subframe must also never fail an otherwise valid article load.
+ */
+export function installBrowserFetchNavigationGuards(
+  webContents: WebContents,
+  onMainFrameLoadFailure: (errorDescription: string) => void,
+): void {
+  webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  webContents.on('will-frame-navigate', (details) => {
+    if (!details.isMainFrame) {
+      details.preventDefault();
+    }
+  });
+  webContents.on(
+    'did-fail-load',
+    (
+      _event,
+      _errorCode,
+      errorDescription,
+      _validatedURL,
+      isMainFrame,
+    ) => {
+      if (isMainFrame) {
+        onMainFrameLoadFailure(errorDescription);
+      }
+    },
+  );
+}
+
+/**
  * Browser-based fetch using Electron's BrowserWindow (headless rendering).
  * Only available in Electron Main process.
  * Falls back to statusCode=200 since the browser internalizes HTTP responses.
@@ -484,10 +518,12 @@ export class BrowserFetchStrategy implements FetcherStrategy {
           }
         });
 
-        // Page failed to load
-        win.webContents.on('did-fail-load', (_event, _errorCode, errorDescription) => {
-          done(new Error(`Browser fetch failed: ${errorDescription}`));
-        });
+        installBrowserFetchNavigationGuards(
+          win.webContents,
+          (errorDescription) => {
+            done(new Error(`Browser fetch failed: ${errorDescription}`));
+          },
+        );
 
         resetTimer();
         win.loadURL(url);

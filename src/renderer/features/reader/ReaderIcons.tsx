@@ -52,9 +52,11 @@ export const SummaryIcon = () => (
 );
 
 export const TranslateIcon = () => (
-  <Icon size={18}>
-    <path d="M4 5h9M8.5 3v2c0 4-2 7-5 9M5 9c1.5 2 3.5 3.5 6 4" />
-    <path d="m14 11 4 10m2-5h-5" />
+  <Icon size={19} className="translate-icon">
+    <path d="M5 7.5h13" />
+    <path d="m15 4.5 3 3-3 3" />
+    <path d="M19 16.5H6" />
+    <path d="m9 13.5-3 3 3 3" />
   </Icon>
 );
 
@@ -96,6 +98,13 @@ export const PlusIcon = () => (
 export const CheckIcon = () => (
   <Icon size={18}>
     <path d="m5 12 4 4 10-10" />
+  </Icon>
+);
+
+export const ReadIcon = () => (
+  <Icon size={19}>
+    <circle cx="12" cy="12" r="8.25" />
+    <path d="m8.2 12.1 2.5 2.5 5.2-5.4" />
   </Icon>
 );
 

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -16,6 +17,12 @@ import { FeedList } from './features/feeds/FeedList';
 import { EntryList } from './features/feeds/EntryList';
 import { EntryDetail } from './features/feeds/EntryDetail';
 import { FeedAddDialog } from './features/feeds/FeedAddDialog';
+import {
+  getEntryAIViewState,
+  updateEntryAIViewState,
+  type EntryAIViewState,
+  type EntryAIViewStates,
+} from './features/feeds/entryAIViewState';
 import {
   type EntryLoadStatus,
   type FeedLoadStatus,
@@ -34,6 +41,7 @@ import {
   MenuIcon,
   MoonIcon,
   MoreIcon,
+  ReadIcon,
   SunIcon,
 } from './features/reader/ReaderIcons';
 import {
@@ -41,6 +49,12 @@ import {
   saveReaderTheme,
   type ReaderTheme,
 } from './features/appearance/theme';
+import {
+  createHorizontalFlipKeyframes,
+  type LayoutRect,
+} from './features/reader/layoutTransition';
+import { PaneDivider } from './features/layout/PaneDivider';
+import { useReaderPaneResize } from './features/layout/useReaderPaneResize';
 import {
   buildEntryQuery,
   normalizeSearchQuery,
@@ -101,15 +115,108 @@ export const App = () => {
   const [largeType, setLargeType] = useState(false);
   const [showReaderMenu, setShowReaderMenu] = useState(false);
   const [readerFeedback, setReaderFeedback] = useState('');
+  const [markingReadEntryId, setMarkingReadEntryId] = useState<number | null>(null);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(() =>
     loadReaderTheme(window.localStorage));
   const [articleAIToolbarTarget, setArticleAIToolbarTarget] = useState<HTMLDivElement | null>(null);
+  const [entryAIViewStates, setEntryAIViewStates] = useState<EntryAIViewStates>({});
   const [aiPreferences, setAiPreferences] = useState<AiPreferences>(() =>
     loadAiPreferences(window.localStorage));
   const [entriesCursor, setEntriesCursor] = useState<EntryQuery['cursor']>();
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
   const requestSequenceRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const storyListPaneRef = useRef<HTMLElement>(null);
+  const articlePaneRef = useRef<HTMLElement>(null);
+  const {
+    workspaceRef,
+    effectiveWidth: storyListWidth,
+    minimum: storyListMinimum,
+    maximum: storyListMaximum,
+    isDragging: isStoryListResizing,
+    onPointerDown: handleStoryListResizePointerDown,
+    onPointerMove: handleStoryListResizePointerMove,
+    onPointerUp: handleStoryListResizePointerUp,
+    onPointerCancel: handleStoryListResizePointerCancel,
+    onLostPointerCapture: handleStoryListResizeLostPointerCapture,
+    onKeyDown: handleStoryListResizeKeyDown,
+  } = useReaderPaneResize({
+    storyListRef: storyListPaneRef,
+    sidebarOpen,
+    readingFocus: isReadingFocus,
+  });
+  const layoutSnapshotRef = useRef<{
+    storyList: LayoutRect | null;
+    article: LayoutRect | null;
+  } | null>(null);
+  const layoutAnimationsRef = useRef<Animation[]>([]);
+
+  const handleEntryAIViewStateChange = useCallback((
+    entryId: number,
+    change: Partial<EntryAIViewState>,
+  ): void => {
+    setEntryAIViewStates((current) =>
+      updateEntryAIViewState(current, entryId, change));
+  }, []);
+
+  const beginReaderLayoutTransition = useCallback((updateLayout: () => void) => {
+    const storyList = storyListPaneRef.current?.getBoundingClientRect() ?? null;
+    const article = articlePaneRef.current?.getBoundingClientRect() ?? null;
+
+    layoutAnimationsRef.current.forEach((animation) => animation.cancel());
+    layoutAnimationsRef.current = [];
+    layoutSnapshotRef.current = { storyList, article };
+    updateLayout();
+  }, []);
+
+  useLayoutEffect(() => {
+    const previousLayout = layoutSnapshotRef.current;
+    layoutSnapshotRef.current = null;
+    if (!previousLayout) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+    const targets = [
+      {
+        element: storyListPaneRef.current,
+        previous: previousLayout.storyList,
+      },
+      {
+        element: articlePaneRef.current,
+        previous: previousLayout.article,
+      },
+    ];
+    const animations: Animation[] = [];
+
+    targets.forEach(({ element, previous }) => {
+      if (!element || !previous || typeof element.animate !== 'function') return;
+      const keyframes = createHorizontalFlipKeyframes(
+        previous,
+        element.getBoundingClientRect(),
+      );
+      if (!keyframes) return;
+
+      element.style.willChange = 'transform';
+      const animation = element.animate(keyframes, {
+        duration: 280,
+        easing: 'cubic-bezier(0.2, 0.75, 0.2, 1)',
+      });
+      const releaseCompositorLayer = () => {
+        const hasRunningAnimation = element
+          .getAnimations()
+          .some((candidate) => candidate.playState === 'running');
+        if (!hasRunningAnimation) element.style.removeProperty('will-change');
+      };
+      animation.addEventListener('finish', releaseCompositorLayer, { once: true });
+      animation.addEventListener('cancel', releaseCompositorLayer, { once: true });
+      animations.push(animation);
+    });
+
+    layoutAnimationsRef.current = animations;
+  }, [isReadingFocus, sidebarOpen]);
+
+  useEffect(() => () => {
+    layoutAnimationsRef.current.forEach((animation) => animation.cancel());
+  }, []);
 
   const normalizedInput = normalizeSearchQuery(searchInput);
   const searchPending = normalizedInput.length > 0
@@ -383,6 +490,39 @@ export const App = () => {
     }
   }, [loadEntryStats]);
 
+  const handleMarkRead = useCallback(async () => {
+    if (
+      !selectedEntry
+      || selectedEntry.isRead
+      || markingReadEntryId === selectedEntry.id
+    ) {
+      return;
+    }
+
+    const entryId = selectedEntry.id;
+    setMarkingReadEntryId(entryId);
+    try {
+      const result = await window.shaleAPI.entry.markRead([entryId], true);
+      if (!result.ok) throw new Error(result.error.message);
+
+      setEntries((current) => current.map((entry) =>
+        entry.id === entryId
+          ? { ...entry, isRead: true, readingProgress: 1 }
+          : entry));
+      setSelectedEntry((current) => current?.id === entryId
+        ? { ...current, isRead: true, readingProgress: 1 }
+        : current);
+      setReaderFeedback('已标记为已读。');
+      await loadEntryStats();
+    } catch (error) {
+      setReaderFeedback(
+        error instanceof Error ? error.message : '未能将文章标记为已读。',
+      );
+    } finally {
+      setMarkingReadEntryId((current) => current === entryId ? null : current);
+    }
+  }, [loadEntryStats, markingReadEntryId, selectedEntry]);
+
   const handleToggleStarred = useCallback(async () => {
     if (!selectedEntry) return;
     const nextValue = !selectedEntry.isStarred;
@@ -488,7 +628,9 @@ export const App = () => {
             className="icon-button sidebar-toggle"
             aria-label={sidebarOpen ? '收起订阅源侧边栏' : '展开订阅源侧边栏'}
             aria-expanded={sidebarOpen}
-            onClick={() => setSidebarOpen((open) => !open)}
+            onClick={() => beginReaderLayoutTransition(() => {
+              setSidebarOpen((open) => !open);
+            })}
           >
             <MenuIcon />
           </button>
@@ -512,7 +654,10 @@ export const App = () => {
         {readerTheme === 'dark' ? <SunIcon /> : <MoonIcon />}
       </button>
 
-      <div className="reader-workspace">
+      <div
+        ref={workspaceRef}
+        className="reader-workspace"
+      >
         <button
           type="button"
           className="sidebar-backdrop"
@@ -547,7 +692,11 @@ export const App = () => {
           />
         </aside>
 
-        <section className="story-list-pane" aria-label="文章列表">
+        <section
+          ref={storyListPaneRef}
+          className="story-list-pane"
+          aria-label="文章列表"
+        >
           <EntryList
             entries={visibleEntries}
             selectedEntryId={selectedEntryId}
@@ -565,7 +714,26 @@ export const App = () => {
           />
         </section>
 
-        <main className="article-pane">
+        <PaneDivider
+          pane="entry"
+          className="reader-list-divider"
+          ariaLabel="调整文章列表与阅读区宽度"
+          canCollapse={false}
+          effectiveWidth={storyListWidth}
+          minimum={storyListMinimum}
+          maximum={storyListMaximum}
+          isDragging={isStoryListResizing}
+          isCollapseArmed={false}
+          onPointerDown={(_pane, event) => handleStoryListResizePointerDown(event)}
+          onPointerMove={(_pane, event) => handleStoryListResizePointerMove(event)}
+          onPointerUp={(_pane, event) => handleStoryListResizePointerUp(event)}
+          onPointerCancel={(_pane, event) => handleStoryListResizePointerCancel(event)}
+          onLostPointerCapture={(_pane, event) =>
+            handleStoryListResizeLostPointerCapture(event)}
+          onKeyDown={(_pane, event) => handleStoryListResizeKeyDown(event)}
+        />
+
+        <main ref={articlePaneRef} className="article-pane">
           <div className="article-toolbar">
             <div className="article-toolbar-source">
               <button
@@ -573,7 +741,9 @@ export const App = () => {
                 className="icon-button reader-focus-toggle"
                 aria-label={isReadingFocus ? '退出专注阅读' : '进入专注阅读'}
                 aria-pressed={isReadingFocus}
-                onClick={() => setIsReadingFocus((focused) => !focused)}
+                onClick={() => beginReaderLayoutTransition(() => {
+                  setIsReadingFocus((focused) => !focused);
+                })}
               >
                 {isReadingFocus ? <ForwardIcon /> : <FocusIcon />}
               </button>
@@ -588,6 +758,36 @@ export const App = () => {
                   ref={setArticleAIToolbarTarget}
                   className="article-ai-actions-slot"
                 />
+                <span
+                  className="article-action-tooltip"
+                  data-tooltip={
+                    markingReadEntryId === selectedEntry?.id
+                      ? '正在标记为已读'
+                      : selectedEntry?.isRead
+                        ? '已标记为已读'
+                        : '标记为已读'
+                  }
+                >
+                  <button
+                    type="button"
+                    className={`icon-button article-read-button${
+                      selectedEntry?.isRead ? ' is-active' : ''
+                    }`}
+                    aria-label={
+                      selectedEntry?.isRead ? '已标记为已读' : '标记为已读'
+                    }
+                    aria-pressed={selectedEntry?.isRead ?? false}
+                    aria-busy={markingReadEntryId === selectedEntry?.id}
+                    disabled={
+                      !selectedEntry
+                      || selectedEntry.isRead
+                      || markingReadEntryId === selectedEntry.id
+                    }
+                    onClick={() => void handleMarkRead()}
+                  >
+                    <ReadIcon />
+                  </button>
+                </span>
                 <span
                   className="article-action-tooltip"
                   data-tooltip={selectedEntry?.isStarred ? '取消收藏' : '收藏文章'}
@@ -671,6 +871,10 @@ export const App = () => {
             ) : (
               <EntryDetail
                 entry={selectedEntry}
+                aiViewState={getEntryAIViewState(
+                  entryAIViewStates,
+                  selectedEntry?.id ?? null,
+                )}
                 feedLoadStatus={feedLoadStatus}
                 feedLoadError={feedLoadError}
                 feedCount={feeds.length}
@@ -686,6 +890,7 @@ export const App = () => {
                 }}
                 aiPreferences={aiPreferences}
                 aiToolbarTarget={articleAIToolbarTarget}
+                onAIViewStateChange={handleEntryAIViewStateChange}
                 onReadingProgressChange={handleReadingProgressChange}
               />
             )}
