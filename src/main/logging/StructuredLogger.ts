@@ -217,20 +217,15 @@ export class StructuredLogger {
     component: string,
     context: StructuredLogContext | undefined,
   ): StructuredLogRecord | undefined {
-    const safeEvent = sanitizeEventOrComponent(event);
-    const safeComponent = sanitizeEventOrComponent(component);
-    if (!safeEvent || !safeComponent) return undefined;
-
-    const safeContext = sanitizeContext(context);
-    return {
+    return sanitizeStructuredLogRecord({
       schemaVersion: STRUCTURED_LOG_SCHEMA_VERSION,
       timestamp: this.safeNow().toISOString(),
       level,
-      event: safeEvent,
-      component: safeComponent,
+      event,
+      component,
       sessionId: this.sessionId,
-      ...(safeContext ? { context: safeContext } : {}),
-    };
+      context,
+    });
   }
 
   private async writeRecord(record: StructuredLogRecord): Promise<void> {
@@ -458,6 +453,51 @@ function createSafeSessionId(createSessionId: (() => string) | undefined): strin
 
 function sanitizeEventOrComponent(value: unknown): string | undefined {
   return sanitizeIdentifier(value, MAX_IDENTIFIER_LENGTH, /^[a-z][a-z0-9]*(?:\.[a-z0-9]+)*$/);
+}
+
+/**
+ * Revalidates an unknown JSONL record before it is reused outside the logger.
+ * Diagnostic export uses this as a second privacy boundary instead of trusting
+ * that every local file was produced by the current logger implementation.
+ */
+export function sanitizeStructuredLogRecord(value: unknown): StructuredLogRecord | undefined {
+  if (!isRecord(value) || value.schemaVersion !== STRUCTURED_LOG_SCHEMA_VERSION) {
+    return undefined;
+  }
+
+  const timestamp = sanitizeTimestamp(value.timestamp);
+  const level = sanitizeLogLevel(value.level);
+  const event = sanitizeEventOrComponent(value.event);
+  const component = sanitizeEventOrComponent(value.component);
+  const sessionId = sanitizeIdentifier(value.sessionId, MAX_IDENTIFIER_LENGTH);
+
+  if (!timestamp || !level || !event || !component || !sessionId) return undefined;
+
+  const context = sanitizeContext(value.context);
+  return {
+    schemaVersion: STRUCTURED_LOG_SCHEMA_VERSION,
+    timestamp,
+    level,
+    event,
+    component,
+    sessionId,
+    ...(context ? { context } : {}),
+  };
+}
+
+function sanitizeTimestamp(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString() === value
+    ? value
+    : undefined;
+}
+
+function sanitizeLogLevel(value: unknown): LogLevel | undefined {
+  return typeof value === 'string' && Object.hasOwn(LOG_LEVEL_RANK, value)
+    ? value as LogLevel
+    : undefined;
 }
 
 function sanitizeContext(value: unknown): StructuredLogContext | undefined {

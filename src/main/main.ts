@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu } from 'electron';
 import { performance } from 'node:perf_hooks';
+import { release } from 'node:os';
 import { env } from 'node:process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -12,6 +13,12 @@ import {
   initializeServices,
 } from './services';
 import { registerIpcHandlers } from './ipc';
+import { registerDiagnosticsIpcHandlers } from './ipc/diagnostics.handler';
+import { DiagnosticExportService } from './diagnostics/DiagnosticExportService';
+import type {
+  DiagnosticDisplayEnvironment,
+  DiagnosticRuntimeInfo,
+} from '../shared/contracts/diagnostics.types';
 import type {
   ContentOperationLogger,
   FeedOperationLogger,
@@ -117,9 +124,10 @@ function elapsedMilliseconds(startedAt: number): number {
 
 async function initializeApplication(): Promise<void> {
   const applicationInitializationStartedAt = performance.now();
+  const structuredLogDirectory = path.join(app.getPath('logs'), 'structured');
   try {
     lifecycleLogger = new StructuredLogger({
-      directory: path.join(app.getPath('logs'), 'structured'),
+      directory: structuredLogDirectory,
     });
   } catch {
     lifecycleLogger = null;
@@ -174,6 +182,13 @@ async function initializeApplication(): Promise<void> {
   try {
     phase = 'ipc';
     registerIpcHandlers(() => mainWindow, operationLogger);
+    registerDiagnosticsIpcHandlers(
+      () => mainWindow,
+      new DiagnosticExportService({
+        logDirectory: structuredLogDirectory,
+        runtime: createDiagnosticRuntimeInfo(),
+      }),
+    );
     phase = 'window';
     createWindow();
     phase = 'sync';
@@ -190,6 +205,48 @@ async function initializeApplication(): Promise<void> {
   lifecycleLogger?.info(MAIN_LIFECYCLE_EVENTS.ready, 'app.lifecycle', {
     durationMs: elapsedMilliseconds(applicationInitializationStartedAt),
   });
+}
+
+function createDiagnosticRuntimeInfo(): DiagnosticRuntimeInfo {
+  return {
+    applicationVersion: app.getVersion(),
+    electronVersion: process.versions.electron ?? null,
+    nodeVersion: process.versions.node ?? null,
+    operatingSystem: process.platform,
+    operatingSystemRelease: release(),
+    architecture: process.arch,
+    isPackaged: app.isPackaged,
+    display: getDiagnosticDisplayEnvironment(),
+  };
+}
+
+function getDiagnosticDisplayEnvironment(): DiagnosticDisplayEnvironment {
+  if (process.platform !== 'linux') {
+    return {
+      session: 'not-applicable',
+      waylandDetected: false,
+      ozonePlatform: 'not-applicable',
+    };
+  }
+
+  const session = env.XDG_SESSION_TYPE === 'wayland'
+    ? 'wayland'
+    : env.XDG_SESSION_TYPE === 'x11'
+      ? 'x11'
+      : 'unknown';
+  const ozonePlatform = env.ELECTRON_OZONE_PLATFORM_HINT === 'wayland'
+    ? 'wayland'
+    : env.ELECTRON_OZONE_PLATFORM_HINT === 'x11'
+      ? 'x11'
+      : env.ELECTRON_OZONE_PLATFORM_HINT
+        ? 'unknown'
+        : 'default';
+
+  return {
+    session,
+    waylandDetected: Boolean(env.WAYLAND_DISPLAY),
+    ozonePlatform,
+  };
 }
 
 void app.whenReady().then(initializeApplication);
