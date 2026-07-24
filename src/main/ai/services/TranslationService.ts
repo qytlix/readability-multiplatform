@@ -1,6 +1,15 @@
 import type { CleanedContent, ContentSegment } from '../../../shared/contracts/content.types';
-import type {
-  TerminologyPackInfo,
+import type { ProviderKind } from '../../../shared/contracts/provider.types';
+import { DEFAULT_TRANSLATION_EXPERT_ID } from '../../../shared/contracts/translation-expert.types';
+import {
+  TRANSLATION_CONTEXT_PROMPT_VERSION,
+  type TranslationContext,
+} from '../../../shared/contracts/translation-context.types';
+import {
+  TRANSLATION_LANGUAGE_LABELS,
+  TRANSLATION_SOURCE_LANGUAGES,
+  TRANSLATION_TARGET_LANGUAGES,
+  type TerminologyPackInfo,
   TranslationGenerateRequest,
   TranslationGenerateResponse,
   TranslationGetRequest,
@@ -11,7 +20,6 @@ import type {
   TranslationState,
   TranslationStreamEvent,
 } from '../../../shared/contracts/translation.types';
-import { TRANSLATION_TARGET_LANGUAGES } from '../../../shared/contracts/translation.types';
 import {
   TRANSLATION_ERROR_CODES,
   TranslationError,
@@ -23,16 +31,25 @@ import {
 } from '../../feed/services/ContentSegmenter';
 import type { ProviderProfileStore } from '../stores/ProviderProfileStore';
 import type { SecretStore } from '../stores/SecretStore';
-import type { SummaryProvider } from '../provider/SummaryProvider';
+import type { TextGenerationProvider } from '../provider/TextGenerationProvider';
 import { isLikelyAlreadyTargetLanguage } from '../provider/TranslationLanguage';
 import { TranslationBatchStreamParser, type TranslationBatchOutput } from '../provider/TranslationBatchStream';
 import { buildTranslationBatchPrompt, TRANSLATION_PROMPT_VERSION } from '../provider/TranslationPrompt';
+import { renderExpertInstruction } from '../experts/ExpertCompiler';
 import { parseTranslationOutput } from '../provider/TranslationHtml';
 import { TranslationStore } from '../stores/TranslationStore';
 import {
   EmptyTerminologyLookup,
   type TerminologyLookup,
 } from '../stores/TerminologyStore';
+import type {
+  ResolvedTranslationExpert,
+  TranslationExpertService,
+} from './TranslationExpertService';
+import {
+  buildTranslationContextIdentity,
+  type TranslationContextService,
+} from './TranslationContextService';
 
 export interface TranslationContentLookup {
   findByEntry(entryId: number): CleanedContent | undefined;
@@ -62,6 +79,18 @@ interface SegmentTranslationInput {
   terminologyCandidates: ReturnType<TerminologyLookup['findCandidates']>;
 }
 
+interface TranslationProviderConfig {
+  providerKind: ProviderKind;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  profileId: number;
+  expert: ResolvedTranslationExpert;
+  expertInstruction?: string;
+  context?: TranslationContext;
+  abortController: AbortController;
+}
+
 const MAX_BATCH_SEGMENTS = 3;
 const MAX_BATCH_SOURCE_CHARACTERS = 1_600;
 const MAX_CONCURRENT_BATCHES = 2;
@@ -78,9 +107,11 @@ export class TranslationService {
     private readonly profileStore: ProviderProfileStore,
     private readonly secretStore: SecretStore,
     private readonly translationStore: TranslationStore,
-    private readonly provider: SummaryProvider,
+    private readonly provider: TextGenerationProvider,
     private readonly segmenter = new ContentSegmenter(),
     private readonly terminologyLookup: TerminologyLookup = new EmptyTerminologyLookup(),
+    private readonly expertService?: TranslationExpertService,
+    private readonly contextService?: TranslationContextService,
   ) {}
 
   subscribe(listener: (event: TranslationStreamEvent) => void): () => void {
@@ -92,18 +123,26 @@ export class TranslationService {
     validateTranslationRequest(request);
     const source = this.getSource(request.entryId);
     const terminologyPackVersion = this.getTerminologyVersion(request);
+    const expert = this.resolveExpert(request.expertId);
+    const smartContextEnabled = request.useSmartContext === true;
     const compatibleResult = this.translationStore.findCompatibleResult(
       request.entryId,
+      request.sourceLanguage,
       request.targetLanguage,
       source.sourceContentHash,
       source.segmenterVersion,
       TRANSLATION_PROMPT_VERSION,
       terminologyPackVersion,
+      expert.id,
+      expert.contentHash,
+      smartContextEnabled,
+      smartContextEnabled ? TRANSLATION_CONTEXT_PROMPT_VERSION : 'none',
     );
     if (compatibleResult) return toState(compatibleResult);
 
     return this.translationStore.findLatestResult(
       request.entryId,
+      request.sourceLanguage,
       request.targetLanguage,
     )
       ? { state: 'stale' }
@@ -114,13 +153,20 @@ export class TranslationService {
     validateTranslationRequest(request);
     const source = this.getSource(request.entryId);
     const terminologyPackVersion = this.getTerminologyVersion(request);
+    const expert = this.resolveExpert(request.expertId);
+    const smartContextEnabled = request.useSmartContext === true;
     const existingResult = this.translationStore.findCompatibleResult(
       request.entryId,
+      request.sourceLanguage,
       request.targetLanguage,
       source.sourceContentHash,
       source.segmenterVersion,
       TRANSLATION_PROMPT_VERSION,
       terminologyPackVersion,
+      expert.id,
+      expert.contentHash,
+      smartContextEnabled,
+      smartContextEnabled ? TRANSLATION_CONTEXT_PROMPT_VERSION : 'none',
     );
     if (existingResult?.status === 'succeeded') {
       return { runId: existingResult.id, reused: true, result: existingResult };
@@ -129,9 +175,13 @@ export class TranslationService {
     if (this.activeRun) {
       if (
         this.activeRun.result.entryId === request.entryId
+        && this.activeRun.result.sourceLanguage === request.sourceLanguage
         && this.activeRun.result.targetLanguage === request.targetLanguage
         && this.activeRun.result.sourceContentHash === source.sourceContentHash
         && this.activeRun.result.terminologyPackVersion === terminologyPackVersion
+        && this.activeRun.result.expertId === expert.id
+        && this.activeRun.result.expertContentHash === expert.contentHash
+        && this.activeRun.result.smartContextEnabled === smartContextEnabled
       ) {
         return {
           runId: this.activeRun.result.id,
@@ -161,11 +211,18 @@ export class TranslationService {
       : this.translationStore.createRun({
           entryId: request.entryId,
           providerProfileId: profile.id,
+          sourceLanguage: request.sourceLanguage,
           targetLanguage: request.targetLanguage,
           sourceContentHash: source.sourceContentHash,
           segmenterVersion: source.segmenterVersion,
           promptVersion: TRANSLATION_PROMPT_VERSION,
           terminologyPackVersion,
+          expertId: expert.id,
+          expertContentHash: expert.contentHash,
+          smartContextEnabled,
+          contextPromptVersion: smartContextEnabled
+            ? TRANSLATION_CONTEXT_PROMPT_VERSION
+            : 'none',
           segments: source.segments,
         });
     const abortController = new AbortController();
@@ -179,14 +236,18 @@ export class TranslationService {
       type: 'started',
       runId: result.id,
       entryId: result.entryId,
+      sourceLanguage: result.sourceLanguage,
       targetLanguage: result.targetLanguage,
     });
     this.executeTimer = setTimeout(() => {
       this.executeTimer = undefined;
       void this.executeRun(result, {
+        providerKind: profile.providerKind,
         baseUrl: profile.baseUrl,
         model: profile.model,
         apiKey,
+        profileId: profile.id,
+        expert,
         abortController,
       });
     }, 0);
@@ -200,8 +261,11 @@ export class TranslationService {
       !active
       || active.result.id !== request.runId
       || active.result.entryId !== request.entryId
+      || active.result.sourceLanguage !== request.sourceLanguage
       || active.result.targetLanguage !== request.targetLanguage
       || active.result.terminologyPackVersion !== this.getTerminologyVersion(request)
+      || active.result.expertId !== this.resolveExpert(request.expertId).id
+      || active.result.smartContextEnabled !== (request.useSmartContext === true)
     ) {
       return { accepted: false };
     }
@@ -234,6 +298,7 @@ export class TranslationService {
       type: 'failed',
       runId: activeRun.result.id,
       entryId: activeRun.result.entryId,
+      sourceLanguage: activeRun.result.sourceLanguage,
       targetLanguage: activeRun.result.targetLanguage,
       error,
     });
@@ -242,18 +307,56 @@ export class TranslationService {
 
   private async executeRun(
     result: TranslationResult,
-    providerConfig: {
-      baseUrl: string;
-      model: string;
-      apiKey: string;
-      abortController: AbortController;
-    },
+    providerConfig: TranslationProviderConfig,
   ): Promise<void> {
     try {
+      providerConfig.expertInstruction = this.renderExpertInstruction(
+        providerConfig.expert,
+        result,
+      );
+      if (result.smartContextEnabled) {
+        const contextOutcome = this.contextService
+          ? await this.contextService.resolve({
+              identity: buildTranslationContextIdentity({
+                sourceContentHash: result.sourceContentHash,
+                sourceLanguage: result.sourceLanguage,
+                targetLanguage: result.targetLanguage,
+                providerProfileId: providerConfig.profileId,
+                providerModel: providerConfig.model,
+                expertId: result.expertId,
+                expertContentHash: result.expertContentHash,
+              }),
+              sourceLanguage: result.sourceLanguage,
+              targetLanguage: result.targetLanguage,
+              articleText: result.segments.map((segment) => segment.sourceText).join('\n\n'),
+              expertInstruction: providerConfig.expertInstruction,
+              provider: {
+                kind: providerConfig.providerKind,
+                baseUrl: providerConfig.baseUrl,
+                model: providerConfig.model,
+                apiKey: providerConfig.apiKey,
+              },
+              signal: providerConfig.abortController.signal,
+            })
+          : {
+              reused: false,
+              warning: {
+                code: TRANSLATION_ERROR_CODES.TRANSLATION_CONTEXT_UNAVAILABLE,
+                message: 'Smart context is unavailable, so Translation continued without it.',
+                retryable: true,
+              },
+            };
+        providerConfig.context = contextOutcome.context;
+        this.translationStore.setContextWarning(result.id, contextOutcome.warning);
+      }
+
       const untranslatedSegments: TranslationSegment[] = [];
       for (const segment of result.segments) {
         if (segment.status === 'succeeded') continue;
-        if (isLikelyAlreadyTargetLanguage(segment.sourceText, result.targetLanguage)) {
+        if (
+          result.sourceLanguage === result.targetLanguage
+          || isLikelyAlreadyTargetLanguage(segment.sourceText, result.targetLanguage)
+        ) {
           const completedSegment = this.translationStore.markSegmentSucceeded(
             result.id,
             segment.sourceSegmentId,
@@ -265,6 +368,7 @@ export class TranslationService {
             type: 'segment-completed',
             runId: result.id,
             entryId: result.entryId,
+            sourceLanguage: result.sourceLanguage,
             targetLanguage: result.targetLanguage,
             sourceSegmentId: segment.sourceSegmentId,
             segment: completedSegment,
@@ -307,6 +411,7 @@ export class TranslationService {
           type: 'failed',
           runId: result.id,
           entryId: result.entryId,
+          sourceLanguage: result.sourceLanguage,
           targetLanguage: result.targetLanguage,
           error: ipcError,
         });
@@ -318,6 +423,7 @@ export class TranslationService {
         type: 'completed',
         runId: result.id,
         entryId: result.entryId,
+        sourceLanguage: result.sourceLanguage,
         targetLanguage: result.targetLanguage,
         result: completedResult,
       });
@@ -329,6 +435,7 @@ export class TranslationService {
         type: 'failed',
         runId: result.id,
         entryId: result.entryId,
+        sourceLanguage: result.sourceLanguage,
         targetLanguage: result.targetLanguage,
         error: failure,
       });
@@ -358,12 +465,7 @@ export class TranslationService {
   private async processBatch(
     result: TranslationResult,
     batch: TranslationBatchWork,
-    providerConfig: {
-      baseUrl: string;
-      model: string;
-      apiKey: string;
-      abortController: AbortController;
-    },
+    providerConfig: TranslationProviderConfig,
   ): Promise<void> {
     const active = this.activeRun;
     if (!active || active.result.id !== result.id) return;
@@ -372,6 +474,7 @@ export class TranslationService {
       type: 'segment-started',
       runId: result.id,
       entryId: result.entryId,
+      sourceLanguage: result.sourceLanguage,
       targetLanguage: result.targetLanguage,
       sourceSegmentId: segment.sourceSegmentId,
       orderIndex: segment.orderIndex,
@@ -380,9 +483,12 @@ export class TranslationService {
     const inputs = batch.segments.map((segment) => this.buildSegmentInput(result, segment));
     const buildPrompt = (selectedInputs: SegmentTranslationInput[]): string =>
       buildTranslationBatchPrompt({
+        sourceLanguage: result.sourceLanguage,
         targetLanguage: result.targetLanguage,
         articleTitle: result.segments.find((segment) =>
           segment.sourceType === 'title')?.sourceText,
+        expertInstruction: providerConfig.expertInstruction,
+        translationContext: providerConfig.context,
         segments: selectedInputs.map(({ segment, terminologyCandidates }) => ({
           sourceSegmentId: segment.sourceSegmentId,
           sourceHtml: segment.sourceHtml,
@@ -428,6 +534,7 @@ export class TranslationService {
           type: 'segment-completed',
           runId: result.id,
           entryId: result.entryId,
+          sourceLanguage: result.sourceLanguage,
           targetLanguage: result.targetLanguage,
           sourceSegmentId: output.sourceSegmentId,
           segment: completedSegment,
@@ -439,6 +546,7 @@ export class TranslationService {
       const parser = new TranslationBatchStreamParser();
       providerRequestCount += 1;
       for await (const delta of this.provider.stream({
+        providerKind: providerConfig.providerKind,
         baseUrl: providerConfig.baseUrl,
         model: providerConfig.model,
         apiKey: providerConfig.apiKey,
@@ -520,6 +628,7 @@ export class TranslationService {
       terminologyCandidates: this.terminologyLookup.findCandidates(
         terminologyContext,
         result.targetLanguage,
+        result.terminologyPackVersion,
       ).slice(0, MAX_TERMINOLOGY_CANDIDATES),
     };
   }
@@ -580,6 +689,27 @@ export class TranslationService {
       ? 'none'
       : this.terminologyLookup.getVersion();
   }
+
+  private resolveExpert(expertId: string | undefined): ResolvedTranslationExpert {
+    return this.expertService?.resolve(expertId) ?? {
+      id: DEFAULT_TRANSLATION_EXPERT_ID,
+      contentHash: DEFAULT_TRANSLATION_EXPERT_ID,
+    };
+  }
+
+  private renderExpertInstruction(
+    expert: ResolvedTranslationExpert,
+    result: TranslationResult,
+  ): string | undefined {
+    if (!expert.expert) return undefined;
+    return renderExpertInstruction(
+      expert.expert.instruction,
+      result.sourceLanguage === 'auto'
+        ? 'automatically detected source language'
+        : TRANSLATION_LANGUAGE_LABELS[result.sourceLanguage],
+      TRANSLATION_LANGUAGE_LABELS[result.targetLanguage],
+    );
+  }
 }
 
 function hasCurrentMetadata(
@@ -631,8 +761,12 @@ function validateTranslationRequest(request: TranslationGetRequest): void {
   if (
     !Number.isInteger(request.entryId)
     || request.entryId <= 0
+    || !TRANSLATION_SOURCE_LANGUAGES.includes(request.sourceLanguage)
     || !TRANSLATION_TARGET_LANGUAGES.includes(request.targetLanguage)
     || (request.useTerminology !== undefined && typeof request.useTerminology !== 'boolean')
+    || (request.useSmartContext !== undefined && typeof request.useSmartContext !== 'boolean')
+    || (request.expertId !== undefined
+      && (typeof request.expertId !== 'string' || !request.expertId.trim()))
   ) {
     throw new TranslationError(
       TRANSLATION_ERROR_CODES.TRANSLATION_INVALID_REQUEST,

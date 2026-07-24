@@ -61,8 +61,8 @@ vi.mock('../../../src/main/feed/services', () => ({
   SyncScheduler: class {},
 }));
 
-vi.mock('../../../src/main/ai/provider/OpenAICompatibleProvider', () => ({
-  OpenAICompatibleProvider: class {},
+vi.mock('../../../src/main/ai/provider/ProviderRegistry', () => ({
+  ProviderRegistry: class {},
 }));
 vi.mock('../../../src/main/ai/stores/ProviderProfileStore', () => ({
   ProviderProfileStore: class {},

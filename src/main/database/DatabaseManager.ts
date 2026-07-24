@@ -11,6 +11,10 @@ import { MIGRATION_009 } from '../migrations/009_enhance_translation';
 import { MIGRATION_010 as MIGRATION_010_READING_PROGRESS } from '../migrations/010_add_entry_reading_progress';
 import { MIGRATION_010_SQL, runMigration010 } from '../migrations/010_create_dedup_key';
 import { MIGRATION_011 } from '../migrations/011_create_entry_annotations';
+import { MIGRATION_012 } from '../migrations/012_expand_ai_providers';
+import { MIGRATION_013 } from '../migrations/013_expand_translation_languages';
+import { MIGRATION_014 } from '../migrations/014_add_translation_context_and_experts';
+import { MIGRATION_015 } from '../migrations/015_add_terminology_libraries';
 
 interface Migration {
   id: string;
@@ -36,6 +40,10 @@ const MIGRATIONS: Migration[] = [
   },
   { id: '010_create_dedup_key', sql: MIGRATION_010_SQL, run: runMigration010 },
   { id: '011_create_entry_annotations', sql: MIGRATION_011 },
+  { id: '012_expand_ai_providers', sql: MIGRATION_012 },
+  { id: '013_expand_translation_languages', sql: MIGRATION_013 },
+  { id: '014_add_translation_context_and_experts', sql: MIGRATION_014 },
+  { id: '015_add_terminology_libraries', sql: MIGRATION_015 },
 ];
 
 export class DatabaseManager {

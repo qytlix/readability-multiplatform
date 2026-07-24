@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import type { CleanedContent } from '../../../shared/contracts/content.types';
+import type { ProviderKind } from '../../../shared/contracts/provider.types';
 import type {
   SummaryGenerateRequest,
   SummaryGenerateResponse,
@@ -22,7 +23,7 @@ import {
 import type { ProviderProfileStore } from '../stores/ProviderProfileStore';
 import type { SecretStore } from '../stores/SecretStore';
 import { buildSummaryPrompt, SUMMARY_PROMPT_VERSION } from '../provider/SummaryPrompt';
-import type { SummaryProvider } from '../provider/SummaryProvider';
+import type { TextGenerationProvider } from '../provider/TextGenerationProvider';
 import { SummaryStore } from '../stores/SummaryStore';
 import {
   elapsedSummaryMilliseconds,
@@ -56,7 +57,7 @@ export class SummaryService {
     private readonly profileStore: ProviderProfileStore,
     private readonly secretStore: SecretStore,
     private readonly summaryStore: SummaryStore,
-    private readonly provider: SummaryProvider,
+    private readonly provider: TextGenerationProvider,
     private readonly logger?: SummaryOperationLogger,
   ) {}
 
@@ -174,6 +175,7 @@ export class SummaryService {
     });
     logSummaryRunStarted(this.logger, { taskRunId: run.id });
     void this.executeRun(run, content.markdown, inputMarkdownHash, {
+      providerKind: profile.providerKind,
       baseUrl: profile.baseUrl,
       model: profile.model,
       apiKey,
@@ -211,6 +213,7 @@ export class SummaryService {
     markdown: string,
     inputMarkdownHash: string,
     providerConfig: {
+      providerKind: ProviderKind;
       baseUrl: string;
       model: string;
       apiKey: string;
@@ -226,6 +229,7 @@ export class SummaryService {
       });
       let output = '';
       for await (const delta of this.provider.stream({
+        providerKind: providerConfig.providerKind,
         baseUrl: providerConfig.baseUrl,
         model: providerConfig.model,
         apiKey: providerConfig.apiKey,

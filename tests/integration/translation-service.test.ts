@@ -5,7 +5,13 @@ import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileSt
 import { SecretStore, type SafeStorageBackend } from '../../src/main/ai/stores/SecretStore';
 import type { SummaryProvider, SummaryProviderRequest } from '../../src/main/ai/provider/SummaryProvider';
 import { TranslationService } from '../../src/main/ai/services/TranslationService';
+import { TranslationContextService } from '../../src/main/ai/services/TranslationContextService';
+import { TranslationExpertService } from '../../src/main/ai/services/TranslationExpertService';
 import { TranslationStore } from '../../src/main/ai/stores/TranslationStore';
+import { TranslationContextStore } from '../../src/main/ai/stores/TranslationContextStore';
+import { TranslationExpertStore } from '../../src/main/ai/stores/TranslationExpertStore';
+import builtInExpertBundle from '../../resources/ai-experts/experts.json';
+import type { BuiltInExpertBundle } from '../../src/shared/contracts/translation-expert.types';
 import type { TerminologyLookup } from '../../src/main/ai/stores/TerminologyStore';
 import { ContentStore } from '../../src/main/feed/stores/ContentStore';
 import { SUMMARY_ERROR_CODES, SummaryError } from '../../src/shared/errors/summary.errors';
@@ -39,11 +45,13 @@ interface BatchPromptSegment {
 
 class BatchMockProvider implements SummaryProvider {
   readonly prompts: string[] = [];
+  readonly providerKinds: Array<SummaryProviderRequest['providerKind']> = [];
   activeStreams = 0;
   maxActiveStreams = 0;
 
   async *stream(request: SummaryProviderRequest): AsyncIterable<string> {
     this.prompts.push(request.prompt);
+    this.providerKinds.push(request.providerKind);
     this.activeStreams += 1;
     this.maxActiveStreams = Math.max(this.maxActiveStreams, this.activeStreams);
     try {
@@ -102,6 +110,7 @@ describe('TranslationService', () => {
     });
     const profiles = new ProviderProfileStore(db);
     profiles.saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider.example/v1',
       model: 'mock-model',
       apiKeyRef: 'key-1',
@@ -119,7 +128,7 @@ describe('TranslationService', () => {
 
   it('batches adjacent segments, persists each result, and reuses a compatible Translation', async () => {
     const events: string[] = [];
-    const request = { entryId: 1, targetLanguage: 'zh-CN' as const };
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
     const persistedBeforeEvent: boolean[] = [];
     service.subscribe((event) => {
       events.push(event.type);
@@ -159,6 +168,42 @@ describe('TranslationService', () => {
     expect(service.generate(request)).toMatchObject({ runId: started.runId, reused: true });
     expect(stream).toHaveBeenCalledTimes(1);
     expect(provider.maxActiveStreams).toBe(1);
+    expect(provider.providerKinds).toEqual(['openai']);
+  });
+
+  it('keeps manual and automatic source-language cache identities separate', async () => {
+    const automaticRequest = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'fr' as const,
+    };
+    const manualRequest = {
+      entryId: 1,
+      sourceLanguage: 'en' as const,
+      targetLanguage: 'fr' as const,
+    };
+
+    const automatic = service.generate(automaticRequest);
+    await vi.waitFor(() => {
+      expect(service.getState(automaticRequest)).toMatchObject({ state: 'succeeded' });
+    });
+    const manual = service.generate(manualRequest);
+    await vi.waitFor(() => {
+      expect(service.getState(manualRequest)).toMatchObject({ state: 'succeeded' });
+    });
+
+    expect(manual.reused).toBe(false);
+    expect(manual.runId).not.toBe(automatic.runId);
+    expect(service.getState(automaticRequest)).toMatchObject({
+      result: { sourceLanguage: 'auto', targetLanguage: 'fr' },
+    });
+    expect(service.getState(manualRequest)).toMatchObject({
+      result: { sourceLanguage: 'en', targetLanguage: 'fr' },
+    });
+    expect(provider.prompts.some((prompt) =>
+      prompt.includes('Detect the source language'))).toBe(true);
+    expect(provider.prompts.some((prompt) =>
+      prompt.includes('The source language is English.'))).toBe(true);
   });
 
   it('recovers omissions in concurrent batches and continues queued Translation work', async () => {
@@ -172,6 +217,7 @@ describe('TranslationService', () => {
     });
     const profiles = new ProviderProfileStore(db);
     profiles.saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider.example/v1',
       model: 'mock-model',
       apiKeyRef: 'key-omitted-segment',
@@ -201,7 +247,7 @@ describe('TranslationService', () => {
       new TranslationStore(db),
       omittingProvider,
     );
-    const request = { entryId: 1, targetLanguage: 'zh-CN' as const };
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
 
     recoveringService.generate(request);
     await vi.waitFor(() => {
@@ -227,7 +273,7 @@ describe('TranslationService', () => {
       cleanedHtml: '<h2>软件使用方法</h2><p>这是一篇已经写好的中文文章。</p>',
       pipelineStatus: 'success',
     });
-    const request = { entryId: 1, targetLanguage: 'zh-CN' as const };
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
     const stream = vi.spyOn(provider, 'stream');
 
     service.generate(request);
@@ -246,7 +292,7 @@ describe('TranslationService', () => {
   });
 
   it('does not expose a Translation produced for changed content', async () => {
-    const request = { entryId: 1, targetLanguage: 'en' as const };
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'en' as const };
     service.generate(request);
     await vi.waitFor(() => {
       expect(service.getState(request)).toMatchObject({ state: 'succeeded' });
@@ -262,7 +308,7 @@ describe('TranslationService', () => {
   });
 
   it('rebuilds current segments when Reader title metadata changes', async () => {
-    const request = { entryId: 1, targetLanguage: 'en' as const };
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'en' as const };
     service.generate(request);
     await vi.waitFor(() => {
       expect(service.getState(request)).toMatchObject({ state: 'succeeded' });
@@ -313,6 +359,7 @@ describe('TranslationService', () => {
     });
     const profiles = new ProviderProfileStore(db);
     profiles.saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider.example/v1',
       model: 'mock-model',
       apiKeyRef: 'key-terms',
@@ -327,7 +374,7 @@ describe('TranslationService', () => {
       undefined,
       terminologyLookup,
     );
-    const request = { entryId: 1, targetLanguage: 'zh-CN' as const };
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
 
     contextualService.generate(request);
     await vi.waitFor(() => {
@@ -369,7 +416,7 @@ describe('TranslationService', () => {
         `<p>Paragraph ${index + 1}.</p>`).join(''),
       pipelineStatus: 'success',
     });
-    const request = { entryId: 1, targetLanguage: 'zh-CN' as const };
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
 
     const started = service.generate(request);
     const visibleId = started.result.segments.at(-1)?.sourceSegmentId;
@@ -394,6 +441,7 @@ describe('TranslationService', () => {
     });
     const profiles = new ProviderProfileStore(db);
     profiles.saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider.example/v1',
       model: 'mock-model',
       apiKeyRef: 'key-resume',
@@ -429,7 +477,7 @@ describe('TranslationService', () => {
       new TranslationStore(db),
       resumableProvider,
     );
-    const request = { entryId: 1, targetLanguage: 'zh-CN' as const };
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
     const firstRun = resumableService.generate(request);
     await vi.waitFor(() => {
       expect(resumableService.getState(request)).toMatchObject({ state: 'failed' });
@@ -456,6 +504,7 @@ describe('TranslationService', () => {
     content.upsert({ entryId: 1, cleanedHtml: '<p>Article paragraph.</p>', pipelineStatus: 'success' });
     const profiles = new ProviderProfileStore(db);
     profiles.saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider.example/v1',
       model: 'mock-model',
       apiKeyRef: 'key-3',
@@ -472,7 +521,7 @@ describe('TranslationService', () => {
         true,
       )),
     );
-    const request = { entryId: 1, targetLanguage: 'zh-CN' as const };
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
 
     failingService.generate(request);
     await vi.waitFor(() => {
@@ -495,6 +544,157 @@ describe('TranslationService', () => {
       segment.status === 'pending')).toBe(true);
   });
 
+  it('analyzes smart context, composes expert guidance, and keeps output rules authoritative', async () => {
+    const { db } = buildTestDbWithData();
+    const content = new ContentStore(db);
+    content.upsert({
+      entryId: 1,
+      cleanedHtml: '<p>A runtime executes application code.</p>',
+      pipelineStatus: 'success',
+    });
+    const profiles = new ProviderProfileStore(db);
+    profiles.saveActive({
+      providerKind: 'openai',
+      baseUrl: 'https://provider.example/v1',
+      model: 'mock-model',
+      apiKeyRef: 'key-context-expert',
+    });
+    memorySecrets.set('key-context-expert', 'not-a-real-key');
+    const prompts: string[] = [];
+    const adaptiveProvider: SummaryProvider = {
+      async *stream(request): AsyncIterable<string> {
+        prompts.push(request.prompt);
+        if (request.prompt.startsWith('Analyze untrusted article content')) {
+          yield JSON.stringify({
+            schemaVersion: 1,
+            detectedSourceLanguage: 'en',
+            theme: 'Software runtime architecture.',
+            keyTerms: [{
+              source: 'runtime',
+              suggestedTarget: '运行时',
+              meaning: 'An execution environment.',
+            }],
+            styleGuide: ['Use concise technical prose.'],
+          });
+          return;
+        }
+        for (const segment of parseBatchPrompt(request.prompt)) {
+          yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const expertService = new TranslationExpertService(new TranslationExpertStore(
+      db,
+      builtInExpertBundle as BuiltInExpertBundle,
+    ));
+    const contextService = new TranslationContextService(
+      new TranslationContextStore(db),
+      adaptiveProvider,
+    );
+    const advancedService = new TranslationService(
+      content,
+      profiles,
+      new TestSecretStore(),
+      new TranslationStore(db),
+      adaptiveProvider,
+      undefined,
+      undefined,
+      expertService,
+      contextService,
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'en' as const,
+      targetLanguage: 'zh-CN' as const,
+      expertId: 'tech',
+      useSmartContext: true,
+    };
+
+    advancedService.generate(request);
+    await vi.waitFor(() => {
+      expect(advancedService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    const translatedPrompt = prompts.find((prompt) => prompt.includes('<source-segments-ndjson>'));
+    expect(prompts.some((prompt) =>
+      prompt.startsWith('Analyze untrusted article content'))).toBe(true);
+    expect(translatedPrompt).toContain('<domain-expert-guidance>');
+    expect(translatedPrompt).toContain('specialized in technology content');
+    expect(translatedPrompt).toContain('<trusted-article-context>');
+    expect(translatedPrompt).toContain('Software runtime architecture');
+    expect(translatedPrompt?.indexOf('Return NDJSON only'))
+      .toBeLessThan(translatedPrompt?.indexOf('<domain-expert-guidance>') ?? 0);
+    expect(advancedService.getState(request)).toMatchObject({
+      result: {
+        expertId: 'tech',
+        smartContextEnabled: true,
+        contextWarning: undefined,
+      },
+    });
+  });
+
+  it('continues translation with an observable warning when smart context fails', async () => {
+    const { db } = buildTestDbWithData();
+    const content = new ContentStore(db);
+    content.upsert({
+      entryId: 1,
+      cleanedHtml: '<p>Fallback article.</p>',
+      pipelineStatus: 'success',
+    });
+    const profiles = new ProviderProfileStore(db);
+    profiles.saveActive({
+      providerKind: 'openai',
+      baseUrl: 'https://provider.example/v1',
+      model: 'mock-model',
+      apiKeyRef: 'key-context-fallback',
+    });
+    memorySecrets.set('key-context-fallback', 'not-a-real-key');
+    const fallbackProvider: SummaryProvider = {
+      async *stream(request): AsyncIterable<string> {
+        if (request.prompt.startsWith('Analyze untrusted article content')) {
+          yield 'invalid context';
+          return;
+        }
+        for (const segment of parseBatchPrompt(request.prompt)) {
+          yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const fallbackService = new TranslationService(
+      content,
+      profiles,
+      new TestSecretStore(),
+      new TranslationStore(db),
+      fallbackProvider,
+      undefined,
+      undefined,
+      undefined,
+      new TranslationContextService(new TranslationContextStore(db), fallbackProvider),
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'en' as const,
+      targetLanguage: 'fr' as const,
+      useSmartContext: true,
+    };
+
+    fallbackService.generate(request);
+    await vi.waitFor(() => {
+      expect(fallbackService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+    expect(fallbackService.getState(request)).toMatchObject({
+      result: {
+        smartContextEnabled: true,
+        contextWarning: {
+          code: 'TRANSLATION_CONTEXT_UNAVAILABLE',
+          retryable: true,
+        },
+      },
+    });
+  });
+
   it('permits only one active Translation at a time', () => {
     const pendingProvider: SummaryProvider = {
       async *stream(request: SummaryProviderRequest): AsyncIterable<string> {
@@ -511,6 +711,7 @@ describe('TranslationService', () => {
     content.upsert({ entryId: 2, cleanedHtml: '<p>Second</p>', pipelineStatus: 'success' });
     const profiles = new ProviderProfileStore(db);
     profiles.saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider.example/v1',
       model: 'mock-model',
       apiKeyRef: 'key-2',
@@ -524,8 +725,8 @@ describe('TranslationService', () => {
       pendingProvider,
     );
 
-    pendingService.generate({ entryId: 1, targetLanguage: 'en' });
-    expect(() => pendingService.generate({ entryId: 2, targetLanguage: 'en' }))
+    pendingService.generate({ entryId: 1, sourceLanguage: 'auto', targetLanguage: 'en' });
+    expect(() => pendingService.generate({ entryId: 2, sourceLanguage: 'auto', targetLanguage: 'en' }))
       .toThrow('Another Translation is already being generated');
     pendingService.abortActiveRun();
   });

@@ -64,8 +64,8 @@ const linuxWindowIconPath = app.isPackaged
   : path.join(__dirname, '../../assets/icons/linux/shale-app-icon-512.png');
 
 const terminologyDbPath = app.isPackaged
-  ? path.join(process.resourcesPath, 'terminology.sqlite')
-  : path.join(__dirname, '../../resources/terminology/terminology.sqlite');
+  ? path.join(process.resourcesPath, 'terminology-libraries.sqlite')
+  : path.join(__dirname, '../../resources/terminology/terminology-libraries.sqlite');
 
 const createWindow = (): void => {
   const applicationUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL

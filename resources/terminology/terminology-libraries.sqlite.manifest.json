@@ -1,0 +1,3492 @@
+{
+  "formatVersion": 2,
+  "generatedAt": "2026-07-24T15:26:45.019Z",
+  "sha256": "7b312d935eb464e22ead4e54becb7ac514a94295fd51164e6f9722a996bc2f43",
+  "catalog": {
+    "url": "https://assets.immersivetranslate.cn/static/terms/meta/index.json",
+    "sha256": "69a53b41d883a3ed3016706ad65252c5bfe1275f2c1c2ec0aa1627da0dca4ed6",
+    "expectedLibraryCount": 34
+  },
+  "agrovoc": {
+    "sourceDatabaseSha256": "98515fef529ea6e05509fcec8fc261945b5ed9db78348fcb04e7c5543353a791",
+    "conceptCount": 41632,
+    "mergedInto": "builtin:default"
+  },
+  "libraries": [
+    {
+      "id": "builtin:default",
+      "upstreamId": "default",
+      "name": "Default",
+      "description": "Default glossary",
+      "author": "self",
+      "version": "catalog@4eb811259b71",
+      "contentHash": "4eb811259b715cc0a86e55bf44615cee78eeea2861d504954f1be0ce0dbfa1b8",
+      "availableTargetLanguages": [
+        "all"
+      ],
+      "usesTraditionalChineseFallback": false,
+      "sourceOrder": 0,
+      "files": [
+        {
+          "targetLanguage": "auto",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/default.csv",
+          "langsHash": "97ba8425b9c415bfc5814bad997509213e863bc4b0a8cb4b0e8e9ba9d33bb3d3",
+          "sha256": "97ba8425b9c415bfc5814bad997509213e863bc4b0a8cb4b0e8e9ba9d33bb3d3",
+          "entryCount": 2,
+          "warnings": [
+            {
+              "file": "default.csv",
+              "line": 2,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "default.csv",
+              "line": 3,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            }
+          ]
+        }
+      ],
+      "warnings": [
+        {
+          "file": "default.csv",
+          "line": 2,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "default.csv",
+          "line": 3,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        }
+      ],
+      "entryCount": 2
+    },
+    {
+      "id": "builtin:twitter",
+      "upstreamId": "twitter",
+      "name": "Twitter",
+      "description": "推特术语库，包含名人等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@4fce1c78d37a",
+      "contentHash": "4fce1c78d37a33a2991cbfd1ec0ddd3bd8a689a0ebbadc3ceef31df422efa382",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 1,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/twitter_zh-CN.csv",
+          "langsHash": "032d3f5da97c899c32292506acbee3e40164de76bf0749fecffe5b3f77cb2920",
+          "sha256": "032d3f5da97c899c32292506acbee3e40164de76bf0749fecffe5b3f77cb2920",
+          "entryCount": 10,
+          "warnings": [
+            {
+              "file": "twitter_zh-CN.csv",
+              "line": 7,
+              "message": "Trailing empty CSV fields were discarded."
+            }
+          ]
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/twitter_zh-TW.csv",
+          "langsHash": "c30687c71525f809057d08c351ccff3c97c9660ad162cc4f17d575375f6ecd1b",
+          "sha256": "c30687c71525f809057d08c351ccff3c97c9660ad162cc4f17d575375f6ecd1b",
+          "entryCount": 10,
+          "warnings": []
+        }
+      ],
+      "warnings": [
+        {
+          "file": "twitter_zh-CN.csv",
+          "line": 7,
+          "message": "Trailing empty CSV fields were discarded."
+        }
+      ],
+      "entryCount": 20
+    },
+    {
+      "id": "builtin:web3",
+      "upstreamId": "web3",
+      "name": "Web3 Expert",
+      "description": "Specialized in translating Web3 and blockchain content, ensuring accurate and idiomatic translations for cryptocurrency, DeFi, NFT, and blockchain technology terminology.",
+      "author": "immersive",
+      "version": "catalog@905e2cff2c1c",
+      "contentHash": "905e2cff2c1ce882183a4bbfe089a20599bc4a766212a8cb577486bf28359b29",
+      "availableTargetLanguages": [
+        "all",
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 2,
+      "files": [
+        {
+          "targetLanguage": "auto",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/web3.csv",
+          "langsHash": "fa45d0dbfac5ee5e8e65acd221bb1859bcccb93a5205a2d3948ed4ba6ca03b2d",
+          "sha256": "fa45d0dbfac5ee5e8e65acd221bb1859bcccb93a5205a2d3948ed4ba6ca03b2d",
+          "entryCount": 8,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/web3_zh-CN.csv",
+          "langsHash": "2202a8432c765a9b38d12a48eeb55896631780a4fc665a4b8d78b6cc4026be03",
+          "sha256": "2202a8432c765a9b38d12a48eeb55896631780a4fc665a4b8d78b6cc4026be03",
+          "entryCount": 58,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/web3_zh-TW.csv",
+          "langsHash": "8b2e8558726cc49f523ee83b1810509d370955ce9e2d4cf0247c74017dc761d1",
+          "sha256": "8b2e8558726cc49f523ee83b1810509d370955ce9e2d4cf0247c74017dc761d1",
+          "entryCount": 59,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 125
+    },
+    {
+      "id": "builtin:tech",
+      "upstreamId": "tech",
+      "name": "Technology Expert",
+      "description": "Focuses on general technology concepts, including hardware, AI models, and major tech companies.",
+      "author": "immersive",
+      "version": "catalog@0346c081350c",
+      "contentHash": "0346c081350c3bf8fa287d33a203a98fd4b341b0210a04d382061f324daf57f7",
+      "availableTargetLanguages": [
+        "all",
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 3,
+      "files": [
+        {
+          "targetLanguage": "auto",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/tech.csv",
+          "langsHash": "707b8447054abb8726e1e486e3287eeeab7b60d84032968fe4e205fd33d5375f",
+          "sha256": "707b8447054abb8726e1e486e3287eeeab7b60d84032968fe4e205fd33d5375f",
+          "entryCount": 21,
+          "warnings": [
+            {
+              "file": "tech.csv",
+              "line": 2,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 3,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 4,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 5,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 6,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 7,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 8,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 9,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 10,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 11,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 12,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 13,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 14,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 15,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 16,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 17,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 18,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 19,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 20,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 21,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "tech.csv",
+              "line": 22,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            }
+          ]
+        },
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/tech_zh-CN.csv",
+          "langsHash": "d7bc8c19113636cbe5e9dc6e6521c1d108797903bf8fe06927e13b76ab66835c",
+          "sha256": "d7bc8c19113636cbe5e9dc6e6521c1d108797903bf8fe06927e13b76ab66835c",
+          "entryCount": 23,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/tech_zh-TW.csv",
+          "langsHash": "9f30c0ea4c28f1ce88df46936befb978943bb25c1f85bc85355cc33b0b8acaac",
+          "sha256": "9f30c0ea4c28f1ce88df46936befb978943bb25c1f85bc85355cc33b0b8acaac",
+          "entryCount": 23,
+          "warnings": []
+        }
+      ],
+      "warnings": [
+        {
+          "file": "tech.csv",
+          "line": 2,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 3,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 4,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 5,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 6,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 7,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 8,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 9,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 10,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 11,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 12,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 13,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 14,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 15,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 16,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 17,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 18,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 19,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 20,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 21,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "tech.csv",
+          "line": 22,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        }
+      ],
+      "entryCount": 67
+    },
+    {
+      "id": "builtin:news",
+      "upstreamId": "news",
+      "name": "News Media Expert",
+      "description": "Specialized in translating news media content, ensuring accurate and idiomatic translations for news articles, reports, and media-related content.",
+      "author": "immersive",
+      "version": "catalog@f91801580bd8",
+      "contentHash": "f91801580bd8815f1c789c59f81391acd0326ef1b05c9e4a75e41063f4a20fdc",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 4,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/news_zh-CN.csv",
+          "langsHash": "695c7dbea9cd6e08ed58eae80431bfaa0deedee13f2a788de6e96c20fb0195d8",
+          "sha256": "695c7dbea9cd6e08ed58eae80431bfaa0deedee13f2a788de6e96c20fb0195d8",
+          "entryCount": 16,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/news_zh-TW.csv",
+          "langsHash": "69bcee43c5779d7b3af782b607074024874e5417404c0d637245228c40bbbaef",
+          "sha256": "69bcee43c5779d7b3af782b607074024874e5417404c0d637245228c40bbbaef",
+          "entryCount": 16,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 32
+    },
+    {
+      "id": "builtin:ao3",
+      "upstreamId": "ao3",
+      "name": "AO3",
+      "description": "AO3 术语库，包含同人小说、标签、分级、警告等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@778252e2dcb0",
+      "contentHash": "778252e2dcb01768964230a06816a5c8f3acfc89725f6ff04d191c9048ce1e8c",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 5,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/ao3_zh-CN.csv",
+          "langsHash": "92ff31cd0864be5c0d0670fe5f99c33276ea21c3dbd6670f0551024c69684d31",
+          "sha256": "92ff31cd0864be5c0d0670fe5f99c33276ea21c3dbd6670f0551024c69684d31",
+          "entryCount": 49,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/ao3_zh-TW.csv",
+          "langsHash": "5e016d7b0806b807034f1dcafea3c8a2c207d1a369e46bb85b729cca306b6590",
+          "sha256": "5e016d7b0806b807034f1dcafea3c8a2c207d1a369e46bb85b729cca306b6590",
+          "entryCount": 49,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 98
+    },
+    {
+      "id": "builtin:programming",
+      "upstreamId": "programming",
+      "name": "Programming",
+      "description": "Glossary for programming languages, software development concepts, and related IT terminology.",
+      "author": "immersive",
+      "version": "catalog@8850dc6f51cb",
+      "contentHash": "8850dc6f51cb23fd2d9fe02469edffc70e79455102083d8db8a43d62ce86d666",
+      "availableTargetLanguages": [
+        "all",
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 6,
+      "files": [
+        {
+          "targetLanguage": "auto",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/programming.csv",
+          "langsHash": "ae0da62b2c8e7e7b4475c8b5cf7ed40eb74f97c9b1f2d7ce98ac8fce46352e29",
+          "sha256": "ae0da62b2c8e7e7b4475c8b5cf7ed40eb74f97c9b1f2d7ce98ac8fce46352e29",
+          "entryCount": 15,
+          "warnings": [
+            {
+              "file": "programming.csv",
+              "line": 2,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 3,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 4,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 5,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 6,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 7,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 8,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 9,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 10,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 11,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 12,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 13,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 14,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 15,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            },
+            {
+              "file": "programming.csv",
+              "line": 16,
+              "message": "Missing optional tgt_lng field was normalized to empty."
+            }
+          ]
+        },
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/programming_zh-CN.csv",
+          "langsHash": "d291b19b1526b4694e43045df8e036779aae18223bb57cdb502cb6b1fd0379d0",
+          "sha256": "d291b19b1526b4694e43045df8e036779aae18223bb57cdb502cb6b1fd0379d0",
+          "entryCount": 45,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/programming_zh-TW.csv",
+          "langsHash": "15f05b9d223e1ce95e5826c76692632e92201d3fb769734286d280b1e263df2e",
+          "sha256": "15f05b9d223e1ce95e5826c76692632e92201d3fb769734286d280b1e263df2e",
+          "entryCount": 45,
+          "warnings": []
+        }
+      ],
+      "warnings": [
+        {
+          "file": "programming.csv",
+          "line": 2,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 3,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 4,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 5,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 6,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 7,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 8,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 9,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 10,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 11,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 12,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 13,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 14,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 15,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        },
+        {
+          "file": "programming.csv",
+          "line": 16,
+          "message": "Missing optional tgt_lng field was normalized to empty."
+        }
+      ],
+      "entryCount": 105
+    },
+    {
+      "id": "builtin:education",
+      "upstreamId": "education",
+      "name": "Education",
+      "description": "教育术语库，包含教学、学习、课程等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@b0abff01bdea",
+      "contentHash": "b0abff01bdea0d6fe796ac3cfb12e9faee094798e8048b8a6aacb6084310cb3f",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 7,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/education_zh-CN.csv",
+          "langsHash": "0fe09222f13fda06f5d6dfe55a136e9a38d0fc31072ade0d223d1e0a3f8f4855",
+          "sha256": "0fe09222f13fda06f5d6dfe55a136e9a38d0fc31072ade0d223d1e0a3f8f4855",
+          "entryCount": 115,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/education_zh-TW.csv",
+          "langsHash": "0e5b6921a4d916ddad3973b88fe0b96c1b08f8131ba6128622ee5ae6b22ddd8b",
+          "sha256": "0e5b6921a4d916ddad3973b88fe0b96c1b08f8131ba6128622ee5ae6b22ddd8b",
+          "entryCount": 115,
+          "warnings": []
+        }
+      ],
+      "warnings": [
+        {
+          "file": "education_zh-CN.csv",
+          "line": 82,
+          "message": "Conflicting entry ignored; the first catalog entry wins."
+        },
+        {
+          "file": "education_zh-TW.csv",
+          "line": 82,
+          "message": "Conflicting entry ignored; the first catalog entry wins."
+        }
+      ],
+      "entryCount": 228
+    },
+    {
+      "id": "builtin:finance",
+      "upstreamId": "finance",
+      "name": "Finance",
+      "description": "金融术语库，包含投资、交易、市场等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@1351ad7c3f28",
+      "contentHash": "1351ad7c3f28d4169bd5c75dd07a9112d9525fcee679fc597a8a263ebc44d02e",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 8,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/finance_zh-CN.csv",
+          "langsHash": "7508eb7ffbcbca0bc08c74c78e335f890e0b814941eacab6381d99a8b12df779",
+          "sha256": "7508eb7ffbcbca0bc08c74c78e335f890e0b814941eacab6381d99a8b12df779",
+          "entryCount": 28,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/finance_zh-TW.csv",
+          "langsHash": "54f9af3c75a0fe1e02ce577c9a5ccda32d14fa49ebc1382fa5b4f96a2c923bb7",
+          "sha256": "54f9af3c75a0fe1e02ce577c9a5ccda32d14fa49ebc1382fa5b4f96a2c923bb7",
+          "entryCount": 28,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 56
+    },
+    {
+      "id": "builtin:legal",
+      "upstreamId": "legal",
+      "name": "Legal",
+      "description": "法律术语库，包含法律概念、程序、文件等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@39d64e071055",
+      "contentHash": "39d64e071055c0a3bef62e6cfab841e889dea73086d12c8d1b06eb6202a2bed1",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 9,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/legal_zh-CN.csv",
+          "langsHash": "599dbe1f56ce2c8d49c97ff155d3d18b65191363ed96988808fccc1ae964d5e2",
+          "sha256": "599dbe1f56ce2c8d49c97ff155d3d18b65191363ed96988808fccc1ae964d5e2",
+          "entryCount": 99,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/legal_zh-TW.csv",
+          "langsHash": "76ab18b52e4a23b4207b15c4dc2b9abf184593a48b34737daa808f2450dc5166",
+          "sha256": "76ab18b52e4a23b4207b15c4dc2b9abf184593a48b34737daa808f2450dc5166",
+          "entryCount": 99,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 198
+    },
+    {
+      "id": "builtin:car",
+      "upstreamId": "car",
+      "name": "Car Expert",
+      "description": "Specialized in translating automotive-related content, ensuring accurate and idiomatic translations for car terms, parts, technology, and automotive-related content.",
+      "author": "immersive",
+      "version": "catalog@1f091c33d121",
+      "contentHash": "1f091c33d121041a0174739064b2311822279bf90ba2653fa67cae51a92db8f9",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 10,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/car_zh-CN.csv",
+          "langsHash": "57a6f3a7ff25d7cc063de241e68bf55abc1702ff61e9cea360a5336a65f7f195",
+          "sha256": "57a6f3a7ff25d7cc063de241e68bf55abc1702ff61e9cea360a5336a65f7f195",
+          "entryCount": 72,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/car_zh-TW.csv",
+          "langsHash": "5ec4bee134443719eed997b91d51c70875bfa73cd92ea951374afac92b0f3f6c",
+          "sha256": "5ec4bee134443719eed997b91d51c70875bfa73cd92ea951374afac92b0f3f6c",
+          "entryCount": 72,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 144
+    },
+    {
+      "id": "builtin:ecommerce",
+      "upstreamId": "ecommerce",
+      "name": "E-commerce Expert",
+      "description": "Specialized in translating e-commerce content, ensuring accurate and idiomatic translations for online shopping, product listings, and e-commerce related content.",
+      "author": "immersive",
+      "version": "catalog@f3066d5a36ba",
+      "contentHash": "f3066d5a36ba32cf47c5d5aee08ce3e2f2d15a12cafd744db4789f302112cb56",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 11,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/ecommerce_zh-CN.csv",
+          "langsHash": "c1a6fed60b18331d7969da303d3d09e40481a7eb4d7c03f1e2af5534632c5cfc",
+          "sha256": "c1a6fed60b18331d7969da303d3d09e40481a7eb4d7c03f1e2af5534632c5cfc",
+          "entryCount": 74,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/ecommerce_zh-TW.csv",
+          "langsHash": "50f1dfd6ecb9da9e7b155fc5c39b069fe1cac3b7229332dfbf814318db9d29fe",
+          "sha256": "50f1dfd6ecb9da9e7b155fc5c39b069fe1cac3b7229332dfbf814318db9d29fe",
+          "entryCount": 74,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 148
+    },
+    {
+      "id": "builtin:fashion",
+      "upstreamId": "fashion",
+      "name": "Fashion Expert",
+      "description": "Specialized in translating fashion-related content, ensuring accurate and idiomatic translations for fashion terms, clothing, accessories, and fashion-related content.",
+      "author": "immersive",
+      "version": "catalog@9dedc5a9dac6",
+      "contentHash": "9dedc5a9dac6a432a448324320506d942bcc085443c23d35386a17dcd701c79c",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 12,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/fashion_zh-CN.csv",
+          "langsHash": "64b352004e6fc6703b7ca354f69ab533f532d22cfa1511492ab0fd60973e5406",
+          "sha256": "64b352004e6fc6703b7ca354f69ab533f532d22cfa1511492ab0fd60973e5406",
+          "entryCount": 11,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/fashion_zh-TW.csv",
+          "langsHash": "8ea1da8910d0c1ac47c5f0fb5ae3eda98d01b93bef4c311ad1e1ab03edb5b7c9",
+          "sha256": "8ea1da8910d0c1ac47c5f0fb5ae3eda98d01b93bef4c311ad1e1ab03edb5b7c9",
+          "entryCount": 11,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 22
+    },
+    {
+      "id": "builtin:food",
+      "upstreamId": "food",
+      "name": "Food Expert",
+      "description": "Specialized in translating food-related content, ensuring accurate and idiomatic translations for culinary terms, ingredients, cooking techniques, and food-related content.",
+      "author": "immersive",
+      "version": "catalog@1a0754f24dc1",
+      "contentHash": "1a0754f24dc18be9568a0629c8909dba9a7e5a791793ccb859fbd8ca40d6a8a9",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 13,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/food_zh-CN.csv",
+          "langsHash": "a687187513fc84b8e48d96a71c496c37a0633f07d43d5b3636f747acf7e19dcb",
+          "sha256": "a687187513fc84b8e48d96a71c496c37a0633f07d43d5b3636f747acf7e19dcb",
+          "entryCount": 51,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/food_zh-TW.csv",
+          "langsHash": "2f896a7f22ed7478704da052fd9997590d0e88455912ba5bc2be78fe786ca2cf",
+          "sha256": "2f896a7f22ed7478704da052fd9997590d0e88455912ba5bc2be78fe786ca2cf",
+          "entryCount": 55,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 106
+    },
+    {
+      "id": "builtin:gardening",
+      "upstreamId": "gardening",
+      "name": "Gardening",
+      "description": "园艺术语库，包含植物、工具、技术等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@cd80c9869c13",
+      "contentHash": "cd80c9869c133a9a126031d9666811267908cde552dac96266746c2221c319a4",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 14,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/gardening_zh-CN.csv",
+          "langsHash": "57d49e55281b0ba6681aed0c414235ce556a6e55f9990a54ccf0a64ea7ba12c7",
+          "sha256": "57d49e55281b0ba6681aed0c414235ce556a6e55f9990a54ccf0a64ea7ba12c7",
+          "entryCount": 63,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/gardening_zh-TW.csv",
+          "langsHash": "74ff051522a14a90d6b1ee8c6a2bd1559e1e8c598cd265370b56665031b6d71e",
+          "sha256": "74ff051522a14a90d6b1ee8c6a2bd1559e1e8c598cd265370b56665031b6d71e",
+          "entryCount": 63,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 126
+    },
+    {
+      "id": "builtin:medical",
+      "upstreamId": "medical",
+      "name": "Medical",
+      "description": "医疗术语库，包含疾病、治疗、药物等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@b4abc9cfc744",
+      "contentHash": "b4abc9cfc744fa3a7857ecc92b0ed196b93392471cf5c4825e6a6572f4b43515",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 15,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/medical_zh-CN.csv",
+          "langsHash": "327ab4134bdd2255b281c125534f15dbd3df75fb3d2084c83a648ddc81328a86",
+          "sha256": "327ab4134bdd2255b281c125534f15dbd3df75fb3d2084c83a648ddc81328a86",
+          "entryCount": 89,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/medical_zh-TW.csv",
+          "langsHash": "0697a292d7a43b02576be8917189a68ebd1e4fabc5a5b0af1568c71a4238f36e",
+          "sha256": "0697a292d7a43b02576be8917189a68ebd1e4fabc5a5b0af1568c71a4238f36e",
+          "entryCount": 89,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 178
+    },
+    {
+      "id": "builtin:music",
+      "upstreamId": "music",
+      "name": "Music",
+      "description": "音乐术语库，包含乐器、乐理、演奏等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@e7f6dce1a667",
+      "contentHash": "e7f6dce1a667a0346e20883f8210f710b3783696039577563bea6bed08aaed9c",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 16,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/music_zh-CN.csv",
+          "langsHash": "746a7f718f7e2080ac888604d4b0a476831f8e694fe65447ad4deff0e986c72d",
+          "sha256": "746a7f718f7e2080ac888604d4b0a476831f8e694fe65447ad4deff0e986c72d",
+          "entryCount": 73,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/music_zh-TW.csv",
+          "langsHash": "d4b2d1282d8f4aa206bf13c7e9ed9b9ba34b7d409dd91e1be42c8cd7989aedce",
+          "sha256": "d4b2d1282d8f4aa206bf13c7e9ed9b9ba34b7d409dd91e1be42c8cd7989aedce",
+          "entryCount": 73,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 146
+    },
+    {
+      "id": "builtin:pet",
+      "upstreamId": "pet",
+      "name": "Pet",
+      "description": "宠物术语库，包含宠物种类、护理、训练等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@e677070ace09",
+      "contentHash": "e677070ace09257497d59ee7f6b3a5f6138f847f9a97009356f2f9d1d27d75e6",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 17,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/pet_zh-CN.csv",
+          "langsHash": "fb15c41acbea4571af3aec36909ad491777261b3bba1e1c594c12a91d22a0693",
+          "sha256": "fb15c41acbea4571af3aec36909ad491777261b3bba1e1c594c12a91d22a0693",
+          "entryCount": 47,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/pet_zh-TW.csv",
+          "langsHash": "d73efbc04a7898e37bf0c6771d78f5218651c968a71d8b293b1a5b8ea8e6679f",
+          "sha256": "d73efbc04a7898e37bf0c6771d78f5218651c968a71d8b293b1a5b8ea8e6679f",
+          "entryCount": 47,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 94
+    },
+    {
+      "id": "builtin:sports",
+      "upstreamId": "sports",
+      "name": "Sports",
+      "description": "体育术语库，包含运动项目、规则、装备等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@1f5c7f115e64",
+      "contentHash": "1f5c7f115e648890db84432288111a3778abc1fed5956f2664d7543709ee9015",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 18,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/sports_zh-CN.csv",
+          "langsHash": "5fdc2f4acb75ed0507d6aec3328e5ded158179908aad06df30d386f705ecd505",
+          "sha256": "5fdc2f4acb75ed0507d6aec3328e5ded158179908aad06df30d386f705ecd505",
+          "entryCount": 24,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/sports_zh-TW.csv",
+          "langsHash": "4aa6106d54116089816f0071aceb112da8452caadf073dfe24318674e62e9ee0",
+          "sha256": "4aa6106d54116089816f0071aceb112da8452caadf073dfe24318674e62e9ee0",
+          "entryCount": 24,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 48
+    },
+    {
+      "id": "builtin:travel",
+      "upstreamId": "travel",
+      "name": "Travel",
+      "description": "旅游术语库，包含景点、住宿、交通等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@828f9e6880eb",
+      "contentHash": "828f9e6880ebc6ff3c1db18cb59384654f84dc120cc24e66ab81aeb345426f47",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 19,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/travel_zh-CN.csv",
+          "langsHash": "950c9a1aa761471e3ea9003807ff8ebc226fea5c29aef1cb0b464d8c63451644",
+          "sha256": "950c9a1aa761471e3ea9003807ff8ebc226fea5c29aef1cb0b464d8c63451644",
+          "entryCount": 56,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/travel_zh-TW.csv",
+          "langsHash": "ed76db15cadef4807b76fb9478f6280d8e9df888e03c0b24933991754eca4664",
+          "sha256": "ed76db15cadef4807b76fb9478f6280d8e9df888e03c0b24933991754eca4664",
+          "entryCount": 56,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 112
+    },
+    {
+      "id": "builtin:chess",
+      "upstreamId": "chess",
+      "name": "Chess Expert",
+      "description": "Specialized in translating chess-related content, ensuring accurate and idiomatic translations for chess.com articles and terminology.",
+      "author": "immersive",
+      "version": "catalog@f6b4522e555a",
+      "contentHash": "f6b4522e555af2c7965f641a1af0bc4901243b2885b480dd3abf9528f1212789",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 20,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/chess_zh-CN.csv",
+          "langsHash": "b621185e9b5ff8619a5d0fc2f1a9549e770ca4e7741c30e5efc4e6aceba365fb",
+          "sha256": "b621185e9b5ff8619a5d0fc2f1a9549e770ca4e7741c30e5efc4e6aceba365fb",
+          "entryCount": 35,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/chess_zh-TW.csv",
+          "langsHash": "f1bf5763aa0f51a8aee0b492a639163c89ab16ca0c59db2cb462b75dc2971af4",
+          "sha256": "f1bf5763aa0f51a8aee0b492a639163c89ab16ca0c59db2cb462b75dc2971af4",
+          "entryCount": 35,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 70
+    },
+    {
+      "id": "builtin:game",
+      "upstreamId": "game",
+      "name": "Game",
+      "description": "游戏术语库，包含游戏类型、玩法、设备等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@1aca49dd98a2",
+      "contentHash": "1aca49dd98a22994373abe315f558ca3150fd73579b6c7a9c33f085992bc12aa",
+      "availableTargetLanguages": [
+        "all",
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 21,
+      "files": [
+        {
+          "targetLanguage": "auto",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/game.csv",
+          "langsHash": "707eaaa6504a32c77416cff277638949094ea48234a3f0443fba8486e7a8052b",
+          "sha256": "707eaaa6504a32c77416cff277638949094ea48234a3f0443fba8486e7a8052b",
+          "entryCount": 5,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/game_zh-CN.csv",
+          "langsHash": "a5c44e8aa19d2e621156fc8db308d2d4875c3b82fcb682145b3f4981cdd11d8e",
+          "sha256": "a5c44e8aa19d2e621156fc8db308d2d4875c3b82fcb682145b3f4981cdd11d8e",
+          "entryCount": 67,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/game_zh-TW.csv",
+          "langsHash": "30bd8b2708108c58e19d70e20dc95d37dc731d960c048ec58b785ee2b7079ed2",
+          "sha256": "30bd8b2708108c58e19d70e20dc95d37dc731d960c048ec58b785ee2b7079ed2",
+          "entryCount": 67,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 139
+    },
+    {
+      "id": "builtin:golf",
+      "upstreamId": "golf",
+      "name": "Golf Expert",
+      "description": "Specialized in translating golf-related content, ensuring accurate and idiomatic translations for golf terms, equipment, rules, and golf-related content.",
+      "author": "immersive",
+      "version": "catalog@a00c9cf8475a",
+      "contentHash": "a00c9cf8475aaf6ce35c616e82b62ff72bd39d93de9a2d7395e67e64d8b30098",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 22,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/golf_zh-CN.csv",
+          "langsHash": "383b8133b8b3a9e1f358a239fe8907c52a593a5afd1ef85b8e7c8e6c9f7d0851",
+          "sha256": "383b8133b8b3a9e1f358a239fe8907c52a593a5afd1ef85b8e7c8e6c9f7d0851",
+          "entryCount": 54,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/golf_zh-TW.csv",
+          "langsHash": "4c7061e1aaa87522d758f0383b335d21b46a46dd308957f99be96a2ee86c80c7",
+          "sha256": "4c7061e1aaa87522d758f0383b335d21b46a46dd308957f99be96a2ee86c80c7",
+          "entryCount": 54,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 108
+    },
+    {
+      "id": "builtin:movie",
+      "upstreamId": "movie",
+      "name": "Movie",
+      "description": "电影术语库，包含电影类型、制作、放映等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@2e99b63638ab",
+      "contentHash": "2e99b63638ab1b07c95b7dcf0c117cc8fc74fc14a5110b469f2911d901f54098",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 23,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/movie_zh-CN.csv",
+          "langsHash": "eb0406359e252ac696bfc2c4ae83fe5703e085db37ba7258c138e4c6082f7971",
+          "sha256": "eb0406359e252ac696bfc2c4ae83fe5703e085db37ba7258c138e4c6082f7971",
+          "entryCount": 76,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/movie_zh-TW.csv",
+          "langsHash": "d1945faf8a79172b254add6de7aa02290d2c92f7adfbf1e7c744363bf37c5a19",
+          "sha256": "d1945faf8a79172b254add6de7aa02290d2c92f7adfbf1e7c744363bf37c5a19",
+          "entryCount": 77,
+          "warnings": []
+        }
+      ],
+      "warnings": [
+        {
+          "file": "movie_zh-CN.csv",
+          "line": 65,
+          "message": "Conflicting entry ignored; the first catalog entry wins."
+        },
+        {
+          "file": "movie_zh-CN.csv",
+          "line": 77,
+          "message": "Conflicting entry ignored; the first catalog entry wins."
+        },
+        {
+          "file": "movie_zh-TW.csv",
+          "line": 74,
+          "message": "Conflicting entry ignored; the first catalog entry wins."
+        },
+        {
+          "file": "movie_zh-TW.csv",
+          "line": 75,
+          "message": "Duplicate entry ignored."
+        }
+      ],
+      "entryCount": 149
+    },
+    {
+      "id": "builtin:photography",
+      "upstreamId": "photography",
+      "name": "Photography",
+      "description": "摄影术语库，包含相机、镜头、拍摄等相关术语的中文翻译。",
+      "author": "immersive",
+      "version": "catalog@0f5032a5b7fe",
+      "contentHash": "0f5032a5b7fe0039ca5db8324e441f957919cbb04d3a3f440e589c193aeb6035",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 24,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/photography_zh-CN.csv",
+          "langsHash": "c296dd642415805707d31ca5a0517da121bd86f8c74a07e6a762573a349d8ad5",
+          "sha256": "c296dd642415805707d31ca5a0517da121bd86f8c74a07e6a762573a349d8ad5",
+          "entryCount": 44,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/photography_zh-TW.csv",
+          "langsHash": "704a7e32ea66ac510f468e263daec43977186fbdb794ee258b640870c0192158",
+          "sha256": "704a7e32ea66ac510f468e263daec43977186fbdb794ee258b640870c0192158",
+          "entryCount": 44,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 88
+    },
+    {
+      "id": "builtin:stellar-blade-clothing",
+      "upstreamId": "stellar-blade-clothing",
+      "name": "Stellar Blade Costumes",
+      "description": "Official Chinese translations for Stellar Blade game costumes",
+      "author": "MaMihLaPiNaTaPaI0",
+      "version": "catalog@447af3df0b72",
+      "contentHash": "447af3df0b72a6d1a8fc28beb8709597cfb6e3c707f896f4a5917e0835093715",
+      "availableTargetLanguages": [
+        "zh-CN"
+      ],
+      "usesTraditionalChineseFallback": false,
+      "sourceOrder": 25,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/stellar-blade-clothing_zh-CN.csv",
+          "langsHash": "06ddfdcbd3c2e51829560560f84b00c783f9984c4c24e977c1276810220e721d",
+          "sha256": "06ddfdcbd3c2e51829560560f84b00c783f9984c4c24e977c1276810220e721d",
+          "entryCount": 504,
+          "warnings": []
+        }
+      ],
+      "warnings": [
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 7,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 8,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 9,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 11,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 12,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 13,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 15,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 16,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 17,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 19,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 20,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 21,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 23,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 24,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 25,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 27,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 28,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 29,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 31,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 32,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 33,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 35,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 36,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 37,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 39,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 40,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 41,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 43,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 44,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 45,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 47,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 48,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 49,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 51,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 52,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 53,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 55,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 56,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 57,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 59,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 60,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 61,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 63,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 64,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 65,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 67,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 68,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 69,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 71,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 72,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 73,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 75,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 76,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 77,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 79,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 80,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 81,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 83,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 84,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 85,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 87,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 88,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 89,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 91,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 92,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 93,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 95,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 96,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 97,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 99,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 100,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 101,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 103,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 104,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 105,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 107,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 108,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 109,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 111,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 112,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 113,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 115,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 116,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 117,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 119,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 120,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 121,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 123,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 124,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 125,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 127,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 128,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 129,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 131,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 132,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 133,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 135,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 136,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 137,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 139,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 140,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 141,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 143,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 144,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 145,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 147,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 148,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 149,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 151,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 152,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 153,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 155,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 156,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 157,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 159,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 160,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 161,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 163,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 164,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 165,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 167,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 168,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 169,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 171,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 172,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 173,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 175,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 176,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 177,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 179,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 180,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 181,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 183,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 184,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 185,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 187,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 188,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 189,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 191,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 192,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 193,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 195,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 196,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 197,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 199,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 200,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 201,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 203,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 204,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 205,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 207,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 208,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 209,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 211,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 212,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 213,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 215,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 216,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 217,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 219,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 220,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 221,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 223,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 224,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 225,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 227,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 228,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 229,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 231,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 232,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 233,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 235,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 236,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 237,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 239,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 240,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 241,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 243,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 244,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 245,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 247,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 248,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 249,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 251,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 252,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 253,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 255,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 256,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 257,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 259,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 260,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 261,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 263,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 264,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 265,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 267,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 268,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 269,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 271,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 272,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 273,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 275,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 276,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 277,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 279,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 280,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 281,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 283,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 284,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 285,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 287,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 288,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 289,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 291,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 292,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 293,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 295,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 296,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 297,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 299,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 300,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 301,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 303,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 304,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 305,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 307,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 308,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 309,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 311,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 312,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 313,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 315,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 316,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 317,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 319,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 320,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 321,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 323,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 324,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 325,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 327,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 328,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 329,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 331,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 332,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 333,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 335,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 336,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 337,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 339,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 340,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 341,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 343,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 344,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 345,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 347,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 348,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 349,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 351,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 352,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 353,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 355,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 356,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 357,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 359,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 360,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 361,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 363,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 364,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 365,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 367,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 368,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 369,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 371,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 372,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 373,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 375,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 376,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 377,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 379,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 380,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 381,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 383,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 384,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 385,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 387,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 388,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 389,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 391,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 392,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 393,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 395,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 396,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 397,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 399,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 400,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 401,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 403,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 404,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 405,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 407,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 408,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 409,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 411,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 412,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 413,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 415,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 416,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 417,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 419,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 420,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 421,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 423,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 424,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 425,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 427,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 428,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 429,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 431,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 432,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 433,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 435,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 436,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 437,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 439,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 440,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 441,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 443,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 444,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 445,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 447,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 448,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 449,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 451,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 452,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 453,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 455,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 456,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 457,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 459,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 460,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 461,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 463,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 464,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 465,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 467,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 468,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 469,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 471,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 472,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 473,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 475,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 476,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 477,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 479,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 480,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 481,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 483,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 484,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 485,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 487,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 488,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 489,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 491,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 492,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 493,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 495,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 496,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 497,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 499,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 500,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 501,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 503,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 504,
+          "message": "Duplicate entry ignored."
+        },
+        {
+          "file": "stellar-blade-clothing_zh-CN.csv",
+          "line": 505,
+          "message": "Duplicate entry ignored."
+        }
+      ],
+      "entryCount": 129
+    },
+    {
+      "id": "builtin:Shelter69-Slang",
+      "upstreamId": "Shelter69-Slang",
+      "name": "Shelter69 Slang",
+      "description": "《Shelter69》DC slang",
+      "author": "MaMihLaPiNaTaPaI0",
+      "version": "catalog@5928b0e2a235",
+      "contentHash": "5928b0e2a235d56de721e2b7385b3ed335409eb2c7b7db355e519026a6e85c1b",
+      "availableTargetLanguages": [
+        "zh-CN"
+      ],
+      "usesTraditionalChineseFallback": false,
+      "sourceOrder": 26,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/Shelter69-Slang_zh-CN.csv",
+          "langsHash": "0b8ea6a694a38fd8c0326157ee982fedb8057003547f601ceb0bf009e4e717e6",
+          "sha256": "0b8ea6a694a38fd8c0326157ee982fedb8057003547f601ceb0bf009e4e717e6",
+          "entryCount": 309,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 309
+    },
+    {
+      "id": "builtin:Vocaloid",
+      "upstreamId": "Vocaloid",
+      "name": "Vocaloid",
+      "description": "Japanese to Chinese Vocaloid terminology database, containing Chinese translations of some Japanese Vocaloid, producer names, virtual singer names, and other related Vocaloid terms that cannot or are not accurately translated.",
+      "author": "人造石",
+      "version": "catalog@216d418047cb",
+      "contentHash": "216d418047cb4e1637932bb9a2e583645279089bb7b426fc9a9f0c6f03d46f80",
+      "availableTargetLanguages": [
+        "zh-CN"
+      ],
+      "usesTraditionalChineseFallback": false,
+      "sourceOrder": 27,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/Vocaloid_zh-CN.csv",
+          "langsHash": "cf56653153ca2ab7c440343d3f64fe7747300736fc37ddb332f68a006ecfcb76",
+          "sha256": "cf56653153ca2ab7c440343d3f64fe7747300736fc37ddb332f68a006ecfcb76",
+          "entryCount": 38,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 38
+    },
+    {
+      "id": "builtin:access-control",
+      "upstreamId": "access-control",
+      "name": "access-control",
+      "description": "访问控制术语库，包含与访问控制（计算机科学领域）相关的术语的中文翻译。",
+      "author": "Ziv",
+      "version": "catalog@376739fc23b9",
+      "contentHash": "376739fc23b9d0d2c022ac7ffba7049059ac07549a205306ce33941796fec534",
+      "availableTargetLanguages": [
+        "zh-CN"
+      ],
+      "usesTraditionalChineseFallback": false,
+      "sourceOrder": 28,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/access-control_zh-CN.csv",
+          "langsHash": "4884da75bbe2087529611963af84c4b475052bba244aa876e6aa747cf5892eae",
+          "sha256": "4884da75bbe2087529611963af84c4b475052bba244aa876e6aa747cf5892eae",
+          "entryCount": 8,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 8
+    },
+    {
+      "id": "builtin:hd2",
+      "upstreamId": "hd2",
+      "name": "Helldivers 2",
+      "description": "Chinese translations for Helldivers 2 game terms",
+      "author": "TWSFFTS_07007",
+      "version": "catalog@c4ae4f681530",
+      "contentHash": "c4ae4f6815305148875e6e71d2223a51f859e5857b0c4c53afc62f9421f5a3ab",
+      "availableTargetLanguages": [
+        "zh-CN"
+      ],
+      "usesTraditionalChineseFallback": false,
+      "sourceOrder": 29,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/hd2_zh-CN.csv",
+          "langsHash": "e5fd9fbbb1c667cee3ce57d6cdb5d43e0f63e44dc032eca5b1f8b7529823b476",
+          "sha256": "e5fd9fbbb1c667cee3ce57d6cdb5d43e0f63e44dc032eca5b1f8b7529823b476",
+          "entryCount": 467,
+          "warnings": []
+        }
+      ],
+      "warnings": [
+        {
+          "file": "hd2_zh-CN.csv",
+          "line": 9,
+          "message": "Duplicate entry ignored."
+        }
+      ],
+      "entryCount": 466
+    },
+    {
+      "id": "builtin:bg3",
+      "upstreamId": "bg3",
+      "name": "Baldur's Gate 3",
+      "description": "Terminology for Baldur's Gate 3, including attributes, classes, races, spells, locations, and characters.",
+      "author": "Au3C2",
+      "version": "catalog@03b89ae56a94",
+      "contentHash": "03b89ae56a9401aad40fda7651f8cb13fa6f74410fc6b53271f72d1fc12d4305",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 30,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/bg3_zh-CN.csv",
+          "langsHash": "08bdc87be41afc934de4766ba491beb67b58bf9fc4a48fe79f95729b5cd06000",
+          "sha256": "08bdc87be41afc934de4766ba491beb67b58bf9fc4a48fe79f95729b5cd06000",
+          "entryCount": 327,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/bg3_zh-TW.csv",
+          "langsHash": "0615052cd10f3780f539914e71ee9c3f8d2286ab8642d55c6e618c53863d3ea5",
+          "sha256": "0615052cd10f3780f539914e71ee9c3f8d2286ab8642d55c6e618c53863d3ea5",
+          "entryCount": 327,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 654
+    },
+    {
+      "id": "builtin:biology",
+      "upstreamId": "biology",
+      "name": "Biology Expert",
+      "description": "Focuses on biological taxonomy ranks (Kingdom, Phylum, Class, Order, etc.) and core biological terms.",
+      "author": "mmlet",
+      "version": "catalog@f2292bb57dd9",
+      "contentHash": "f2292bb57dd94d70e3a19331ce20f36fbf8969db685be7c70b9c3928c11f1fb9",
+      "availableTargetLanguages": [
+        "zh-CN"
+      ],
+      "usesTraditionalChineseFallback": false,
+      "sourceOrder": 31,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/biology_zh-CN.csv",
+          "langsHash": "e5971fb939ccc25ef45d87c8624c66145c299c546597d554e3a1c549800ba76c",
+          "sha256": "e5971fb939ccc25ef45d87c8624c66145c299c546597d554e3a1c549800ba76c",
+          "entryCount": 26,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 26
+    },
+    {
+      "id": "builtin:tennis",
+      "upstreamId": "tennis",
+      "name": "Tennis Expert",
+      "description": "Specialized in translating tennis-related content, including rules, strokes, scoring, and tournament terminology.",
+      "author": "Tabris-ZX",
+      "version": "catalog@eeb6b260127a",
+      "contentHash": "eeb6b260127a669d8b801fd2bd20bd378cc2bcbe43b0885e3b8aca904c8bf8af",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 32,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/tennis_zh-CN.csv",
+          "langsHash": "3fc039d7f64234cb3d4fde788166c08e68e450b00829a1ab348038ec5284ac73",
+          "sha256": "3fc039d7f64234cb3d4fde788166c08e68e450b00829a1ab348038ec5284ac73",
+          "entryCount": 55,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/tennis_zh-TW.csv",
+          "langsHash": "7183749860e0fed8c3807131da403bd9fe670d599108ca9560d6a667605400ff",
+          "sha256": "7183749860e0fed8c3807131da403bd9fe670d599108ca9560d6a667605400ff",
+          "entryCount": 55,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 110
+    },
+    {
+      "id": "builtin:programming-contest",
+      "upstreamId": "programming-contest",
+      "name": "Programming Contest",
+      "description": "Specialized terminology for programming contest translation, covering contest formats, participant roles, problem statements, judging and verdicts, standings and scoring, and community jargon.",
+      "author": "Tabris-ZX",
+      "version": "catalog@aac6dc158455",
+      "contentHash": "aac6dc158455bcdf82629ee1a2bf1a6c4bc6952b39c90a618c14a81a0b9f4ce3",
+      "availableTargetLanguages": [
+        "zh-CN",
+        "zh-TW"
+      ],
+      "usesTraditionalChineseFallback": true,
+      "sourceOrder": 33,
+      "files": [
+        {
+          "targetLanguage": "zh-CN",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/programming-contest_zh-CN.csv",
+          "langsHash": "7eab1186a226f5426e15fd2debec45d60f245254b8dc6490a3f98a5989727fd4",
+          "sha256": "7eab1186a226f5426e15fd2debec45d60f245254b8dc6490a3f98a5989727fd4",
+          "entryCount": 86,
+          "warnings": []
+        },
+        {
+          "targetLanguage": "zh-TW",
+          "url": "https://assets.immersivetranslate.cn/static/terms/glossaries/programming-contest_zh-TW.csv",
+          "langsHash": "14b3f3ac9696c44792399f7d0e05e98b65b73902b75b0d4c78c8d66e9f97ea89",
+          "sha256": "14b3f3ac9696c44792399f7d0e05e98b65b73902b75b0d4c78c8d66e9f97ea89",
+          "entryCount": 86,
+          "warnings": []
+        }
+      ],
+      "warnings": [],
+      "entryCount": 172
+    }
+  ]
+}

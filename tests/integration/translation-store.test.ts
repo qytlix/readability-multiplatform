@@ -20,6 +20,7 @@ describe('TranslationStore', () => {
     const { db } = buildTestDbWithData();
     const profiles = new ProviderProfileStore(db);
     providerProfileId = profiles.saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider.example/v1',
       model: 'example-model',
       apiKeyRef: 'secret-reference',
@@ -48,6 +49,7 @@ describe('TranslationStore', () => {
     const run = translationStore.createRun({
       entryId: 1,
       providerProfileId,
+      sourceLanguage: 'auto',
       targetLanguage: 'zh-CN',
       sourceContentHash: 'source-hash',
       segmenterVersion: 'v1',
@@ -66,6 +68,7 @@ describe('TranslationStore', () => {
     expect(result.segments.map((segment) => segment.translatedText)).toEqual(['第一段', '第二段']);
     expect(translationStore.findCompatibleResult(
       1,
+      'auto',
       'zh-CN',
       'source-hash',
       'v1',
@@ -78,6 +81,7 @@ describe('TranslationStore', () => {
     const run = translationStore.createRun({
       entryId: 1,
       providerProfileId,
+      sourceLanguage: 'auto',
       targetLanguage: 'en',
       sourceContentHash: 'source-hash',
       segmenterVersion: 'v1',
@@ -92,6 +96,7 @@ describe('TranslationStore', () => {
 
     expect(translationStore.findCompatibleResult(
       1,
+      'auto',
       'en',
       'source-hash',
       'v1',
@@ -104,10 +109,76 @@ describe('TranslationStore', () => {
     });
   });
 
+  it('persists expert and smart-context identity plus a non-fatal context warning', () => {
+    const run = translationStore.createRun({
+      entryId: 1,
+      providerProfileId,
+      sourceLanguage: 'en',
+      targetLanguage: 'de',
+      sourceContentHash: 'expert-context-hash',
+      segmenterVersion: 'v2',
+      promptVersion: 'translation-v5',
+      terminologyPackVersion: 'none',
+      expertId: 'paper',
+      expertContentHash: 'expert-content-a',
+      smartContextEnabled: true,
+      contextPromptVersion: 'translation-context-v1',
+      segments: [{
+        id: 'seg_0',
+        orderIndex: 0,
+        type: 'paragraph',
+        sourceHtml: '<p>Source</p>',
+        sourceText: 'Source',
+      }],
+    });
+    translationStore.setContextWarning(run.id, {
+      code: 'TRANSLATION_CONTEXT_UNAVAILABLE',
+      message: 'Context failed, translation continued.',
+      retryable: true,
+    });
+
+    expect(translationStore.findCompatibleResult(
+      1,
+      'en',
+      'de',
+      'expert-context-hash',
+      'v2',
+      'translation-v5',
+      'none',
+      'paper',
+      'expert-content-a',
+      true,
+      'translation-context-v1',
+    )).toMatchObject({
+      expertId: 'paper',
+      expertContentHash: 'expert-content-a',
+      smartContextEnabled: true,
+      contextPromptVersion: 'translation-context-v1',
+      contextWarning: {
+        code: 'TRANSLATION_CONTEXT_UNAVAILABLE',
+        retryable: true,
+      },
+    });
+    expect(translationStore.findCompatibleResult(
+      1,
+      'en',
+      'de',
+      'expert-context-hash',
+      'v2',
+      'translation-v5',
+      'none',
+      'paper',
+      'expert-content-b',
+      true,
+      'translation-context-v1',
+    )).toBeUndefined();
+  });
+
   it('resumes only unfinished segments and preserves completed segment output', () => {
     const run = translationStore.createRun({
       entryId: 1,
       providerProfileId,
+      sourceLanguage: 'auto',
       targetLanguage: 'zh-CN',
       sourceContentHash: 'resume-hash',
       segmenterVersion: 'v1',

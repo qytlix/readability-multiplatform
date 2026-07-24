@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  DEFAULT_GPT_SUMMARY_MODEL,
-  GPT_SUMMARY_MODEL_OPTIONS,
-  isGptSummaryModel,
-  type GptSummaryModel,
+  DEFAULT_PROVIDER_KIND,
+  getProviderPreset,
+  PROVIDER_PRESETS,
+  type ProviderKind,
   type ProviderProfile,
 } from '../../../shared/contracts/provider.types';
 
@@ -34,16 +34,22 @@ export const ProviderSettings = ({
   mode = 'dialog',
   onClose,
 }: ProviderSettingsProps) => {
-  const [baseUrl, setBaseUrl] = useState(profile?.baseUrl ?? 'https://api.openai.com/v1');
-  const [model, setModel] = useState<GptSummaryModel>(toSelectableModel(profile?.model));
+  const initialKind = profile?.providerKind ?? DEFAULT_PROVIDER_KIND;
+  const initialPreset = getProviderPreset(initialKind);
+  const [providerKind, setProviderKind] = useState<ProviderKind>(initialKind);
+  const [baseUrl, setBaseUrl] = useState(profile?.baseUrl ?? initialPreset.defaultBaseUrl);
+  const [model, setModel] = useState(profile?.model ?? initialPreset.defaultModel);
   const [status, setStatus] = useState('');
   const [statusTone, setStatusTone] = useState<'neutral' | 'success' | 'error'>('neutral');
   const [saving, setSaving] = useState(false);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setBaseUrl(profile?.baseUrl ?? 'https://api.openai.com/v1');
-    setModel(toSelectableModel(profile?.model));
+    const kind = profile?.providerKind ?? DEFAULT_PROVIDER_KIND;
+    const preset = getProviderPreset(kind);
+    setProviderKind(kind);
+    setBaseUrl(profile?.baseUrl ?? preset.defaultBaseUrl);
+    setModel(profile?.model ?? preset.defaultModel);
   }, [profile]);
 
   const save = async (): Promise<ProviderProfile | null> => {
@@ -53,6 +59,7 @@ export const ProviderSettings = ({
     const apiKey = apiKeyInputRef.current?.value.trim();
     try {
       const result = await window.shaleAPI.provider.save({
+        providerKind,
         baseUrl,
         model,
         ...(apiKey ? { apiKey } : {}),
@@ -101,6 +108,17 @@ export const ProviderSettings = ({
   };
 
   const hasApiKey = profile?.hasApiKey ?? false;
+  const providerChanged = Boolean(profile && profile.providerKind !== providerKind);
+  const endpointChanged = Boolean(
+    profile && safeUrlOrigin(profile.baseUrl) !== safeUrlOrigin(baseUrl),
+  );
+  const hasUnsavedProfileChanges = Boolean(
+    !profile
+    || providerChanged
+    || profile.baseUrl !== baseUrl
+    || profile.model !== model,
+  );
+  const requiresApiKey = !hasApiKey || providerChanged || endpointChanged;
   const usesInsecureStorage = profile?.keyStorageMode === 'insecure';
 
   const handleApiKeyPaste = (event: React.ClipboardEvent<HTMLInputElement>): void => {
@@ -112,6 +130,8 @@ export const ProviderSettings = ({
   };
 
   const titleId = `provider-settings-title-${mode}`;
+  const modelSuggestionsId = `provider-model-suggestions-${mode}`;
+  const selectedPreset = getProviderPreset(providerKind);
   const providerHeader = (
     <header className="provider-settings-header">
       <h2 id={titleId}>Provider</h2>
@@ -130,26 +150,50 @@ export const ProviderSettings = ({
   const providerForm = (
     <form onSubmit={handleSubmit}>
         <label>
+          Provider type
+          <select
+            value={providerKind}
+            onChange={(event) => {
+              const kind = event.target.value as ProviderKind;
+              const preset = getProviderPreset(kind);
+              setProviderKind(kind);
+              setBaseUrl(preset.defaultBaseUrl);
+              setModel(preset.defaultModel);
+              setStatus('');
+              setStatusTone('neutral');
+            }}
+            required
+          >
+            {PROVIDER_PRESETS.map((preset) => (
+              <option key={preset.kind} value={preset.kind}>{preset.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
           Provider base URL
           <input
             value={baseUrl}
             onChange={(event) => setBaseUrl(event.target.value)}
-            placeholder="https://api.openai.com/v1"
+            placeholder={selectedPreset.defaultBaseUrl}
             inputMode="url"
             required
           />
         </label>
         <label>
           Model
-          <select
+          <input
             value={model}
-            onChange={(event) => setModel(event.target.value as GptSummaryModel)}
+            onChange={(event) => setModel(event.target.value)}
+            list={modelSuggestionsId}
+            placeholder={selectedPreset.defaultModel}
+            spellCheck={false}
             required
-          >
-            {GPT_SUMMARY_MODEL_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
+          />
+          <datalist id={modelSuggestionsId}>
+            {selectedPreset.suggestedModels.map((suggestedModel) => (
+              <option key={suggestedModel} value={suggestedModel} />
             ))}
-          </select>
+          </datalist>
         </label>
         <label>
           API key
@@ -157,13 +201,13 @@ export const ProviderSettings = ({
             ref={apiKeyInputRef}
             type="password"
             name="provider-api-key"
-            placeholder={hasApiKey ? SAVED_API_KEY_MASK : 'Enter API key'}
+            placeholder={requiresApiKey ? 'Enter API key' : SAVED_API_KEY_MASK}
             autoComplete="new-password"
             spellCheck={false}
             data-1p-ignore="true"
             data-lpignore="true"
             onPaste={handleApiKeyPaste}
-            required={!hasApiKey}
+            required={requiresApiKey}
           />
         </label>
         {usesInsecureStorage && (
@@ -180,7 +224,11 @@ export const ProviderSettings = ({
           </p>
         )}
         <footer className="provider-settings-actions">
-          <button type="button" onClick={() => void testConnection()} disabled={saving || !hasApiKey}>
+          <button
+            type="button"
+            onClick={() => void testConnection()}
+            disabled={saving || !hasApiKey || hasUnsavedProfileChanges}
+          >
             Test connection
           </button>
           <button type="submit" className="provider-settings-save" disabled={saving}>
@@ -217,6 +265,10 @@ export const ProviderSettings = ({
   );
 };
 
-function toSelectableModel(model: string | undefined): GptSummaryModel {
-  return model && isGptSummaryModel(model) ? model : DEFAULT_GPT_SUMMARY_MODEL;
+function safeUrlOrigin(value: string): string | undefined {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return undefined;
+  }
 }

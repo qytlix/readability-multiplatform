@@ -298,8 +298,12 @@ Issue 只有同时满足以下条件才能进入 `Done`：
 - 产品目标、原则、P0/P1/P2 和最低演示流程已确认；
 - 三人分工、主要依赖、成本等级和风险已经团队确认；
 - `PLAN.md` Baseline v1 已完成；
-- 当前处于 M0 开始前，正式功能实现尚未形成稳定集成版本；
-- 下一步是统一工程空壳、验证 SQLite/IPC、确认 Cleaned Content v0，并完成 Feed/清洗、AI 流式/Key、双平台风险原型。
+- 基础阅读、Summary 与 Translation P0 已形成可自动验证的实现；
+- Advanced Translation 的 AT-M0～AT-M2 已完成，AT-M3～AT-M5 已进入 Review；
+- AT-M3 已固定并离线编译 29 个内置专家，支持受限 YAML 用户专家与全文上下文缓存/降级；
+- AT-M4 已离线编译 34 个内置术语库，保留 AGROVOC 默认行为，支持逐库持久化开关与事务 CSV 导入；
+- AT-M5 已升级严格的单词/短语/句子划词结果、源语言发音、多义项、上下文释义、专家/术语接入和主动取消；
+- 下一步是人工验收 AT-M3～AT-M5；AT-M6 保持 Backlog，按验收结果滚动细化。
 
 本节必须在每个里程碑结束后更新，不得长期保留已经失真的状态。
 
@@ -329,6 +333,22 @@ Issue 只有同时满足以下条件才能进入 `Done`：
 - Reader 和 AI 不等待真实内容管线全部完成，分别使用契约一致的 Fixture 开发；
 - P0 中 OPML、定时 Sync、Reader/Web/Dual 均已提升为必须完成；
 - 完整取消、复杂重试、并发治理和高级 Translation 降为 P1/P2。
+- Advanced Translation M3 的智能上下文默认关闭，失败只记录可观察警告并继续翻译；
+- AI 专家资源固定到 Immersive Translate prompts commit
+  `94d6522081902fce6cbe07418c402b3a5ade99ca`，运行时不访问上游。
+- AI 文本生成统一通过 `TextGenerationProvider` 和 Main 进程内的
+  `ProviderRegistry`，Renderer 不接触密钥或协议细节；
+- Provider 迁移保留旧受约束列并新增 `providerPreset`，避免重建被
+  Summary/Translation 外键引用的配置表。
+- Translation 使用 `auto + 8` 语言契约，源语言参与缓存身份；迁移 013
+  同时复制父子表并保留结果、段落与外键身份。
+- 术语运行时使用固定的 `terminology-libraries.sqlite`；首装只启用
+  `builtin:default`，启用库的 ID/version/content hash 集合参与 Translation
+  缓存身份。
+- 上游 `zh-TW` 术语保留来源身份，仅作为 `zh-HK` 最低优先级繁体参考；
+  用户或原生 `zh-HK` 条目优先。
+- 划词翻译拒绝非结构化 Provider 输出；源语言发音体系进入 typed 结果，
+  选区/配置/生命周期变化通过 `translation:inline-cancel` 中止 Main 请求。
 
 ## 17. Roadmap
 
@@ -350,7 +370,10 @@ Issue 只有同时满足以下条件才能进入 `Done`：
 | Feed 格式、编码和去重标识不统一 | 建立 RSS/Atom/边缘样例和去重测试，明确首版支持边界 |
 | AI 流式事件串线、退出残留或并发复杂 | 使用 `runId`、Mock Provider 和清理测试；P0 限制复杂并发 |
 | API Key 跨平台安全存储能力不同 | M0 验证；禁止无提示明文落盘 |
-| Translation 分段与局部失败复杂 | P0 先做短文章串行基础版，高级能力降级 |
+| Translation 分段与局部失败复杂 | 使用确定性分段、渐进持久化、失败恢复与 Mock Provider 回归测试 |
+| 第三方 Provider 协议与模型 ID 持续变化 | 模型 ID 可配置、协议适配器隔离；CI 使用固定 Mock SSE，真实连接仅人工按需验证 |
+| 香港繁体与台湾繁体仅靠字形难以可靠区分 | 自动模式不短路繁体内容，提示词明确要求香港用语；质量样例由人工验收 |
+| 不同模型对划词结构化输出和发音格式的遵循程度不同 | Main 严格校验结构、语言和发音体系并返回可观察错误；真实 Provider 质量由人工按语言抽样 |
 | 多人同时修改公共文件产生冲突 | 公共变更先写 Issue，指定 Review 人，小 PR 合入 |
 | AI 代码坏味道复制和中心模块膨胀 | 里程碑 Review，功能之间安排小规模重构 |
 | 辅助功能挤压核心交付 | P0 有风险时不启动 P1/P2，最后 5 天功能冻结 |

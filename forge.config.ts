@@ -11,7 +11,10 @@ import path from 'node:path';
 
 const appIconBasePath = path.resolve(__dirname, 'assets/icons/shale-app-icon');
 const linuxIconPath = path.resolve(__dirname, 'assets/icons/linux/shale-app-icon-512.png');
-const terminologyDbPath = path.resolve(__dirname, 'resources/terminology/terminology.sqlite');
+const terminologyDbPath = path.resolve(
+  __dirname,
+  'resources/terminology/terminology-libraries.sqlite',
+);
 
 const config: ForgeConfig = {
   packagerConfig: {

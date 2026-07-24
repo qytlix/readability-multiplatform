@@ -2191,16 +2191,52 @@ body.workspace-is-resizing * {
   font-style: italic;
 }
 
-.inline-translation-explanation {
-  margin-top: 10px;
+.inline-translation-senses {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.inline-translation-sense {
+  padding-top: 12px;
+  border-top: 1px solid var(--reader-line);
+}
+
+.inline-translation-sense:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.inline-translation-definitions {
+  display: grid;
+  gap: 5px;
+  margin: 7px 0 0;
+  padding-left: 20px;
   font-size: 13px;
   line-height: 1.65;
+}
+
+.inline-translation-contextual-meaning {
+  margin-top: 9px;
+  color: #cbd4c8;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.inline-translation-contextual-meaning span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--reader-accent);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .inline-translation-examples {
   display: grid;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 9px;
   padding: 11px;
   border-radius: 8px;
   background: var(--reader-example);
@@ -2409,6 +2445,7 @@ body.workspace-is-resizing * {
 }
 
 .settings-fields select,
+.settings-import-help input:not([type="file"]),
 .provider-settings-embedded input,
 .provider-settings-embedded select,
 .provider-settings-dialog input,
@@ -2421,6 +2458,48 @@ body.workspace-is-resizing * {
   border-radius: 7px;
   color: #dfe6dc;
   background: var(--reader-input);
+  font: inherit;
+}
+
+.settings-import-help,
+.settings-import-preview {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--reader-line);
+  border-radius: 8px;
+  color: #aeb8ac;
+  background: rgba(13, 18, 14, 0.42);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.settings-import-help h4,
+.settings-import-help p,
+.settings-import-preview p {
+  margin: 0;
+}
+
+.settings-import-help pre {
+  overflow-x: auto;
+  margin: 0;
+  padding: 10px;
+  border-radius: 6px;
+  color: #c8d1c5;
+  background: #111612;
+  font: 10px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.settings-import-help button,
+.settings-import-preview button,
+.settings-field > button {
+  width: max-content;
+  padding: 7px 10px;
+  border: 1px solid var(--reader-line);
+  border-radius: 7px;
+  color: #c5cec2;
+  background: var(--reader-input);
+  cursor: pointer;
   font: inherit;
 }
 

@@ -3,6 +3,7 @@ import type {
   TranslationGenerateRequest,
   TranslationGenerateResponse,
   TranslationGetRequest,
+  InlineTranslationCancelResult,
   InlineTranslationRequest,
   InlineTranslationResult,
   TranslationPrioritizeRequest,
@@ -16,6 +17,7 @@ export const TRANSLATION_IPC_CHANNELS = {
   translationGet: 'translation:get',
   translationGenerate: 'translation:generate',
   inlineTranslate: 'translation:inline',
+  inlineCancel: 'translation:inline-cancel',
   translationPrioritize: 'translation:prioritize',
   terminologyInfo: 'translation:terminology-info',
   translationStream: 'translation:stream',
@@ -29,6 +31,7 @@ export interface TranslationAPI {
   translateInline: (
     request: InlineTranslationRequest,
   ) => Promise<IPCResult<InlineTranslationResult>>;
+  cancelInline: () => Promise<IPCResult<InlineTranslationCancelResult>>;
   prioritize: (
     request: TranslationPrioritizeRequest,
   ) => Promise<IPCResult<TranslationPrioritizeResponse>>;

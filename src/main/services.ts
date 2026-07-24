@@ -14,7 +14,7 @@ import {
   type FeedOperationLogger,
   type OPMLOperationLogger,
 } from './feed/services';
-import { OpenAICompatibleProvider } from './ai/provider/OpenAICompatibleProvider';
+import { ProviderRegistry } from './ai/provider/ProviderRegistry';
 import { ProviderProfileStore } from './ai/stores/ProviderProfileStore';
 import { ProviderService } from './ai/services/ProviderService';
 import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
@@ -25,6 +25,12 @@ import { SummaryStore } from './ai/stores/SummaryStore';
 import { TranslationService } from './ai/services/TranslationService';
 import { InlineTranslationService } from './ai/services/InlineTranslationService';
 import { TranslationStore } from './ai/stores/TranslationStore';
+import { TranslationContextStore } from './ai/stores/TranslationContextStore';
+import { TranslationExpertStore } from './ai/stores/TranslationExpertStore';
+import { TranslationContextService } from './ai/services/TranslationContextService';
+import { TranslationExpertService } from './ai/services/TranslationExpertService';
+import type { BuiltInExpertBundle } from '../shared/contracts/translation-expert.types';
+import builtInExpertBundle from '../../resources/ai-experts/experts.json';
 import {
   EmptyTerminologyLookup,
   TerminologyStore,
@@ -54,6 +60,8 @@ export interface SummaryServices {
 export interface TranslationServices {
   translationService: TranslationService;
   inlineTranslationService: InlineTranslationService;
+  expertService: TranslationExpertService;
+  terminologyStore: TerminologyStore | null;
 }
 
 export interface AnnotationServices {
@@ -141,16 +149,22 @@ export function initializeServices(
   const providerProfileStore = new ProviderProfileStore(dbManager.getDb());
   const summaryStore = new SummaryStore(dbManager.getDb());
   const translationStore = new TranslationStore(dbManager.getDb());
+  const translationContextStore = new TranslationContextStore(dbManager.getDb());
+  const translationExpertStore = new TranslationExpertStore(
+    dbManager.getDb(),
+    builtInExpertBundle as BuiltInExpertBundle,
+  );
   const annotationStore = new AnnotationStore(dbManager.getDb());
   translationStore.reconcileInterruptedRuns();
   const secretStore = new SecretStore(
     secretStoragePath ?? path.join(path.dirname(dbPath ?? '.'), 'ai-secrets.json'),
     safeStorage,
   );
-  const provider = new OpenAICompatibleProvider();
-  const terminologyLookup = terminologyDbPath && existsSync(terminologyDbPath)
-    ? new TerminologyStore(terminologyDbPath)
-    : new EmptyTerminologyLookup();
+  const provider = new ProviderRegistry();
+  const terminologyStore = terminologyDbPath && existsSync(terminologyDbPath)
+    ? new TerminologyStore(terminologyDbPath, dbManager.getDb())
+    : null;
+  const terminologyLookup = terminologyStore ?? new EmptyTerminologyLookup();
   const providerService = new ProviderService(
     providerProfileStore,
     secretStore,
@@ -166,6 +180,8 @@ export function initializeServices(
     operationLogger,
   );
   summaryService.reconcileInterruptedRuns();
+  const expertService = new TranslationExpertService(translationExpertStore);
+  const contextService = new TranslationContextService(translationContextStore, provider);
   const translationService = new TranslationService(
     contentStore,
     providerProfileStore,
@@ -174,12 +190,15 @@ export function initializeServices(
     provider,
     undefined,
     terminologyLookup,
+    expertService,
+    contextService,
   );
   const inlineTranslationService = new InlineTranslationService(
     providerProfileStore,
     secretStore,
     provider,
     terminologyLookup,
+    expertService,
   );
   const annotationService = new AnnotationService(annotationStore, entryStore);
 
@@ -195,7 +214,12 @@ export function initializeServices(
     opmlExportService: new OPMLExportService(feedStore, operationLogger),
   };
   summaryServicesSingleton = { providerService, summaryService };
-  translationServicesSingleton = { translationService, inlineTranslationService };
+  translationServicesSingleton = {
+    translationService,
+    inlineTranslationService,
+    expertService,
+    terminologyStore,
+  };
   annotationServicesSingleton = { annotationService };
   return feedServicesSingleton;
 }

@@ -9,6 +9,8 @@ import { SUMMARY_IPC_CHANNELS } from '../shared/contracts/summary.ipc';
 import type { SaveProviderRequest } from '../shared/contracts/provider.types';
 import type { SummaryStreamEvent } from '../shared/contracts/summary.types';
 import { TRANSLATION_IPC_CHANNELS } from '../shared/contracts/translation.ipc';
+import { TRANSLATION_EXPERT_IPC_CHANNELS } from '../shared/contracts/translation-expert.ipc';
+import { TRANSLATION_TERMINOLOGY_IPC_CHANNELS } from '../shared/contracts/translation-terminology.ipc';
 import { DIAGNOSTICS_IPC_CHANNELS } from '../shared/contracts/diagnostics.ipc';
 import { ANNOTATION_IPC_CHANNELS } from '../shared/contracts/annotation.ipc';
 import type {
@@ -19,8 +21,22 @@ import type {
 } from '../shared/contracts/annotation.types';
 import type {
   InlineTranslationRequest,
+  TranslationGenerateRequest,
+  TranslationGetRequest,
+  TranslationPrioritizeRequest,
   TranslationStreamEvent,
 } from '../shared/contracts/translation.types';
+import type {
+  TranslationExpertImportRequest,
+  TranslationExpertPreviewRequest,
+  TranslationExpertRemoveRequest,
+} from '../shared/contracts/translation-expert.types';
+import type {
+  TerminologyImportPreviewRequest,
+  TerminologyImportRequest,
+  TerminologyLibraryRemoveRequest,
+  TerminologyLibrarySetEnabledRequest,
+} from '../shared/contracts/translation-terminology.types';
 
 const ping = (): Promise<PingResponse> =>
   ipcRenderer.invoke(IPC_CHANNELS.systemPing);
@@ -130,25 +146,16 @@ const summaryAPI = {
 const translationAPI = {
   getTerminologyInfo: () =>
     ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.terminologyInfo),
-  get: (request: {
-    entryId: number;
-    targetLanguage: 'zh-CN' | 'en';
-    useTerminology?: boolean;
-  }) => ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationGet, request),
-  generate: (request: {
-    entryId: number;
-    targetLanguage: 'zh-CN' | 'en';
-    useTerminology?: boolean;
-  }) => ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationGenerate, request),
+  get: (request: TranslationGetRequest) =>
+    ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationGet, request),
+  generate: (request: TranslationGenerateRequest) =>
+    ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationGenerate, request),
   translateInline: (request: InlineTranslationRequest) =>
     ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.inlineTranslate, request),
-  prioritize: (request: {
-    runId: number;
-    entryId: number;
-    targetLanguage: 'zh-CN' | 'en';
-    useTerminology?: boolean;
-    sourceSegmentIds: string[];
-  }) => ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationPrioritize, request),
+  cancelInline: () =>
+    ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.inlineCancel),
+  prioritize: (request: TranslationPrioritizeRequest) =>
+    ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationPrioritize, request),
   onEvent: (listener: (event: TranslationStreamEvent) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, event: TranslationStreamEvent) => {
       listener(event);
@@ -160,6 +167,28 @@ const translationAPI = {
 
 const diagnosticsAPI = {
   export: () => ipcRenderer.invoke(DIAGNOSTICS_IPC_CHANNELS.export),
+};
+
+const expertAPI = {
+  list: () => ipcRenderer.invoke(TRANSLATION_EXPERT_IPC_CHANNELS.list),
+  preview: (request: TranslationExpertPreviewRequest) =>
+    ipcRenderer.invoke(TRANSLATION_EXPERT_IPC_CHANNELS.preview, request),
+  import: (request: TranslationExpertImportRequest) =>
+    ipcRenderer.invoke(TRANSLATION_EXPERT_IPC_CHANNELS.import, request),
+  remove: (request: TranslationExpertRemoveRequest) =>
+    ipcRenderer.invoke(TRANSLATION_EXPERT_IPC_CHANNELS.remove, request),
+};
+
+const terminologyAPI = {
+  list: () => ipcRenderer.invoke(TRANSLATION_TERMINOLOGY_IPC_CHANNELS.list),
+  setEnabled: (request: TerminologyLibrarySetEnabledRequest) =>
+    ipcRenderer.invoke(TRANSLATION_TERMINOLOGY_IPC_CHANNELS.setEnabled, request),
+  preview: (request: TerminologyImportPreviewRequest) =>
+    ipcRenderer.invoke(TRANSLATION_TERMINOLOGY_IPC_CHANNELS.preview, request),
+  import: (request: TerminologyImportRequest) =>
+    ipcRenderer.invoke(TRANSLATION_TERMINOLOGY_IPC_CHANNELS.import, request),
+  remove: (request: TerminologyLibraryRemoveRequest) =>
+    ipcRenderer.invoke(TRANSLATION_TERMINOLOGY_IPC_CHANNELS.remove, request),
 };
 
 const annotationAPI = {
@@ -186,6 +215,8 @@ const shaleAPI: ShaleAPI = {
   provider: providerAPI,
   summary: summaryAPI,
   translation: translationAPI,
+  expert: expertAPI,
+  terminology: terminologyAPI,
   diagnostics: diagnosticsAPI,
   annotation: annotationAPI,
 };

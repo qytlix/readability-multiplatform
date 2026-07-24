@@ -35,7 +35,7 @@ describe('SummaryPanel loading feedback', () => {
             ok: true,
             data: {
               id: 1,
-              providerKind: 'openai-compatible',
+              providerKind: 'openai',
               baseUrl: 'https://api.openai.com/v1',
               model: 'gpt-5.4-mini',
               isActive: true,

@@ -3,7 +3,7 @@ import type { ProviderKind, ProviderProfile } from '../../../shared/contracts/pr
 
 interface ProviderProfileRow {
   id: number;
-  providerKind: ProviderKind;
+  providerPreset: ProviderKind;
   baseUrl: string;
   model: string;
   apiKeyRef: string;
@@ -17,6 +17,7 @@ export interface ActiveProviderProfile extends ProviderProfile {
 }
 
 export interface SaveProviderProfileParams {
+  providerKind: ProviderKind;
   baseUrl: string;
   model: string;
   apiKeyRef: string;
@@ -45,12 +46,20 @@ export class ProviderProfileStore {
       this.db
         .prepare(`
           UPDATE ai_provider_profile
-          SET baseUrl = ?, model = ?, apiKeyRef = ?, updatedAt = ?
+          SET providerPreset = ?, baseUrl = ?, model = ?, apiKeyRef = ?, updatedAt = ?
           WHERE id = ?
         `)
-        .run(params.baseUrl, params.model, params.apiKeyRef, now, existing.id);
+        .run(
+          params.providerKind,
+          params.baseUrl,
+          params.model,
+          params.apiKeyRef,
+          now,
+          existing.id,
+        );
       return omitSecretReference({
         ...existing,
+        providerKind: params.providerKind,
         baseUrl: params.baseUrl,
         model: params.model,
         updatedAt: now,
@@ -60,14 +69,22 @@ export class ProviderProfileStore {
     const result = this.db
       .prepare(`
         INSERT INTO ai_provider_profile
-          (providerKind, baseUrl, model, apiKeyRef, isActive, createdAt, updatedAt)
-        VALUES ('openai-compatible', ?, ?, ?, 1, ?, ?)
+          (providerKind, providerPreset, baseUrl, model, apiKeyRef,
+           isActive, createdAt, updatedAt)
+        VALUES ('openai-compatible', ?, ?, ?, ?, 1, ?, ?)
       `)
-      .run(params.baseUrl, params.model, params.apiKeyRef, now, now);
+      .run(
+        params.providerKind,
+        params.baseUrl,
+        params.model,
+        params.apiKeyRef,
+        now,
+        now,
+      );
 
     return {
       id: Number(result.lastInsertRowid),
-      providerKind: 'openai-compatible',
+      providerKind: params.providerKind,
       baseUrl: params.baseUrl,
       model: params.model,
       isActive: true,
@@ -80,7 +97,7 @@ export class ProviderProfileStore {
 function toActiveProviderProfile(row: ProviderProfileRow): ActiveProviderProfile {
   return {
     id: row.id,
-    providerKind: row.providerKind,
+    providerKind: row.providerPreset,
     baseUrl: row.baseUrl,
     model: row.model,
     apiKeyRef: row.apiKeyRef,

@@ -9,6 +9,7 @@ import type {
   TranslationRunStatus,
   TranslationSegment,
   TranslationSegmentStatus,
+  TranslationSourceLanguage,
   TranslationTargetLanguage,
   TranslationTerminologyMatch,
 } from '../../../shared/contracts/translation.types';
@@ -17,11 +18,19 @@ import { TRANSLATION_ERROR_CODES } from '../../../shared/errors/translation.erro
 interface TranslationResultRow {
   id: number;
   entryId: number;
+  sourceLanguage: TranslationSourceLanguage;
   targetLanguage: TranslationTargetLanguage;
   sourceContentHash: string;
   segmenterVersion: string;
   promptVersion: string;
   terminologyPackVersion: string;
+  expertId: string;
+  expertContentHash: string;
+  smartContextEnabled: number;
+  contextPromptVersion: string;
+  contextWarningCode: string | null;
+  contextWarningMessage: string | null;
+  contextWarningRetryable: number | null;
   status: TranslationRunStatus;
   errorCode: string | null;
   errorMessage: string | null;
@@ -48,11 +57,16 @@ interface TranslationSegmentRow {
 export interface CreateTranslationRunParams {
   entryId: number;
   providerProfileId: number;
+  sourceLanguage: TranslationSourceLanguage;
   targetLanguage: TranslationTargetLanguage;
   sourceContentHash: string;
   segmenterVersion: string;
   promptVersion: string;
   terminologyPackVersion: string;
+  expertId?: string;
+  expertContentHash?: string;
+  smartContextEnabled?: boolean;
+  contextPromptVersion?: string;
   segments: ContentSegment[];
 }
 
@@ -61,38 +75,53 @@ export class TranslationStore {
 
   findCompatibleResult(
     entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
     targetLanguage: TranslationTargetLanguage,
     sourceContentHash: string,
     segmenterVersion: string,
     promptVersion: string,
     terminologyPackVersion: string,
+    expertId = 'none',
+    expertContentHash = 'none',
+    smartContextEnabled = false,
+    contextPromptVersion = 'none',
   ): TranslationResult | undefined {
     const row = this.db.prepare(`
       SELECT * FROM translation_result
-      WHERE entryId = ? AND targetLanguage = ?
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
         AND sourceContentHash = ? AND segmenterVersion = ?
         AND promptVersion = ?
         AND terminologyPackVersion = ?
+        AND expertId = ?
+        AND expertContentHash = ?
+        AND smartContextEnabled = ?
+        AND contextPromptVersion = ?
     `).get(
       entryId,
+      sourceLanguage,
       targetLanguage,
       sourceContentHash,
       segmenterVersion,
       promptVersion,
       terminologyPackVersion,
+      expertId,
+      expertContentHash,
+      smartContextEnabled ? 1 : 0,
+      contextPromptVersion,
     ) as TranslationResultRow | undefined;
     return row ? this.toResult(row) : undefined;
   }
 
   findLatestResult(
     entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
     targetLanguage: TranslationTargetLanguage,
   ): TranslationResult | undefined {
     const row = this.db.prepare(`
       SELECT * FROM translation_result
-      WHERE entryId = ? AND targetLanguage = ?
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
       ORDER BY updatedAt DESC, id DESC LIMIT 1
-    `).get(entryId, targetLanguage) as TranslationResultRow | undefined;
+    `).get(entryId, sourceLanguage, targetLanguage) as TranslationResultRow | undefined;
     return row ? this.toResult(row) : undefined;
   }
 
@@ -101,28 +130,35 @@ export class TranslationStore {
     const persist = this.db.transaction(() => {
       this.db.prepare(`
         DELETE FROM translation_result
-        WHERE entryId = ? AND targetLanguage = ?
+        WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
           AND sourceContentHash = ? AND segmenterVersion = ?
       `).run(
         params.entryId,
+        params.sourceLanguage,
         params.targetLanguage,
         params.sourceContentHash,
         params.segmenterVersion,
       );
       const inserted = this.db.prepare(`
         INSERT INTO translation_result
-          (entryId, providerProfileId, targetLanguage, sourceContentHash,
+          (entryId, providerProfileId, sourceLanguage, targetLanguage, sourceContentHash,
            segmenterVersion, promptVersion, terminologyPackVersion,
+           expertId, expertContentHash, smartContextEnabled, contextPromptVersion,
            status, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
       `).run(
         params.entryId,
         params.providerProfileId,
+        params.sourceLanguage,
         params.targetLanguage,
         params.sourceContentHash,
         params.segmenterVersion,
         params.promptVersion,
         params.terminologyPackVersion,
+        params.expertId ?? 'none',
+        params.expertContentHash ?? 'none',
+        params.smartContextEnabled ? 1 : 0,
+        params.contextPromptVersion ?? 'none',
         now,
         now,
       );
@@ -214,6 +250,23 @@ export class TranslationStore {
     return result;
   }
 
+  setContextWarning(runId: number, warning?: ShaleError): void {
+    this.db.prepare(`
+      UPDATE translation_result
+      SET contextWarningCode = ?,
+          contextWarningMessage = ?,
+          contextWarningRetryable = ?,
+          updatedAt = ?
+      WHERE id = ?
+    `).run(
+      warning?.code ?? null,
+      warning?.message ?? null,
+      warning ? (warning.retryable ? 1 : 0) : null,
+      new Date().toISOString(),
+      runId,
+    );
+  }
+
   markRunFailed(
     runId: number,
     error: ShaleError,
@@ -269,11 +322,21 @@ export class TranslationStore {
     return {
       id: row.id,
       entryId: row.entryId,
+      sourceLanguage: row.sourceLanguage,
       targetLanguage: row.targetLanguage,
       sourceContentHash: row.sourceContentHash,
       segmenterVersion: row.segmenterVersion,
       terminologyPackVersion: row.terminologyPackVersion,
       promptVersion: row.promptVersion,
+      expertId: row.expertId,
+      expertContentHash: row.expertContentHash,
+      smartContextEnabled: row.smartContextEnabled === 1,
+      contextPromptVersion: row.contextPromptVersion,
+      contextWarning: toError(
+        row.contextWarningCode,
+        row.contextWarningMessage,
+        row.contextWarningRetryable,
+      ),
       status: row.status,
       error: toError(row.errorCode, row.errorMessage, row.errorRetryable),
       createdAt: row.createdAt,

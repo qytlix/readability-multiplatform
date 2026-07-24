@@ -11,6 +11,7 @@ describe('SummaryStore', () => {
     const { db } = buildTestDbWithData();
     const profiles = new ProviderProfileStore(db);
     providerId = profiles.saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider.example/v1',
       model: 'example-model',
       apiKeyRef: 'secret-reference',

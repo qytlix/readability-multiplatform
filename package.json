@@ -21,7 +21,9 @@
     "lint": "eslint --ext .ts,.tsx .",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-vitest-in-electron.mjs run",
-    "test:watch": "node scripts/run-vitest-in-electron.mjs"
+    "test:watch": "node scripts/run-vitest-in-electron.mjs",
+    "build:experts": "node scripts/build-ai-experts.mjs",
+    "build:terminology-libraries": "node scripts/build-terminology-libraries.mjs"
   },
   "keywords": [],
   "license": "MIT",
@@ -62,6 +64,7 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "rss-parser": "^3.13.0",
-    "turndown": "^7.2.4"
+    "turndown": "^7.2.4",
+    "yaml": "^2.9.0"
   }
 }

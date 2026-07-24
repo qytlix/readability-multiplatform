@@ -1,5 +1,7 @@
 import type { ProviderAPI, SummaryAPI } from './contracts/summary.ipc';
 import type { TranslationAPI } from './contracts/translation.ipc';
+import type { TranslationExpertAPI } from './contracts/translation-expert.ipc';
+import type { TranslationTerminologyAPI } from './contracts/translation-terminology.ipc';
 import type { DiagnosticsAPI } from './contracts/diagnostics.ipc';
 import type { AnnotationAPI } from './contracts/annotation.ipc';
 import type {
@@ -46,6 +48,8 @@ export interface ShaleAPI {
   provider: ProviderAPI;
   summary: SummaryAPI;
   translation: TranslationAPI;
+  expert: TranslationExpertAPI;
+  terminology: TranslationTerminologyAPI;
   diagnostics: DiagnosticsAPI;
   annotation: AnnotationAPI;
 }

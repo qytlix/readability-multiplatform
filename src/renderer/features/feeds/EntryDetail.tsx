@@ -718,12 +718,15 @@ export const EntryDetail = ({
             onVisibleChange={handleSummaryVisibleChange}
           />
           <TranslationPanel
-            key={`${entry.id}:${aiPreferences.translationTargetLanguage}:${aiPreferences.useTerminology}`}
+            key={`${entry.id}:${aiPreferences.translationSourceLanguage}:${aiPreferences.translationTargetLanguage}:${aiPreferences.useTerminology}:${aiPreferences.useSmartContext}:${aiPreferences.translationExpertId}`}
             ref={translationPanelRef}
             entryId={entry.id}
             isContentReady={isTranslationReady}
+            sourceLanguage={aiPreferences.translationSourceLanguage}
             targetLanguage={aiPreferences.translationTargetLanguage}
             useTerminology={aiPreferences.useTerminology}
+            useSmartContext={aiPreferences.useSmartContext}
+            expertId={aiPreferences.translationExpertId}
             shortcut={aiPreferences.fullTranslationShortcut}
             sourceHtml={content?.cleanedHtml ?? ''}
             titleTarget={titleTranslationTarget}
@@ -820,8 +823,10 @@ export const EntryDetail = ({
           containerRef={scrollContainerRef}
           paragraphShortcut={aiPreferences.paragraphTranslationShortcut}
           selectionShortcut={aiPreferences.selectionTranslationShortcut}
+          sourceLanguage={aiPreferences.translationSourceLanguage}
           targetLanguage={aiPreferences.translationTargetLanguage}
           useTerminology={aiPreferences.useTerminology}
+          expertId={aiPreferences.translationExpertId}
         />
       </div>
     </>

@@ -52,6 +52,7 @@ afterEach(() => {
 
 function createRequest(overrides: Partial<SaveProviderRequest> = {}): SaveProviderRequest {
   return {
+    providerKind: 'openai',
     baseUrl: 'https://provider.example.test/v1',
     model: 'gpt-5.4-mini',
     apiKey: 'api-key-for-test',
@@ -64,7 +65,7 @@ function createActiveProfile(
 ): ActiveProviderProfile {
   return {
     id: 41,
-    providerKind: 'openai-compatible',
+    providerKind: 'openai',
     baseUrl: 'https://provider.example.test/v1',
     model: 'gpt-5.4-mini',
     apiKeyRef: 'stored-secret-reference',

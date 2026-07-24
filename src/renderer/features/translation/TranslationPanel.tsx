@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 import type {
   TranslationResult,
   TranslationSegment,
+  TranslationSourceLanguage,
   TranslationState,
   TranslationStreamEvent,
   TranslationTargetLanguage,
@@ -28,8 +29,11 @@ import {
 interface TranslationPanelProps {
   entryId: number;
   isContentReady: boolean;
+  sourceLanguage: TranslationSourceLanguage;
   targetLanguage: TranslationTargetLanguage;
   useTerminology: boolean;
+  useSmartContext: boolean;
+  expertId: string;
   shortcut: TranslationShortcut;
   sourceHtml: string;
   titleTarget: HTMLDivElement | null;
@@ -47,8 +51,11 @@ export interface TranslationPanelHandle {
 export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPanelProps>(({
   entryId,
   isContentReady,
+  sourceLanguage,
   targetLanguage,
   useTerminology,
+  useSmartContext,
+  expertId,
   shortcut,
   sourceHtml,
   titleTarget,
@@ -77,8 +84,11 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     try {
       const result = await window.shaleAPI.translation.get({
         entryId,
+        sourceLanguage,
         targetLanguage,
         useTerminology,
+        useSmartContext,
+        expertId,
       });
       if (loadSequenceRef.current !== loadSequence) return;
       if (!result.ok) {
@@ -96,7 +106,15 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       if (loadSequenceRef.current !== loadSequence) return;
       setMessage('Unable to load the Translation state.');
     }
-  }, [entryId, isContentReady, targetLanguage, useTerminology]);
+  }, [
+    entryId,
+    expertId,
+    isContentReady,
+    sourceLanguage,
+    targetLanguage,
+    useSmartContext,
+    useTerminology,
+  ]);
 
   useEffect(() => {
     activeRunIdRef.current = null;
@@ -108,6 +126,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     const unsubscribe = window.shaleAPI.translation.onEvent((event: TranslationStreamEvent) => {
       if (
         event.entryId !== entryId
+        || event.sourceLanguage !== sourceLanguage
         || event.targetLanguage !== targetLanguage
         || event.runId !== activeRunIdRef.current
       ) {
@@ -134,7 +153,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       }
     });
     return unsubscribe;
-  }, [entryId, loadState, onBilingualChange, targetLanguage]);
+  }, [entryId, loadState, onBilingualChange, sourceLanguage, targetLanguage]);
 
   const generate = useCallback(async (): Promise<void> => {
     setShowFeedback(true);
@@ -143,8 +162,11 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     try {
       const result = await window.shaleAPI.translation.generate({
         entryId,
+        sourceLanguage,
         targetLanguage,
         useTerminology,
+        useSmartContext,
+        expertId,
       });
       if (!result.ok) {
         setMessage(result.error.message);
@@ -157,7 +179,15 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     } catch {
       setMessage('Unable to start Translation generation.');
     }
-  }, [entryId, onBilingualChange, targetLanguage, useTerminology]);
+  }, [
+    entryId,
+    expertId,
+    onBilingualChange,
+    sourceLanguage,
+    targetLanguage,
+    useSmartContext,
+    useTerminology,
+  ]);
 
   const activate = useCallback((): void => {
     if (translationState.state === 'succeeded') {
@@ -218,11 +248,21 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     void window.shaleAPI.translation.prioritize({
       runId,
       entryId,
+      sourceLanguage,
       targetLanguage,
       useTerminology,
+      useSmartContext,
+      expertId,
       sourceSegmentIds,
     }).catch(() => undefined);
-  }, [entryId, targetLanguage, useTerminology]);
+  }, [
+    entryId,
+    expertId,
+    sourceLanguage,
+    targetLanguage,
+    useSmartContext,
+    useTerminology,
+  ]);
 
   return (
     <>
@@ -245,6 +285,11 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       )}
       {showFeedback && message && (
         <p className="entry-detail-ai-error" role="status">{message}</p>
+      )}
+      {result?.contextWarning && (
+        <p className="entry-detail-ai-warning" role="status">
+          {result.contextWarning.message}
+        </p>
       )}
 
       {readerMode === 'bilingual' && hasTranslation && result
