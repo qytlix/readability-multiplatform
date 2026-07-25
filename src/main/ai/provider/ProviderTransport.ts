@@ -1,11 +1,12 @@
 import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summary.errors';
 
-const REQUEST_TIMEOUT_MS = 60_000;
+const PROVIDER_INACTIVITY_TIMEOUT_MS = 60_000;
 
 export interface ProviderAbortScope {
   signal: AbortSignal;
   callerSignal?: AbortSignal;
   didTimeOut: () => boolean;
+  recordResponseActivity: () => void;
   dispose: () => void;
 }
 
@@ -17,21 +18,41 @@ export interface ServerSentEvent {
 export function createProviderAbortScope(callerSignal?: AbortSignal): ProviderAbortScope {
   const controller = new AbortController();
   let timedOut = false;
-  const abortFromCaller = () => controller.abort();
-  if (callerSignal?.aborted) controller.abort();
-  else callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
-
-  const timeout = setTimeout(() => {
-    timedOut = true;
+  let disposed = false;
+  let inactivityTimeout: ReturnType<typeof setTimeout> | undefined;
+  const clearInactivityTimeout = () => {
+    if (inactivityTimeout === undefined) return;
+    clearTimeout(inactivityTimeout);
+    inactivityTimeout = undefined;
+  };
+  const armInactivityTimeout = () => {
+    clearInactivityTimeout();
+    if (disposed || controller.signal.aborted) return;
+    inactivityTimeout = setTimeout(() => {
+      inactivityTimeout = undefined;
+      if (disposed || controller.signal.aborted) return;
+      timedOut = true;
+      controller.abort();
+    }, PROVIDER_INACTIVITY_TIMEOUT_MS);
+  };
+  const abortFromCaller = () => {
+    clearInactivityTimeout();
     controller.abort();
-  }, REQUEST_TIMEOUT_MS);
+  };
+  if (callerSignal?.aborted) abortFromCaller();
+  else {
+    callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
+    armInactivityTimeout();
+  }
 
   return {
     signal: controller.signal,
     callerSignal,
     didTimeOut: () => timedOut,
+    recordResponseActivity: armInactivityTimeout,
     dispose: () => {
-      clearTimeout(timeout);
+      disposed = true;
+      clearInactivityTimeout();
       callerSignal?.removeEventListener('abort', abortFromCaller);
     },
   };

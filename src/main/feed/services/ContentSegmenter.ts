@@ -5,7 +5,7 @@ import type {
   ContentSegmentType,
 } from '../../../shared/contracts/content.types';
 
-export const CONTENT_SEGMENTER_VERSION = 'v3';
+export const CONTENT_SEGMENTER_VERSION = 'v4';
 
 export interface ContentSegmentMetadata {
   title?: string;
@@ -31,7 +31,7 @@ export class ContentSegmenter {
     const dom = new JSDOM(`<body>${cleanedHtml}</body>`);
     const elements = Array.from(
       dom.window.document.body.querySelectorAll(
-        'h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote, figcaption, caption',
+        'h1, h2, h3, h4, h5, h6, p, li, blockquote, cite, figcaption, caption',
       ),
     );
     const segments: ContentSegment[] = [];
@@ -39,11 +39,10 @@ export class ContentSegmenter {
     appendTitleSegment(segments, metadata.title);
 
     for (const element of elements) {
-      const tagName = element.tagName.toLowerCase();
-      const type = toSegmentType(tagName);
+      const type = toSegmentType(element);
       if (!type || shouldSkipElement(element, type)) continue;
 
-      const sourceHtml = normalizeHtml(element.outerHTML);
+      const sourceHtml = getSourceHtml(element, type);
       const sourceText = getSourceText(element, type);
       if (!sourceText) continue;
 
@@ -77,17 +76,32 @@ export class ContentSegmenter {
 
 function getSourceText(element: Element, type: ContentSegmentType): string {
   if (type === 'blockquote') {
+    if (element.tagName.toLowerCase() !== 'blockquote') {
+      return normalizeWhitespace(element.textContent ?? '');
+    }
     const blocks = Array.from(element.querySelectorAll(':scope > p, :scope > cite'))
       .map((block) => normalizeWhitespace(block.textContent ?? ''))
       .filter(Boolean);
-    return normalizeWhitespace(blocks.join('\n'));
+    return normalizeWhitespace(
+      blocks.length ? blocks.join('\n') : element.textContent ?? '',
+    );
   }
   if (type !== 'list') return normalizeWhitespace(element.textContent ?? '');
 
-  const items = Array.from(element.querySelectorAll(':scope > li'))
-    .map((item) => readTextWithBlockBoundaries(item))
-    .filter(Boolean);
-  return normalizeWhitespace(items.join('\n'));
+  return readTextWithBlockBoundaries(cloneWithoutNestedLists(element));
+}
+
+function getSourceHtml(element: Element, type: ContentSegmentType): string {
+  const source = type === 'list'
+    ? cloneWithoutNestedLists(element)
+    : element;
+  return normalizeHtml(source.outerHTML);
+}
+
+function cloneWithoutNestedLists(element: Element): Element {
+  const clone = element.cloneNode(true) as Element;
+  clone.querySelectorAll('ul, ol').forEach((list) => list.remove());
+  return clone;
 }
 
 function readTextWithBlockBoundaries(element: Element): string {
@@ -125,16 +139,28 @@ function appendSegment(
   });
 }
 
-function toSegmentType(tagName: string): ContentSegmentType | undefined {
+function toSegmentType(element: Element): ContentSegmentType | undefined {
+  const tagName = element.tagName.toLowerCase();
   if (/^h[1-6]$/.test(tagName)) return 'heading';
+  if (
+    tagName === 'blockquote'
+    || ((tagName === 'p' || tagName === 'cite')
+      && element.parentElement?.tagName.toLowerCase() === 'blockquote')
+  ) {
+    return 'blockquote';
+  }
   if (tagName === 'p') return 'paragraph';
-  if (tagName === 'ul' || tagName === 'ol') return 'list';
-  if (tagName === 'blockquote') return 'blockquote';
+  if (tagName === 'li') return 'list';
   if (tagName === 'figcaption' || tagName === 'caption') return 'caption';
   return undefined;
 }
 
 function shouldSkipElement(element: Element, type: ContentSegmentType): boolean {
+  if (type === 'list') return false;
+  if (type === 'blockquote') {
+    if (element.tagName.toLowerCase() !== 'blockquote') return false;
+    return Boolean(element.querySelector(':scope > p, :scope > cite'));
+  }
   if (element.parentElement?.closest('li, blockquote, ul, ol')) return true;
   if (type === 'paragraph' && element.closest('figure')) return true;
   return false;

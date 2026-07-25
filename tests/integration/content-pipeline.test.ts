@@ -62,6 +62,142 @@ describe('ContentCleaner', () => {
     expect(result.content).not.toContain('<script');
   });
 
+  it('excludes CSS-hidden runtime payloads before Readability scoring', () => {
+    const hiddenPayload = JSON.stringify({
+      ENV: 'production',
+      ARC_ACCESS_TOKEN_PROD: 'encoded-token-'.repeat(80),
+      GRAPHQL_KEY: 'encoded-key-'.repeat(80),
+    });
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Live article</title></head>
+        <body>
+          <div id="fusion-app">
+            <main>
+              <article>
+                <h1>Live article</h1>
+                <p>The actual article explains the complete story in enough detail for Reader extraction.</p>
+                <p>This second paragraph contains the remaining reporting that readers should keep.</p>
+              </article>
+            </main>
+          </div>
+          <div id="stream-context" class="hidden">${hiddenPayload}</div>
+        </body>
+      </html>`,
+      'https://example.com/live/article',
+    );
+
+    expect(result.content).toContain('The actual article');
+    expect(result.content).not.toContain('ARC_ACCESS_TOKEN_PROD');
+    expect(result.content).not.toContain('encoded-token');
+  });
+
+  it('preserves meaningful figures inside misleading header-like wrappers', () => {
+    const articleParagraph = (
+      'The live report contains verified reporting, background, and analysis. '
+    ).repeat(12);
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Live report</title></head>
+        <body>
+          <main>
+            <article>
+              <div class="liveblog-header">
+                <figure>
+                  <img
+                    src="/images/hero.jpg"
+                    alt="Players celebrating after the game"
+                    width="1200"
+                    height="800"
+                  >
+                  <figcaption>The team celebrates its victory.</figcaption>
+                </figure>
+              </div>
+              <p>${articleParagraph}</p>
+              <p>${articleParagraph}</p>
+            </article>
+          </main>
+        </body>
+      </html>`,
+      'https://example.com/sports/live-report',
+    );
+
+    expect(result.content).toContain(
+      'src="https://example.com/images/hero.jpg"',
+    );
+    expect(result.content).toContain('The team celebrates its victory.');
+  });
+
+  it('restores Arc Fusion images from structured article metadata', () => {
+    const fusionContent = {
+      type: 'story',
+      headlines: { basic: 'Structured live report' },
+      promo_items: {
+        basic: {
+          _id: 'hero-image',
+          type: 'image',
+          imageWebUrl: 'https://cdn.example.com/hero.jpg',
+          caption: 'The article hero image.',
+          width: 1200,
+          height: 800,
+        },
+      },
+      content_elements: [
+        {
+          type: 'header',
+          level: 2,
+          content: 'First update',
+        },
+        {
+          type: 'text',
+          content: 'The first update contains the opening article paragraph.',
+        },
+        {
+          _id: 'body-image',
+          type: 'image',
+          imageWebUrl: 'https://cdn.example.com/body.jpg',
+          caption: 'The body image caption.',
+          credits: {
+            by: [{ name: 'Example Photographer' }],
+          },
+          width: 1000,
+          height: 667,
+        },
+        {
+          type: 'text',
+          content: 'The final update completes the structured live report.',
+        },
+      ],
+    };
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Structured live report</title></head>
+        <body>
+          <div id="fusion-app">
+            <main>
+              <p>The first update contains the opening article paragraph.</p>
+              <p>The final update completes the structured live report.</p>
+            </main>
+          </div>
+          <script id="fusion-metadata">
+            window.Fusion=window.Fusion||{};
+            Fusion.globalContent=${JSON.stringify(fusionContent)};
+            Fusion.globalContentConfig={};
+          </script>
+        </body>
+      </html>`,
+      'https://example.com/live/structured-report',
+    );
+
+    expect(result.content).toContain('https://cdn.example.com/hero.jpg');
+    expect(result.content).toContain('https://cdn.example.com/body.jpg');
+    expect(result.content).toContain('The body image caption.');
+    expect(result.content).toContain('Example Photographer');
+    expect(result.content.indexOf('First update')).toBeLessThan(
+      result.content.indexOf('https://cdn.example.com/body.jpg'),
+    );
+  });
+
   it('keeps native video playable with safe absolute media URLs', () => {
     const result = cleaner.clean(
       `<html>
@@ -90,6 +226,34 @@ describe('ContentCleaner', () => {
     expect(result.content).not.toContain('autoplay');
     expect(result.content).not.toContain('data-src');
   });
+
+  it('removes inline Reader icons while preserving article images and math', () => {
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Pinned article</title></head>
+        <body>
+          <article>
+            <p>This article contains enough explanatory text for extraction.</p>
+            <svg width="14" height="20" viewBox="0 0 14 20">
+              <title>Pin Icon</title>
+              <path d="M13 0V2H12V8L14 11V13H8V20H6V13H0V11L2 8V2H1V0H13Z"></path>
+            </svg>
+            <p>Pinned</p>
+            <img src="/article-photo.jpg" alt="Article photo">
+            <math alttext="x = 1"><mi>x</mi><mo>=</mo><mn>1</mn></math>
+            <p>The remaining text describes the article image and formula.</p>
+          </article>
+        </body>
+      </html>`,
+      'https://example.com/posts/article',
+    );
+
+    expect(result.content).toContain('Pinned');
+    expect(result.content).not.toContain('Pin Icon');
+    expect(result.content).not.toContain('<svg');
+    expect(result.content).toContain('article-photo.jpg');
+    expect(result.content).toContain('<math');
+  });
 });
 
 describe('MarkdownConverter', () => {
@@ -110,11 +274,48 @@ describe('MarkdownConverter', () => {
     expect(md).toContain('[Example](https://example.com)');
   });
 
-  it('should preserve images', () => {
-    const html = '<img src="https://example.com/img.jpg" alt="Photo" />';
+  it('preserves article images but removes image elements marked as icons', () => {
+    const html = [
+      '<p>Before</p>',
+      '<img src="https://example.com/img.jpg" alt="Photo" />',
+      '<img width="24" height="24" src="https://example.com/pin.svg" alt="Pushpin" />',
+      '<p>After</p>',
+    ].join('');
     const md = converter.convert(html);
 
+    expect(md).toContain('Before');
+    expect(md).toContain('After');
     expect(md).toContain('![Photo](https://example.com/img.jpg)');
+    expect(md).not.toContain('Pushpin');
+    expect(md).not.toContain('pin.svg');
+  });
+
+  it('removes decorative icons and emoji while keeping translatable text', () => {
+    const html = [
+      '<div class="leading-icon" role="img" aria-label="Pushpin">',
+      '<svg width="16" height="16"><title>Pushpin icon</title></svg></div>',
+      '<p><span aria-hidden="true">📌</span>📌 Pinned</p>',
+    ].join('');
+    const md = converter.convert(html);
+
+    expect(md).toContain('Pinned');
+    expect(md).not.toContain('📌');
+    expect(md).not.toContain('Pushpin');
+  });
+
+  it('preserves inline Markdown math and MathML formulas', () => {
+    const html = [
+      '<p>Einstein wrote $E = mc^2$.</p>',
+      '<p><math alttext="x = (-b ± √(b² - 4ac)) / 2a">',
+      '<mi>x</mi><mo>=</mo><mfrac><mn>1</mn><mn>2</mn></mfrac>',
+      '</math></p>',
+      '<img width="24" height="24" src="/formula.svg" alt="\\(a² + b² = c²\\)">',
+    ].join('');
+    const md = converter.convert(html);
+
+    expect(md).toContain('$E = mc^2$');
+    expect(md).toContain('$x = (-b ± √(b² - 4ac)) / 2a$');
+    expect(md).toContain('\\(a² + b² = c²\\)');
   });
 
   it('should handle code blocks', () => {

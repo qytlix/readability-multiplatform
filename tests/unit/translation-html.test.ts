@@ -37,6 +37,19 @@ describe('parseTranslationOutput', () => {
     expect(result.terminologyMatches).toHaveLength(1);
   });
 
+  it('accepts an independently translated list-item root', () => {
+    const result = parseTranslationOutput(
+      '<li><strong>First</strong> point.</li>',
+      JSON.stringify({
+        translatedHtml: '<li><strong>第一</strong>点。</li>',
+        appliedTermIds: [],
+      }),
+    );
+
+    expect(result.translatedText).toBe('第一点。');
+    expect(result.translatedHtml).toBe('<li><strong>第一</strong>点。</li>');
+  });
+
   it('removes model-provided dangerous attributes while retaining source attributes', () => {
     const output = JSON.stringify({
       translatedHtml: '<p onclick="steal()"><a href="javascript:steal()">译文</a></p>',

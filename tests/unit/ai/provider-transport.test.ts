@@ -26,7 +26,7 @@ describe('ProviderTransport', () => {
     scope.dispose();
   });
 
-  it('maps the 60-second request deadline to the stable timeout error', async () => {
+  it('maps 60 seconds without provider activity to the stable timeout error', async () => {
     vi.useFakeTimers();
     const scope = createProviderAbortScope();
     vi.stubGlobal('fetch', abortableFetch());
@@ -37,6 +37,32 @@ describe('ProviderTransport', () => {
       retryable: true,
     });
     await vi.advanceTimersByTimeAsync(60_000);
+
+    await expectation;
+    scope.dispose();
+  });
+
+  it('restarts the inactivity timeout whenever translated text arrives', async () => {
+    vi.useFakeTimers();
+    const scope = createProviderAbortScope();
+    vi.stubGlobal('fetch', abortableFetch());
+
+    const pending = fetchProviderResponse('https://provider.example', {}, scope);
+    const expectation = expect(pending).rejects.toMatchObject({
+      code: 'SUMMARY_PROVIDER_TIMEOUT',
+      retryable: true,
+    });
+
+    for (let responseIndex = 0; responseIndex < 3; responseIndex += 1) {
+      await vi.advanceTimersByTimeAsync(50_000);
+      expect(scope.signal.aborted).toBe(false);
+      scope.recordResponseActivity();
+    }
+
+    expect(scope.signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(scope.signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
 
     await expectation;
     scope.dispose();

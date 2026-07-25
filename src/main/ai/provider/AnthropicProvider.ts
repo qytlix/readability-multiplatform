@@ -43,6 +43,7 @@ export class AnthropicProvider implements TextGenerationProvider {
           receivedFirstDelta = true;
           request.onTiming?.('first-delta');
         }
+        scope.recordResponseActivity();
         yield delta;
       }
     } finally {

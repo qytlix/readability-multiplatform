@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OpenAICompatibleProvider } from '../../../src/main/ai/provider/OpenAICompatibleProvider';
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -49,6 +50,26 @@ describe('OpenAICompatibleProvider', () => {
     for await (const chunk of provider.stream(request())) chunks.push(chunk);
 
     expect(chunks).toEqual(['split chunk']);
+  });
+
+  it('keeps a stream alive beyond 60 seconds while translated text continues arriving', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      Promise.resolve(timedStreamingResponse([
+        { afterMs: 50_000, text: 'First ' },
+        { afterMs: 50_000, text: 'second ' },
+        { afterMs: 50_000, text: 'third.' },
+      ], init?.signal))));
+    const provider = new OpenAICompatibleProvider();
+    const chunks: string[] = [];
+
+    const pending = (async () => {
+      for await (const chunk of provider.stream(request())) chunks.push(chunk);
+    })();
+    await vi.advanceTimersByTimeAsync(150_001);
+    await pending;
+
+    expect(chunks).toEqual(['First ', 'second ', 'third.']);
   });
 
   it('surfaces OpenRouter-compatible errors that arrive after partial content', async () => {
@@ -157,6 +178,40 @@ function streamingResponse(chunks: string[]): Response {
     start(controller) {
       chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)));
       controller.close();
+    },
+  }), { status: 200 });
+}
+
+function timedStreamingResponse(
+  chunks: Array<{ afterMs: number; text: string }>,
+  signal: AbortSignal | null | undefined,
+): Response {
+  const encoder = new TextEncoder();
+  return new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      let elapsedMs = 0;
+      let closed = false;
+      const timers: Array<ReturnType<typeof setTimeout>> = [];
+      chunks.forEach(({ afterMs, text }) => {
+        elapsedMs += afterMs;
+        timers.push(setTimeout(() => {
+          if (closed) return;
+          controller.enqueue(encoder.encode(
+            `data: {"choices":[{"delta":{"content":${JSON.stringify(text)}}}]}\n\n`,
+          ));
+        }, elapsedMs));
+      });
+      timers.push(setTimeout(() => {
+        if (closed) return;
+        closed = true;
+        controller.close();
+      }, elapsedMs + 1));
+      signal?.addEventListener('abort', () => {
+        if (closed) return;
+        closed = true;
+        timers.forEach((timer) => clearTimeout(timer));
+        controller.error(new DOMException('Aborted', 'AbortError'));
+      }, { once: true });
     },
   }), { status: 200 });
 }

@@ -290,6 +290,12 @@ export class EntryStore {
       .run(isStarred ? 1 : 0, new Date().toISOString(), id);
   }
 
+  updateContentHash(entryId: number, contentHash: string): void {
+    this.db
+      .prepare('UPDATE entry SET contentHash = ?, updatedAt = ? WHERE id = ?')
+      .run(contentHash, new Date().toISOString(), entryId);
+  }
+
   softDelete(id: number): void {
     this.db
       .prepare('UPDATE entry SET isDeleted = 1, updatedAt = ? WHERE id = ?')

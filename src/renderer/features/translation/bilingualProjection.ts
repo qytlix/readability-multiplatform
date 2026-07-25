@@ -8,9 +8,9 @@ const TRANSLATABLE_BLOCK_SELECTOR = [
   'h5',
   'h6',
   'p',
-  'ul',
-  'ol',
+  'li',
   'blockquote',
+  'cite',
   'figcaption',
   'caption',
 ].join(', ');
@@ -51,7 +51,7 @@ export function projectBilingualBody(
       && segment.translatedHtml
       && segment.translatedHtml !== segment.sourceHtml
     ) {
-      sourceElement.insertAdjacentElement('afterend', createTranslatedElement(sourceElement, segment));
+      insertTranslatedElement(sourceElement, createTranslatedElement(sourceElement, segment));
     } else if (state.showPendingIndicators && segment.status === 'pending') {
       appendPendingIndicator(sourceElement);
     } else if (segment.status === 'failed') {
@@ -69,7 +69,7 @@ function findMatchingCandidate(
     const candidate = candidates[index];
     if (
       candidate
-      && toSegmentType(candidate.tagName) === segment.sourceType
+      && toSegmentType(candidate) === segment.sourceType
       && getSourceText(candidate, segment.sourceType) === normalizeWhitespace(segment.sourceText)
     ) {
       return index;
@@ -89,12 +89,38 @@ function createTranslatedElement(
     `translation-segment-${segment.sourceType}`,
   ].join(' ');
 
-  target.innerHTML = segment.translatedHtml ?? '';
+  target.innerHTML = getTranslatedContent(sourceElement, segment.translatedHtml ?? '');
   // The original media is already present in the Reader skeleton. Avoid
   // duplicating inline images that were part of a translatable paragraph.
   target.querySelectorAll('img, picture, video, audio, iframe, object, embed, svg, canvas')
     .forEach((element) => element.remove());
   return target;
+}
+
+function getTranslatedContent(sourceElement: HTMLElement, translatedHtml: string): string {
+  if (sourceElement.tagName.toLowerCase() !== 'li') return translatedHtml;
+  const template = sourceElement.ownerDocument.createElement('template');
+  template.innerHTML = translatedHtml;
+  const translatedRoot = template.content.firstElementChild;
+  return translatedRoot?.tagName.toLowerCase() === 'li'
+    ? translatedRoot.innerHTML
+    : translatedHtml;
+}
+
+function insertTranslatedElement(
+  sourceElement: HTMLElement,
+  translatedElement: HTMLElement,
+): void {
+  if (sourceElement.tagName.toLowerCase() !== 'li') {
+    sourceElement.insertAdjacentElement('afterend', translatedElement);
+    return;
+  }
+  const nestedList = sourceElement.querySelector(':scope > ul, :scope > ol');
+  if (nestedList) {
+    nestedList.insertAdjacentElement('beforebegin', translatedElement);
+    return;
+  }
+  sourceElement.append(translatedElement);
 }
 
 function appendPendingIndicator(sourceElement: HTMLElement): void {
@@ -104,8 +130,10 @@ function appendPendingIndicator(sourceElement: HTMLElement): void {
   indicator.setAttribute('aria-label', 'Translating this segment');
 
   const tagName = sourceElement.tagName.toLowerCase();
-  if (tagName === 'ul' || tagName === 'ol') {
-    (sourceElement.querySelector(':scope > li:last-child') ?? sourceElement).append(indicator);
+  if (tagName === 'li') {
+    const nestedList = sourceElement.querySelector(':scope > ul, :scope > ol');
+    if (nestedList) nestedList.insertAdjacentElement('beforebegin', indicator);
+    else sourceElement.append(indicator);
     return;
   }
   if (tagName === 'blockquote') {
@@ -124,8 +152,10 @@ function appendUntranslatedIndicator(sourceElement: HTMLElement): void {
   indicator.textContent = 'Untranslated';
 
   const tagName = sourceElement.tagName.toLowerCase();
-  if (tagName === 'ul' || tagName === 'ol') {
-    (sourceElement.querySelector(':scope > li:last-child') ?? sourceElement).append(indicator);
+  if (tagName === 'li') {
+    const nestedList = sourceElement.querySelector(':scope > ul, :scope > ol');
+    if (nestedList) nestedList.insertAdjacentElement('beforebegin', indicator);
+    else sourceElement.append(indicator);
     return;
   }
   if (tagName === 'blockquote') {
@@ -137,16 +167,28 @@ function appendUntranslatedIndicator(sourceElement: HTMLElement): void {
 }
 
 function shouldSkipElement(element: HTMLElement): boolean {
+  const type = toSegmentType(element);
+  if (type === 'list') return false;
+  if (type === 'blockquote') {
+    if (element.tagName.toLowerCase() !== 'blockquote') return false;
+    return Boolean(element.querySelector(':scope > p, :scope > cite'));
+  }
   if (element.parentElement?.closest('li, blockquote, ul, ol')) return true;
   return element.tagName.toLowerCase() === 'p' && Boolean(element.closest('figure'));
 }
 
-function toSegmentType(tagName: string): TranslationSegment['sourceType'] | undefined {
-  const normalizedTag = tagName.toLowerCase();
+function toSegmentType(element: HTMLElement): TranslationSegment['sourceType'] | undefined {
+  const normalizedTag = element.tagName.toLowerCase();
   if (/^h[1-6]$/.test(normalizedTag)) return 'heading';
+  if (
+    normalizedTag === 'blockquote'
+    || ((normalizedTag === 'p' || normalizedTag === 'cite')
+      && element.parentElement?.tagName.toLowerCase() === 'blockquote')
+  ) {
+    return 'blockquote';
+  }
   if (normalizedTag === 'p') return 'paragraph';
-  if (normalizedTag === 'ul' || normalizedTag === 'ol') return 'list';
-  if (normalizedTag === 'blockquote') return 'blockquote';
+  if (normalizedTag === 'li') return 'list';
   if (normalizedTag === 'figcaption' || normalizedTag === 'caption') return 'caption';
   return undefined;
 }
@@ -156,17 +198,20 @@ function getSourceText(
   type: TranslationSegment['sourceType'],
 ): string {
   if (type === 'blockquote') {
-    return normalizeWhitespace(Array.from(element.querySelectorAll(':scope > p, :scope > cite'))
+    if (element.tagName.toLowerCase() !== 'blockquote') {
+      return normalizeWhitespace(element.textContent ?? '');
+    }
+    const blocks = Array.from(element.querySelectorAll(':scope > p, :scope > cite'))
       .map((block) => normalizeWhitespace(block.textContent ?? ''))
       .filter(Boolean)
-      .join('\n'));
+      .join('\n');
+    return normalizeWhitespace(blocks || (element.textContent ?? ''));
   }
   if (type !== 'list') return normalizeWhitespace(element.textContent ?? '');
 
-  return normalizeWhitespace(Array.from(element.querySelectorAll(':scope > li'))
-    .map((item) => readTextWithBlockBoundaries(item))
-    .filter(Boolean)
-    .join('\n'));
+  const clone = element.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('ul, ol').forEach((list) => list.remove());
+  return readTextWithBlockBoundaries(clone);
 }
 
 function readTextWithBlockBoundaries(element: Element): string {

@@ -115,6 +115,10 @@ export const App = () => {
   const [largeType, setLargeType] = useState(false);
   const [showReaderMenu, setShowReaderMenu] = useState(false);
   const [readerFeedback, setReaderFeedback] = useState('');
+  const [contentRefreshVersions, setContentRefreshVersions] =
+    useState<Record<number, number>>({});
+  const [refreshingContentEntryId, setRefreshingContentEntryId] =
+    useState<number | null>(null);
   const [markingReadEntryId, setMarkingReadEntryId] = useState<number | null>(null);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(() =>
     loadReaderTheme(window.localStorage));
@@ -581,6 +585,33 @@ export const App = () => {
     }
   }, [selectedEntry?.url]);
 
+  const handleRefreshContent = useCallback(() => {
+    if (!selectedEntry?.url) {
+      setReaderFeedback('这篇文章没有可重新获取的原文链接。');
+      return;
+    }
+
+    const entryId = selectedEntry.id;
+    setContentRefreshVersions((current) => ({
+      ...current,
+      [entryId]: (current[entryId] ?? 0) + 1,
+    }));
+    setRefreshingContentEntryId(entryId);
+    setReaderFeedback('正在重新获取并提取正文…');
+    setShowReaderMenu(false);
+  }, [selectedEntry]);
+
+  const handleContentRefreshComplete = useCallback((
+    entryId: number,
+    result: { ok: true } | { ok: false; message: string },
+  ): void => {
+    setRefreshingContentEntryId((current) =>
+      current === entryId ? null : current);
+    setReaderFeedback(
+      result.ok ? '正文已更新。' : `正文更新失败：${result.message}`,
+    );
+  }, []);
+
   const handleLoadMore = useCallback(() => {
     if (!hasMoreEntries || loadingEntries || !entriesCursor) return;
     void requestEntries(entriesCursor, true);
@@ -851,6 +882,18 @@ export const App = () => {
                   </button>
                   {showReaderMenu && (
                     <div className="article-more-menu">
+                      <button
+                        type="button"
+                        disabled={
+                          !selectedEntry?.url
+                          || refreshingContentEntryId === selectedEntry.id
+                        }
+                        onClick={handleRefreshContent}
+                      >
+                        {refreshingContentEntryId === selectedEntry?.id
+                          ? '正在重新获取正文…'
+                          : '重新获取正文'}
+                      </button>
                       <button type="button" onClick={() => void handleCopyOriginal()}>
                         复制原文链接
                       </button>
@@ -879,6 +922,11 @@ export const App = () => {
             ) : (
               <EntryDetail
                 entry={selectedEntry}
+                contentRefreshVersion={
+                  selectedEntry
+                    ? contentRefreshVersions[selectedEntry.id] ?? 0
+                    : 0
+                }
                 aiViewState={getEntryAIViewState(
                   entryAIViewStates,
                   selectedEntry?.id ?? null,
@@ -900,6 +948,7 @@ export const App = () => {
                 aiToolbarTarget={articleAIToolbarTarget}
                 onAIViewStateChange={handleEntryAIViewStateChange}
                 onReadingProgressChange={handleReadingProgressChange}
+                onContentRefreshComplete={handleContentRefreshComplete}
               />
             )}
           </div>

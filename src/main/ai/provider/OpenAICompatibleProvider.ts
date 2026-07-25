@@ -47,6 +47,7 @@ export class OpenAICompatibleProvider implements TextGenerationProvider {
           receivedFirstDelta = true;
           request.onTiming?.('first-delta');
         }
+        scope.recordResponseActivity();
         yield parsedEvent.delta;
       }
     } finally {

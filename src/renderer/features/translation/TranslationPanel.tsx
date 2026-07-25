@@ -2,9 +2,11 @@ import {
   forwardRef,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useRef,
   useState,
+  type MouseEvent,
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -39,6 +41,7 @@ interface TranslationPanelProps {
   titleTarget: HTMLDivElement | null;
   isBilingualVisible: boolean;
   children: ReactNode;
+  onContentClick: (event: MouseEvent<HTMLDivElement>) => void;
   onGeneratingChange: (isGenerating: boolean) => void;
   onBilingualChange: (isBilingual: boolean) => void;
   onTitleTranslatingChange: (isTranslating: boolean) => void;
@@ -61,6 +64,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   titleTarget,
   isBilingualVisible,
   children,
+  onContentClick,
   onGeneratingChange,
   onBilingualChange,
   onTitleTranslatingChange,
@@ -71,6 +75,8 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   const [showFeedback, setShowFeedback] = useState(false);
   const activeRunIdRef = useRef<number | null>(null);
   const loadSequenceRef = useRef(0);
+  const failureTitleId = useId();
+  const failureDescriptionId = useId();
 
   const loadState = useCallback(async () => {
     const loadSequence = loadSequenceRef.current + 1;
@@ -145,6 +151,18 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         return;
       }
       if (event.type === 'failed') {
+        setTranslationState((current) => {
+          const currentResult = getResult(current);
+          if (!currentResult) return current;
+          return {
+            state: 'failed',
+            result: {
+              ...currentResult,
+              status: 'failed',
+              error: event.error,
+            },
+          };
+        });
         setShowFeedback(true);
         setMessage(event.error.message);
         setIsGenerating(false);
@@ -156,7 +174,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   }, [entryId, loadState, onBilingualChange, sourceLanguage, targetLanguage]);
 
   const generate = useCallback(async (): Promise<void> => {
-    setShowFeedback(true);
+    setShowFeedback(false);
     setMessage('');
     onBilingualChange(false);
     try {
@@ -170,14 +188,17 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       });
       if (!result.ok) {
         setMessage(result.error.message);
+        setShowFeedback(true);
         return;
       }
       activeRunIdRef.current = result.data.runId;
       setTranslationState(toTranslationState(result.data.result));
       setIsGenerating(result.data.result.status === 'running');
+      setShowFeedback(result.data.result.status === 'failed');
       onBilingualChange(true);
     } catch {
       setMessage('Unable to start Translation generation.');
+      setShowFeedback(true);
     }
   }, [
     entryId,
@@ -188,6 +209,21 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     useSmartContext,
     useTerminology,
   ]);
+
+  const dismissFeedback = useCallback(() => {
+    setShowFeedback(false);
+    setMessage('');
+  }, []);
+
+  useEffect(() => {
+    if (!showFeedback) return;
+    const dismissOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      dismissFeedback();
+    };
+    window.addEventListener('keydown', dismissOnEscape);
+    return () => window.removeEventListener('keydown', dismissOnEscape);
+  }, [dismissFeedback, showFeedback]);
 
   const activate = useCallback((): void => {
     if (translationState.state === 'succeeded') {
@@ -230,6 +266,24 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     isBilingualVisible,
   );
   const hasTranslation = Boolean(result);
+  const failureFeedback = showFeedback
+    ? translationState.state === 'failed'
+      ? getTranslationFailureMessage(result)
+      : message
+    : '';
+  const readerPageTarget = document.querySelector<HTMLElement>('.reader-page');
+  const failurePopup = failureFeedback
+    ? (
+        <TranslationErrorPopup
+          titleId={failureTitleId}
+          descriptionId={failureDescriptionId}
+          message={failureFeedback}
+          canRetry={translationState.state === 'failed' && result?.error?.retryable === true}
+          onDismiss={dismissFeedback}
+          onRetry={() => void generate()}
+        />
+      )
+    : null;
   const translatedTitle = getTranslatedTitleSegment(result, readerMode);
   const titleIsPending = readerMode === 'bilingual'
     && result?.status === 'running'
@@ -278,14 +332,9 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         </section>,
         titleTarget,
       )}
-      {showFeedback && translationState.state === 'failed' && (
-        <p className="entry-detail-ai-error" role="status">
-          {getTranslationFailureMessage(result)}
-        </p>
-      )}
-      {showFeedback && message && (
-        <p className="entry-detail-ai-error" role="status">{message}</p>
-      )}
+      {failurePopup && readerPageTarget
+        ? createPortal(failurePopup, readerPageTarget)
+        : failurePopup}
       {result?.contextWarning && (
         <p className="entry-detail-ai-warning" role="status">
           {result.contextWarning.message}
@@ -297,6 +346,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
             result={result}
             sourceHtml={sourceHtml}
             onVisibleSegmentIds={prioritizeVisibleSegments}
+            onContentClick={onContentClick}
           />
         : children}
     </>
@@ -304,6 +354,68 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
 });
 
 TranslationPanel.displayName = 'TranslationPanel';
+
+function TranslationErrorPopup({
+  titleId,
+  descriptionId,
+  message,
+  canRetry,
+  onDismiss,
+  onRetry,
+}: {
+  titleId: string;
+  descriptionId: string;
+  message: string;
+  canRetry: boolean;
+  onDismiss: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <aside
+      className="translation-error-popup"
+      role="alert"
+      aria-live="assertive"
+      aria-atomic="true"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+    >
+      <div className="translation-error-popup-header">
+        <span className="translation-error-popup-mark" aria-hidden="true">!</span>
+        <div className="translation-error-popup-heading">
+          <span>Translation interrupted</span>
+          <h2 id={titleId}>Translation paused</h2>
+        </div>
+        <button
+          type="button"
+          className="translation-error-popup-close"
+          aria-label="Dismiss Translation error"
+          onClick={onDismiss}
+        >
+          ×
+        </button>
+      </div>
+      <p id={descriptionId} className="translation-error-popup-message">{message}</p>
+      <div className="translation-error-popup-actions">
+        <button
+          type="button"
+          className="translation-error-popup-dismiss"
+          onClick={onDismiss}
+        >
+          Dismiss
+        </button>
+        {canRetry && (
+          <button
+            type="button"
+            className="translation-error-popup-retry"
+            onClick={onRetry}
+          >
+            Retry remaining
+          </button>
+        )}
+      </div>
+    </aside>
+  );
+}
 
 function isEditableTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (
@@ -316,10 +428,12 @@ function BilingualProjection({
   result,
   sourceHtml,
   onVisibleSegmentIds,
+  onContentClick,
 }: {
   result: TranslationResult;
   sourceHtml: string;
   onVisibleSegmentIds: (sourceSegmentIds: string[]) => void;
+  onContentClick: (event: MouseEvent<HTMLDivElement>) => void;
 }) {
   const articleRef = useRef<HTMLElement>(null);
   const bodyRoot = document.createElement('div');
@@ -361,6 +475,7 @@ function BilingualProjection({
       <div
         className="translation-bilingual-body entry-detail-html"
         dangerouslySetInnerHTML={{ __html: bodyHtml }}
+        onClick={onContentClick}
       />
     </article>
   );

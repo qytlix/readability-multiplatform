@@ -44,6 +44,7 @@ import { AnnotatedArticle } from '../annotations/AnnotatedArticle';
 
 interface EntryDetailProps {
   entry: Entry | null;
+  contentRefreshVersion?: number;
   aiViewState: EntryAIViewState;
   feedLoadStatus: FeedLoadStatus;
   feedLoadError: string;
@@ -61,6 +62,10 @@ interface EntryDetailProps {
     change: Partial<EntryAIViewState>,
   ) => void;
   onReadingProgressChange: (entryId: number, readingProgress: number) => Promise<void>;
+  onContentRefreshComplete?: (
+    entryId: number,
+    result: { ok: true } | { ok: false; message: string },
+  ) => void;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -69,6 +74,7 @@ const WINDOW_TOP_REVEAL_ZONE = 60;
 
 export const EntryDetail = ({
   entry,
+  contentRefreshVersion = 0,
   aiViewState,
   feedLoadStatus,
   feedLoadError,
@@ -83,6 +89,7 @@ export const EntryDetail = ({
   aiToolbarTarget,
   onAIViewStateChange,
   onReadingProgressChange,
+  onContentRefreshComplete,
 }: EntryDetailProps) => {
   const [content, setContent] = useState<CleanedContent | null>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
@@ -95,6 +102,7 @@ export const EntryDetail = ({
   const [titleTranslationTarget, setTitleTranslationTarget] = useState<HTMLDivElement | null>(null);
   const [isFloatingHeaderVisible, setIsFloatingHeaderVisible] = useState(false);
   const prevEntryId = useRef<number | null>(null);
+  const handledRefreshVersionsRef = useRef(new Map<number, number>());
   const abortRef = useRef<AbortController | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const flowHeaderRef = useRef<HTMLDivElement>(null);
@@ -163,13 +171,20 @@ export const EntryDetail = ({
       return;
     }
 
+    const handledRefreshVersion =
+      handledRefreshVersionsRef.current.get(entry.id) ?? 0;
+    const forceRefresh = contentRefreshVersion > handledRefreshVersion;
+    if (forceRefresh) {
+      handledRefreshVersionsRef.current.set(entry.id, contentRefreshVersion);
+    }
+
     // Abort any in-flight request for previous entry (P2-#10: race condition fix)
     if (abortRef.current) {
       abortRef.current.abort();
     }
 
     // Avoid re-fetching same entry
-    if (prevEntryId.current === entry.id) return;
+    if (prevEntryId.current === entry.id && !forceRefresh) return;
     prevEntryId.current = entry.id;
 
     const loadContent = async () => {
@@ -181,35 +196,59 @@ export const EntryDetail = ({
 
       try {
         // First check if content already exists
-        const existingResult = await window.shaleAPI.content.get(entry.id);
-        if (!existingResult.ok) {
-          // IPC-level error (not "no content")
-          setStatus('error');
-          setError(existingResult.error?.message ?? 'Failed to check existing content');
-          return;
-        }
+        if (!forceRefresh) {
+          const existingResult = await window.shaleAPI.content.get(entry.id);
+          if (!existingResult.ok) {
+            // IPC-level error (not "no content")
+            setStatus('error');
+            setError(existingResult.error?.message ?? 'Failed to check existing content');
+            return;
+          }
 
-        if (existingResult.data !== null) {
-          // Already has cleaned content
-          setContent(existingResult.data);
-          setStatus('success');
-          return;
+          if (existingResult.data !== null) {
+            // Already has cleaned content
+            setContent(existingResult.data);
+            setStatus('success');
+            return;
+          }
         }
 
         // No existing content (null) — fetch and clean
         const fetchResult = await window.shaleAPI.content.fetchAndClean(entry.id);
         if (!fetchResult.ok) {
+          const message = fetchResult.error?.message ?? 'Failed to fetch content';
           setStatus('error');
-          setError(fetchResult.error?.message ?? 'Failed to fetch content');
+          setError(message);
+          if (forceRefresh) {
+            onContentRefreshComplete?.(entry.id, { ok: false, message });
+          }
+          return;
+        }
+        if (fetchResult.data.pipelineStatus !== 'success') {
+          const message =
+            fetchResult.data.pipelineError ?? 'Failed to extract article content';
+          setStatus('error');
+          setError(message);
+          if (forceRefresh) {
+            onContentRefreshComplete?.(entry.id, { ok: false, message });
+          }
           return;
         }
         setContent(fetchResult.data);
         setStatus('success');
+        if (forceRefresh) {
+          onContentRefreshComplete?.(entry.id, { ok: true });
+        }
       } catch (err: unknown) {
         // Ignore abort errors
         if (err instanceof Error && err.name === 'AbortError') return;
+        const message =
+          err instanceof Error ? err.message : 'Failed to load content';
         setStatus('error');
-        setError(err instanceof Error ? err.message : 'Failed to load content');
+        setError(message);
+        if (forceRefresh) {
+          onContentRefreshComplete?.(entry.id, { ok: false, message });
+        }
       }
     };
 
@@ -221,7 +260,11 @@ export const EntryDetail = ({
         abortRef.current.abort();
       }
     };
-  }, [entry?.id]);
+  }, [
+    contentRefreshVersion,
+    entry?.id,
+    onContentRefreshComplete,
+  ]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -731,6 +774,7 @@ export const EntryDetail = ({
             sourceHtml={content?.cleanedHtml ?? ''}
             titleTarget={titleTranslationTarget}
             isBilingualVisible={aiViewState.translationVisible}
+            onContentClick={handleContentClick}
             onGeneratingChange={setIsTranslationGenerating}
             onBilingualChange={handleBilingualChange}
             onTitleTranslatingChange={setIsTitleTranslating}
