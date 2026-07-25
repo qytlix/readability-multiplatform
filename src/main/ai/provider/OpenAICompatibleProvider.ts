@@ -1,4 +1,5 @@
 import type {
+  ProviderTokenUsage,
   TextGenerationConnectionRequest,
   TextGenerationProvider,
   TextGenerationProviderRequest,
@@ -16,6 +17,7 @@ export class OpenAICompatibleProvider implements TextGenerationProvider {
   async *stream(request: TextGenerationProviderRequest): AsyncIterable<string> {
     const scope = createProviderAbortScope(request.signal);
     let receivedFirstDelta = false;
+    let latestUsage: ProviderTokenUsage | undefined;
     try {
       const response = await fetchProviderResponse(
         buildCompletionUrl(request.baseUrl),
@@ -28,6 +30,7 @@ export class OpenAICompatibleProvider implements TextGenerationProvider {
           body: JSON.stringify({
             model: request.model,
             stream: true,
+            ...(request.requestUsage ? { stream_options: { include_usage: true } } : {}),
             messages: [{ role: 'user', content: request.prompt }],
           }),
         },
@@ -37,15 +40,21 @@ export class OpenAICompatibleProvider implements TextGenerationProvider {
 
       for await (const event of readServerSentEvents(response, scope)) {
         if (!event.data || event.data === '[DONE]') continue;
-        const delta = parseOpenAIStreamEvent(event.data);
-        if (!delta) continue;
+        const parsedEvent = parseOpenAIStreamEvent(event.data);
+        if (parsedEvent?.usage) latestUsage = parsedEvent.usage;
+        if (!parsedEvent?.delta) continue;
         if (!receivedFirstDelta) {
           receivedFirstDelta = true;
           request.onTiming?.('first-delta');
         }
-        yield delta;
+        yield parsedEvent.delta;
       }
     } finally {
+      try {
+        if (latestUsage) request.onUsage?.(latestUsage);
+      } catch {
+        // Usage callbacks are diagnostic-only and must not change request behavior.
+      }
       scope.dispose();
     }
   }
@@ -82,7 +91,9 @@ function buildCompletionUrl(baseUrl: string): string {
   return new URL('chat/completions', normalized).toString();
 }
 
-function parseOpenAIStreamEvent(payload: string): string | undefined {
+function parseOpenAIStreamEvent(
+  payload: string,
+): { delta?: string; usage?: ProviderTokenUsage } | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload);
@@ -97,18 +108,23 @@ function parseOpenAIStreamEvent(payload: string): string | undefined {
     throw providerStreamError(isRetryableOpenAIError(parsed.error));
   }
 
+  const usage = toProviderTokenUsage(parsed.usage);
   const choices = parsed.choices;
-  if (!Array.isArray(choices) || choices.length === 0) return undefined;
+  if (!Array.isArray(choices) || choices.length === 0) {
+    return usage ? { usage } : undefined;
+  }
   const firstChoice = choices[0];
-  if (!isRecord(firstChoice)) return undefined;
+  if (!isRecord(firstChoice)) return usage ? { usage } : undefined;
   if (isRecord(firstChoice.error) || firstChoice.finish_reason === 'error') {
     throw providerStreamError(
       isRecord(firstChoice.error) && isRetryableOpenAIError(firstChoice.error),
     );
   }
-  if (!isRecord(firstChoice.delta)) return undefined;
-  return typeof firstChoice.delta.content === 'string'
+  const delta = isRecord(firstChoice.delta) && typeof firstChoice.delta.content === 'string'
     ? firstChoice.delta.content
+    : undefined;
+  return delta || usage
+    ? { ...(delta ? { delta } : {}), ...(usage ? { usage } : {}) }
     : undefined;
 }
 
@@ -137,4 +153,25 @@ function isRetryableOpenAIError(error: Record<string, unknown>): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function toProviderTokenUsage(value: unknown): ProviderTokenUsage | undefined {
+  if (!isRecord(value)) return undefined;
+  const inputTokens = toSafeTokenCount(value.prompt_tokens);
+  const outputTokens = toSafeTokenCount(value.completion_tokens);
+  const totalTokens = toSafeTokenCount(value.total_tokens);
+  if (inputTokens === undefined && outputTokens === undefined && totalTokens === undefined) {
+    return undefined;
+  }
+  return {
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(totalTokens === undefined ? {} : { totalTokens }),
+  };
+}
+
+function toSafeTokenCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
 }

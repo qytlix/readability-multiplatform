@@ -23,6 +23,7 @@ import { SummaryService } from './ai/services/SummaryService';
 import type { SummaryOperationLogger } from './ai/services/SummaryLogging';
 import { SummaryStore } from './ai/stores/SummaryStore';
 import { TranslationService } from './ai/services/TranslationService';
+import type { TranslationOperationLogger } from './ai/services/TranslationLogging';
 import { InlineTranslationService } from './ai/services/InlineTranslationService';
 import { TranslationStore } from './ai/stores/TranslationStore';
 import { TranslationContextStore } from './ai/stores/TranslationContextStore';
@@ -127,7 +128,8 @@ export function initializeServices(
     & ContentOperationLogger
     & OPMLOperationLogger
     & ProviderOperationLogger
-    & SummaryOperationLogger,
+    & SummaryOperationLogger
+    & TranslationOperationLogger,
   terminologyDbPath?: string,
 ): FeedServices {
   const dbManager = new DatabaseManager(dbPath);
@@ -155,7 +157,6 @@ export function initializeServices(
     builtInExpertBundle as BuiltInExpertBundle,
   );
   const annotationStore = new AnnotationStore(dbManager.getDb());
-  translationStore.reconcileInterruptedRuns();
   const secretStore = new SecretStore(
     secretStoragePath ?? path.join(path.dirname(dbPath ?? '.'), 'ai-secrets.json'),
     safeStorage,
@@ -192,7 +193,9 @@ export function initializeServices(
     terminologyLookup,
     expertService,
     contextService,
+    operationLogger,
   );
+  translationService.reconcileInterruptedRuns();
   const inlineTranslationService = new InlineTranslationService(
     providerProfileStore,
     secretStore,

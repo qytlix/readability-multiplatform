@@ -2,6 +2,13 @@ import type { ProviderKind } from '../../../shared/contracts/provider.types';
 
 export type ProviderTimingPhase = 'response-headers' | 'first-delta';
 
+/** Token values explicitly returned by a Provider response. */
+export interface ProviderTokenUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+}
+
 export interface TextGenerationProviderRequest {
   providerKind?: ProviderKind;
   baseUrl: string;
@@ -9,12 +16,15 @@ export interface TextGenerationProviderRequest {
   apiKey: string;
   prompt: string;
   signal: AbortSignal;
+  /** Requests usage metadata when the Provider supports it; response usage remains optional. */
+  requestUsage?: boolean;
   onTiming?: (phase: ProviderTimingPhase) => void;
+  onUsage?: (usage: ProviderTokenUsage) => void;
 }
 
 export type TextGenerationConnectionRequest = Omit<
   TextGenerationProviderRequest,
-  'prompt' | 'signal' | 'onTiming'
+  'prompt' | 'signal' | 'requestUsage' | 'onTiming' | 'onUsage'
 >;
 
 /**

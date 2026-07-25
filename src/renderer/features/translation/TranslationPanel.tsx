@@ -132,8 +132,8 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       ) {
         return;
       }
-      if (event.type === 'segment-completed') {
-        setTranslationState((current) => mergeCompletedSegment(current, event.segment));
+      if (event.type === 'segment-completed' || event.type === 'segment-failed') {
+        setTranslationState((current) => mergeUpdatedSegment(current, event.segment));
         onBilingualChange(true);
         return;
       }
@@ -280,7 +280,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       )}
       {showFeedback && translationState.state === 'failed' && (
         <p className="entry-detail-ai-error" role="status">
-          {result?.error?.message ?? 'Translation generation failed.'}
+          {getTranslationFailureMessage(result)}
         </p>
       )}
       {showFeedback && message && (
@@ -377,7 +377,7 @@ export function getTranslatedTitleSegment(
     && Boolean(segment.translatedHtml));
 }
 
-function mergeCompletedSegment(
+function mergeUpdatedSegment(
   state: TranslationState,
   completedSegment: TranslationResult['segments'][number],
 ): TranslationState {
@@ -405,4 +405,13 @@ function getResult(state: TranslationState): TranslationResult | undefined {
   return state.state === 'running' || state.state === 'failed' || state.state === 'succeeded'
     ? state.result
     : undefined;
+}
+
+function getTranslationFailureMessage(result: TranslationResult | undefined): string {
+  const failureMessage = result?.error?.message ?? 'Translation generation failed.';
+  const incompleteSegmentCount = result?.segments.filter((segment) =>
+    segment.status !== 'succeeded').length ?? 0;
+  if (!incompleteSegmentCount) return failureMessage;
+  const segmentLabel = incompleteSegmentCount === 1 ? 'segment remains' : 'segments remain';
+  return `${failureMessage} ${incompleteSegmentCount} ${segmentLabel} untranslated.`;
 }

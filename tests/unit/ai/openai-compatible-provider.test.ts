@@ -89,6 +89,27 @@ describe('OpenAICompatibleProvider', () => {
     ]);
   });
 
+  it('requests usage metadata and forwards only token values returned by the Provider', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response([
+      'data: {"choices":[{"delta":{"content":"Translated"}}]}\n',
+      'data: {"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":7}}\n',
+      'data: [DONE]\n',
+    ].join(''), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const onUsage = vi.fn();
+    const provider = new OpenAICompatibleProvider();
+
+    for await (const chunk of provider.stream({ ...request(), requestUsage: true, onUsage })) {
+      void chunk;
+    }
+
+    const requestBody = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string);
+    expect(requestBody.stream_options).toEqual({ include_usage: true });
+    expect(onUsage).toHaveBeenCalledOnce();
+    expect(onUsage).toHaveBeenCalledWith({ inputTokens: 11, outputTokens: 7 });
+    expect(onUsage.mock.calls[0]?.[0]).not.toHaveProperty('totalTokens');
+  });
+
   it('maps authentication responses to a stable safe error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 401 })));
     const provider = new OpenAICompatibleProvider();

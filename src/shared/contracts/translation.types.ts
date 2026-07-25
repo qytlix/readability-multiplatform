@@ -198,5 +198,10 @@ export type TranslationStreamEvent =
       sourceSegmentId: string;
       segment: TranslationSegment;
     })
+  | (TranslationStreamEventBase & {
+      type: 'segment-failed';
+      sourceSegmentId: string;
+      segment: TranslationSegment;
+    })
   | (TranslationStreamEventBase & { type: 'completed'; result: TranslationResult })
   | (TranslationStreamEventBase & { type: 'failed'; error: ShaleError });

@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { isLikelyAlreadyTargetLanguage } from '../../src/main/ai/provider/TranslationLanguage';
+import {
+  hasTranslatableText,
+  isLikelyAlreadyTargetLanguage,
+} from '../../src/main/ai/provider/TranslationLanguage';
+
+describe('hasTranslatableText', () => {
+  it('skips symbols, dividers, and number-only labels without altering their text', () => {
+    expect(hasTranslatableText('✦ — ✦')).toBe(false);
+    expect(hasTranslatableText('123 — 456')).toBe(false);
+    expect(hasTranslatableText('😀')).toBe(false);
+  });
+
+  it('recognizes letters from multiple scripts as potentially translatable', () => {
+    expect(hasTranslatableText('A short sentence.')).toBe(true);
+    expect(hasTranslatableText('中文内容')).toBe(true);
+    expect(hasTranslatableText('مرحبا')).toBe(true);
+    expect(hasTranslatableText('Привет')).toBe(true);
+  });
+});
 
 describe('isLikelyAlreadyTargetLanguage', () => {
   it('recognizes Simplified Chinese even when product names are Latin text', () => {

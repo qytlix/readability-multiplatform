@@ -4,6 +4,7 @@
  * compatible while the implementation no longer depends on Summary naming.
  */
 export type {
+  ProviderTokenUsage,
   TextGenerationProvider as SummaryProvider,
   TextGenerationProviderRequest as SummaryProviderRequest,
 } from './TextGenerationProvider';

@@ -2085,6 +2085,16 @@ body.workspace-is-resizing * {
   vertical-align: middle;
 }
 
+.translation-segment-untranslated {
+  display: inline-block;
+  margin-left: 12px;
+  color: #dda094;
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  font-style: italic;
+  vertical-align: middle;
+}
+
 .inline-translation-card {
   position: fixed;
   z-index: 120;
