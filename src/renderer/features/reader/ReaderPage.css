@@ -2868,17 +2868,197 @@ body.workspace-is-resizing * {
   font: inherit;
 }
 
-.settings-library-list {
+.settings-option-grid {
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
-.settings-library-row {
-  grid-template-columns: minmax(0, 1fr) auto;
+.settings-option-card {
+  display: grid;
+  min-width: 0;
+  min-height: 168px;
+  padding: 20px;
+  grid-template-rows: auto 1fr auto;
+  gap: 14px;
+  border: 1px solid var(--reader-line);
+  border-radius: 12px;
+  background: var(--reader-card);
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    opacity 150ms ease;
+}
+
+.settings-option-card.is-active {
+  border-color: color-mix(in srgb, var(--reader-accent) 58%, var(--reader-line));
+  background: color-mix(in srgb, var(--reader-accent) 7%, var(--reader-card));
+}
+
+.settings-option-card.is-disabled {
+  opacity: 0.58;
+}
+
+.settings-option-card-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.settings-option-card-identity {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.settings-option-card-identity h4 {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: var(--reader-text);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.settings-option-card-identity > span {
+  color: var(--reader-text-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.settings-option-card-description,
+.settings-option-card-note {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: var(--reader-text-soft);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.65;
+}
+
+.settings-option-card-note {
+  margin-top: -5px;
+  color: var(--reader-text-muted);
+  font-size: 10px;
+}
+
+.settings-option-card-footer {
+  display: flex;
+  min-width: 0;
   align-items: center;
+  gap: 7px;
+  color: var(--reader-text-muted);
+  font-size: 10px;
 }
 
-.settings-library-row > .settings-toggle {
+.settings-option-card-footer > span {
+  padding: 3px 7px;
+  border: 1px solid var(--reader-line);
+  border-radius: 999px;
+}
+
+.settings-option-delete {
+  margin-left: auto;
+  padding: 4px 7px;
+  border: 0;
+  color: var(--reader-text-muted);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+
+.settings-option-delete:hover {
+  color: #dda094;
+}
+
+.settings-switch {
+  position: relative;
+  display: inline-flex !important;
+  width: 42px;
+  height: 24px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.settings-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.settings-switch > span:last-child {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--reader-line);
+  transition: background-color 150ms ease;
+}
+
+.settings-switch > span:last-child::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f8faf8;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  content: "";
+  transition: transform 150ms ease;
+}
+
+.settings-switch input:checked + span {
+  background: var(--reader-accent);
+}
+
+.settings-switch input:checked + span::after {
+  transform: translateX(18px);
+}
+
+.settings-switch input:focus-visible + span {
+  outline: 2px solid var(--reader-accent);
+  outline-offset: 3px;
+}
+
+.settings-switch:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+.settings-switch:has(input:disabled) > span:last-child {
+  opacity: 0.55;
+}
+
+.settings-visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.settings-option-empty {
+  color: var(--reader-text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.settings-page-notice {
+  margin: 0;
+  color: var(--reader-success);
+  font-size: 11px;
+}
+
+.settings-option-card,
+.settings-option-card * {
   min-width: 0;
 }
 
@@ -3782,7 +3962,8 @@ body.workspace-is-resizing * {
   }
 
   .settings-fields-two-columns,
-  .settings-toggle-grid {
+  .settings-toggle-grid,
+  .settings-option-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

@@ -5,6 +5,8 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AISettingsPage } from '../../../src/renderer/features/settings/AISettingsPage';
 import { DEFAULT_AI_PREFERENCES } from '../../../src/renderer/features/settings/aiPreferences';
+import type { TranslationExpert } from '../../../src/shared/contracts/translation-expert.types';
+import type { TerminologyLibrary } from '../../../src/shared/contracts/translation-terminology.types';
 
 const reactActEnvironment = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean;
@@ -68,6 +70,128 @@ describe('full-screen settings page', () => {
     expect(backButton?.textContent).toContain('返回阅读');
     act(() => backButton?.click());
     expect(onClose).toHaveBeenCalledOnce();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it('renders terminology and experts as switch cards and preserves their selection behavior', async () => {
+    reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    const expert: TranslationExpert = {
+      id: 'builtin:technology',
+      version: '1.0.0',
+      name: '科技翻译专家',
+      description: '提供准确、专业的科技领域翻译。',
+      author: 'Official',
+      details: '',
+      origin: 'builtin',
+      instruction: 'Translate technology content.',
+      contentHash: 'expert-hash',
+      matches: ['technology'],
+      warnings: [],
+    };
+    const terminologyLibrary: TerminologyLibrary = {
+      id: 'builtin:technology',
+      name: '科技',
+      description: '涵盖硬件、AI 模型和主要科技公司。',
+      author: 'immersive',
+      version: '1.0.0',
+      origin: 'builtin',
+      enabled: false,
+      orderIndex: 1,
+      entryCount: 42,
+      contentHash: 'terminology-hash',
+      availableTargetLanguages: ['zh-CN'],
+      usesTraditionalChineseFallback: false,
+      removable: false,
+    };
+    const setTerminologyEnabled = vi.fn().mockResolvedValue({
+      ok: true,
+      data: { libraryId: terminologyLibrary.id, enabledSetHash: 'enabled-hash' },
+    });
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        provider: {
+          get: vi.fn().mockResolvedValue({ ok: true, data: null }),
+        },
+        expert: {
+          list: vi.fn().mockResolvedValue({
+            ok: true,
+            data: { experts: [expert] },
+          }),
+        },
+        terminology: {
+          list: vi.fn().mockResolvedValue({
+            ok: true,
+            data: { libraries: [terminologyLibrary], enabledSetHash: 'hash' },
+          }),
+          setEnabled: setTerminologyEnabled,
+        },
+      } as unknown as typeof window.shaleAPI,
+    });
+
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const onPreferencesChange = vi.fn();
+
+    await act(async () => {
+      root.render(createElement(AISettingsPage, {
+        preferences: DEFAULT_AI_PREFERENCES,
+        onPreferencesChange,
+        onClose: vi.fn(),
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.querySelectorAll('.settings-option-grid')).toHaveLength(2);
+    expect(container.querySelectorAll('.settings-option-card')).toHaveLength(2);
+    expect(container.querySelector('#settings-experts select')).toBeNull();
+
+    const terminologySwitch = container.querySelector<HTMLInputElement>(
+      '#settings-terminology .settings-option-card input[role="switch"]',
+    );
+    const expertSwitch = container.querySelector<HTMLInputElement>(
+      '#settings-experts .settings-option-card input[role="switch"]',
+    );
+    expect(terminologySwitch?.checked).toBe(false);
+    expect(expertSwitch?.checked).toBe(false);
+
+    await act(async () => {
+      terminologySwitch?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(setTerminologyEnabled).toHaveBeenCalledWith({
+      id: terminologyLibrary.id,
+      enabled: true,
+    });
+
+    act(() => expertSwitch?.click());
+    expect(onPreferencesChange).toHaveBeenCalledWith({
+      ...DEFAULT_AI_PREFERENCES,
+      translationExpertId: expert.id,
+    });
+
+    await act(async () => {
+      root.render(createElement(AISettingsPage, {
+        preferences: {
+          ...DEFAULT_AI_PREFERENCES,
+          translationExpertId: expert.id,
+        },
+        onPreferencesChange,
+        onClose: vi.fn(),
+      }));
+    });
+    const selectedExpertSwitch = container.querySelector<HTMLInputElement>(
+      '#settings-experts .settings-option-card input[role="switch"]',
+    );
+    expect(selectedExpertSwitch?.checked).toBe(true);
+
+    act(() => selectedExpertSwitch?.click());
+    expect(onPreferencesChange).toHaveBeenLastCalledWith(DEFAULT_AI_PREFERENCES);
 
     act(() => root.unmount());
     container.remove();

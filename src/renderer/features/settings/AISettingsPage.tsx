@@ -60,6 +60,15 @@ const SETTINGS_TRANSLATION_LANGUAGE_LABELS: Record<TranslationTargetLanguage, st
   en: '英语',
 };
 
+const formatSettingsAuthor = (
+  author: string,
+  origin: 'builtin' | 'user',
+): string => {
+  const normalizedAuthor = author.trim().replace(/^@+/, '');
+  if (normalizedAuthor) return `@${normalizedAuthor}`;
+  return origin === 'builtin' ? '@Shale' : '@我';
+};
+
 interface AISettingsPageProps {
   preferences: AiPreferences;
   onPreferencesChange: (preferences: AiPreferences) => void;
@@ -92,6 +101,8 @@ export const AISettingsPage = ({
   const [terminologyPreview, setTerminologyPreview] =
     useState<TerminologyImportPreview | null>(null);
   const [showTerminologyCreator, setShowTerminologyCreator] = useState(false);
+  const [pendingTerminologyLibraryId, setPendingTerminologyLibraryId] =
+    useState<string | null>(null);
   const terminologyFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -150,6 +161,7 @@ export const AISettingsPage = ({
   ): Promise<void> => {
     setTerminologyError('');
     setTerminologyNotice('');
+    setPendingTerminologyLibraryId(library.id);
     try {
       const result = await window.shaleAPI.terminology.setEnabled({
         id: library.id,
@@ -165,6 +177,8 @@ export const AISettingsPage = ({
       );
     } catch {
       setTerminologyError('无法更新术语库。');
+    } finally {
+      setPendingTerminologyLibraryId(null);
     }
   };
 
@@ -507,9 +521,9 @@ export const AISettingsPage = ({
                 {showTerminologyCreator ? '收起导入' : '新建术语库'}
               </button>
             </div>
-            <div className="settings-card">
-              <div className="settings-fields">
-                {showTerminologyCreator && (
+            {showTerminologyCreator && (
+              <div className="settings-card">
+                <div className="settings-fields">
                   <div className="settings-import-help">
                     <h4>术语 CSV 格式</h4>
                     <p>
@@ -582,54 +596,87 @@ export const AISettingsPage = ({
                       </div>
                     )}
                   </div>
-                )}
-                <div className="settings-library-list">
-                  {terminologyLibraries.map((library) => (
-                    <div className="settings-field settings-library-row" key={library.id}>
-                      <label className="settings-toggle">
-                        <input
-                          type="checkbox"
-                          checked={library.enabled}
-                          disabled={!preferences.useTerminology}
-                          onChange={(event) => void setTerminologyLibraryEnabled(
-                            library,
-                            event.target.checked,
-                          )}
-                        />
-                        <span>
-                          <strong>{library.name}</strong>
-                          <small>
-                            {library.origin === 'builtin' ? '内置' : '用户'} ·
-                            {' '}{library.entryCount.toLocaleString()} 条
-                            {library.description ? ` · ${library.description}` : ''}
-                          </small>
-                          {library.usesTraditionalChineseFallback && (
-                            <small>
-                              繁体中文条目来自台湾参考库，并非原生香港术语；
-                              zh-HK 术语会优先使用。
-                            </small>
-                          )}
-                        </span>
-                      </label>
-                      {library.removable && (
-                        <button
-                          type="button"
-                          onClick={() => void removeTerminologyLibrary(library)}
-                        >
-                          删除
-                        </button>
-                      )}
-                    </div>
-                  ))}
                 </div>
-                {terminologyError && (
-                  <p className="settings-page-error" role="status">
-                    {terminologyError}
-                  </p>
-                )}
-                {terminologyNotice && <p role="status">{terminologyNotice}</p>}
               </div>
-            </div>
+            )}
+            {terminologyLibraries.length > 0 ? (
+              <div className="settings-option-grid settings-terminology-grid">
+                {terminologyLibraries.map((library) => {
+                  const isPending = pendingTerminologyLibraryId === library.id;
+                  const descriptionId = `terminology-description-${library.id}`;
+                  return (
+                    <article
+                      className={[
+                        'settings-option-card',
+                        library.enabled ? 'is-active' : '',
+                        !preferences.useTerminology ? 'is-disabled' : '',
+                      ].filter(Boolean).join(' ')}
+                      key={library.id}
+                    >
+                      <header className="settings-option-card-header">
+                        <div className="settings-option-card-identity">
+                          <h4>{library.name}</h4>
+                          <span>{formatSettingsAuthor(library.author, library.origin)}</span>
+                        </div>
+                        <label
+                          className="settings-switch"
+                          title={preferences.useTerminology
+                            ? `${library.enabled ? '停用' : '启用'}${library.name}`
+                            : '请先打开翻译设置中的“使用术语库”'}
+                        >
+                          <span className="settings-visually-hidden">
+                            {library.enabled ? '停用' : '启用'}{library.name}
+                          </span>
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            checked={library.enabled}
+                            disabled={!preferences.useTerminology || isPending}
+                            aria-describedby={descriptionId}
+                            onChange={(event) => void setTerminologyLibraryEnabled(
+                              library,
+                              event.target.checked,
+                            )}
+                          />
+                          <span />
+                      </label>
+                      </header>
+                      <p id={descriptionId} className="settings-option-card-description">
+                        {library.description || '用于翻译时匹配并优先采用指定术语。'}
+                      </p>
+                      {library.usesTraditionalChineseFallback && (
+                        <p className="settings-option-card-note">
+                          繁体中文条目来自台湾参考库；原生 zh-HK 术语优先。
+                        </p>
+                      )}
+                      <footer className="settings-option-card-footer">
+                        <span>{library.origin === 'builtin' ? '内置' : '用户'}</span>
+                        <span>{library.entryCount.toLocaleString()} 条术语</span>
+                        {library.removable && (
+                          <button
+                            type="button"
+                            className="settings-option-delete"
+                            onClick={() => void removeTerminologyLibrary(library)}
+                          >
+                            删除
+                          </button>
+                        )}
+                      </footer>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="settings-card settings-option-empty">
+                暂无可用术语库。
+              </div>
+            )}
+            {terminologyError && (
+              <p className="settings-page-error" role="status">
+                {terminologyError}
+              </p>
+            )}
+            {terminologyNotice && <p className="settings-page-notice" role="status">{terminologyNotice}</p>}
           </section>
 
           <section
@@ -654,53 +701,9 @@ export const AISettingsPage = ({
                 {showExpertCreator ? '收起导入' : '新建 AI 专家'}
               </button>
             </div>
-            <div className="settings-card">
-              <div className="settings-fields">
-                <label>
-                  当前专家
-                  <select
-                    value={preferences.translationExpertId}
-                    onChange={(event) => updatePreferences({
-                      translationExpertId: event.target.value,
-                    })}
-                  >
-                    <option value={DEFAULT_TRANSLATION_EXPERT_ID}>不使用专家</option>
-                    <optgroup label="内置专家">
-                      {experts.filter((expert) => expert.origin === 'builtin').map((expert) => (
-                        <option key={expert.id} value={expert.id}>{expert.name}</option>
-                      ))}
-                    </optgroup>
-                    {experts.some((expert) => expert.origin === 'user') && (
-                      <optgroup label="我的专家">
-                        {experts.filter((expert) => expert.origin === 'user').map((expert) => (
-                          <option key={expert.id} value={expert.id}>{expert.name}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
-                </label>
-                {preferences.translationExpertId !== DEFAULT_TRANSLATION_EXPERT_ID && (() => {
-                  const selectedExpert = experts.find((expert) =>
-                    expert.id === preferences.translationExpertId);
-                  return selectedExpert ? (
-                    <div className="settings-import-preview">
-                      <strong>{selectedExpert.name}</strong>
-                      <p>{selectedExpert.description || selectedExpert.details}</p>
-                      <small>
-                        {selectedExpert.origin === 'builtin' ? '内置' : '用户'} ·
-                        {' '}v{selectedExpert.version} · {selectedExpert.author}
-                      </small>
-                      {selectedExpert.warnings.map((warning) => (
-                        <p key={warning}>{warning}</p>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="settings-page-error" role="status">
-                      当前选择的 AI 专家已不可用，请选择其他专家。
-                    </p>
-                  );
-                })()}
-                {showExpertCreator && (
+            {showExpertCreator && (
+              <div className="settings-card">
+                <div className="settings-fields">
                   <div className="settings-import-help">
                     <h4>AI 专家 YAML 格式</h4>
                     <p>
@@ -758,19 +761,82 @@ export const AISettingsPage = ({
                       </div>
                     )}
                   </div>
-                )}
-                {experts.filter((expert) => expert.origin === 'user').map((expert) => (
-                  <div className="settings-field settings-library-row" key={`manage-${expert.id}`}>
-                    <span>{expert.name}</span>
-                    <button type="button" onClick={() => void removeExpert(expert)}>
-                      删除
-                    </button>
-                  </div>
-                ))}
-                {expertError && <p className="settings-page-error" role="status">{expertError}</p>}
-                {expertNotice && <p role="status">{expertNotice}</p>}
+                </div>
               </div>
-            </div>
+            )}
+            {experts.length > 0 ? (
+              <div className="settings-option-grid settings-expert-grid">
+                {experts.map((expert) => {
+                  const isSelected = preferences.translationExpertId === expert.id;
+                  const descriptionId = `expert-description-${expert.id}`;
+                  return (
+                    <article
+                      className={`settings-option-card${isSelected ? ' is-active' : ''}`}
+                      key={expert.id}
+                    >
+                      <header className="settings-option-card-header">
+                        <div className="settings-option-card-identity">
+                          <h4>{expert.name}</h4>
+                          <span>{formatSettingsAuthor(expert.author, expert.origin)}</span>
+                        </div>
+                        <label
+                          className="settings-switch"
+                          title={`${isSelected ? '停用' : '启用'}${expert.name}`}
+                        >
+                          <span className="settings-visually-hidden">
+                            {isSelected ? '停用' : '启用'}{expert.name}
+                          </span>
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            checked={isSelected}
+                            aria-describedby={descriptionId}
+                            onChange={(event) => updatePreferences({
+                              translationExpertId: event.target.checked
+                                ? expert.id
+                                : DEFAULT_TRANSLATION_EXPERT_ID,
+                            })}
+                          />
+                          <span />
+                        </label>
+                      </header>
+                      <p id={descriptionId} className="settings-option-card-description">
+                        {expert.description || expert.details || '为翻译提供领域和文体指导。'}
+                      </p>
+                      {expert.warnings.map((warning) => (
+                        <p className="settings-option-card-note" key={warning}>{warning}</p>
+                      ))}
+                      <footer className="settings-option-card-footer">
+                        <span>{expert.origin === 'builtin' ? '内置' : '用户'}</span>
+                        <span>v{expert.version}</span>
+                        {expert.origin === 'user' && (
+                          <button
+                            type="button"
+                            className="settings-option-delete"
+                            onClick={() => void removeExpert(expert)}
+                          >
+                            删除
+                          </button>
+                        )}
+                      </footer>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="settings-card settings-option-empty">
+                暂无可用 AI 专家。
+              </div>
+            )}
+            {preferences.translationExpertId !== DEFAULT_TRANSLATION_EXPERT_ID
+              && !experts.some((expert) => expert.id === preferences.translationExpertId)
+              && (
+                <p className="settings-page-error" role="status">
+                  当前选择的 AI 专家已不可用，请选择其他专家。
+                </p>
+              )}
+            {expertError && <p className="settings-page-error" role="status">{expertError}</p>}
+            {expertNotice && <p className="settings-page-notice" role="status">{expertNotice}</p>}
           </section>
 
           <section
