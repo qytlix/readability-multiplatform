@@ -21,7 +21,7 @@ import {
   MIGRATION_010_SQL,
   runMigration010,
 } from '../../src/main/migrations/010_create_dedup_key';
-import { MIGRATION_011 } from '../../src/main/migrations/011_create_entry_annotations';
+import { MIGRATION_013 as MIGRATION_011 } from '../../src/main/migrations/013_create_entry_annotations';
 
 interface LegacyMigration {
   id: string;
@@ -120,9 +120,12 @@ describe('Advanced Translation upgrade and restart hardening', () => {
         SELECT filename FROM _migrations
         WHERE filename >= '012_' ORDER BY filename
       `).all()).toEqual([
+        { filename: '012_add_llm_usage_attempt_id' },
         { filename: '012_expand_ai_providers' },
+        { filename: '013_create_entry_annotations' },
         { filename: '013_expand_translation_languages' },
         { filename: '014_add_translation_context_and_experts' },
+        { filename: '014_add_translation_source_language' },
         { filename: '015_add_terminology_libraries' },
       ]);
       expect(restarted.getDb().prepare(`

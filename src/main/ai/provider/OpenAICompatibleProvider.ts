@@ -4,6 +4,7 @@ import type {
   TextGenerationProvider,
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
+import { normalizeProviderTokenUsage } from './ProviderTokenUsage';
 import {
   createProviderAbortScope,
   fetchProviderResponse,
@@ -109,7 +110,7 @@ function parseOpenAIStreamEvent(
     throw providerStreamError(isRetryableOpenAIError(parsed.error));
   }
 
-  const usage = toProviderTokenUsage(parsed.usage);
+  const usage = normalizeProviderTokenUsage(parsed.usage);
   const choices = parsed.choices;
   if (!Array.isArray(choices) || choices.length === 0) {
     return usage ? { usage } : undefined;
@@ -154,25 +155,4 @@ function isRetryableOpenAIError(error: Record<string, unknown>): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-function toProviderTokenUsage(value: unknown): ProviderTokenUsage | undefined {
-  if (!isRecord(value)) return undefined;
-  const inputTokens = toSafeTokenCount(value.prompt_tokens);
-  const outputTokens = toSafeTokenCount(value.completion_tokens);
-  const totalTokens = toSafeTokenCount(value.total_tokens);
-  if (inputTokens === undefined && outputTokens === undefined && totalTokens === undefined) {
-    return undefined;
-  }
-  return {
-    ...(inputTokens === undefined ? {} : { inputTokens }),
-    ...(outputTokens === undefined ? {} : { outputTokens }),
-    ...(totalTokens === undefined ? {} : { totalTokens }),
-  };
-}
-
-function toSafeTokenCount(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : undefined;
 }

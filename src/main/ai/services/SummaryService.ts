@@ -23,8 +23,19 @@ import {
 import type { ProviderProfileStore } from '../stores/ProviderProfileStore';
 import type { SecretStore } from '../stores/SecretStore';
 import { buildSummaryPrompt, SUMMARY_PROMPT_VERSION } from '../provider/SummaryPrompt';
-import type { TextGenerationProvider } from '../provider/TextGenerationProvider';
+import type {
+  ProviderTokenUsage,
+  TextGenerationProvider,
+} from '../provider/TextGenerationProvider';
+import { sanitizeProviderTokenUsage } from '../provider/ProviderTokenUsage';
 import { SummaryStore } from '../stores/SummaryStore';
+import {
+  createProviderRequestId,
+  createUsageAttemptId,
+  NoopUsageRecorder,
+  type UsageRecorderPort,
+  type UsageRequestHandle,
+} from './UsageRecorder';
 import {
   elapsedSummaryMilliseconds,
   logSummaryRecoveryCompleted,
@@ -43,9 +54,11 @@ export interface CleanedContentLookup {
 
 interface ActiveSummaryRun {
   run: SummaryRun;
+  attemptId: string;
   abortController: AbortController;
   startedAt: number;
   terminalLogRecorded: boolean;
+  providerRequest?: UsageRequestHandle;
 }
 
 export class SummaryService {
@@ -59,6 +72,7 @@ export class SummaryService {
     private readonly summaryStore: SummaryStore,
     private readonly provider: TextGenerationProvider,
     private readonly logger?: SummaryOperationLogger,
+    private readonly usageRecorder: UsageRecorderPort = new NoopUsageRecorder(),
   ) {}
 
   subscribe(listener: (event: SummaryStreamEvent) => void): () => void {
@@ -162,6 +176,7 @@ export class SummaryService {
     const startedAt = performance.now();
     this.activeRun = {
       run,
+      attemptId: createUsageAttemptId(),
       abortController,
       startedAt,
       terminalLogRecorded: false,
@@ -179,6 +194,7 @@ export class SummaryService {
       baseUrl: profile.baseUrl,
       model: profile.model,
       apiKey,
+      providerProfileId: profile.id,
       abortController,
     });
     return { runId: run.id, reused: false };
@@ -195,6 +211,13 @@ export class SummaryService {
       ),
     );
     activeRun.abortController.abort();
+    if (activeRun.providerRequest) {
+      this.usageRecorder.interrupt(
+        activeRun.providerRequest,
+        undefined,
+        SUMMARY_ERROR_CODES.SUMMARY_INTERRUPTED,
+      );
+    }
     this.summaryStore.markRunFailed(activeRun.run.id, error);
     this.logRunInterrupted(activeRun);
     this.emit({
@@ -217,6 +240,7 @@ export class SummaryService {
       baseUrl: string;
       model: string;
       apiKey: string;
+      providerProfileId: number;
       abortController: AbortController;
     },
   ): Promise<void> {
@@ -227,24 +251,52 @@ export class SummaryService {
         targetLanguage: run.targetLanguage,
         detailLevel: run.detailLevel,
       });
-      let output = '';
-      for await (const delta of this.provider.stream({
-        providerKind: providerConfig.providerKind,
-        baseUrl: providerConfig.baseUrl,
+      const activeRun = this.activeRun;
+      if (!activeRun || activeRun.run.id !== run.id) return;
+      const providerRequest = this.usageRecorder.start({
+        providerRequestId: createProviderRequestId(),
+        attemptId: activeRun.attemptId,
+        taskType: 'summary',
+        taskRunId: run.id,
+        providerProfileId: providerConfig.providerProfileId,
         model: providerConfig.model,
-        apiKey: providerConfig.apiKey,
-        prompt,
-        signal: providerConfig.abortController.signal,
-      })) {
-        output += delta;
-        this.emit({
-          type: 'delta',
-          runId: run.id,
-          entryId: run.entryId,
-          targetLanguage: run.targetLanguage,
-          detailLevel: run.detailLevel,
-          text: delta,
-        });
+        requestKind: 'summary',
+      });
+      activeRun.providerRequest = providerRequest;
+      let usage: ProviderTokenUsage | undefined;
+      let output = '';
+      try {
+        for await (const delta of this.provider.stream({
+          providerKind: providerConfig.providerKind,
+          baseUrl: providerConfig.baseUrl,
+          model: providerConfig.model,
+          apiKey: providerConfig.apiKey,
+          prompt,
+          signal: providerConfig.abortController.signal,
+          requestUsage: true,
+          onUsage: (reportedUsage) => {
+            usage = sanitizeProviderTokenUsage(reportedUsage);
+          },
+        })) {
+          output += delta;
+          this.emit({
+            type: 'delta',
+            runId: run.id,
+            entryId: run.entryId,
+            targetLanguage: run.targetLanguage,
+            detailLevel: run.detailLevel,
+            text: delta,
+          });
+        }
+        this.usageRecorder.complete(providerRequest, usage);
+      } catch (error) {
+        const failure = toSummaryIpcError(error);
+        if (failure.code === SUMMARY_ERROR_CODES.SUMMARY_INTERRUPTED) {
+          this.usageRecorder.interrupt(providerRequest, usage, failure.code);
+        } else {
+          this.usageRecorder.fail(providerRequest, failure.code, usage);
+        }
+        throw error;
       }
 
       if (!output.trim()) {
@@ -265,9 +317,9 @@ export class SummaryService {
         promptVersion: SUMMARY_PROMPT_VERSION,
         content: output.trim(),
       });
-      const activeRun = this.activeRun;
-      if (activeRun?.run.id === run.id) {
-        this.logRunCompleted(activeRun);
+      const completedActiveRun = this.activeRun;
+      if (completedActiveRun?.run.id === run.id) {
+        this.logRunCompleted(completedActiveRun);
       }
       this.emitCompleted(run, result);
     } catch (error) {

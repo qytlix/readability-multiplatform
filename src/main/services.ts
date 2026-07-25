@@ -21,6 +21,7 @@ import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
 import { SecretStore } from './ai/stores/SecretStore';
 import { SummaryService } from './ai/services/SummaryService';
 import type { SummaryOperationLogger } from './ai/services/SummaryLogging';
+import type { UsageLedgerOperationLogger } from './ai/services/UsageRecorder';
 import { SummaryStore } from './ai/stores/SummaryStore';
 import { TranslationService } from './ai/services/TranslationService';
 import type { TranslationOperationLogger } from './ai/services/TranslationLogging';
@@ -32,6 +33,9 @@ import { TranslationContextService } from './ai/services/TranslationContextServi
 import { TranslationExpertService } from './ai/services/TranslationExpertService';
 import type { BuiltInExpertBundle } from '../shared/contracts/translation-expert.types';
 import builtInExpertBundle from '../../resources/ai-experts/experts.json';
+import { UsageStore } from './ai/stores/UsageStore';
+import { UsageRecorder } from './ai/services/UsageRecorder';
+import { UsageStatisticsService } from './ai/services/UsageStatisticsService';
 import {
   EmptyTerminologyLookup,
   TerminologyStore,
@@ -65,6 +69,10 @@ export interface TranslationServices {
   terminologyStore: TerminologyStore | null;
 }
 
+export interface UsageServices {
+  usageStatisticsService: UsageStatisticsService;
+}
+
 export interface AnnotationServices {
   annotationService: AnnotationService;
 }
@@ -75,6 +83,7 @@ let feedServicesSingleton: FeedServices | null = null;
 let summaryServicesSingleton: SummaryServices | null = null;
 let translationServicesSingleton: TranslationServices | null = null;
 let annotationServicesSingleton: AnnotationServices | null = null;
+let usageServicesSingleton: UsageServices | null = null;
 
 /** Returns the feed services singleton (null before initializeServices). */
 export function getFeedServices(): FeedServices | null {
@@ -89,6 +98,11 @@ export function getSummaryServices(): SummaryServices | null {
 /** Returns the Translation services singleton (null before initializeServices). */
 export function getTranslationServices(): TranslationServices | null {
   return translationServicesSingleton;
+}
+
+/** Returns the read-only usage statistics service (null before initializeServices). */
+export function getUsageServices(): UsageServices | null {
+  return usageServicesSingleton;
 }
 
 export function getAnnotationServices(): AnnotationServices | null {
@@ -129,7 +143,8 @@ export function initializeServices(
     & OPMLOperationLogger
     & ProviderOperationLogger
     & SummaryOperationLogger
-    & TranslationOperationLogger,
+    & TranslationOperationLogger
+    & UsageLedgerOperationLogger,
   terminologyDbPath?: string,
 ): FeedServices {
   const dbManager = new DatabaseManager(dbPath);
@@ -156,6 +171,10 @@ export function initializeServices(
     dbManager.getDb(),
     builtInExpertBundle as BuiltInExpertBundle,
   );
+  const usageStore = new UsageStore(dbManager.getDb());
+  const usageRecorder = new UsageRecorder(usageStore, operationLogger);
+  const usageStatisticsService = new UsageStatisticsService(usageStore);
+  usageRecorder.reconcileInterruptedRunning();
   const annotationStore = new AnnotationStore(dbManager.getDb());
   const secretStore = new SecretStore(
     secretStoragePath ?? path.join(path.dirname(dbPath ?? '.'), 'ai-secrets.json'),
@@ -179,6 +198,7 @@ export function initializeServices(
     summaryStore,
     provider,
     operationLogger,
+    usageRecorder,
   );
   summaryService.reconcileInterruptedRuns();
   const expertService = new TranslationExpertService(translationExpertStore);
@@ -194,6 +214,7 @@ export function initializeServices(
     expertService,
     contextService,
     operationLogger,
+    usageRecorder,
   );
   translationService.reconcileInterruptedRuns();
   const inlineTranslationService = new InlineTranslationService(
@@ -224,5 +245,6 @@ export function initializeServices(
     terminologyStore,
   };
   annotationServicesSingleton = { annotationService };
+  usageServicesSingleton = { usageStatisticsService };
   return feedServicesSingleton;
 }

@@ -3,6 +3,7 @@ import type { TranslationAPI } from './contracts/translation.ipc';
 import type { TranslationExpertAPI } from './contracts/translation-expert.ipc';
 import type { TranslationTerminologyAPI } from './contracts/translation-terminology.ipc';
 import type { DiagnosticsAPI } from './contracts/diagnostics.ipc';
+import type { UsageAPI } from './contracts/usage.ipc';
 import type { AnnotationAPI } from './contracts/annotation.ipc';
 import type {
   FeedAPI,
@@ -51,5 +52,6 @@ export interface ShaleAPI {
   expert: TranslationExpertAPI;
   terminology: TranslationTerminologyAPI;
   diagnostics: DiagnosticsAPI;
+  usage: UsageAPI;
   annotation: AnnotationAPI;
 }

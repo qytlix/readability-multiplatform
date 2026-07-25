@@ -7,6 +7,7 @@ import type { SummaryProvider, SummaryProviderRequest } from '../../src/main/ai/
 import { TranslationService } from '../../src/main/ai/services/TranslationService';
 import { TranslationContextService } from '../../src/main/ai/services/TranslationContextService';
 import { TranslationExpertService } from '../../src/main/ai/services/TranslationExpertService';
+import { UsageRecorder } from '../../src/main/ai/services/UsageRecorder';
 import {
   TRANSLATION_LOG_ERROR_CODES,
   TRANSLATION_LOG_EVENTS,
@@ -17,6 +18,7 @@ import { TranslationContextStore } from '../../src/main/ai/stores/TranslationCon
 import { TranslationExpertStore } from '../../src/main/ai/stores/TranslationExpertStore';
 import builtInExpertBundle from '../../resources/ai-experts/experts.json';
 import type { BuiltInExpertBundle } from '../../src/shared/contracts/translation-expert.types';
+import { UsageStore } from '../../src/main/ai/stores/UsageStore';
 import type { TerminologyLookup } from '../../src/main/ai/stores/TerminologyStore';
 import { ContentStore } from '../../src/main/feed/stores/ContentStore';
 import { SUMMARY_ERROR_CODES, SummaryError } from '../../src/shared/errors/summary.errors';
@@ -121,6 +123,7 @@ describe('TranslationService', () => {
   let profileStore: ProviderProfileStore;
   let provider: BatchMockProvider;
   let service: TranslationService;
+  let usageStore: UsageStore;
 
   beforeEach(() => {
     memorySecrets.clear();
@@ -142,12 +145,19 @@ describe('TranslationService', () => {
     });
     memorySecrets.set('key-1', 'not-a-real-key');
     provider = new BatchMockProvider();
+    usageStore = new UsageStore(db);
     service = new TranslationService(
       contentStore,
       profileStore,
       new TestSecretStore(),
       new TranslationStore(db),
       provider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      new UsageRecorder(usageStore),
     );
   });
 
@@ -430,10 +440,11 @@ describe('TranslationService', () => {
       undefined,
       undefined,
       createCapturingLogger(records),
+      new UsageRecorder(usageStore),
     );
     const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
 
-    loggingService.generate(request);
+    const started = loggingService.generate(request);
     await vi.waitFor(() => {
       expect(loggingService.getState(request)).toMatchObject({ state: 'succeeded' });
     });
@@ -465,6 +476,15 @@ describe('TranslationService', () => {
       providerRequestFailureCount: 0,
       missingSegmentCount: 0,
     });
+    const usageRecords = usageStore.listByTask('translation', started.runId);
+    expect(usageRecords).toHaveLength(3);
+    expect(usageRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        requestKind: 'batch',
+        requestStatus: 'succeeded',
+        usageAvailability: 'missing',
+      }),
+    ]));
     expect(records.map((record) => record.event)).not.toContain('translation.segment.completed');
   });
 
@@ -509,6 +529,69 @@ describe('TranslationService', () => {
     expect(completedRun?.context).toMatchObject({ inputTokens: 11, outputTokens: 7 });
     expect(completedRequest?.context).not.toHaveProperty('totalTokens');
     expect(completedRun?.context).not.toHaveProperty('totalTokens');
+  });
+
+  it('persists distinct batch and compensation requests under the same Translation run', async () => {
+    const compensationProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        const segments = parseBatchPrompt(providerRequest.prompt);
+        providerRequest.onUsage?.({ inputTokens: 11, outputTokens: 7, totalTokens: 18 });
+        const returnedSegments = segments.length > 1 ? segments.slice(0, -1) : segments;
+        for (const segment of returnedSegments) {
+          yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const ledgerService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      compensationProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      new UsageRecorder(usageStore),
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+    };
+
+    const started = ledgerService.generate(request);
+    await vi.waitFor(() => {
+      expect(ledgerService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    const records = usageStore.listByTask('translation', started.runId);
+    expect(records).toHaveLength(2);
+    expect(records).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        taskType: 'translation',
+        taskRunId: started.runId,
+        attemptId: expect.any(String),
+        requestKind: 'batch',
+        requestStatus: 'succeeded',
+        usageAvailability: 'reported',
+        inputTokens: 11,
+        outputTokens: 7,
+        totalTokens: 18,
+      }),
+      expect.objectContaining({
+        taskType: 'translation',
+        taskRunId: started.runId,
+        attemptId: expect.any(String),
+        requestKind: 'compensation',
+        requestStatus: 'succeeded',
+        usageAvailability: 'reported',
+      }),
+    ]));
+    expect(new Set(records.map((record) => record.providerRequestId)).size).toBe(2);
+    expect(new Set(records.map((record) => record.attemptId)).size).toBe(1);
   });
 
   it('recovers omissions in concurrent batches and continues queued Translation work', async () => {
@@ -1094,6 +1177,7 @@ describe('TranslationService', () => {
       undefined,
       undefined,
       createCapturingLogger(records),
+      new UsageRecorder(new UsageStore(db)),
     );
     const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
     const firstRun = resumableService.generate(request);
@@ -1122,6 +1206,9 @@ describe('TranslationService', () => {
       (record.context as { taskRunId: number }).taskRunId === firstRun.runId)).toBe(true);
     expect(providerRequestIds).toHaveLength(2);
     expect(new Set(providerRequestIds).size).toBe(2);
+    const usageAttempts = new UsageStore(db).listByTask('translation', firstRun.runId);
+    expect(usageAttempts).toHaveLength(2);
+    expect(new Set(usageAttempts.map((event) => event.attemptId)).size).toBe(2);
   });
 
   it('does not compensate a mapped provider timeout and preserves the incomplete run', async () => {

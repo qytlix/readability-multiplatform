@@ -60,10 +60,11 @@ describe('full-screen settings page', () => {
       'AI 专家',
       '快捷键',
       '模型服务',
+      '用量统计',
       '诊断',
     ]);
     expect(container.querySelectorAll('.settings-page-content > [id^="settings-"]'))
-      .toHaveLength(7);
+      .toHaveLength(8);
     expect(container.textContent).not.toContain('Settings');
 
     const backButton = container.querySelector<HTMLButtonElement>('.settings-back-button');

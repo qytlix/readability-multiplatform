@@ -12,6 +12,8 @@ import { TRANSLATION_IPC_CHANNELS } from '../shared/contracts/translation.ipc';
 import { TRANSLATION_EXPERT_IPC_CHANNELS } from '../shared/contracts/translation-expert.ipc';
 import { TRANSLATION_TERMINOLOGY_IPC_CHANNELS } from '../shared/contracts/translation-terminology.ipc';
 import { DIAGNOSTICS_IPC_CHANNELS } from '../shared/contracts/diagnostics.ipc';
+import { USAGE_IPC_CHANNELS } from '../shared/contracts/usage.ipc';
+import type { UsageStatisticsQuery } from '../shared/contracts/usage.types';
 import { ANNOTATION_IPC_CHANNELS } from '../shared/contracts/annotation.ipc';
 import type {
   AnnotationIdRequest,
@@ -194,6 +196,11 @@ const terminologyAPI = {
     ipcRenderer.invoke(TRANSLATION_TERMINOLOGY_IPC_CHANNELS.remove, request),
 };
 
+const usageAPI = {
+  getStatistics: (query: UsageStatisticsQuery) =>
+    ipcRenderer.invoke(USAGE_IPC_CHANNELS.statisticsGet, query),
+};
+
 const annotationAPI = {
   list: (request: AnnotationListRequest) =>
     ipcRenderer.invoke(ANNOTATION_IPC_CHANNELS.list, request),
@@ -221,6 +228,7 @@ const shaleAPI: ShaleAPI = {
   expert: expertAPI,
   terminology: terminologyAPI,
   diagnostics: diagnosticsAPI,
+  usage: usageAPI,
   annotation: annotationAPI,
 };
 

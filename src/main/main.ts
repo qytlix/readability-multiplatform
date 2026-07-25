@@ -27,6 +27,7 @@ import type {
 import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
 import type { SummaryOperationLogger } from './ai/services/SummaryLogging';
 import type { TranslationOperationLogger } from './ai/services/TranslationLogging';
+import type { UsageLedgerOperationLogger } from './ai/services/UsageRecorder';
 import { removeApplicationMenu } from './application-menu';
 import { MAIN_LIFECYCLE_EVENTS } from './logging/MainLifecycleEvents';
 import { StructuredLogger, type AppInitializationPhase } from './logging/StructuredLogger';
@@ -151,7 +152,8 @@ async function initializeApplication(): Promise<void> {
     & OPMLOperationLogger
     & ProviderOperationLogger
     & SummaryOperationLogger
-    & TranslationOperationLogger = lifecycleLogger ?? {
+    & TranslationOperationLogger
+    & UsageLedgerOperationLogger = lifecycleLogger ?? {
     info: () => undefined,
     warn: () => undefined,
     error: () => undefined,

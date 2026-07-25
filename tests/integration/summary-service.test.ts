@@ -4,6 +4,8 @@ import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileSt
 import { SecretStore, type SafeStorageBackend } from '../../src/main/ai/stores/SecretStore';
 import { SummaryService } from '../../src/main/ai/services/SummaryService';
 import { SummaryStore } from '../../src/main/ai/stores/SummaryStore';
+import { UsageRecorder } from '../../src/main/ai/services/UsageRecorder';
+import { UsageStore } from '../../src/main/ai/stores/UsageStore';
 import type { SummaryProvider, SummaryProviderRequest } from '../../src/main/ai/provider/SummaryProvider';
 import { ContentStore } from '../../src/main/feed/stores/ContentStore';
 import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
@@ -36,11 +38,13 @@ describe('SummaryService', () => {
   let contentStore: ContentStore;
   let service: SummaryService;
   let provider: MockSummaryProvider;
+  let usageStore: UsageStore;
 
   beforeEach(() => {
     memorySecrets.clear();
     const { db } = buildTestDbWithData();
     contentStore = new ContentStore(db);
+    usageStore = new UsageStore(db);
     contentStore.upsert({
       entryId: 1,
       markdown: 'A persisted article about reliable local software.',
@@ -61,6 +65,8 @@ describe('SummaryService', () => {
       new TestSecretStore(),
       new SummaryStore(db),
       provider,
+      undefined,
+      new UsageRecorder(usageStore),
     );
     expect(savedProfile.id).toBeGreaterThan(0);
   });
@@ -88,6 +94,74 @@ describe('SummaryService', () => {
     const cached = service.generate(request);
     expect(cached).toEqual({ runId: started.runId, reused: true });
     expect(stream).toHaveBeenCalledTimes(1);
+    expect(usageStore.listByTask('summary', started.runId)).toMatchObject([
+      {
+        attemptId: expect.any(String),
+        requestKind: 'summary',
+        requestStatus: 'succeeded',
+        usageAvailability: 'missing',
+      },
+    ]);
+  });
+
+  it('requests and persists reported usage for its single Provider request', async () => {
+    let usageWasRequested = false;
+    const usageProvider: SummaryProvider = {
+      async *stream(request): AsyncIterable<string> {
+        usageWasRequested = request.requestUsage === true;
+        request.onUsage?.({ inputTokens: 11, outputTokens: 7, totalTokens: 18 });
+        yield 'Usage-aware summary.';
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const { db } = buildTestDbWithData();
+    const usageContentStore = new ContentStore(db);
+    usageContentStore.upsert({
+      entryId: 1,
+      markdown: 'A persisted article about reliable local software.',
+      pipelineStatus: 'success',
+    });
+    const profiles = new ProviderProfileStore(db);
+    const profile = profiles.saveActive({
+      providerKind: 'openai',
+      baseUrl: 'https://provider.example/v1',
+      model: 'usage-model',
+      apiKeyRef: 'key-usage',
+    });
+    memorySecrets.set('key-usage', 'not-a-real-key');
+    const usageStoreForRun = new UsageStore(db);
+    const usageService = new SummaryService(
+      usageContentStore,
+      profiles,
+      new TestSecretStore(),
+      new SummaryStore(db),
+      usageProvider,
+      undefined,
+      new UsageRecorder(usageStoreForRun),
+    );
+    const request = { entryId: 1, targetLanguage: 'en' as const, detailLevel: 'medium' as const };
+
+    const started = usageService.generate(request);
+    await vi.waitFor(() => {
+      expect(usageService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    expect(usageWasRequested).toBe(true);
+    expect(usageStoreForRun.listByTask('summary', started.runId)).toEqual([
+      expect.objectContaining({
+        taskType: 'summary',
+        taskRunId: started.runId,
+        attemptId: expect.any(String),
+        providerProfileId: profile.id,
+        model: 'usage-model',
+        requestKind: 'summary',
+        requestStatus: 'succeeded',
+        inputTokens: 11,
+        outputTokens: 7,
+        totalTokens: 18,
+        usageAvailability: 'reported',
+      }),
+    ]);
   });
 
   it('marks a saved result stale when the cleaned Markdown changes', async () => {

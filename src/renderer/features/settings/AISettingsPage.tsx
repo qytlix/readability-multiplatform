@@ -34,6 +34,7 @@ import {
   shortcutFromKeyboardEvent,
 } from './keyboardShortcut';
 import { DiagnosticsSection } from './DiagnosticsSection';
+import { UsageStatisticsSection } from './UsageStatisticsSection';
 
 type ShortcutPreferenceKey =
   | 'fullTranslationShortcut'
@@ -366,6 +367,7 @@ export const AISettingsPage = ({
           <a href="#settings-experts">AI 专家</a>
           <a href="#settings-shortcuts">快捷键</a>
           <a href="#settings-provider">模型服务</a>
+          <a href="#settings-usage">用量统计</a>
           <a href="#settings-diagnostics">诊断</a>
         </nav>
         <p className="settings-navigation-note">
@@ -883,6 +885,10 @@ export const AISettingsPage = ({
               profile={profile}
               onSaved={setProfile}
             />
+          </div>
+
+          <div id="settings-usage" className="settings-section-anchor">
+            <UsageStatisticsSection />
           </div>
 
           <div id="settings-diagnostics" className="settings-section-anchor">
