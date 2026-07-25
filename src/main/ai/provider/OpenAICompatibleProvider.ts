@@ -1,5 +1,9 @@
 import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summary.errors';
-import type { SummaryProvider, SummaryProviderRequest } from './SummaryProvider';
+import type {
+  ProviderTokenUsage,
+  SummaryProvider,
+  SummaryProviderRequest,
+} from './SummaryProvider';
 
 const REQUEST_TIMEOUT_MS = 60_000;
 
@@ -15,12 +19,15 @@ export class OpenAICompatibleProvider implements SummaryProvider {
     const abortFromCaller = () => timeoutController.abort();
     request.signal.addEventListener('abort', abortFromCaller, { once: true });
 
+    let latestUsage: ProviderTokenUsage | undefined;
+
     try {
       const response = await this.request(
         { ...request, signal: timeoutController.signal },
         {
           model: request.model,
           stream: true,
+          ...(request.requestUsage ? { stream_options: { include_usage: true } } : {}),
           messages: [{ role: 'user', content: request.prompt }],
         },
       );
@@ -70,21 +77,23 @@ export class OpenAICompatibleProvider implements SummaryProvider {
         const lines = pending.split(/\r?\n/);
         pending = lines.pop() ?? '';
         for (const line of lines) {
-          const delta = parseStreamDelta(line);
-          if (delta) {
+          const event = parseStreamEvent(line);
+          if (event?.usage) latestUsage = event.usage;
+          if (event?.delta) {
             if (!receivedFirstDelta) {
               receivedFirstDelta = true;
               request.onTiming?.('first-delta');
             }
-            yield delta;
+            yield event.delta;
           }
         }
       }
 
-      const finalDelta = parseStreamDelta(pending);
-      if (finalDelta) {
+      const finalEvent = parseStreamEvent(pending);
+      if (finalEvent?.usage) latestUsage = finalEvent.usage;
+      if (finalEvent?.delta) {
         if (!receivedFirstDelta) request.onTiming?.('first-delta');
-        yield finalDelta;
+        yield finalEvent.delta;
       }
     } catch (error) {
       if (timedOut) {
@@ -96,6 +105,11 @@ export class OpenAICompatibleProvider implements SummaryProvider {
       }
       throw error;
     } finally {
+      try {
+        if (latestUsage) request.onUsage?.(latestUsage);
+      } catch {
+        // Usage callbacks are diagnostic-only and must not change request behavior.
+      }
       clearTimeout(timeout);
       request.signal.removeEventListener('abort', abortFromCaller);
     }
@@ -191,7 +205,7 @@ function buildCompletionUrl(baseUrl: string): string {
   return new URL('chat/completions', normalized).toString();
 }
 
-function parseStreamDelta(line: string): string | undefined {
+function parseStreamEvent(line: string): { delta?: string; usage?: ProviderTokenUsage } | undefined {
   if (!line.startsWith('data:')) return undefined;
   const payload = line.slice('data:'.length).trim();
   if (!payload || payload === '[DONE]') return undefined;
@@ -199,10 +213,36 @@ function parseStreamDelta(line: string): string | undefined {
   try {
     const parsed = JSON.parse(payload) as {
       choices?: Array<{ delta?: { content?: unknown } }>;
+      usage?: unknown;
     };
     const content = parsed.choices?.[0]?.delta?.content;
-    return typeof content === 'string' ? content : undefined;
+    const usage = toProviderTokenUsage(parsed.usage);
+    return typeof content === 'string' || usage
+      ? { ...(typeof content === 'string' ? { delta: content } : {}), ...(usage ? { usage } : {}) }
+      : undefined;
   } catch {
     return undefined;
   }
+}
+
+function toProviderTokenUsage(value: unknown): ProviderTokenUsage | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const usage = value as Record<string, unknown>;
+  const inputTokens = toSafeTokenCount(usage.prompt_tokens);
+  const outputTokens = toSafeTokenCount(usage.completion_tokens);
+  const totalTokens = toSafeTokenCount(usage.total_tokens);
+  if (inputTokens === undefined && outputTokens === undefined && totalTokens === undefined) {
+    return undefined;
+  }
+  return {
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(totalTokens === undefined ? {} : { totalTokens }),
+  };
+}
+
+function toSafeTokenCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
 }

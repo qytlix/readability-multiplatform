@@ -1,7 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { parseTranslationOutput } from '../../src/main/ai/provider/TranslationHtml';
+import { TRANSLATION_ERROR_CODES } from '../../src/shared/errors/translation.errors';
 
 describe('parseTranslationOutput', () => {
+  it('classifies an empty readable segment as empty output', () => {
+    try {
+      parseTranslationOutput('<p> </p>', JSON.stringify({
+        translatedHtml: '<p></p>',
+        appliedTermIds: [],
+      }));
+      throw new Error('Expected the empty translation to be rejected.');
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: TRANSLATION_ERROR_CODES.TRANSLATION_EMPTY_OUTPUT,
+      });
+    }
+  });
+
   it('preserves the sanitized Reader structure and records applied local terms', () => {
     const sourceHtml = '<p style="color: #345"><strong>Transformer</strong> models.</p>';
     const output = JSON.stringify({

@@ -50,6 +50,19 @@ import {
   SUMMARY_LOG_ERROR_CODES,
   SUMMARY_LOG_EVENTS,
 } from '../../../src/main/ai/services/SummaryLogging';
+import {
+  logTranslationRecoveryCompleted,
+  logTranslationMissingSegmentsDetected,
+  logTranslationProviderRequestCompleted,
+  logTranslationProviderRequestFailed,
+  logTranslationProviderRequestStarted,
+  logTranslationRunCompleted,
+  logTranslationRunFailed,
+  logTranslationRunInterrupted,
+  logTranslationRunStarted,
+  TRANSLATION_LOG_ERROR_CODES,
+  TRANSLATION_LOG_EVENTS,
+} from '../../../src/main/ai/services/TranslationLogging';
 
 const filesystemControl = vi.hoisted(() => ({
   readdir: 0,
@@ -190,6 +203,163 @@ describe('StructuredLogger', () => {
       errorCode: SUMMARY_LOG_ERROR_CODES.interrupted,
     });
     expect(records[4].context).toEqual({ durationMs: 4, count: 2 });
+  });
+
+  it('writes every legal Translation event with only its safe fields', async () => {
+    const directory = createLogDirectory();
+    const logger = createLogger(directory);
+
+    logTranslationRunStarted(logger, { taskRunId: 12 });
+    logTranslationRunCompleted(logger, {
+      taskRunId: 12,
+      durationMs: 1,
+      success: true,
+      providerRequestCount: 1,
+      batchRequestCount: 1,
+      compensationRequestCount: 0,
+      providerRequestSuccessCount: 1,
+      providerRequestFailureCount: 0,
+      missingSegmentCount: 0,
+    });
+    logTranslationRunFailed(logger, {
+      taskRunId: 13,
+      durationMs: 2,
+      success: false,
+      stage: 'stream',
+      errorCode: TRANSLATION_LOG_ERROR_CODES.providerTimeout,
+      providerRequestCount: 1,
+      batchRequestCount: 1,
+      compensationRequestCount: 0,
+      providerRequestSuccessCount: 0,
+      providerRequestFailureCount: 1,
+      missingSegmentCount: 0,
+    });
+    logTranslationRunInterrupted(logger, {
+      taskRunId: 14,
+      durationMs: 3,
+      success: false,
+      stage: 'interrupt',
+      errorCode: TRANSLATION_LOG_ERROR_CODES.interrupted,
+    });
+    logTranslationRecoveryCompleted(logger, { durationMs: 4, count: 2 });
+    await logger.flush();
+
+    const records = readRecords(directory);
+    expect(records.map((record) => record.event)).toEqual([
+      TRANSLATION_LOG_EVENTS.runStarted,
+      TRANSLATION_LOG_EVENTS.runCompleted,
+      TRANSLATION_LOG_EVENTS.runFailed,
+      TRANSLATION_LOG_EVENTS.runInterrupted,
+      TRANSLATION_LOG_EVENTS.recoveryCompleted,
+    ]);
+    expect(records[0].context).toEqual({ taskRunId: 12 });
+    expect(records[1].context).toEqual({
+      taskRunId: 12,
+      durationMs: 1,
+      success: true,
+      providerRequestCount: 1,
+      batchRequestCount: 1,
+      compensationRequestCount: 0,
+      providerRequestSuccessCount: 1,
+      providerRequestFailureCount: 0,
+      missingSegmentCount: 0,
+    });
+    expect(records[2].context).toEqual({
+      taskRunId: 13,
+      durationMs: 2,
+      success: false,
+      stage: 'stream',
+      errorCode: TRANSLATION_LOG_ERROR_CODES.providerTimeout,
+      providerRequestCount: 1,
+      batchRequestCount: 1,
+      compensationRequestCount: 0,
+      providerRequestSuccessCount: 0,
+      providerRequestFailureCount: 1,
+      missingSegmentCount: 0,
+    });
+    expect(records[3].context).toEqual({
+      taskRunId: 14,
+      durationMs: 3,
+      success: false,
+      stage: 'interrupt',
+      errorCode: TRANSLATION_LOG_ERROR_CODES.interrupted,
+    });
+    expect(records[4].context).toEqual({ durationMs: 4, count: 2 });
+  });
+
+  it('writes Translation Provider requests and missing-segment aggregates without content', async () => {
+    const directory = createLogDirectory();
+    const logger = createLogger(directory);
+
+    logTranslationProviderRequestStarted(logger, {
+      taskRunId: 12,
+      providerRequestId: 1,
+      requestKind: 'batch',
+      segmentCount: 3,
+    });
+    logTranslationProviderRequestCompleted(logger, {
+      taskRunId: 12,
+      providerRequestId: 1,
+      requestKind: 'batch',
+      segmentCount: 3,
+      durationMs: 2,
+      success: true,
+      inputTokens: 11,
+      outputTokens: 7,
+    });
+    logTranslationMissingSegmentsDetected(logger, {
+      taskRunId: 12,
+      providerRequestId: 1,
+      missingSegmentCount: 1,
+    });
+    logTranslationProviderRequestFailed(logger, {
+      taskRunId: 12,
+      providerRequestId: 2,
+      requestKind: 'compensation',
+      segmentCount: 1,
+      durationMs: 3,
+      success: false,
+      errorCode: TRANSLATION_LOG_ERROR_CODES.providerTimeout,
+    });
+    await logger.flush();
+
+    const records = readRecords(directory);
+    expect(records.map((record) => record.event)).toEqual([
+      TRANSLATION_LOG_EVENTS.providerRequestStarted,
+      TRANSLATION_LOG_EVENTS.providerRequestCompleted,
+      TRANSLATION_LOG_EVENTS.missingSegmentsDetected,
+      TRANSLATION_LOG_EVENTS.providerRequestFailed,
+    ]);
+    expect(records[0].context).toEqual({
+      taskRunId: 12,
+      providerRequestId: 1,
+      requestKind: 'batch',
+      segmentCount: 3,
+    });
+    expect(records[1].context).toEqual({
+      taskRunId: 12,
+      providerRequestId: 1,
+      requestKind: 'batch',
+      segmentCount: 3,
+      durationMs: 2,
+      success: true,
+      inputTokens: 11,
+      outputTokens: 7,
+    });
+    expect(records[2].context).toEqual({
+      taskRunId: 12,
+      providerRequestId: 1,
+      missingSegmentCount: 1,
+    });
+    expect(records[3].context).toEqual({
+      taskRunId: 12,
+      providerRequestId: 2,
+      requestKind: 'compensation',
+      segmentCount: 1,
+      durationMs: 3,
+      success: false,
+      errorCode: TRANSLATION_LOG_ERROR_CODES.providerTimeout,
+    });
   });
 
   it('writes every legal Provider event with only its safe fields', async () => {

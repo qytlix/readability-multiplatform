@@ -46,10 +46,16 @@ export function projectBilingualBody(
     if (!sourceElement) continue;
     sourceElement.classList.add('translation-bilingual-source-block');
     sourceElement.dataset.segmentId = segment.sourceSegmentId;
-    if (segment.status === 'succeeded' && segment.translatedHtml) {
+    if (
+      segment.status === 'succeeded'
+      && segment.translatedHtml
+      && segment.translatedHtml !== segment.sourceHtml
+    ) {
       sourceElement.insertAdjacentElement('afterend', createTranslatedElement(sourceElement, segment));
     } else if (state.showPendingIndicators && segment.status === 'pending') {
       appendPendingIndicator(sourceElement);
+    } else if (segment.status === 'failed') {
+      appendUntranslatedIndicator(sourceElement);
     }
   }
 }
@@ -96,6 +102,26 @@ function appendPendingIndicator(sourceElement: HTMLElement): void {
   indicator.className = 'translation-segment-spinner';
   indicator.setAttribute('role', 'img');
   indicator.setAttribute('aria-label', 'Translating this segment');
+
+  const tagName = sourceElement.tagName.toLowerCase();
+  if (tagName === 'ul' || tagName === 'ol') {
+    (sourceElement.querySelector(':scope > li:last-child') ?? sourceElement).append(indicator);
+    return;
+  }
+  if (tagName === 'blockquote') {
+    (sourceElement.querySelector(':scope > p:last-of-type, :scope > cite:last-of-type')
+      ?? sourceElement).append(indicator);
+    return;
+  }
+  sourceElement.append(indicator);
+}
+
+function appendUntranslatedIndicator(sourceElement: HTMLElement): void {
+  const indicator = sourceElement.ownerDocument.createElement('span');
+  indicator.className = 'translation-segment-untranslated';
+  indicator.setAttribute('role', 'status');
+  indicator.setAttribute('aria-label', 'Translation unavailable for this segment');
+  indicator.textContent = 'Untranslated';
 
   const tagName = sourceElement.tagName.toLowerCase();
   if (tagName === 'ul' || tagName === 'ol') {
