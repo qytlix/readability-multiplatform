@@ -1,5 +1,5 @@
-/** Migration 013: Persist text-range highlights and their optional notes. */
-export const MIGRATION_013 = `
+/** Migration 011: Persist text-range highlights and their optional notes. */
+export const MIGRATION_011 = `
 CREATE TABLE IF NOT EXISTS entry_annotation (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   entryId      INTEGER NOT NULL,

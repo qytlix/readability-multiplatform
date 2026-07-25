@@ -438,7 +438,6 @@ Key 位于 Electron `userData/ai-secrets.json`。系统 `safeStorage` 可用时�
 | `id` | INTEGER | PK，自增 | Translation run 身份 |
 | `entryId` | INTEGER | NOT NULL → entry(id) CASCADE | 目标文章 |
 | `providerProfileId` | INTEGER | NOT NULL → ai_provider_profile(id) | 使用的脱敏 Provider 配置 |
-| `sourceLanguage` | TEXT | NOT NULL，默认 `auto` | 源语言；当前全文 Translation 请求固定为自动识别，以兼容已有扩展 Translation 数据库 |
 | `targetLanguage` | TEXT | NOT NULL | 目标语言（P0：`zh-CN` / `en`） |
 | `sourceContentHash` | TEXT | NOT NULL | 稳定分段 SHA-256，用于检测内容变更 |
 | `segmenterVersion` | TEXT | NOT NULL | 分段算法版本 |
