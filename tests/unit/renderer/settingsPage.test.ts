@@ -88,7 +88,10 @@ describe('full-screen settings page', () => {
       instruction: 'Translate technology content.',
       contentHash: 'expert-hash',
       matches: ['technology'],
-      warnings: [],
+      warnings: [
+        'Selected systemPrompt.add_v.[1.17.2]; Shale transport prompts were discarded.',
+        'Removed upstream transport instruction: Output only translated content.',
+      ],
     };
     const terminologyLibrary: TerminologyLibrary = {
       id: 'builtin:technology',
@@ -102,7 +105,7 @@ describe('full-screen settings page', () => {
       entryCount: 42,
       contentHash: 'terminology-hash',
       availableTargetLanguages: ['zh-CN'],
-      usesTraditionalChineseFallback: false,
+      usesTraditionalChineseFallback: true,
       removable: false,
     };
     const setTerminologyEnabled = vi.fn().mockResolvedValue({
@@ -149,6 +152,9 @@ describe('full-screen settings page', () => {
     expect(container.querySelectorAll('.settings-option-grid')).toHaveLength(2);
     expect(container.querySelectorAll('.settings-option-card')).toHaveLength(2);
     expect(container.querySelector('#settings-experts select')).toBeNull();
+    expect(container.textContent).not.toContain('台湾参考库');
+    expect(container.textContent).not.toContain('Selected systemPrompt');
+    expect(container.textContent).not.toContain('Removed upstream transport instruction');
 
     const terminologySwitch = container.querySelector<HTMLInputElement>(
       '#settings-terminology .settings-option-card input[role="switch"]',

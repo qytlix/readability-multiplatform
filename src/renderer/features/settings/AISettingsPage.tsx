@@ -644,11 +644,6 @@ export const AISettingsPage = ({
                       <p id={descriptionId} className="settings-option-card-description">
                         {library.description || '用于翻译时匹配并优先采用指定术语。'}
                       </p>
-                      {library.usesTraditionalChineseFallback && (
-                        <p className="settings-option-card-note">
-                          繁体中文条目来自台湾参考库；原生 zh-HK 术语优先。
-                        </p>
-                      )}
                       <footer className="settings-option-card-footer">
                         <span>{library.origin === 'builtin' ? '内置' : '用户'}</span>
                         <span>{library.entryCount.toLocaleString()} 条术语</span>
@@ -803,9 +798,6 @@ export const AISettingsPage = ({
                       <p id={descriptionId} className="settings-option-card-description">
                         {expert.description || expert.details || '为翻译提供领域和文体指导。'}
                       </p>
-                      {expert.warnings.map((warning) => (
-                        <p className="settings-option-card-note" key={warning}>{warning}</p>
-                      ))}
                       <footer className="settings-option-card-footer">
                         <span>{expert.origin === 'builtin' ? '内置' : '用户'}</span>
                         <span>v{expert.version}</span>

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import builtInExpertBundle from '../../../resources/ai-experts/experts.json';
+import localizedExpertDescriptions
+  from '../../../resources/ai-experts/descriptions.zh-CN.json';
 import {
   compileUserExpertYaml,
   renderExpertInstruction,
@@ -83,7 +85,15 @@ describe('AI expert compiler and store', () => {
       builtInExpertBundle as BuiltInExpertBundle,
     ));
 
-    expect(service.list().experts.filter((expert) => expert.origin === 'builtin')).toHaveLength(29);
+    const builtIns = service.list().experts.filter(
+      (expert) => expert.origin === 'builtin',
+    );
+    expect(builtIns).toHaveLength(29);
+    expect(Object.keys(localizedExpertDescriptions).sort()).toEqual(
+      builtIns.map((expert) => expert.id).sort(),
+    );
+    expect(builtIns.every((expert) =>
+      /\p{Script=Han}/u.test(expert.description))).toBe(true);
     expect(service.import({ yaml: VALID_EXPERT })).toEqual({ expertId: 'user-medical' });
     expect(service.list().experts.find((expert) => expert.id === 'user-medical'))
       .toMatchObject({ origin: 'user', name: 'Medical expert' });

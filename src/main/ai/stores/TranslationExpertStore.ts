@@ -4,6 +4,10 @@ import type {
   BuiltInExpertBundle,
   TranslationExpert,
 } from '../../../shared/contracts/translation-expert.types';
+import localizedBuiltInDescriptions from '../../../../resources/ai-experts/descriptions.zh-CN.json';
+
+const BUILT_IN_DESCRIPTIONS =
+  localizedBuiltInDescriptions as Record<string, string>;
 
 interface UserExpertRow {
   id: string;
@@ -51,7 +55,7 @@ export class TranslationExpertStore {
         id: expert.id,
         version: expert.version,
         name: expert.name,
-        description: expert.description,
+        description: BUILT_IN_DESCRIPTIONS[expert.id] ?? expert.description,
         author: expert.author,
         details: expert.details,
         origin: 'builtin',

@@ -22,6 +22,7 @@ import {
   TRANSLATION_ERROR_CODES,
   TranslationError,
 } from '../../../shared/errors/translation.errors';
+import localizedBuiltInDescriptions from '../../../../resources/terminology/descriptions.zh-CN.json';
 
 const MAX_CANDIDATES = 12;
 const MAX_NGRAM_WORDS = 5;
@@ -29,6 +30,8 @@ const MAX_COMPACT_TERM_LENGTH = 16;
 const MAX_PROBES = 2_000;
 const MAX_FTS_TOKENS = 8;
 const QUERY_PROBE_CHUNK_SIZE = 400;
+const BUILT_IN_DESCRIPTIONS =
+  localizedBuiltInDescriptions as Record<string, string>;
 
 interface SourceRow {
   id: string;
@@ -363,7 +366,8 @@ export class TerminologyStore implements TerminologyLookup {
       return [{
         id: DEFAULT_TERMINOLOGY_LIBRARY_ID,
         name: 'Default',
-        description: 'FAO AGROVOC English/Chinese terminology.',
+        description: BUILT_IN_DESCRIPTIONS[DEFAULT_TERMINOLOGY_LIBRARY_ID]
+          ?? '默认术语库，包含 FAO AGROVOC 英中农业术语。',
         author: 'Shale / FAO',
         version: this.legacyVersion,
         origin: 'builtin',
@@ -389,7 +393,7 @@ export class TerminologyStore implements TerminologyLookup {
       return {
         id: row.id,
         name: row.name,
-        description: row.description,
+        description: BUILT_IN_DESCRIPTIONS[row.id] ?? row.description,
         author: row.author,
         version: isDefault ? `${this.legacyVersion}+${row.version}` : row.version,
         origin: 'builtin',

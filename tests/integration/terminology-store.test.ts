@@ -1,5 +1,7 @@
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import localizedTerminologyDescriptions
+  from '../../resources/terminology/descriptions.zh-CN.json';
 import { DatabaseManager } from '../../src/main/database/DatabaseManager';
 import { TerminologyStore } from '../../src/main/ai/stores/TerminologyStore';
 import { DEFAULT_TERMINOLOGY_LIBRARY_ID } from '../../src/shared/contracts/translation-terminology.types';
@@ -28,6 +30,11 @@ describe('TerminologyStore', () => {
     const list = store.listLibraries();
 
     expect(list.libraries).toHaveLength(34);
+    expect(Object.keys(localizedTerminologyDescriptions).sort()).toEqual(
+      list.libraries.map((library) => library.id).sort(),
+    );
+    expect(list.libraries.every((library) =>
+      /\p{Script=Han}/u.test(library.description))).toBe(true);
     expect(list.libraries.filter((library) => library.enabled)).toEqual([
       expect.objectContaining({
         id: DEFAULT_TERMINOLOGY_LIBRARY_ID,
