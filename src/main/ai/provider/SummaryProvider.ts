@@ -1,20 +1,10 @@
-import type { ProviderTokenUsage } from './ProviderTokenUsage';
-
-export type { ProviderTokenUsage } from './ProviderTokenUsage';
-
-export interface SummaryProviderRequest {
-  baseUrl: string;
-  model: string;
-  apiKey: string;
-  prompt: string;
-  signal: AbortSignal;
-  /** Requests usage metadata when the Provider supports it; response usage remains optional. */
-  requestUsage?: boolean;
-  onTiming?: (phase: 'response-headers' | 'first-delta') => void;
-  onUsage?: (usage: ProviderTokenUsage) => void;
-}
-
-export interface SummaryProvider {
-  stream(request: SummaryProviderRequest): AsyncIterable<string>;
-  testConnection(request: Omit<SummaryProviderRequest, 'prompt' | 'signal'>): Promise<void>;
-}
+/**
+ * @deprecated Import the provider-neutral names from TextGenerationProvider.
+ * These aliases keep existing feature tests and downstream branches source
+ * compatible while the implementation no longer depends on Summary naming.
+ */
+export type {
+  ProviderTokenUsage,
+  TextGenerationProvider as SummaryProvider,
+  TextGenerationProviderRequest as SummaryProviderRequest,
+} from './TextGenerationProvider';

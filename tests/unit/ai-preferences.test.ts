@@ -25,8 +25,11 @@ describe('AI preferences', () => {
     const storage = createStorage(JSON.stringify({
       summaryTargetLanguage: 'en',
       summaryDetailLevel: 'unknown',
-      translationTargetLanguage: 'en',
+      translationSourceLanguage: 'ja',
+      translationTargetLanguage: 'zh-HK',
       useTerminology: false,
+      useSmartContext: false,
+      translationExpertId: 'none',
       fullTranslationShortcut: {
         key: 'K',
         ctrlKey: true,
@@ -53,8 +56,11 @@ describe('AI preferences', () => {
     expect(loadAiPreferences(storage)).toEqual({
       summaryTargetLanguage: 'en',
       summaryDetailLevel: 'medium',
-      translationTargetLanguage: 'en',
+      translationSourceLanguage: 'ja',
+      translationTargetLanguage: 'zh-HK',
       useTerminology: false,
+      useSmartContext: false,
+      translationExpertId: 'none',
       fullTranslationShortcut: {
         key: 'K',
         ctrlKey: true,
@@ -85,6 +91,8 @@ describe('AI preferences', () => {
     const preferences = loadAiPreferences(storage);
 
     expect(preferences.useTerminology).toBe(true);
+    expect(preferences.useSmartContext).toBe(false);
+    expect(preferences.translationExpertId).toBe('none');
     expect(preferences.paragraphTranslationShortcut).toEqual({
       key: 'Z',
       ctrlKey: false,
@@ -124,8 +132,11 @@ describe('AI preferences', () => {
     const preferences = {
       summaryTargetLanguage: 'en' as const,
       summaryDetailLevel: 'detailed' as const,
+      translationSourceLanguage: 'auto' as const,
       translationTargetLanguage: 'zh-CN' as const,
       useTerminology: true,
+      useSmartContext: false,
+      translationExpertId: 'none',
       fullTranslationShortcut: {
         key: 'T',
         ctrlKey: true,

@@ -95,7 +95,7 @@ function createContent(markdown = 'A safe test article.'): CleanedContent {
 function createProfile(overrides: Partial<ActiveProviderProfile> = {}): ActiveProviderProfile {
   return {
     id: 31,
-    providerKind: 'openai-compatible',
+    providerKind: 'openai',
     baseUrl: 'https://provider.example.test/v1',
     model: 'summary-test-model',
     apiKeyRef: 'summary-test-secret-reference',

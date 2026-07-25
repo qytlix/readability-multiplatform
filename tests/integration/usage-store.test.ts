@@ -16,6 +16,7 @@ describe('UsageStore', () => {
     const { db } = buildTestDbWithData();
     database = db;
     providerProfileId = new ProviderProfileStore(db).saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider.example/v1',
       model: 'usage-test-model',
       apiKeyRef: 'usage-test-key',

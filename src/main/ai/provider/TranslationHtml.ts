@@ -1,10 +1,14 @@
 import { JSDOM } from 'jsdom';
 import createDOMPurify from 'dompurify';
-import type { TranslationTerminologyMatch } from '../../../shared/contracts/translation.types';
+import type {
+  TranslationTargetLanguage,
+  TranslationTerminologyMatch,
+} from '../../../shared/contracts/translation.types';
 import {
   TRANSLATION_ERROR_CODES,
   TranslationError,
 } from '../../../shared/errors/translation.errors';
+import { normalizeChineseTargetText } from './ChineseScript';
 
 export interface ParsedTranslationOutput {
   translatedText: string;
@@ -30,6 +34,7 @@ export function parseTranslationOutput(
   sourceHtml: string,
   providerOutput: string,
   terminologyCandidates: TranslationTerminologyMatch[] = [],
+  targetLanguage?: TranslationTargetLanguage,
 ): ParsedTranslationOutput {
   const trimmed = providerOutput.trim();
   if (!trimmed) {
@@ -48,6 +53,9 @@ export function parseTranslationOutput(
 
   normalizeInsignificantFormatting(sourceRoot, translatedRoot);
   copyAndValidateStructure(sourceRoot, translatedRoot);
+  if (targetLanguage) {
+    normalizeElementTextNodes(translatedRoot, targetLanguage);
+  }
   const translatedHtml = sanitizeHtml(translatedRoot.outerHTML);
   const verifiedRoot = parseSingleSafeRoot(translatedHtml);
   const translatedText = normalizeWhitespace(verifiedRoot.textContent ?? '');
@@ -66,6 +74,28 @@ export function parseTranslationOutput(
     terminologyMatches: terminologyCandidates.filter((candidate) =>
       appliedIds.has(toTermId(candidate))),
   };
+}
+
+function normalizeElementTextNodes(
+  root: Element,
+  targetLanguage: TranslationTargetLanguage,
+): void {
+  const textNodes: Text[] = [];
+  const walker = htmlDocument.createTreeWalker(
+    root,
+    htmlDom.window.NodeFilter.SHOW_TEXT,
+  );
+  let current = walker.nextNode();
+  while (current) {
+    const parent = current.parentElement;
+    if (!parent?.closest('code, pre, kbd, samp')) {
+      textNodes.push(current as Text);
+    }
+    current = walker.nextNode();
+  }
+  textNodes.forEach((node) => {
+    node.data = normalizeChineseTargetText(node.data, targetLanguage);
+  });
 }
 
 function parseEnvelope(value: string): TranslationOutputEnvelope | undefined {

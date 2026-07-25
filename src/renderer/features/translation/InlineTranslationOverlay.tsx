@@ -9,6 +9,7 @@ import type {
   InlineTranslationKind,
   InlineTranslationRequest,
   InlineTranslationResult,
+  TranslationSourceLanguage,
   TranslationTargetLanguage,
 } from '../../../shared/contracts/translation.types';
 import {
@@ -21,8 +22,10 @@ interface InlineTranslationOverlayProps {
   containerRef: RefObject<HTMLElement | null>;
   paragraphShortcut: TranslationShortcut;
   selectionShortcut: TranslationShortcut;
+  sourceLanguage: TranslationSourceLanguage;
   targetLanguage: TranslationTargetLanguage;
   useTerminology: boolean;
+  expertId: string;
 }
 
 export interface TranslationTarget {
@@ -49,8 +52,10 @@ export const InlineTranslationOverlay = ({
   containerRef,
   paragraphShortcut,
   selectionShortcut,
+  sourceLanguage,
   targetLanguage,
   useTerminology,
+  expertId,
 }: InlineTranslationOverlayProps) => {
   const [overlay, setOverlay] = useState<OverlayState>({ state: 'closed' });
   const [copied, setCopied] = useState(false);
@@ -59,6 +64,13 @@ export const InlineTranslationOverlay = ({
   const activeTargetKindRef = useRef<InlineTranslationKind | null>(null);
   const pendingParagraphRef = useRef<HTMLElement | null>(null);
   const paragraphOutputsRef = useRef(new Map<HTMLElement, HTMLElement>());
+  const cancelActiveRequest = (): void => {
+    if (activeTargetKindRef.current === null) return;
+    requestSequenceRef.current += 1;
+    activeTargetKindRef.current = null;
+    pendingParagraphRef.current = null;
+    void window.shaleAPI.translation.cancelInline().catch(() => undefined);
+  };
 
   useEffect(() => {
     const container = containerRef.current;
@@ -82,7 +94,7 @@ export const InlineTranslationOverlay = ({
     paragraphOutputsRef.current.forEach((output) => output.remove());
     paragraphOutputsRef.current.clear();
     pendingParagraphRef.current = null;
-  }, [containerRef, targetLanguage]);
+  }, [containerRef, sourceLanguage, targetLanguage, useTerminology, expertId]);
 
   useEffect(() => {
     const translateTarget = async (target: TranslationTarget): Promise<void> => {
@@ -106,8 +118,10 @@ export const InlineTranslationOverlay = ({
       const request: InlineTranslationRequest = {
         kind: target.kind,
         sourceText: target.sourceText,
+        sourceLanguage,
         targetLanguage,
         useTerminology,
+        expertId,
         ...(target.context ? { context: target.context } : {}),
       };
       try {
@@ -180,34 +194,38 @@ export const InlineTranslationOverlay = ({
 
     const handleEscape = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        if (activeTargetKindRef.current === 'selection') {
-          requestSequenceRef.current += 1;
-          activeTargetKindRef.current = null;
-        }
+        cancelActiveRequest();
         setOverlay({ state: 'closed' });
       }
+    };
+    const handleSelectionChange = (): void => {
+      if (activeTargetKindRef.current !== 'selection') return;
+      cancelActiveRequest();
+      setOverlay({ state: 'closed' });
     };
 
     window.addEventListener('keydown', handleShortcut);
     window.addEventListener('keydown', handleEscape);
+    document.addEventListener('selectionchange', handleSelectionChange);
     return () => {
       window.removeEventListener('keydown', handleShortcut);
       window.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('selectionchange', handleSelectionChange);
+      cancelActiveRequest();
     };
   }, [
     containerRef,
     paragraphShortcut,
     selectionShortcut,
+    sourceLanguage,
     targetLanguage,
     useTerminology,
+    expertId,
   ]);
 
   useEffect(() => {
     const close = (): void => {
-      if (activeTargetKindRef.current === 'selection') {
-        requestSequenceRef.current += 1;
-        activeTargetKindRef.current = null;
-      }
+      cancelActiveRequest();
       setOverlay({ state: 'closed' });
     };
     const container = containerRef.current;
@@ -223,8 +241,7 @@ export const InlineTranslationOverlay = ({
 
   const style = getOverlayPosition(overlay.target.rect);
   const close = (): void => {
-    requestSequenceRef.current += 1;
-    activeTargetKindRef.current = null;
+    cancelActiveRequest();
     setOverlay({ state: 'closed' });
   };
 
@@ -249,7 +266,9 @@ export const InlineTranslationOverlay = ({
       <header className="inline-translation-header">
         <div>
           <p className="inline-translation-kind">
-            {overlay.target.kind === 'selection' ? 'Selection' : 'Paragraph'}
+            {overlay.state === 'success'
+              ? formatInputKind(overlay.result.inputKind)
+              : overlay.target.kind === 'selection' ? 'Selection' : 'Paragraph'}
           </p>
           <p className="inline-translation-source" title={overlay.target.sourceText}>
             {overlay.target.sourceText}
@@ -273,21 +292,47 @@ export const InlineTranslationOverlay = ({
         <div className="inline-translation-result">
           <div className="inline-translation-translation-row">
             <h3>{overlay.result.translation}</h3>
-            {overlay.result.pronunciation && <span>{overlay.result.pronunciation}</span>}
+            {overlay.result.pronunciation && (
+              <span>
+                {overlay.result.pronunciation}
+                {overlay.result.pronunciationSystem
+                  ? ` · ${formatPronunciationSystem(overlay.result.pronunciationSystem)}`
+                  : ''}
+              </span>
+            )}
           </div>
-          {overlay.result.partOfSpeech && (
-            <p className="inline-translation-part-of-speech">{overlay.result.partOfSpeech}</p>
-          )}
-          {overlay.result.explanation && (
-            <p className="inline-translation-explanation">{overlay.result.explanation}</p>
-          )}
-          {overlay.result.examples.length > 0 && (
-            <div className="inline-translation-examples">
-              {overlay.result.examples.map((example, index) => (
-                <div key={`${example.source}-${index}`}>
-                  <p>{example.source}</p>
-                  <p>{example.target}</p>
-                </div>
+          {hasInlineDictionaryDetails(overlay.result) && (
+            <div className="inline-translation-senses">
+              {overlay.result.senses.map((sense, senseIndex) => (
+                <section
+                  key={`${sense.partOfSpeech}-${senseIndex}`}
+                  className="inline-translation-sense"
+                >
+                  <p className="inline-translation-part-of-speech">
+                    {sense.partOfSpeech}
+                  </p>
+                  <ol className="inline-translation-definitions">
+                    {sense.definitions.map((definition, definitionIndex) => (
+                      <li key={`${definition}-${definitionIndex}`}>{definition}</li>
+                    ))}
+                  </ol>
+                  {sense.contextualMeaning && (
+                    <p className="inline-translation-contextual-meaning">
+                      <span>In this context</span>
+                      {sense.contextualMeaning}
+                    </p>
+                  )}
+                  {sense.examples.length > 0 && (
+                    <div className="inline-translation-examples">
+                      {sense.examples.map((example, exampleIndex) => (
+                        <div key={`${example.source}-${exampleIndex}`}>
+                          <p>{example.source}</p>
+                          <p>{example.translation}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
               ))}
             </div>
           )}
@@ -301,6 +346,29 @@ export const InlineTranslationOverlay = ({
     </aside>
   );
 };
+
+export function hasInlineDictionaryDetails(
+  result: InlineTranslationResult,
+): boolean {
+  return result.senses.length > 0;
+}
+
+function formatInputKind(kind: InlineTranslationResult['inputKind']): string {
+  return `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`;
+}
+
+function formatPronunciationSystem(
+  system: NonNullable<InlineTranslationResult['pronunciationSystem']>,
+): string {
+  const labels: Record<typeof system, string> = {
+    ipa: 'IPA',
+    pinyin: 'Pinyin',
+    jyutping: 'Jyutping',
+    kana: 'Kana',
+    'revised-romanization': 'Revised Romanization',
+  };
+  return labels[system];
+}
 
 export function findHoveredTranslationBlock(
   target: EventTarget | null,

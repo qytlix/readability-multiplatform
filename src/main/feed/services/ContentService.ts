@@ -1,8 +1,14 @@
 import { performance } from 'node:perf_hooks';
 import type { CleanedContent } from '../../../shared/contracts/content.types';
 import { ContentFetcher } from '../fetcher/ContentFetcher';
-import { ContentCleaner } from '../fetcher/ContentCleaner';
-import { MarkdownConverter } from '../fetcher/MarkdownConverter';
+import {
+  CONTENT_CLEANER_VERSION,
+  ContentCleaner,
+} from '../fetcher/ContentCleaner';
+import {
+  MARKDOWN_CONVERTER_VERSION,
+  MarkdownConverter,
+} from '../fetcher/MarkdownConverter';
 import { ContentStore, EntryStore } from '../stores';
 import {
   CONTENT_PIPELINE_ERROR_CODES,
@@ -43,7 +49,75 @@ export class ContentService {
    * Get existing cleaned content for an entry.
    */
   async getContent(entryId: number): Promise<CleanedContent | undefined> {
-    return this.contentStore.findByEntry(entryId);
+    const content = this.contentStore.findByEntry(entryId);
+    if (!content) return undefined;
+
+    const markdownSource = this.contentStore.findMarkdownSource(entryId);
+    if (!markdownSource) return content;
+
+    const needsHtmlUpgrade =
+      (markdownSource.readabilityVersion ?? 0) < CONTENT_CLEANER_VERSION;
+    const cleanedHtml = needsHtmlUpgrade
+      ? this.rebuildStoredHtml(markdownSource)
+      : markdownSource.cleanedHtml;
+    const needsMarkdownUpgrade = needsHtmlUpgrade
+      || (markdownSource.markdownVersion ?? 0) < MARKDOWN_CONVERTER_VERSION;
+    const markdown = needsMarkdownUpgrade
+      ? this.markdownConverter.convert(cleanedHtml)
+      : content.markdown;
+
+    if (needsHtmlUpgrade) {
+      const segmentedContent = this.segmenter.segment(cleanedHtml, {
+        title: content.readerTitle,
+        byline: content.readerByline,
+      });
+      this.contentStore.upsert({
+        entryId,
+        cleanedHtml,
+        markdown,
+        readabilityVersion: CONTENT_CLEANER_VERSION,
+        markdownVersion: MARKDOWN_CONVERTER_VERSION,
+        pipelineStatus: content.pipelineStatus,
+        pipelineError: content.pipelineError,
+        segmenterVersion: segmentedContent.segmenterVersion,
+        sourceContentHash: segmentedContent.sourceContentHash,
+        segments: segmentedContent.segments,
+      });
+      this.entryStore.updateContentHash(
+        entryId,
+        segmentedContent.sourceContentHash,
+      );
+      return {
+        ...content,
+        cleanedHtml,
+        markdown,
+        segmenterVersion: segmentedContent.segmenterVersion,
+        sourceContentHash: segmentedContent.sourceContentHash,
+        segments: segmentedContent.segments,
+      };
+    }
+
+    if (needsMarkdownUpgrade) {
+      this.contentStore.upsert({
+        entryId,
+        markdown,
+        markdownVersion: MARKDOWN_CONVERTER_VERSION,
+        pipelineStatus: content.pipelineStatus,
+        pipelineError: content.pipelineError,
+      });
+      return { ...content, markdown };
+    }
+
+    return content;
+  }
+
+  private rebuildStoredHtml(
+    source: NonNullable<ReturnType<ContentStore['findMarkdownSource']>>,
+  ): string {
+    if (source.rawHtml && source.baseUrl) {
+      return this.cleaner.clean(source.rawHtml, source.baseUrl).content;
+    }
+    return this.cleaner.cleanStoredHtml(source.cleanedHtml);
   }
 
   /**
@@ -130,6 +204,8 @@ export class ContentService {
         sourceUrl: fetchResult.url,
         cleanedHtml: cleanResult.content,
         markdown,
+        readabilityVersion: CONTENT_CLEANER_VERSION,
+        markdownVersion: MARKDOWN_CONVERTER_VERSION,
         readabilityTitle: cleanResult.title,
         readabilityByline: cleanResult.byline,
         documentBaseURL: cleanResult.documentBaseURL,

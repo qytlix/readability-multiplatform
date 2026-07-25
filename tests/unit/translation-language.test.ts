@@ -30,6 +30,7 @@ describe('isLikelyAlreadyTargetLanguage', () => {
   it('does not skip Traditional Chinese or Japanese when Simplified Chinese is requested', () => {
     expect(isLikelyAlreadyTargetLanguage('這是一篇軟體介紹文章。', 'zh-CN')).toBe(false);
     expect(isLikelyAlreadyTargetLanguage('如何使用軟體套件', 'zh-CN')).toBe(false);
+    expect(isLikelyAlreadyTargetLanguage('这是一篇軟體介绍文章。', 'zh-CN')).toBe(false);
     expect(isLikelyAlreadyTargetLanguage('これは日本語の記事です。', 'zh-CN')).toBe(false);
   });
 

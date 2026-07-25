@@ -60,12 +60,14 @@ describe('ProviderService', () => {
       secretFilePath,
     } = createService();
     const saved = service.save({
+      providerKind: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       model: 'gpt-5.4-mini',
       apiKey: 'sk-test-key',
     });
 
     expect(saved).toMatchObject({
+      providerKind: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       model: 'gpt-5.4-mini',
       hasApiKey: true,
@@ -98,15 +100,61 @@ describe('ProviderService', () => {
     }
   });
 
-  it('rejects a model that is not in the GPT Summary allowlist', () => {
+  it('accepts provider-specific model IDs instead of a GPT-only allowlist', () => {
+    const { databaseManager, service } = createService();
+
+    try {
+      expect(service.save({
+        providerKind: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'deepseek-v4-flash',
+        apiKey: 'sk-test-key',
+      })).toMatchObject({
+        providerKind: 'deepseek',
+        model: 'deepseek-v4-flash',
+      });
+    } finally {
+      databaseManager.close();
+    }
+  });
+
+  it('rejects unsafe model IDs and requires a new key when changing provider type or host', () => {
     const { databaseManager, service } = createService();
 
     try {
       expect(() => service.save({
+        providerKind: 'openai',
         baseUrl: 'https://api.openai.com/v1',
-        model: 'other-provider-model' as never,
+        model: 'bad model id',
         apiKey: 'sk-test-key',
-      })).toThrow('Select a supported GPT model.');
+      })).toThrow('Enter a valid provider model ID.');
+
+      service.save({
+        providerKind: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5.4-mini',
+        apiKey: 'sk-test-key',
+      });
+      expect(() => service.save({
+        providerKind: 'anthropic',
+        baseUrl: 'https://api.anthropic.com',
+        model: 'claude-sonnet-4-5',
+      })).toThrow('A new API key is required');
+
+      expect(() => service.save({
+        providerKind: 'openai',
+        baseUrl: 'https://proxy.example/v1',
+        model: 'gpt-5.4-mini',
+      })).toThrow('A new API key is required');
+
+      expect(service.save({
+        providerKind: 'openai',
+        baseUrl: 'https://api.openai.com/compatible/v1',
+        model: 'gpt-5.4',
+      })).toMatchObject({
+        baseUrl: 'https://api.openai.com/compatible/v1',
+        model: 'gpt-5.4',
+      });
     } finally {
       databaseManager.close();
     }
@@ -126,6 +174,7 @@ describe('ProviderService', () => {
     } = createService(basicTextBackend);
 
     const saved = service.save({
+      providerKind: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       model: 'gpt-5.4-mini',
       apiKey: 'sk-test-key',

@@ -1,9 +1,10 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import type { IPCResult } from '../../shared/contracts/feed.ipc';
-import type {
-  ProviderConnectionTestResult,
-  ProviderProfile,
-  SaveProviderRequest,
+import {
+  isProviderKind,
+  type ProviderConnectionTestResult,
+  type ProviderProfile,
+  type SaveProviderRequest,
 } from '../../shared/contracts/provider.types';
 import {
   SUMMARY_IPC_CHANNELS,
@@ -118,7 +119,9 @@ function isSaveProviderRequest(value: unknown): value is SaveProviderRequest {
   if (!value || typeof value !== 'object') return false;
   const request = value as Record<string, unknown>;
   return (
-    typeof request.baseUrl === 'string'
+    typeof request.providerKind === 'string'
+    && isProviderKind(request.providerKind)
+    && typeof request.baseUrl === 'string'
     && typeof request.model === 'string'
     && (request.apiKey === undefined || typeof request.apiKey === 'string')
   );

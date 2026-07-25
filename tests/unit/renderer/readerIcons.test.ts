@@ -5,6 +5,7 @@ import {
   HighlighterIcon,
   LockIcon,
   ReadIcon,
+  SettingsIcon,
   TranslateIcon,
 } from '../../../src/renderer/features/reader/ReaderIcons';
 
@@ -44,5 +45,14 @@ describe('reader toolbar icons', () => {
     expect(locked).toContain('<rect x="6" y="10" width="12" height="10" rx="2"');
     expect(locked).toContain('d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"');
     expect(unlocked).toContain('d="M9 10V7.5a3.5 3.5 0 0 1 6.8-1.2"');
+  });
+
+  it('renders the settings gear with both rings centered at 12', () => {
+    const markup = renderToStaticMarkup(createElement(SettingsIcon));
+
+    expect(markup).toContain('<circle cx="12" cy="12" r="3.25"');
+    expect(markup).toContain('d="M21.5 13.4');
+    expect(markup).toContain('h-2.8');
+    expect(markup).not.toContain('d="M19 13.4');
   });
 });

@@ -11,9 +11,13 @@ import { MIGRATION_009 } from '../migrations/009_enhance_translation';
 import { MIGRATION_010 as MIGRATION_010_READING_PROGRESS } from '../migrations/010_add_entry_reading_progress';
 import { MIGRATION_010_SQL, runMigration010 } from '../migrations/010_create_dedup_key';
 import { MIGRATION_011 as MIGRATION_011_USAGE } from '../migrations/011_create_llm_usage_events';
-import { MIGRATION_012 } from '../migrations/012_add_llm_usage_attempt_id';
-import { MIGRATION_013 } from '../migrations/013_create_entry_annotations';
+import { MIGRATION_012 as MIGRATION_012_USAGE_ATTEMPT } from '../migrations/012_add_llm_usage_attempt_id';
+import { MIGRATION_012 as MIGRATION_012_PROVIDERS } from '../migrations/012_expand_ai_providers';
+import { MIGRATION_013 as MIGRATION_013_ANNOTATIONS } from '../migrations/013_create_entry_annotations';
+import { MIGRATION_013 as MIGRATION_013_LANGUAGES } from '../migrations/013_expand_translation_languages';
 import { runMigration014 } from '../migrations/014_add_translation_source_language';
+import { MIGRATION_014 as MIGRATION_014_CONTEXT } from '../migrations/014_add_translation_context_and_experts';
+import { MIGRATION_015 } from '../migrations/015_add_terminology_libraries';
 
 interface Migration {
   id: string;
@@ -39,9 +43,13 @@ const MIGRATIONS: Migration[] = [
   },
   { id: '010_create_dedup_key', sql: MIGRATION_010_SQL, run: runMigration010 },
   { id: '011_create_llm_usage_events', sql: MIGRATION_011_USAGE },
-  { id: '012_add_llm_usage_attempt_id', sql: MIGRATION_012 },
-  { id: '013_create_entry_annotations', sql: MIGRATION_013 },
+  { id: '012_add_llm_usage_attempt_id', sql: MIGRATION_012_USAGE_ATTEMPT },
+  { id: '012_expand_ai_providers', sql: MIGRATION_012_PROVIDERS },
+  { id: '013_create_entry_annotations', sql: MIGRATION_013_ANNOTATIONS },
   { id: '014_add_translation_source_language', run: runMigration014 },
+  { id: '013_expand_translation_languages', sql: MIGRATION_013_LANGUAGES },
+  { id: '014_add_translation_context_and_experts', sql: MIGRATION_014_CONTEXT },
+  { id: '015_add_terminology_libraries', sql: MIGRATION_015 },
 ];
 
 export class DatabaseManager {

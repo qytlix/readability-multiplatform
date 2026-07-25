@@ -80,6 +80,7 @@ describe('Translation IPC handler', () => {
     const translationService = register();
     const request = {
       entryId: 7,
+      sourceLanguage: 'auto' as const,
       targetLanguage: 'zh-CN' as const,
       useTerminology: true,
     };

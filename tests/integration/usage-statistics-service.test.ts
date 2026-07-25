@@ -19,6 +19,7 @@ describe('UsageStatisticsService', () => {
     const { db } = buildTestDbWithData();
     database = db;
     firstProfileId = new ProviderProfileStore(db).saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider-one.example/v1',
       model: 'shared-model',
       apiKeyRef: 'usage-one',

@@ -5,8 +5,8 @@ import { ContentService } from '../../src/main/feed/services/ContentService';
 import { ContentStore } from '../../src/main/feed/stores/ContentStore';
 import { EntryStore } from '../../src/main/feed/stores/EntryStore';
 import { FeedStore } from '../../src/main/feed/stores/FeedStore';
-import { ContentCleaner } from '../../src/main/feed/fetcher/ContentCleaner';
-import { MarkdownConverter } from '../../src/main/feed/fetcher/MarkdownConverter';
+import { CONTENT_CLEANER_VERSION } from '../../src/main/feed/fetcher/ContentCleaner';
+import { MARKDOWN_CONVERTER_VERSION } from '../../src/main/feed/fetcher/MarkdownConverter';
 import { buildTestDb } from '../fixtures/databases/feed-fixture';
 
 const SAMPLE_HTML =
@@ -71,6 +71,96 @@ describe('ContentService', () => {
       expect(result).toBeDefined();
       expect(result!.entryId).toBe(entryId);
       expect(result!.pipelineStatus).toBe('success');
+    });
+
+    it('rebuilds stale cleaned content locally without refetching the article', async () => {
+      contentStore.upsert({
+        entryId,
+        cleanedHtml: [
+          '<p>📌 Pinned</p>',
+          '<img src="https://example.com/article.jpg" alt="Article photo">',
+          '<img width="24" height="24" src="https://example.com/pin.svg" alt="Pushpin">',
+        ].join(''),
+        markdown: '📌 Pinned\n\n![Pushpin](https://example.com/pin.svg)',
+        markdownVersion: 1,
+        pipelineStatus: 'success',
+      });
+
+      const result = await contentService.getContent(entryId);
+
+      expect(result?.markdown).toContain('Pinned');
+      expect(result?.markdown).toContain(
+        '![Article photo](https://example.com/article.jpg)',
+      );
+      expect(result?.markdown).not.toContain('📌');
+      expect(result?.markdown).not.toContain('pin.svg');
+      expect(result?.cleanedHtml).not.toContain('📌');
+      expect(result?.cleanedHtml).not.toContain('pin.svg');
+      expect(result?.cleanedHtml).toContain('article.jpg');
+      expect(
+        db.prepare(`
+          SELECT readabilityVersion, markdownVersion
+          FROM entry_content
+          WHERE entryId = ?
+        `)
+          .get(entryId),
+      ).toEqual({
+        readabilityVersion: CONTENT_CLEANER_VERSION,
+        markdownVersion: MARKDOWN_CONVERTER_VERSION,
+      });
+    });
+
+    it('re-extracts stored raw HTML when the cleaner version is stale', async () => {
+      const hiddenPayload = JSON.stringify({
+        ENV: 'production',
+        ARC_ACCESS_TOKEN_PROD: 'encoded-token-'.repeat(80),
+      });
+      const rawHtml = `<html>
+        <head><title>Stored live article</title></head>
+        <body>
+          <div id="fusion-app">
+            <article>
+              <p>The stored article body remains available offline.</p>
+              <p>Its second paragraph contains the rest of the report.</p>
+            </article>
+          </div>
+          <div id="stream-context" class="hidden">${hiddenPayload}</div>
+        </body>
+      </html>`;
+      contentStore.upsert({
+        entryId,
+        html: rawHtml,
+        sourceUrl: 'https://example.com/live/article',
+        cleanedHtml: [
+          '<p>The stored article body remains available offline.</p>',
+          `<p>${hiddenPayload}</p>`,
+        ].join(''),
+        markdown: `The stored article body remains available offline.\n\n${hiddenPayload}`,
+        readabilityVersion: 0,
+        markdownVersion: 0,
+        pipelineStatus: 'success',
+      });
+      const fetcher = mockFetcher('<p>Network content must not be used.</p>');
+      const service = new ContentService(
+        contentStore,
+        entryStore,
+        fetcher as unknown as ContentFetcher,
+      );
+
+      const result = await service.getContent(entryId);
+
+      expect(fetcher.fetch).not.toHaveBeenCalled();
+      expect(result?.cleanedHtml).toContain('stored article body');
+      expect(result?.cleanedHtml).not.toContain('ARC_ACCESS_TOKEN_PROD');
+      expect(result?.markdown).not.toContain('encoded-token');
+      expect(
+        db.prepare(`
+          SELECT readabilityVersion
+          FROM entry_content
+          WHERE entryId = ?
+        `)
+          .get(entryId),
+      ).toEqual({ readabilityVersion: CONTENT_CLEANER_VERSION });
     });
   });
 

@@ -420,7 +420,7 @@ export const FeedList = ({
           onClick={onOpenSettings}
         >
           <SettingsIcon />
-          <span>AI 设置</span>
+          <span>设置</span>
         </button>
       </nav>
 

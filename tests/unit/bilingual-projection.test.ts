@@ -81,6 +81,64 @@ describe('projectBilingualBody', () => {
     expect(root.querySelector('.translation-bilingual-target')?.textContent).toBe('阅读  此内容。');
   });
 
+  it('places each list-item translation directly below its source item', () => {
+    const dom = new JSDOM('<ul><li>First point.</li><li>Second point.</li></ul>');
+    const root = dom.window.document.createElement('div');
+    root.innerHTML = dom.window.document.body.innerHTML;
+
+    projectBilingualBody(root, [
+      segment('first', 0, 'list', '<li>First point.</li>', 'First point.', '<li>First translated.</li>'),
+      segment('second', 1, 'list', '<li>Second point.</li>', 'Second point.', '<li>Second translated.</li>'),
+    ], {
+      showPendingIndicators: false,
+    });
+
+    const items = root.querySelectorAll<HTMLElement>(':scope > ul > li');
+    expect(items).toHaveLength(2);
+    expect(items[0]?.dataset.segmentId).toBe('first');
+    expect(items[0]?.querySelector('.translation-bilingual-target')?.textContent)
+      .toBe('First translated.');
+    expect(items[1]?.dataset.segmentId).toBe('second');
+    expect(items[1]?.querySelector('.translation-bilingual-target')?.textContent)
+      .toBe('Second translated.');
+  });
+
+  it('places each quoted paragraph translation below its source block', () => {
+    const dom = new JSDOM(
+      '<blockquote><p>Original quote.</p><cite>Quoted author</cite></blockquote>',
+    );
+    const root = dom.window.document.createElement('div');
+    root.innerHTML = dom.window.document.body.innerHTML;
+
+    projectBilingualBody(root, [
+      segment(
+        'quote',
+        0,
+        'blockquote',
+        '<p>Original quote.</p>',
+        'Original quote.',
+        '<p>Translated quote.</p>',
+      ),
+      segment(
+        'cite',
+        1,
+        'blockquote',
+        '<cite>Quoted author</cite>',
+        'Quoted author',
+        '<cite>Translated author</cite>',
+      ),
+    ], {
+      showPendingIndicators: false,
+    });
+
+    const quote = root.querySelector('blockquote');
+    expect(quote?.children).toHaveLength(4);
+    expect(quote?.children[0]?.textContent).toBe('Original quote.');
+    expect(quote?.children[1]?.textContent).toBe('Translated quote.');
+    expect(quote?.children[2]?.textContent).toBe('Quoted author');
+    expect(quote?.children[3]?.textContent).toBe('Translated author');
+  });
+
   it('keeps pending paragraphs in place and adds only an end spinner', () => {
     const dom = new JSDOM([
       '<img src="safe.png">',
@@ -110,11 +168,20 @@ describe('projectBilingualBody', () => {
         status: 'pending',
       },
       {
-        sourceSegmentId: 'list',
+        sourceSegmentId: 'first-list-item',
         orderIndex: 2,
         sourceType: 'list',
-        sourceHtml: '<ul><li>First item</li><li>Last item</li></ul>',
-        sourceText: 'First item Last item',
+        sourceHtml: '<li>First item</li>',
+        sourceText: 'First item',
+        terminologyMatches: [],
+        status: 'pending',
+      },
+      {
+        sourceSegmentId: 'last-list-item',
+        orderIndex: 3,
+        sourceType: 'list',
+        sourceHtml: '<li>Last item</li>',
+        sourceText: 'Last item',
         terminologyMatches: [],
         status: 'pending',
       },
@@ -130,6 +197,8 @@ describe('projectBilingualBody', () => {
     expect(root.querySelector('h2')?.lastElementChild?.className)
       .toBe('translation-segment-spinner');
     expect(root.querySelector('p')?.lastElementChild?.className)
+      .toBe('translation-segment-spinner');
+    expect(root.querySelector('ul > li:first-child')?.lastElementChild?.className)
       .toBe('translation-segment-spinner');
     expect(root.querySelector('ul > li:last-child')?.lastElementChild?.className)
       .toBe('translation-segment-spinner');

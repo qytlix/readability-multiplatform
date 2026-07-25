@@ -48,6 +48,27 @@
    - Coding Agent留痕：形成持久化的，有价值的工作过程文档（可以放在 docs/）
    - 团队协同留痕：正确记录提交人和提交历史（发现问题，提出 Issue）
 
+## Advanced Translation
+
+Reader 的高级翻译链路支持自动识别源语言，以及英语、简体中文、香港繁体、
+日语、韩语、德语、法语和西班牙语八种目标语言。Provider 可选择 OpenAI、
+DeepSeek、OpenRouter、Anthropic、Gemini 或自定义 OpenAI-compatible 服务；
+API Key 只在 Main 进程中读取，不会通过 Preload 暴露给页面。
+
+在 **Settings → AI** 中可以：
+
+- 选择源语言、目标语言和 Provider 模型；
+- 按需启用智能上下文；超长文章会在固定 48,000 字符预算内对全文做确定性
+  代表采样，失败时降级为普通翻译；
+- 选择 29 个离线内置专家，或预览并导入受限 YAML 用户专家；
+- 逐库启用 34 个离线术语库，或按页面示例导入 UTF-8 CSV 用户术语库；
+- 配置划词翻译快捷键，获取单词、短语或句子的结构化结果。
+
+内置专家和术语资源都随应用打包，运行时不会从上游更新。详细契约、缓存与
+人工验证步骤见
+[`docs/ai/translation-advanced.md`](docs/ai/translation-advanced.md) 和
+[`docs/ai/translation-advanced-verification.md`](docs/ai/translation-advanced-verification.md)。
+
 > 使用 issue 赋能（神经词汇来的）讨论
 
 > 使用 github workflows 构建 releases

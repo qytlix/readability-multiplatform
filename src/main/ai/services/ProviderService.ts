@@ -1,16 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import {
-  isGptSummaryModel,
-  type GptSummaryModel,
+  isProviderKind,
+  isValidProviderModel,
   type ProviderConnectionTestResult,
+  type ProviderKind,
   type ProviderProfile,
   type SaveProviderRequest,
 } from '../../../shared/contracts/provider.types';
 import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summary.errors';
 import { ProviderProfileStore } from '../stores/ProviderProfileStore';
 import { SecretStore } from '../stores/SecretStore';
-import type { SummaryProvider } from '../provider/SummaryProvider';
+import type { TextGenerationProvider } from '../provider/TextGenerationProvider';
 import {
   elapsedProviderMilliseconds,
   logProviderConfigCompleted,
@@ -28,7 +29,7 @@ export class ProviderService {
   constructor(
     private readonly profileStore: ProviderProfileStore,
     private readonly secretStore: SecretStore,
-    private readonly provider: SummaryProvider,
+    private readonly provider: TextGenerationProvider,
     private readonly logger?: ProviderOperationLogger,
   ) {}
 
@@ -41,17 +42,26 @@ export class ProviderService {
     const startedAt = performance.now();
     let stage: ProviderConfigStage = 'validate';
     try {
-      const { baseUrl, model } = validateProviderRequest(request);
+      const { providerKind, baseUrl, model } = validateProviderRequest(request);
       stage = 'profileLookup';
       const existing = this.profileStore.findActiveWithSecret();
       const suppliedKey = request.apiKey?.trim();
-      const apiKeyRef = suppliedKey ? randomUUID() : existing?.apiKeyRef;
+      const reusableKeyReference = (
+        existing
+        && existing.providerKind === providerKind
+        && new URL(existing.baseUrl).origin === new URL(baseUrl).origin
+      )
+        ? existing.apiKeyRef
+        : undefined;
+      const apiKeyRef = suppliedKey
+        ? randomUUID()
+        : reusableKeyReference;
 
       stage = 'key';
       if (!apiKeyRef) {
         throw new SummaryError(
           SUMMARY_ERROR_CODES.SUMMARY_KEY_MISSING,
-          'An API key is required when configuring a provider for the first time.',
+          'A new API key is required when configuring a provider or changing its type or host.',
           false,
         );
       }
@@ -60,7 +70,12 @@ export class ProviderService {
 
       try {
         stage = 'profileSave';
-        const profile = this.profileStore.saveActive({ baseUrl, model, apiKeyRef });
+        const profile = this.profileStore.saveActive({
+          providerKind,
+          baseUrl,
+          model,
+          apiKeyRef,
+        });
         if (suppliedKey && existing && existing.apiKeyRef !== apiKeyRef) {
           // The old encrypted value is harmless if cleanup fails; never remove the
           // newly stored key after its database reference has been committed.
@@ -128,6 +143,7 @@ export class ProviderService {
       const apiKey = this.secretStore.read(profile.apiKeyRef);
       stage = 'request';
       await this.provider.testConnection({
+        providerKind: profile.providerKind,
         baseUrl: profile.baseUrl,
         model: profile.model,
         apiKey,
@@ -229,14 +245,33 @@ function toConnectionErrorCode(
 }
 
 function validateProviderRequest(request: SaveProviderRequest): {
+  providerKind: ProviderKind;
   baseUrl: string;
-  model: GptSummaryModel;
+  model: string;
 } {
-  const model = request.model.trim();
-  if (!isGptSummaryModel(model)) {
+  if (!isProviderKind(request.providerKind)) {
     throw new SummaryError(
       SUMMARY_ERROR_CODES.SUMMARY_INVALID_REQUEST,
-      'Select a supported GPT model.',
+      'Select a supported provider type.',
+      false,
+    );
+  }
+
+  const model = request.model.trim();
+  if (!isValidProviderModel(model)) {
+    throw new SummaryError(
+      SUMMARY_ERROR_CODES.SUMMARY_INVALID_REQUEST,
+      'Enter a valid provider model ID.',
+      false,
+    );
+  }
+  if (
+    request.providerKind === 'gemini'
+    && !/^(?:models\/)?[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(model)
+  ) {
+    throw new SummaryError(
+      SUMMARY_ERROR_CODES.SUMMARY_INVALID_REQUEST,
+      'Enter a valid Gemini model ID.',
       false,
     );
   }
@@ -266,5 +301,9 @@ function validateProviderRequest(request: SaveProviderRequest): {
     );
   }
 
-  return { baseUrl: parsedUrl.toString().replace(/\/$/, ''), model };
+  return {
+    providerKind: request.providerKind,
+    baseUrl: parsedUrl.toString().replace(/\/$/, ''),
+    model,
+  };
 }

@@ -47,6 +47,14 @@ interface ContentRow {
   readerByline: string | null;
 }
 
+export interface MarkdownSource {
+  cleanedHtml: string;
+  rawHtml?: string;
+  baseUrl?: string;
+  readabilityVersion: number | null;
+  markdownVersion: number | null;
+}
+
 export class ContentStore {
   constructor(private db: Database.Database) {}
 
@@ -77,6 +85,41 @@ export class ContentStore {
       segmenterVersion: row.segmenterVersion ?? undefined,
       sourceContentHash: row.sourceContentHash ?? undefined,
       segments: parseSegments(row.segmentsJson),
+    };
+  }
+
+  findMarkdownSource(entryId: number): MarkdownSource | undefined {
+    const row = this.db
+      .prepare(`
+        SELECT
+          entry_content.cleanedHtml,
+          entry_content.html AS rawHtml,
+          COALESCE(
+            NULLIF(entry_content.documentBaseURL, ''),
+            NULLIF(entry_content.sourceUrl, ''),
+            NULLIF(entry.url, '')
+          ) AS baseUrl,
+          entry_content.readabilityVersion,
+          entry_content.markdownVersion
+        FROM entry_content
+        LEFT JOIN entry ON entry.id = entry_content.entryId
+        WHERE entry_content.entryId = ?
+      `)
+      .get(entryId) as {
+        cleanedHtml: string | null;
+        rawHtml: string | null;
+        baseUrl: string | null;
+        readabilityVersion: number | null;
+        markdownVersion: number | null;
+      } | undefined;
+
+    if (!row?.cleanedHtml) return undefined;
+    return {
+      cleanedHtml: row.cleanedHtml,
+      rawHtml: row.rawHtml ?? undefined,
+      baseUrl: row.baseUrl ?? undefined,
+      readabilityVersion: row.readabilityVersion,
+      markdownVersion: row.markdownVersion,
     };
   }
 

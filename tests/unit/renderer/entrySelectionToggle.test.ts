@@ -79,6 +79,7 @@ describe('article selection toggle', () => {
   let root: Root;
   let listEntries: ReturnType<typeof vi.fn>;
   let getContent: ReturnType<typeof vi.fn>;
+  let fetchAndClean: ReturnType<typeof vi.fn>;
   let unsubscribeSyncProgress: ReturnType<typeof vi.fn>;
 
   const flushAsyncState = async (): Promise<void> => {
@@ -107,6 +108,7 @@ describe('article selection toggle', () => {
       },
     }));
     getContent = vi.fn(() => new Promise(() => undefined));
+    fetchAndClean = vi.fn();
     unsubscribeSyncProgress = vi.fn();
     Object.defineProperty(window, 'shaleAPI', {
       configurable: true,
@@ -124,7 +126,10 @@ describe('article selection toggle', () => {
         },
         content: {
           get: getContent,
-          fetchAndClean: vi.fn(),
+          fetchAndClean,
+        },
+        annotation: {
+          list: vi.fn().mockResolvedValue({ ok: true, data: [] }),
         },
       } as unknown as typeof window.shaleAPI,
     });
@@ -191,5 +196,58 @@ describe('article selection toggle', () => {
     expect(container.querySelector('.entry-detail-title-row h2')?.textContent).toBe('文章 B');
     expect(storyCards.scrollTop).toBe(146);
     expect(listEntries).toHaveBeenCalledTimes(listRequestCount);
+  });
+
+  it('offers a manual refresh that bypasses cached article content', async () => {
+    getContent.mockResolvedValue({
+      ok: true,
+      data: {
+        entryId: entries[0].id,
+        sourceUrl: entries[0].url,
+        cleanedHtml: '<p>Cached live report</p>',
+        markdown: 'Cached live report',
+        pipelineStatus: 'success',
+      },
+    });
+    fetchAndClean.mockResolvedValue({
+      ok: true,
+      data: {
+        entryId: entries[0].id,
+        sourceUrl: entries[0].url,
+        cleanedHtml: '<p>New live report update</p>',
+        markdown: 'New live report update',
+        pipelineStatus: 'success',
+      },
+    });
+
+    await act(async () => {
+      root.render(createElement(App));
+      await Promise.resolve();
+    });
+    await flushAsyncState();
+
+    act(() => container.querySelector<HTMLButtonElement>('.sidebar-feed')?.click());
+    await flushAsyncState();
+    act(() => findStoryCard(container, entries[0].title ?? '')?.click());
+    await flushAsyncState();
+    await flushAsyncState();
+
+    expect(getContent).toHaveBeenCalledWith(entries[0].id);
+    expect(fetchAndClean).not.toHaveBeenCalled();
+
+    const moreButton =
+      container.querySelector<HTMLButtonElement>('.article-more > button');
+    act(() => moreButton?.click());
+    const refreshButton = [...container.querySelectorAll<HTMLButtonElement>(
+      '.article-more-menu button',
+    )].find((button) => button.textContent?.includes('重新获取正文'));
+    expect(refreshButton).toBeDefined();
+
+    act(() => refreshButton?.click());
+    await flushAsyncState();
+
+    expect(fetchAndClean).toHaveBeenCalledWith(entries[0].id);
+    expect(getContent).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('正文已更新。');
   });
 });

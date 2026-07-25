@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OpenAICompatibleProvider } from '../../../src/main/ai/provider/OpenAICompatibleProvider';
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 const request = () => ({
+  providerKind: 'openai' as const,
   baseUrl: 'https://provider.example/v1',
   model: 'test-model',
   apiKey: 'test-key',
@@ -33,6 +35,63 @@ describe('OpenAICompatibleProvider', () => {
         headers: expect.objectContaining({ authorization: 'Bearer test-key' }),
       }),
     );
+  });
+
+  it('handles split SSE chunks and ignores keepalive comments', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(streamingResponse([
+      ': OPENROUTER PROCESSING\n',
+      'data: {"choices":[{"delta":{"content":"split',
+      ' chunk"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ])));
+    const provider = new OpenAICompatibleProvider();
+    const chunks: string[] = [];
+
+    for await (const chunk of provider.stream(request())) chunks.push(chunk);
+
+    expect(chunks).toEqual(['split chunk']);
+  });
+
+  it('keeps a stream alive beyond 60 seconds while translated text continues arriving', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      Promise.resolve(timedStreamingResponse([
+        { afterMs: 50_000, text: 'First ' },
+        { afterMs: 50_000, text: 'second ' },
+        { afterMs: 50_000, text: 'third.' },
+      ], init?.signal))));
+    const provider = new OpenAICompatibleProvider();
+    const chunks: string[] = [];
+
+    const pending = (async () => {
+      for await (const chunk of provider.stream(request())) chunks.push(chunk);
+    })();
+    await vi.advanceTimersByTimeAsync(150_001);
+    await pending;
+
+    expect(chunks).toEqual(['First ', 'second ', 'third.']);
+  });
+
+  it('surfaces OpenRouter-compatible errors that arrive after partial content', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
+      'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n',
+      'data: {"error":{"code":429,"metadata":{"error_type":"rate_limit_exceeded"}},"choices":[]}\n\n',
+    ].join(''), { status: 200 })));
+    const provider = new OpenAICompatibleProvider();
+    const chunks: string[] = [];
+
+    await expect((async () => {
+      for await (const chunk of provider.stream({
+        ...request(),
+        providerKind: 'openrouter',
+      })) {
+        chunks.push(chunk);
+      }
+    })()).rejects.toMatchObject({
+      code: 'SUMMARY_PROVIDER_REQUEST_FAILED',
+      retryable: true,
+    });
+    expect(chunks).toEqual(['partial']);
   });
 
   it('reports response-header and first-delta timing phases once', async () => {
@@ -105,4 +164,73 @@ describe('OpenAICompatibleProvider', () => {
       retryable: false,
     });
   });
+
+  it('tests the configured model with a minimal non-streaming request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      '{"choices":[{"message":{"content":"OK"}}]}',
+      { status: 200 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new OpenAICompatibleProvider().testConnection({
+      baseUrl: 'https://provider.example/v1',
+      model: 'test-model',
+      apiKey: 'test-key',
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://provider.example/v1/chat/completions',
+      expect.any(Object),
+    );
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      model: 'test-model',
+      stream: false,
+      max_tokens: 1,
+    });
+  });
 });
+
+function streamingResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder();
+  return new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)));
+      controller.close();
+    },
+  }), { status: 200 });
+}
+
+function timedStreamingResponse(
+  chunks: Array<{ afterMs: number; text: string }>,
+  signal: AbortSignal | null | undefined,
+): Response {
+  const encoder = new TextEncoder();
+  return new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      let elapsedMs = 0;
+      let closed = false;
+      const timers: Array<ReturnType<typeof setTimeout>> = [];
+      chunks.forEach(({ afterMs, text }) => {
+        elapsedMs += afterMs;
+        timers.push(setTimeout(() => {
+          if (closed) return;
+          controller.enqueue(encoder.encode(
+            `data: {"choices":[{"delta":{"content":${JSON.stringify(text)}}}]}\n\n`,
+          ));
+        }, elapsedMs));
+      });
+      timers.push(setTimeout(() => {
+        if (closed) return;
+        closed = true;
+        controller.close();
+      }, elapsedMs + 1));
+      signal?.addEventListener('abort', () => {
+        if (closed) return;
+        closed = true;
+        timers.forEach((timer) => clearTimeout(timer));
+        controller.error(new DOMException('Aborted', 'AbortError'));
+      }, { once: true });
+    },
+  }), { status: 200 });
+}

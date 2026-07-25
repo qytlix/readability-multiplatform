@@ -52,6 +52,7 @@ describe('SummaryService', () => {
     });
     const profiles = new ProviderProfileStore(db);
     const savedProfile = profiles.saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider.example/v1',
       model: 'mock-model',
       apiKeyRef: 'key-1',
@@ -88,6 +89,7 @@ describe('SummaryService', () => {
     const state = service.getState(request);
     expect(state).toMatchObject({ state: 'succeeded' });
     expect(events).toEqual(['started', 'delta', 'delta', 'completed']);
+    expect(stream.mock.calls[0]?.[0]).toMatchObject({ providerKind: 'openai' });
 
     const cached = service.generate(request);
     expect(cached).toEqual({ runId: started.runId, reused: true });
@@ -121,6 +123,7 @@ describe('SummaryService', () => {
     });
     const profiles = new ProviderProfileStore(db);
     const profile = profiles.saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider.example/v1',
       model: 'usage-model',
       apiKeyRef: 'key-usage',
@@ -195,6 +198,7 @@ describe('SummaryService', () => {
     content.upsert({ entryId: 2, markdown: 'Second article.', pipelineStatus: 'success' });
     const profiles = new ProviderProfileStore(db);
     profiles.saveActive({
+      providerKind: 'openai',
       baseUrl: 'https://provider.example/v1',
       model: 'mock-model',
       apiKeyRef: 'key-2',

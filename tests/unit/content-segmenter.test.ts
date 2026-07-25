@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ContentSegmenter, CONTENT_SEGMENTER_VERSION } from '../../src/main/feed/services/ContentSegmenter';
 
 describe('ContentSegmenter', () => {
-  it('builds deterministic Reader blocks and skips paragraphs nested in list items', () => {
+  it('builds one deterministic Reader segment per list item', () => {
     const segmenter = new ContentSegmenter();
     const html = [
       '<p>First   paragraph.</p>',
@@ -13,15 +13,21 @@ describe('ContentSegmenter', () => {
     const result = segmenter.segment(html);
 
     expect(result.segmenterVersion).toBe(CONTENT_SEGMENTER_VERSION);
-    expect(result.segments).toHaveLength(3);
+    expect(result.segments).toHaveLength(4);
     expect(result.segments.map((segment) => segment.type)).toEqual([
       'paragraph',
       'list',
+      'list',
       'paragraph',
     ]);
-    expect(result.segments.map((segment) => segment.orderIndex)).toEqual([0, 1, 2]);
+    expect(result.segments.map((segment) => segment.orderIndex)).toEqual([0, 1, 2, 3]);
     expect(result.segments[0]?.sourceText).toBe('First paragraph.');
-    expect(result.segments[1]?.sourceText).toBe('First item Nested detail Second item');
+    expect(result.segments[1]?.sourceText).toBe('First item Nested detail');
+    expect(result.segments[1]?.sourceHtml).toBe(
+      '<li>First item<p>Nested detail</p></li>',
+    );
+    expect(result.segments[2]?.sourceText).toBe('Second item');
+    expect(result.segments[2]?.sourceHtml).toBe('<li>Second item</li>');
     expect(result.segments.every((segment) => /^seg_\d+_[a-f0-9]{12}$/.test(segment.id))).toBe(true);
   });
 
@@ -59,13 +65,15 @@ describe('ContentSegmenter', () => {
       'title',
       'heading',
       'blockquote',
+      'blockquote',
       'list',
       'caption',
     ]);
     expect(result.segments.map((segment) => segment.sourceText)).toEqual([
       'Reader title',
       'Section',
-      'Quoted text. Source',
+      'Quoted text.',
+      'Source',
       'Nested heading List item',
       'Figure caption',
     ]);
@@ -73,5 +81,26 @@ describe('ContentSegmenter', () => {
     expect(result.segments.some((segment) => segment.type === 'byline')).toBe(false);
     expect(result.segments.filter((segment) => segment.type === 'heading'))
       .toHaveLength(1);
+  });
+
+  it('segments nested list items without duplicating child-list text', () => {
+    const segmenter = new ContentSegmenter();
+    const result = segmenter.segment([
+      '<ul>',
+      '<li>Parent point<ul><li>Nested point</li></ul></li>',
+      '<li>Sibling point</li>',
+      '</ul>',
+    ].join(''));
+
+    expect(result.segments.map((segment) => segment.sourceText)).toEqual([
+      'Parent point',
+      'Nested point',
+      'Sibling point',
+    ]);
+    expect(result.segments.map((segment) => segment.sourceHtml)).toEqual([
+      '<li>Parent point</li>',
+      '<li>Nested point</li>',
+      '<li>Sibling point</li>',
+    ]);
   });
 });

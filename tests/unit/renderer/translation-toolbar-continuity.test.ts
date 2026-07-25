@@ -49,11 +49,16 @@ const content: CleanedContent = {
 const translatedResult: TranslationResult = {
   id: 8,
   entryId: entry.id,
+  sourceLanguage: 'auto',
   targetLanguage: 'zh-CN',
   sourceContentHash: 'content-hash',
   segmenterVersion: 'v3',
   terminologyPackVersion: 'none',
   promptVersion: 'translation-v1',
+  expertId: 'none',
+  expertContentHash: 'none',
+  smartContextEnabled: false,
+  contextPromptVersion: 'none',
   status: 'succeeded',
   createdAt: '2026-07-25T00:00:00.000Z',
   updatedAt: '2026-07-25T00:00:00.000Z',
@@ -176,8 +181,11 @@ describe('Translation toolbar continuity', () => {
 
     expect(translationGenerate).toHaveBeenCalledWith({
       entryId: entry.id,
+      sourceLanguage: 'auto',
       targetLanguage: 'zh-CN',
       useTerminology: true,
+      expertId: 'none',
+      useSmartContext: false,
     });
   });
 });

@@ -1,6 +1,6 @@
 # PLAN.md
 
-> 状态：Baseline v1（依据团队已确认的成本、依赖与风险分析生成）  
+> 状态：Baseline v1 + Advanced Translation 专项（Issue #60）
 > 计划周期：3～4 周；以下以 4 周为基线，并使用相对周次  
 > 维护方式：滚动规划——当前里程碑细化为 Issues，后续里程碑保留工作包级，上一里程碑验收后再拆细
 
@@ -46,6 +46,12 @@ P1 不预先承诺全部完成。M2 验收时，根据 P0 剩余工作量最多�
 - 非关键性能优化。
 
 P2 不得挤占 P0 测试、跨平台验证和发布时间。
+
+2026-07-24，团队已通过 Issue #60 明确启动 Advanced Translation 专项。
+该专项替代本节原有的单项 Translation P2 描述，使用独立的 M0～M6
+滚动计划，详细契约与验收见
+`docs/ai/translation-advanced.md` 和
+`docs/adr/001-advanced-translation-boundaries.md`。
 
 ## 2. 负责人和边界
 
@@ -326,3 +332,22 @@ flowchart TD
 - 各模块负责人维护自己 Issues 的估算、状态、风险和验证记录；
 - 团队只详细维护当前与下一个里程碑；
 - 每次里程碑验收后更新一次本文件，日常进度留在 Issues 和 PR 中，不把 `PLAN.md` 变成流水账。
+
+## 12. Advanced Translation 专项（Issue #60）
+
+负责人：cyj / AI 与 Translation。公共 IPC、SQLite、Preload、Reader 和安全
+边界由对应负责人 Review。
+
+| Milestone | 状态 | 交付结果 | 验收门 |
+|---|---|---|---|
+| AT-M0 契约与资源基线 | Done | 八语言、五 Provider、上下文、专家、术语库、划词与缓存 ADR；29 个专家和 34 个术语库清单 | Product/Reader、IPC、SQLite、AI 边界 Review |
+| AT-M1 Provider 抽象 | Done | 中性文本生成接口；OpenAI、DeepSeek、OpenRouter、Anthropic、Gemini 适配器 | Mock SSE、错误、取消、连接测试通过 |
+| AT-M2 八语言双向翻译 | Done | `auto + 8` 源语言、8 个目标语言、迁移、设置与 Fixture | 语言契约、香港繁体、缓存和 HTML 保真通过 |
+| AT-M3 智能上下文与专家 | Review | 全文/长文上下文、缓存降级、29 个内置专家与用户 YAML 专家 | 86 个测试文件、641 项测试通过；待人工 UI、真实 Provider 与双平台验收 |
+| AT-M4 多术语库 | Review | 34 个内置库、`builtin:default`、逐库开关、用户 CSV 导入与帮助页 | 88 个测试文件、647 项测试及 Windows 打包通过；待双平台 UI/质量人工验收 |
+| AT-M5 划词翻译升级 | Review | 严格单词/短语/句子结构、源语言发音体系、多义项、上下文释义、专家/术语与取消 IPC | 88 个测试文件、658 项测试通过；待真实 Provider、Reader 交互与双平台人工验收 |
+| AT-M6 集成与发布加固 | Review | 组合回归、旧库连续迁移/重启、敏感信息审计、超长文章全文代表采样、Windows x64 打包/启动、验证与发布文档 | 89 个测试文件、662 项测试及 Windows x64 打包/启动通过；待原生 Wayland、真实 Provider、GUI 与公共边界人工验收 |
+
+AT-M0 仅冻结设计和资源输入，不修改功能代码或 Schema。AT-M1 开始前，
+必须完成 AT-M0 的人工 Review；后续每个实现 Issue 继续保持 0.5～2 个理想
+开发日，并在上一 Milestone 验收后滚动拆细。

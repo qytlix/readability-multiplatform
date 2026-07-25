@@ -31,6 +31,18 @@ describe('getRestoredTranslationReaderMode', () => {
 
   it.each<TranslationState>([
     { state: 'running', result: { ...completedResult, status: 'running' } },
+    {
+      state: 'paused',
+      result: {
+        ...completedResult,
+        status: 'failed',
+        error: {
+          code: 'TRANSLATION_PAUSED',
+          message: 'Translation was paused.',
+          retryable: true,
+        },
+      },
+    },
     { state: 'failed', result: { ...completedResult, status: 'failed' } },
   ])('restores a visible in-progress or partial translation', (state) => {
     expect(getRestoredTranslationReaderMode(state, true)).toBe('bilingual');
