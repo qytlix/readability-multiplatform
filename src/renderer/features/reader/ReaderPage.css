@@ -3387,8 +3387,7 @@ body.workspace-is-resizing * {
   font-size: 11px;
 }
 
-.form-group input,
-.opml-select {
+.form-group input {
   width: 100%;
   min-height: 39px;
   padding: 8px 10px;
@@ -3412,8 +3411,7 @@ body.workspace-is-resizing * {
   gap: 8px;
 }
 
-.dialog-actions button,
-.opml-action-btn {
+.dialog-actions button {
   padding: 8px 13px;
   border: 1px solid var(--reader-line);
   border-radius: 7px;
@@ -3429,8 +3427,7 @@ body.workspace-is-resizing * {
   background: var(--reader-accent);
 }
 
-.dialog-actions button:disabled,
-.opml-action-btn:disabled {
+.dialog-actions button:disabled {
   cursor: default;
   opacity: 0.4;
 }
@@ -3612,29 +3609,462 @@ body.workspace-is-resizing * {
 
 @media (prefers-reduced-motion: reduce) {
   .feed-delete-overlay,
-  .feed-delete-dialog {
+  .feed-delete-dialog,
+  .opml-overlay,
+  .opml-dialog {
     animation: none;
   }
 }
 
-.opml-section + .opml-section {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--reader-line);
+.opml-overlay {
+  animation: feed-delete-overlay-in 140ms ease-out both;
 }
 
-.opml-result {
-  margin-top: 11px;
+.opml-dialog {
+  width: min(650px, 100%);
+  padding: 0;
+  overflow: hidden;
+  animation: feed-delete-dialog-in 180ms cubic-bezier(0.2, 0.78, 0.25, 1) both;
+}
+
+.opml-dialog-header {
+  display: grid;
+  padding: 24px 24px 20px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+  border-bottom: 1px solid var(--reader-line);
+}
+
+.opml-dialog-mark,
+.opml-section-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--reader-accent-strong);
+  background: var(--reader-accent-glow);
+}
+
+.opml-dialog-mark {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(102, 143, 128, 0.28);
+  border-radius: 11px;
+}
+
+.opml-dialog-heading {
+  min-width: 0;
+}
+
+.opml-dialog-heading > span {
+  display: block;
+  margin: 0 0 5px;
+  color: var(--reader-accent-strong);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+}
+
+.dialog.opml-dialog .opml-dialog-heading h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.opml-dialog-heading p {
+  margin: 8px 0 0;
+  color: var(--reader-text-muted);
   font-size: 11px;
+  line-height: 1.55;
+}
+
+.opml-close-button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--reader-text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.opml-close-button:hover:not(:disabled) {
+  color: var(--reader-text);
+  background: var(--reader-hover);
+}
+
+.opml-close-button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.opml-content {
+  display: grid;
+  padding: 22px 24px 0;
+  gap: 14px;
+}
+
+.opml-import-panel {
+  padding: 18px;
+  border: 1px solid var(--reader-line);
+  border-radius: 11px;
+  background: var(--reader-hover-soft);
+}
+
+.opml-section-heading,
+.opml-export-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+}
+
+.opml-section-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+}
+
+.opml-section-icon.is-secondary {
+  color: var(--reader-text-soft);
+  background: var(--reader-hover);
+}
+
+.opml-section-heading h3,
+.opml-export-copy h3 {
+  margin: 0;
+  color: var(--reader-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.opml-section-heading p,
+.opml-export-copy p {
+  margin: 4px 0 0;
+  color: var(--reader-text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.opml-mode-fieldset {
+  min-width: 0;
+  margin: 17px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.opml-mode-fieldset legend {
+  margin-bottom: 8px;
+  color: var(--reader-text-muted);
+  font-size: 10px;
+}
+
+.opml-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.opml-mode-card {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 86px;
+  padding: 13px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  border: 1px solid var(--reader-line);
+  border-radius: 9px;
+  background: var(--reader-input);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.opml-mode-card:hover {
+  border-color: rgba(102, 143, 128, 0.36);
+  background: var(--reader-panel-raised);
+}
+
+.opml-mode-card.is-selected {
+  border-color: var(--reader-accent);
+  background: var(--reader-accent-glow);
+  box-shadow: inset 0 0 0 1px rgba(102, 143, 128, 0.08);
+}
+
+.opml-mode-card input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.opml-mode-indicator {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  border: 1px solid var(--reader-text-muted);
+  border-radius: 50%;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.opml-mode-card.is-selected .opml-mode-indicator {
+  border-color: var(--reader-accent-strong);
+  background: var(--reader-accent-strong);
+}
+
+.opml-mode-card.is-selected .opml-mode-indicator::after {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: var(--reader-accent-ink);
+  content: "";
+}
+
+.opml-mode-card:has(input:focus-visible) {
+  outline: 2px solid var(--reader-accent-strong);
+  outline-offset: 2px;
+}
+
+.opml-mode-card:has(input:disabled) {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.opml-mode-copy,
+.opml-mode-title {
+  display: flex;
+  min-width: 0;
+}
+
+.opml-mode-copy {
+  flex-direction: column;
+  color: var(--reader-text-muted);
+  font-size: 10px;
   line-height: 1.5;
 }
 
-.opml-result-success {
+.opml-mode-title {
+  margin-bottom: 5px;
+  align-items: center;
+  gap: 7px;
+  color: var(--reader-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.opml-recommended {
+  padding: 2px 5px;
+  border-radius: 999px;
   color: var(--reader-accent-strong);
+  background: var(--reader-accent-glow);
+  font-size: 8px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+}
+
+.opml-replace-notice {
+  margin: 10px 1px 0;
+  color: #dda094;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.opml-primary-action,
+.opml-secondary-action,
+.opml-dialog-footer button {
+  display: inline-flex;
+  min-height: 37px;
+  padding: 8px 13px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--reader-line);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 11px;
+  gap: 7px;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease,
+    transform 100ms ease;
+}
+
+.opml-primary-action {
+  width: 100%;
+  margin-top: 14px;
+  border-color: var(--reader-accent);
+  color: var(--reader-accent-ink);
+  background: var(--reader-accent);
+}
+
+.opml-primary-action:hover:not(:disabled) {
+  border-color: var(--reader-accent-strong);
+  background: var(--reader-accent-strong);
+}
+
+.opml-primary-action:active:not(:disabled),
+.opml-secondary-action:active:not(:disabled),
+.opml-dialog-footer button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.opml-primary-action:disabled,
+.opml-secondary-action:disabled,
+.opml-dialog-footer button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.opml-primary-action .mini-spinner {
+  width: 12px;
+  height: 12px;
+  border-color: rgba(15, 33, 26, 0.35);
+  border-top-color: currentColor;
+}
+
+.opml-export-panel {
+  display: flex;
+  min-width: 0;
+  padding: 14px 15px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--reader-line);
+  border-radius: 10px;
+}
+
+.opml-secondary-action,
+.opml-dialog-footer button {
+  flex: 0 0 auto;
+  color: var(--reader-text-soft);
+  background: transparent;
+}
+
+.opml-secondary-action:hover:not(:disabled),
+.opml-dialog-footer button:hover:not(:disabled) {
+  color: var(--reader-text);
+  background: var(--reader-hover);
+}
+
+.opml-result,
+.opml-inline-error {
+  margin: 12px 0 0;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.opml-result {
+  display: flex;
+  padding: 11px 12px;
+  gap: 9px;
+}
+
+.opml-result-success {
+  color: var(--reader-text-soft);
+  background: rgba(123, 216, 143, 0.08);
+}
+
+.opml-result-icon {
+  flex: 0 0 auto;
+  color: var(--reader-success);
+}
+
+.opml-result strong {
+  color: var(--reader-success);
+  font-size: 11px;
+}
+
+.opml-result p {
+  margin: 2px 0 0;
 }
 
 .opml-result-failures {
+  margin: 7px 0 0;
+  padding-left: 15px;
   color: #dda094;
+}
+
+.opml-inline-error {
+  padding: 9px 11px;
+  color: #dda094;
+  background: var(--reader-danger-soft);
+}
+
+.opml-export-status {
+  display: flex;
+  margin: -3px 2px 0;
+  align-items: center;
+  color: var(--reader-success);
+  font-size: 10px;
+  gap: 6px;
+}
+
+.opml-export-status .reader-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.opml-dialog-footer {
+  display: flex;
+  margin-top: 20px;
+  padding: 15px 24px 18px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid var(--reader-line);
+}
+
+.opml-dialog-footer > span {
+  color: var(--reader-text-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+@media (max-width: 680px) {
+  .opml-dialog-header {
+    padding: 20px 18px 17px;
+  }
+
+  .opml-content {
+    padding: 18px 18px 0;
+  }
+
+  .opml-mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .opml-mode-card {
+    min-height: 0;
+  }
+
+  .opml-export-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .opml-secondary-action {
+    width: 100%;
+  }
+
+  .opml-dialog-footer {
+    padding: 14px 18px 17px;
+  }
 }
 
 .theme-toggle {
@@ -3833,8 +4263,7 @@ body.workspace-is-resizing * {
   .provider-settings-dialog label span,
   .provider-settings-close,
   .form-group label,
-  .dialog-actions button,
-  .opml-action-btn
+  .dialog-actions button
 ) {
   color: var(--reader-text-muted);
 }
@@ -3859,8 +4288,7 @@ body.workspace-is-resizing * {
   .shortcut-recorder,
   .provider-settings-dialog,
   .dialog,
-  .form-group input,
-  .opml-select
+  .form-group input
 ) {
   border-color: var(--reader-line);
 }
