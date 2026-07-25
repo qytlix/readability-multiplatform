@@ -12,6 +12,15 @@ The latency-optimized runtime groups adjacent blocks into batches of at most thr
 
 Before contacting the provider, Main performs a conservative per-segment target-language check. High-confidence Simplified Chinese, Japanese, Korean, English, German, French, or Spanish segments, empty blocks, and standalone HTTP(S) URLs are persisted unchanged and emit the same `segment-completed` event as model-produced translations. Hong Kong and Taiwan usage cannot be distinguished from script alone, so automatic Traditional Chinese content still uses the provider. Ambiguous, mixed-language, and short text without enough language evidence also use the provider. An explicit source equal to the target is treated as the user's authoritative instruction.
 
+For model-generated `zh-CN` and `zh-HK` output, Main applies a final OpenCC
+writing-system normalization before persistence or inline delivery. This
+normalizes full-article HTML text nodes plus inline translations, definitions,
+contextual meanings, parts of speech, and translated examples while leaving
+source examples, pronunciation, and code-like HTML nodes unchanged. The prompt
+also explicitly forbids mixed Simplified/Traditional characters. This behavior
+uses prompt/cache version `translation-v6-chinese-script-consistency`, so
+previously cached mixed-script results are not reused.
+
 ## Persistence and cache behavior
 
 Migration `008_create_translation` adds `segmentsJson` to `entry_content` plus:
@@ -66,6 +75,8 @@ Automated coverage:
 
 - deterministic segment ID/hash generation, semantic roles, metadata blocks, and source-change invalidation;
 - prompt context/terminology instructions and safe translated-HTML validation;
+- Simplified/Hong Kong Traditional script normalization for full and inline
+  model output, including inline definitions and translated examples;
 - SQLite run/segment/provenance persistence and interrupted-run recovery;
 - local preferred/alias terminology matching from the generated pack;
 - adjacent batching, two-request concurrency limit, visible-batch priority, persisted-before-emitted completion, segment-level resume, cache reuse, stale-source protection, and one-active-run behavior;

@@ -114,4 +114,28 @@ describe('parseTranslationOutput', () => {
     expect(result.translatedText).toBe('Bdeir 说道。');
     expect(result.translatedHtml).toBe('<p>Bdeir 说道。</p>');
   });
+
+  it('normalizes mixed Chinese scripts to the selected target language', () => {
+    const simplified = parseTranslationOutput(
+      '<p>Software has been released.</p>',
+      JSON.stringify({
+        translatedHtml: '<p>軟體已经發佈，數據保持一致。</p>',
+        appliedTermIds: [],
+      }),
+      [],
+      'zh-CN',
+    );
+    const hongKongTraditional = parseTranslationOutput(
+      '<p>Software has been released.</p>',
+      JSON.stringify({
+        translatedHtml: '<p>软件已经发布，数据保持一致。</p>',
+        appliedTermIds: [],
+      }),
+      [],
+      'zh-HK',
+    );
+
+    expect(simplified.translatedText).toBe('软体已经发布，数据保持一致。');
+    expect(hongKongTraditional.translatedText).toBe('軟件已經發布，數據保持一致。');
+  });
 });

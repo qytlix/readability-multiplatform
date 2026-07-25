@@ -9,7 +9,7 @@ import type {
 import { TRANSLATION_LANGUAGE_LABELS } from '../../../shared/contracts/translation.types';
 import type { TranslationContext } from '../../../shared/contracts/translation-context.types';
 
-export const TRANSLATION_PROMPT_VERSION = 'translation-v5-expert-context-ndjson';
+export const TRANSLATION_PROMPT_VERSION = 'translation-v6-chinese-script-consistency';
 
 export interface TranslationBatchPromptSegment {
   sourceSegmentId: string;
@@ -19,10 +19,14 @@ export interface TranslationBatchPromptSegment {
 }
 
 const TARGET_LANGUAGE_INSTRUCTIONS: Record<TranslationTargetLanguage, string> = {
-  'zh-CN': 'Translate into Simplified Chinese.',
+  'zh-CN': [
+    'Translate into Simplified Chinese.',
+    'Use Simplified Chinese characters consistently in every translated field; never mix in Traditional Chinese characters.',
+  ].join(' '),
   'zh-HK': [
     'Translate into Traditional Chinese as used in Hong Kong.',
     'Use Hong Kong vocabulary, orthography, and natural written usage; do not default to Taiwan Mandarin.',
+    'Use Traditional Chinese characters consistently in every translated field; never mix in Simplified Chinese characters.',
   ].join(' '),
   ja: 'Translate into natural Japanese.',
   ko: 'Translate into natural Korean.',

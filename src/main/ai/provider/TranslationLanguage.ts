@@ -1,4 +1,5 @@
 import type { TranslationTargetLanguage } from '../../../shared/contracts/translation.types';
+import { normalizeChineseTargetText } from './ChineseScript';
 
 const SIMPLIFIED_CHINESE_HINTS = new Set(Array.from(
   '这为个们来时说过还进发后里从对开关应软体国学写读译简网数据业务优门风书买卖见问题总绍现实与万两并长无电机术设计经线点种样给让将当则边远运选测试标题页荐么装',
@@ -78,6 +79,7 @@ function isLikelySimplifiedChinese(text: string): boolean {
   const characters = Array.from(text);
   const hanCount = characters.filter((character) => /\p{Script=Han}/u.test(character)).length;
   if (hanCount < 2) return false;
+  if (normalizeChineseTargetText(text, 'zh-CN') !== text) return false;
   if (characters.some((character) =>
     /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(character))) {
     return false;

@@ -21,6 +21,8 @@ All notable changes to Shale will be documented in this file.
 ### Fixed
 
 - 安装和启动时按 Electron ABI 加载验证 `better-sqlite3`，发现错误原生模块时自动重建，避免依赖更新或 Node 测试后因遗留 Forge 元数据启动失败。
+- 中文翻译结果在 Main 进程持久化或返回前统一为所选的简体中文或香港繁体中文，
+  并升级提示词缓存版本，避免旧的简繁混合结果继续复用。
 
 ### Security
 

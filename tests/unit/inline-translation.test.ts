@@ -158,6 +158,31 @@ describe('inline Translation', () => {
     )).toThrow('conflicts with the selected source language');
   });
 
+  it('normalizes every target-language field to the selected Chinese script', () => {
+    const result = parseInlineTranslationOutput(request, JSON.stringify({
+      inputKind: 'word',
+      detectedSourceLanguage: 'en',
+      translation: '相關的软件',
+      pronunciation: '/rɪˈleɪtɪd/',
+      pronunciationSystem: 'ipa',
+      senses: [{
+        partOfSpeech: 'adjective',
+        definitions: ['與当前主题有關'],
+        contextualMeaning: '與文件相關',
+        examples: [{
+          source: 'The related software shipped.',
+          translation: '相關的軟體已经發布。',
+        }],
+      }],
+    }));
+
+    expect(result.translation).toBe('相关的软件');
+    expect(result.senses[0]?.definitions).toEqual(['与当前主题有关']);
+    expect(result.senses[0]?.contextualMeaning).toBe('与文件相关');
+    expect(result.senses[0]?.examples[0]?.translation).toBe('相关的软体已经发布。');
+    expect(result.senses[0]?.examples[0]?.source).toBe('The related software shipped.');
+  });
+
   it('uses a frozen terminology snapshot and the selected expert', async () => {
     const prompts: string[] = [];
     const providerKinds: Array<string | undefined> = [];

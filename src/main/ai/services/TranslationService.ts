@@ -689,6 +689,7 @@ export class TranslationService {
             appliedTermIds: output.appliedTermIds,
           }),
           input.terminologyCandidates,
+          result.targetLanguage,
         );
         const completedSegment = this.translationStore.markSegmentSucceeded(
           result.id,

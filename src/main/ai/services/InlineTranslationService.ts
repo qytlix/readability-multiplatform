@@ -20,6 +20,7 @@ import {
 import type { ProviderProfileStore } from '../stores/ProviderProfileStore';
 import type { SecretStore } from '../stores/SecretStore';
 import type { TextGenerationProvider } from '../provider/TextGenerationProvider';
+import { normalizeChineseTargetText } from '../provider/ChineseScript';
 import {
   buildSourceLanguageInstruction,
   getTargetLanguageInstruction,
@@ -247,7 +248,10 @@ export function parseInlineTranslationOutput(
     );
   }
   const translation = requiredString(parsed.translation, 'translation', 4_000);
-  const senses = parseSenses(parsed.senses);
+  const senses = normalizeInlineSenses(
+    parseSenses(parsed.senses),
+    request.targetLanguage,
+  );
   const pronunciation = optionalString(
     parsed.pronunciation,
     'pronunciation',
@@ -282,11 +286,33 @@ export function parseInlineTranslationOutput(
     sourceLanguage: request.sourceLanguage,
     detectedSourceLanguage,
     targetLanguage: request.targetLanguage,
-    translation,
+    translation: normalizeChineseTargetText(translation, request.targetLanguage),
     ...(pronunciation ? { pronunciation } : {}),
     ...(pronunciationSystem ? { pronunciationSystem } : {}),
     senses,
   };
+}
+
+function normalizeInlineSenses(
+  senses: InlineTranslationSense[],
+  targetLanguage: InlineTranslationRequest['targetLanguage'],
+): InlineTranslationSense[] {
+  return senses.map((sense) => ({
+    ...sense,
+    partOfSpeech: normalizeChineseTargetText(sense.partOfSpeech, targetLanguage),
+    definitions: sense.definitions.map((definition) =>
+      normalizeChineseTargetText(definition, targetLanguage)),
+    ...(sense.contextualMeaning ? {
+      contextualMeaning: normalizeChineseTargetText(
+        sense.contextualMeaning,
+        targetLanguage,
+      ),
+    } : {}),
+    examples: sense.examples.map((example) => ({
+      ...example,
+      translation: normalizeChineseTargetText(example.translation, targetLanguage),
+    })),
+  }));
 }
 
 function validateInlineTranslationRequest(
