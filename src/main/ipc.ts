@@ -20,11 +20,13 @@ import {
   registerTranslationIpcHandlers,
 } from './ipc/translation.handler';
 import { registerUsageIpcHandlers } from './ipc/usage.handler';
+import { registerAnnotationIpcHandlers } from './ipc/annotation.handler';
 import {
   getFeedServices,
   getSummaryServices,
   getTranslationServices,
   getUsageServices,
+  getAnnotationServices,
 } from './services';
 
 export type GetMainWindow = () => BrowserWindow | null;
@@ -151,5 +153,10 @@ export function registerIpcHandlers(
   const usageServices = getUsageServices();
   if (usageServices) {
     registerUsageIpcHandlers(getMainWindow, usageServices.usageStatisticsService);
+  }
+
+  const annotationServices = getAnnotationServices();
+  if (annotationServices) {
+    registerAnnotationIpcHandlers(getMainWindow, annotationServices);
   }
 }

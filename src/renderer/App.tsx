@@ -446,10 +446,18 @@ export const App = () => {
     if (!listEntry) return;
 
     setActiveView('reader');
+    if (selectedEntryId === entryId) {
+      setSelectedEntryId(null);
+      setSelectedEntry(null);
+      setShowReaderMenu(false);
+      setReaderFeedback('');
+      return;
+    }
+
     setSelectedEntryId(entryId);
     setSelectedEntry(toEntry(listEntry));
     setReaderFeedback('');
-  }, [entries]);
+  }, [entries, selectedEntryId]);
 
   const handleReadingProgressChange = useCallback(async (
     entryId: number,
@@ -897,6 +905,8 @@ export const App = () => {
           </div>
         </main>
       </div>
+
+      <div className="annotation-overlay-root" />
 
       {readerFeedback && (
         <div className="reader-toast" role="status">{readerFeedback}</div>

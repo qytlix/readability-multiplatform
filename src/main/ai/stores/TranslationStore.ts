@@ -14,6 +14,8 @@ import type {
 } from '../../../shared/contracts/translation.types';
 import { TRANSLATION_ERROR_CODES } from '../../../shared/errors/translation.errors';
 
+const DEFAULT_SOURCE_LANGUAGE = 'auto';
+
 interface TranslationResultRow {
   id: number;
   entryId: number;
@@ -69,12 +71,13 @@ export class TranslationStore {
   ): TranslationResult | undefined {
     const row = this.db.prepare(`
       SELECT * FROM translation_result
-      WHERE entryId = ? AND targetLanguage = ?
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
         AND sourceContentHash = ? AND segmenterVersion = ?
         AND promptVersion = ?
         AND terminologyPackVersion = ?
     `).get(
       entryId,
+      DEFAULT_SOURCE_LANGUAGE,
       targetLanguage,
       sourceContentHash,
       segmenterVersion,
@@ -90,9 +93,9 @@ export class TranslationStore {
   ): TranslationResult | undefined {
     const row = this.db.prepare(`
       SELECT * FROM translation_result
-      WHERE entryId = ? AND targetLanguage = ?
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
       ORDER BY updatedAt DESC, id DESC LIMIT 1
-    `).get(entryId, targetLanguage) as TranslationResultRow | undefined;
+    `).get(entryId, DEFAULT_SOURCE_LANGUAGE, targetLanguage) as TranslationResultRow | undefined;
     return row ? this.toResult(row) : undefined;
   }
 
@@ -101,23 +104,25 @@ export class TranslationStore {
     const persist = this.db.transaction(() => {
       this.db.prepare(`
         DELETE FROM translation_result
-        WHERE entryId = ? AND targetLanguage = ?
+        WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
           AND sourceContentHash = ? AND segmenterVersion = ?
       `).run(
         params.entryId,
+        DEFAULT_SOURCE_LANGUAGE,
         params.targetLanguage,
         params.sourceContentHash,
         params.segmenterVersion,
       );
       const inserted = this.db.prepare(`
         INSERT INTO translation_result
-          (entryId, providerProfileId, targetLanguage, sourceContentHash,
+          (entryId, providerProfileId, sourceLanguage, targetLanguage, sourceContentHash,
            segmenterVersion, promptVersion, terminologyPackVersion,
            status, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
       `).run(
         params.entryId,
         params.providerProfileId,
+        DEFAULT_SOURCE_LANGUAGE,
         params.targetLanguage,
         params.sourceContentHash,
         params.segmenterVersion,

@@ -10,14 +10,17 @@ import { MIGRATION_006 } from '../../src/main/migrations/006_create_ai_profiles'
 import { MIGRATION_007 } from '../../src/main/migrations/007_create_summary';
 import { MIGRATION_008 } from '../../src/main/migrations/008_create_translation';
 import { MIGRATION_009 } from '../../src/main/migrations/009_enhance_translation';
+import { runMigration014 } from '../../src/main/migrations/014_add_translation_source_language';
 import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
 
 describe('TranslationStore', () => {
   let translationStore: TranslationStore;
   let providerProfileId: number;
+  let database: Database.Database;
 
   beforeEach(() => {
     const { db } = buildTestDbWithData();
+    database = db;
     const profiles = new ProviderProfileStore(db);
     providerProfileId = profiles.saveActive({
       baseUrl: 'https://provider.example/v1',
@@ -38,8 +41,13 @@ describe('TranslationStore', () => {
 
     expect(() => db.exec(MIGRATION_008)).not.toThrow();
     expect(() => db.exec(MIGRATION_009)).not.toThrow();
+    expect(() => runMigration014(db)).not.toThrow();
     const contentColumns = db.prepare('PRAGMA table_info(entry_content)').all() as Array<{ name: string }>;
     expect(contentColumns.map((column) => column.name)).toContain('segmentsJson');
+    const translationColumns = db.prepare('PRAGMA table_info(translation_result)').all() as Array<{
+      name: string;
+    }>;
+    expect(translationColumns.map((column) => column.name)).toContain('sourceLanguage');
     expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'translation_result'").get())
       .toBeDefined();
   });
@@ -72,6 +80,61 @@ describe('TranslationStore', () => {
       'translation-v1',
       'test-pack',
     )?.id).toBe(run.id);
+    expect(database
+      .prepare('SELECT sourceLanguage FROM translation_result WHERE id = ?')
+      .get(run.id)).toEqual({ sourceLanguage: 'auto' });
+  });
+
+  it('starts a new run against an expanded Translation schema with no source-language default', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(MIGRATION_001);
+    db.exec(MIGRATION_002);
+    db.exec(MIGRATION_003);
+    db.exec(MIGRATION_004);
+    db.exec(MIGRATION_006);
+    db.exec(MIGRATION_008);
+    db.exec(MIGRATION_009);
+    db.exec(`ALTER TABLE translation_result ADD COLUMN sourceLanguage TEXT NOT NULL`);
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO feed (title, feedURL, lastSyncStatus, createdAt)
+      VALUES (?, ?, 'success', ?)
+    `).run('Test Feed', 'https://example.com/feed.xml', now);
+    db.prepare(`
+      INSERT INTO entry
+        (feedId, guid, url, title, isRead, isStarred, isDeleted, createdAt, updatedAt)
+      VALUES (1, ?, ?, ?, 0, 0, 0, ?, ?)
+    `).run('guid-1', 'https://example.com/entry', 'Test entry', now, now);
+    const profileId = new ProviderProfileStore(db).saveActive({
+      baseUrl: 'https://provider.example/v1',
+      model: 'example-model',
+      apiKeyRef: 'secret-reference',
+    }).id;
+    const store = new TranslationStore(db);
+
+    const run = store.createRun({
+      entryId: 1,
+      providerProfileId: profileId,
+      targetLanguage: 'zh-CN',
+      sourceContentHash: 'expanded-schema-hash',
+      segmenterVersion: 'v3',
+      promptVersion: 'translation-v1',
+      terminologyPackVersion: 'none',
+      segments: [
+        {
+          id: 'seg_0',
+          orderIndex: 0,
+          type: 'paragraph',
+          sourceHtml: '<p>Source</p>',
+          sourceText: 'Source',
+        },
+      ],
+    });
+
+    expect(db.prepare('SELECT sourceLanguage FROM translation_result WHERE id = ?').get(run.id))
+      .toEqual({ sourceLanguage: 'auto' });
+    db.close();
   });
 
   it('reconciles interrupted Translation runs as retryable failures', () => {

@@ -10,8 +10,10 @@ import { MIGRATION_008 } from '../migrations/008_create_translation';
 import { MIGRATION_009 } from '../migrations/009_enhance_translation';
 import { MIGRATION_010 as MIGRATION_010_READING_PROGRESS } from '../migrations/010_add_entry_reading_progress';
 import { MIGRATION_010_SQL, runMigration010 } from '../migrations/010_create_dedup_key';
-import { MIGRATION_011 } from '../migrations/011_create_llm_usage_events';
+import { MIGRATION_011 as MIGRATION_011_USAGE } from '../migrations/011_create_llm_usage_events';
 import { MIGRATION_012 } from '../migrations/012_add_llm_usage_attempt_id';
+import { MIGRATION_013 } from '../migrations/013_create_entry_annotations';
+import { runMigration014 } from '../migrations/014_add_translation_source_language';
 
 interface Migration {
   id: string;
@@ -36,8 +38,10 @@ const MIGRATIONS: Migration[] = [
     sql: MIGRATION_010_READING_PROGRESS,
   },
   { id: '010_create_dedup_key', sql: MIGRATION_010_SQL, run: runMigration010 },
-  { id: '011_create_llm_usage_events', sql: MIGRATION_011 },
+  { id: '011_create_llm_usage_events', sql: MIGRATION_011_USAGE },
   { id: '012_add_llm_usage_attempt_id', sql: MIGRATION_012 },
+  { id: '013_create_entry_annotations', sql: MIGRATION_013 },
+  { id: '014_add_translation_source_language', run: runMigration014 },
 ];
 
 export class DatabaseManager {

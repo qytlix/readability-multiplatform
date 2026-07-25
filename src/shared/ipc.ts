@@ -2,6 +2,7 @@ import type { ProviderAPI, SummaryAPI } from './contracts/summary.ipc';
 import type { TranslationAPI } from './contracts/translation.ipc';
 import type { DiagnosticsAPI } from './contracts/diagnostics.ipc';
 import type { UsageAPI } from './contracts/usage.ipc';
+import type { AnnotationAPI } from './contracts/annotation.ipc';
 import type {
   FeedAPI,
   EntryAPI,
@@ -48,4 +49,5 @@ export interface ShaleAPI {
   translation: TranslationAPI;
   diagnostics: DiagnosticsAPI;
   usage: UsageAPI;
+  annotation: AnnotationAPI;
 }

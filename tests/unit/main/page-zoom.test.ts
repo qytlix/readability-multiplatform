@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getApplicationMenuTemplate } from '../../../src/main/application-menu';
+import { removeApplicationMenu } from '../../../src/main/application-menu';
 import {
   PAGE_ZOOM_FACTOR,
   initializePageZoom,
@@ -40,16 +40,16 @@ const createWebContents = (initialZoomFactor: number) => {
 };
 
 describe('fixed page zoom', () => {
-  it.each(['darwin', 'win32', 'linux'])(
-    'does not include a page zoom menu role on %s',
-    (platform) => {
-      const serializedTemplate = JSON.stringify(getApplicationMenuTemplate(platform));
+  it('removes the native Electron application menu', () => {
+    const menuController = {
+      setApplicationMenu: vi.fn(),
+    };
 
-      expect(serializedTemplate).not.toContain('zoomIn');
-      expect(serializedTemplate).not.toContain('zoomOut');
-      expect(serializedTemplate).not.toContain('resetZoom');
-    },
-  );
+    removeApplicationMenu(menuController);
+
+    expect(menuController.setApplicationMenu).toHaveBeenCalledOnce();
+    expect(menuController.setApplicationMenu).toHaveBeenCalledWith(null);
+  });
 
   it.each([0.9, 1.3])(
     'resets a persisted %s origin zoom after the main page finishes loading',

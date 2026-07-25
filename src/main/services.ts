@@ -34,6 +34,8 @@ import {
   EmptyTerminologyLookup,
   TerminologyStore,
 } from './ai/stores/TerminologyStore';
+import { AnnotationStore } from './annotations/AnnotationStore';
+import { AnnotationService } from './annotations/AnnotationService';
 
 // ── Service Interfaces ──────────────────────────────────
 
@@ -63,11 +65,16 @@ export interface UsageServices {
   usageStatisticsService: UsageStatisticsService;
 }
 
+export interface AnnotationServices {
+  annotationService: AnnotationService;
+}
+
 // ── Module-level Singletons ─────────────────────────────
 
 let feedServicesSingleton: FeedServices | null = null;
 let summaryServicesSingleton: SummaryServices | null = null;
 let translationServicesSingleton: TranslationServices | null = null;
+let annotationServicesSingleton: AnnotationServices | null = null;
 let usageServicesSingleton: UsageServices | null = null;
 
 /** Returns the feed services singleton (null before initializeServices). */
@@ -88,6 +95,10 @@ export function getTranslationServices(): TranslationServices | null {
 /** Returns the read-only usage statistics service (null before initializeServices). */
 export function getUsageServices(): UsageServices | null {
   return usageServicesSingleton;
+}
+
+export function getAnnotationServices(): AnnotationServices | null {
+  return annotationServicesSingleton;
 }
 
 /** Returns the feed sync scheduler for application lifecycle cleanup. */
@@ -151,6 +162,7 @@ export function initializeServices(
   const usageRecorder = new UsageRecorder(usageStore, operationLogger);
   const usageStatisticsService = new UsageStatisticsService(usageStore);
   usageRecorder.reconcileInterruptedRunning();
+  const annotationStore = new AnnotationStore(dbManager.getDb());
   const secretStore = new SecretStore(
     secretStoragePath ?? path.join(path.dirname(dbPath ?? '.'), 'ai-secrets.json'),
     safeStorage,
@@ -193,6 +205,7 @@ export function initializeServices(
     provider,
     terminologyLookup,
   );
+  const annotationService = new AnnotationService(annotationStore, entryStore);
 
   feedServicesSingleton = {
     feedService,
@@ -207,6 +220,7 @@ export function initializeServices(
   };
   summaryServicesSingleton = { providerService, summaryService };
   translationServicesSingleton = { translationService, inlineTranslationService };
+  annotationServicesSingleton = { annotationService };
   usageServicesSingleton = { usageStatisticsService };
   return feedServicesSingleton;
 }

@@ -78,6 +78,9 @@ describe('EntryDetail reading-progress restoration', () => {
           get: vi.fn().mockResolvedValue({ ok: true, data: cleanedContent }),
           fetchAndClean: vi.fn(),
         },
+        annotation: {
+          list: vi.fn().mockResolvedValue({ ok: true, data: [] }),
+        },
       } as unknown as typeof window.shaleAPI,
     });
     container = document.createElement('div');

@@ -130,6 +130,7 @@ export const EntryList = ({
                 else storyCardRefs.current.delete(entry.id);
               }}
               className={`story-card${selectedEntryId === entry.id ? ' is-active' : ''}`}
+              aria-pressed={selectedEntryId === entry.id}
               onClick={() => onSelectEntry(entry.id)}
             >
               <div className="story-card-copy">

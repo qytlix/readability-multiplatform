@@ -28,7 +28,7 @@ import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
 import type { SummaryOperationLogger } from './ai/services/SummaryLogging';
 import type { TranslationOperationLogger } from './ai/services/TranslationLogging';
 import type { UsageLedgerOperationLogger } from './ai/services/UsageRecorder';
-import { getApplicationMenuTemplate } from './application-menu';
+import { removeApplicationMenu } from './application-menu';
 import { MAIN_LIFECYCLE_EVENTS } from './logging/MainLifecycleEvents';
 import { StructuredLogger, type AppInitializationPhase } from './logging/StructuredLogger';
 import { NormalShutdownCoordinator } from './logging/NormalShutdownCoordinator';
@@ -141,7 +141,7 @@ async function initializeApplication(): Promise<void> {
     arch: process.arch,
   });
 
-  Menu.setApplicationMenu(Menu.buildFromTemplate(getApplicationMenuTemplate()));
+  removeApplicationMenu(Menu);
   // Initialize database with persistent path
   const dbPath = path.join(app.getPath('userData'), 'shale.db');
   const secretStoragePath = path.join(app.getPath('userData'), 'ai-secrets.json');
