@@ -135,4 +135,64 @@ describe('projectBilingualBody', () => {
       .toBe('translation-segment-spinner');
     expect(root.querySelector('ul > .translation-segment-spinner')).toBeNull();
   });
+
+  it('shows a failed segment as untranslated instead of leaving its spinner visible', () => {
+    const dom = new JSDOM('<p>Special segment.</p><p>Pending paragraph.</p>');
+    const root = dom.window.document.createElement('div');
+    root.innerHTML = dom.window.document.body.innerHTML;
+    const failedSegment: TranslationSegment = {
+      sourceSegmentId: 'special',
+      orderIndex: 0,
+      sourceType: 'paragraph',
+      sourceHtml: '<p>Special segment.</p>',
+      sourceText: 'Special segment.',
+      terminologyMatches: [],
+      status: 'failed',
+      error: {
+        code: 'TRANSLATION_EMPTY_OUTPUT',
+        message: 'The provider returned no readable Translation output.',
+        retryable: true,
+      },
+    };
+    const pendingSegment: TranslationSegment = {
+      sourceSegmentId: 'pending',
+      orderIndex: 1,
+      sourceType: 'paragraph',
+      sourceHtml: '<p>Pending paragraph.</p>',
+      sourceText: 'Pending paragraph.',
+      terminologyMatches: [],
+      status: 'pending',
+    };
+
+    projectBilingualBody(root, [failedSegment, pendingSegment], {
+      showPendingIndicators: true,
+    });
+
+    const untranslated = root.querySelector('.translation-segment-untranslated');
+    expect(untranslated?.textContent).toBe('Untranslated');
+    expect(untranslated?.getAttribute('role')).toBe('status');
+    expect(root.querySelector('[data-segment-id="special"] .translation-segment-spinner')).toBeNull();
+    expect(root.querySelector('[data-segment-id="pending"] .translation-segment-spinner')).not.toBeNull();
+  });
+
+  it('leaves a locally skipped symbol segment in place without a duplicate target block', () => {
+    const dom = new JSDOM('<p>✦ — ✦</p>');
+    const root = dom.window.document.createElement('div');
+    root.innerHTML = dom.window.document.body.innerHTML;
+    const skippedSegment = segment(
+      'symbol',
+      0,
+      'paragraph',
+      '<p>✦ — ✦</p>',
+      '✦ — ✦',
+      '<p>✦ — ✦</p>',
+    );
+
+    projectBilingualBody(root, [skippedSegment], {
+      showPendingIndicators: false,
+    });
+
+    expect(root.querySelector('p')?.textContent).toBe('✦ — ✦');
+    expect(root.querySelector('.translation-bilingual-target')).toBeNull();
+  });
 });

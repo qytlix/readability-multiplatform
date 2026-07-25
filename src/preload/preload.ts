@@ -10,6 +10,8 @@ import type { SaveProviderRequest } from '../shared/contracts/provider.types';
 import type { SummaryStreamEvent } from '../shared/contracts/summary.types';
 import { TRANSLATION_IPC_CHANNELS } from '../shared/contracts/translation.ipc';
 import { DIAGNOSTICS_IPC_CHANNELS } from '../shared/contracts/diagnostics.ipc';
+import { USAGE_IPC_CHANNELS } from '../shared/contracts/usage.ipc';
+import type { UsageStatisticsQuery } from '../shared/contracts/usage.types';
 import { ANNOTATION_IPC_CHANNELS } from '../shared/contracts/annotation.ipc';
 import type {
   AnnotationIdRequest,
@@ -162,6 +164,11 @@ const diagnosticsAPI = {
   export: () => ipcRenderer.invoke(DIAGNOSTICS_IPC_CHANNELS.export),
 };
 
+const usageAPI = {
+  getStatistics: (query: UsageStatisticsQuery) =>
+    ipcRenderer.invoke(USAGE_IPC_CHANNELS.statisticsGet, query),
+};
+
 const annotationAPI = {
   list: (request: AnnotationListRequest) =>
     ipcRenderer.invoke(ANNOTATION_IPC_CHANNELS.list, request),
@@ -187,6 +194,7 @@ const shaleAPI: ShaleAPI = {
   summary: summaryAPI,
   translation: translationAPI,
   diagnostics: diagnosticsAPI,
+  usage: usageAPI,
   annotation: annotationAPI,
 };
 

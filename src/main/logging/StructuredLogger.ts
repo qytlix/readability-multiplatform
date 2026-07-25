@@ -30,14 +30,26 @@ const CONTEXT_FIELD_TYPES = {
   entryId: 'number',
   taskRunId: 'number',
   providerId: 'number',
+  providerRequestId: 'number',
   count: 'number',
   successCount: 'number',
   failureCount: 'number',
   newCount: 'number',
+  segmentCount: 'number',
+  providerRequestCount: 'number',
+  batchRequestCount: 'number',
+  compensationRequestCount: 'number',
+  providerRequestSuccessCount: 'number',
+  providerRequestFailureCount: 'number',
+  missingSegmentCount: 'number',
+  inputTokens: 'number',
+  outputTokens: 'number',
+  totalTokens: 'number',
   durationMs: 'number',
   httpStatus: 'number',
   errorCode: 'string',
   stage: 'string',
+  requestKind: 'string',
   trigger: 'string',
   outcome: 'string',
   success: 'boolean',
@@ -70,14 +82,26 @@ export interface StructuredLogContext {
   entryId?: number;
   taskRunId?: number;
   providerId?: number;
+  providerRequestId?: number;
   count?: number;
   successCount?: number;
   failureCount?: number;
   newCount?: number;
+  segmentCount?: number;
+  providerRequestCount?: number;
+  batchRequestCount?: number;
+  compensationRequestCount?: number;
+  providerRequestSuccessCount?: number;
+  providerRequestFailureCount?: number;
+  missingSegmentCount?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
   durationMs?: number;
   httpStatus?: number;
   errorCode?: string;
   stage?: string;
+  requestKind?: string;
   trigger?: string;
   outcome?: string;
   success?: boolean;
@@ -557,6 +581,9 @@ function assignContextField(
     case 'providerId':
       if (typeof value === 'number') context.providerId = value;
       return;
+    case 'providerRequestId':
+      if (typeof value === 'number') context.providerRequestId = value;
+      return;
     case 'count':
       if (typeof value === 'number') context.count = value;
       return;
@@ -569,6 +596,36 @@ function assignContextField(
     case 'newCount':
       if (typeof value === 'number') context.newCount = value;
       return;
+    case 'segmentCount':
+      if (typeof value === 'number') context.segmentCount = value;
+      return;
+    case 'providerRequestCount':
+      if (typeof value === 'number') context.providerRequestCount = value;
+      return;
+    case 'batchRequestCount':
+      if (typeof value === 'number') context.batchRequestCount = value;
+      return;
+    case 'compensationRequestCount':
+      if (typeof value === 'number') context.compensationRequestCount = value;
+      return;
+    case 'providerRequestSuccessCount':
+      if (typeof value === 'number') context.providerRequestSuccessCount = value;
+      return;
+    case 'providerRequestFailureCount':
+      if (typeof value === 'number') context.providerRequestFailureCount = value;
+      return;
+    case 'missingSegmentCount':
+      if (typeof value === 'number') context.missingSegmentCount = value;
+      return;
+    case 'inputTokens':
+      if (typeof value === 'number') context.inputTokens = value;
+      return;
+    case 'outputTokens':
+      if (typeof value === 'number') context.outputTokens = value;
+      return;
+    case 'totalTokens':
+      if (typeof value === 'number') context.totalTokens = value;
+      return;
     case 'durationMs':
       if (typeof value === 'number') context.durationMs = value;
       return;
@@ -580,6 +637,9 @@ function assignContextField(
       return;
     case 'stage':
       if (typeof value === 'string') context.stage = value;
+      return;
+    case 'requestKind':
+      if (typeof value === 'string') context.requestKind = value;
       return;
     case 'trigger':
       if (typeof value === 'string') context.trigger = value;

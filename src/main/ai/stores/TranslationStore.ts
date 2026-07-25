@@ -14,6 +14,8 @@ import type {
 } from '../../../shared/contracts/translation.types';
 import { TRANSLATION_ERROR_CODES } from '../../../shared/errors/translation.errors';
 
+const DEFAULT_SOURCE_LANGUAGE = 'auto';
+
 interface TranslationResultRow {
   id: number;
   entryId: number;
@@ -69,12 +71,13 @@ export class TranslationStore {
   ): TranslationResult | undefined {
     const row = this.db.prepare(`
       SELECT * FROM translation_result
-      WHERE entryId = ? AND targetLanguage = ?
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
         AND sourceContentHash = ? AND segmenterVersion = ?
         AND promptVersion = ?
         AND terminologyPackVersion = ?
     `).get(
       entryId,
+      DEFAULT_SOURCE_LANGUAGE,
       targetLanguage,
       sourceContentHash,
       segmenterVersion,
@@ -90,9 +93,9 @@ export class TranslationStore {
   ): TranslationResult | undefined {
     const row = this.db.prepare(`
       SELECT * FROM translation_result
-      WHERE entryId = ? AND targetLanguage = ?
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
       ORDER BY updatedAt DESC, id DESC LIMIT 1
-    `).get(entryId, targetLanguage) as TranslationResultRow | undefined;
+    `).get(entryId, DEFAULT_SOURCE_LANGUAGE, targetLanguage) as TranslationResultRow | undefined;
     return row ? this.toResult(row) : undefined;
   }
 
@@ -101,23 +104,25 @@ export class TranslationStore {
     const persist = this.db.transaction(() => {
       this.db.prepare(`
         DELETE FROM translation_result
-        WHERE entryId = ? AND targetLanguage = ?
+        WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
           AND sourceContentHash = ? AND segmenterVersion = ?
       `).run(
         params.entryId,
+        DEFAULT_SOURCE_LANGUAGE,
         params.targetLanguage,
         params.sourceContentHash,
         params.segmenterVersion,
       );
       const inserted = this.db.prepare(`
         INSERT INTO translation_result
-          (entryId, providerProfileId, targetLanguage, sourceContentHash,
+          (entryId, providerProfileId, sourceLanguage, targetLanguage, sourceContentHash,
            segmenterVersion, promptVersion, terminologyPackVersion,
            status, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
       `).run(
         params.entryId,
         params.providerProfileId,
+        DEFAULT_SOURCE_LANGUAGE,
         params.targetLanguage,
         params.sourceContentHash,
         params.segmenterVersion,
@@ -201,6 +206,27 @@ export class TranslationStore {
     return segment;
   }
 
+  markSegmentFailed(
+    runId: number,
+    sourceSegmentId: string,
+    error: ShaleError,
+  ): TranslationSegment {
+    this.db.prepare(`
+      UPDATE translation_segment
+      SET status = 'failed', errorCode = ?, errorMessage = ?, updatedAt = ?
+      WHERE translationResultId = ? AND sourceSegmentId = ? AND status = 'pending'
+    `).run(
+      error.code,
+      error.message,
+      new Date().toISOString(),
+      runId,
+      sourceSegmentId,
+    );
+    const segment = this.findSegment(runId, sourceSegmentId);
+    if (!segment) throw new Error('Translation segment disappeared after failure.');
+    return segment;
+  }
+
   markRunSucceeded(runId: number): TranslationResult {
     const now = new Date().toISOString();
     this.db.prepare(`
@@ -238,9 +264,9 @@ export class TranslationStore {
     persist();
   }
 
-  reconcileInterruptedRuns(): void {
+  reconcileInterruptedRuns(): number {
     const now = new Date().toISOString();
-    this.db.prepare(`
+    const result = this.db.prepare(`
       UPDATE translation_result
       SET status = 'failed', errorCode = ?, errorMessage = ?, errorRetryable = 1,
           completedAt = ?, updatedAt = ?
@@ -251,6 +277,7 @@ export class TranslationStore {
       now,
       now,
     );
+    return result.changes;
   }
 
   private findById(runId: number): TranslationResult | undefined {

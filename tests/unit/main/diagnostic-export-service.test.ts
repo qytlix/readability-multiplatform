@@ -22,7 +22,15 @@ import {
   createDiagnosticFileName,
   type DiagnosticExportFileOperations,
 } from '../../../src/main/diagnostics/DiagnosticExportService';
-import { STRUCTURED_LOG_SCHEMA_VERSION } from '../../../src/main/logging/StructuredLogger';
+import {
+  StructuredLogger,
+  STRUCTURED_LOG_SCHEMA_VERSION,
+} from '../../../src/main/logging/StructuredLogger';
+import {
+  logTranslationProviderRequestCompleted,
+  logTranslationRunCompleted,
+  TRANSLATION_LOG_EVENTS,
+} from '../../../src/main/ai/services/TranslationLogging';
 
 const temporaryDirectories: string[] = [];
 const GENERATED_AT = new Date('2026-07-24T08:00:00.000Z');
@@ -134,6 +142,86 @@ describe('DiagnosticExportService', () => {
       },
     });
     expect(report.logs.records.map((entry) => entry.context?.count)).toEqual([1, 2]);
+  });
+
+  it('includes the safe Translation lifecycle records written by the operation logger', async () => {
+    const logDirectory = createDirectory();
+    const logger = new StructuredLogger({
+      directory: logDirectory,
+      now: () => GENERATED_AT,
+      createSessionId: () => 'session-test-translation',
+    });
+    logTranslationRunCompleted(logger, {
+      taskRunId: 12,
+      durationMs: 34,
+      success: true,
+      providerRequestCount: 0,
+      batchRequestCount: 0,
+      compensationRequestCount: 0,
+      providerRequestSuccessCount: 0,
+      providerRequestFailureCount: 0,
+      missingSegmentCount: 0,
+    });
+    await logger.flush();
+
+    const report = await createService(logDirectory).buildReport();
+
+    expect(report.logs.records).toEqual([
+      expect.objectContaining({
+        event: TRANSLATION_LOG_EVENTS.runCompleted,
+        component: 'translation.run',
+        context: {
+          taskRunId: 12,
+          durationMs: 34,
+          success: true,
+          providerRequestCount: 0,
+          batchRequestCount: 0,
+          compensationRequestCount: 0,
+          providerRequestSuccessCount: 0,
+          providerRequestFailureCount: 0,
+          missingSegmentCount: 0,
+        },
+      }),
+    ]);
+  });
+
+  it('includes safe Translation Provider request diagnostics in the exported report', async () => {
+    const logDirectory = createDirectory();
+    const logger = new StructuredLogger({
+      directory: logDirectory,
+      now: () => GENERATED_AT,
+      createSessionId: () => 'session-test-translation-request',
+    });
+    logTranslationProviderRequestCompleted(logger, {
+      taskRunId: 12,
+      providerRequestId: 3,
+      requestKind: 'compensation',
+      segmentCount: 1,
+      durationMs: 34,
+      success: true,
+      inputTokens: 11,
+      outputTokens: 7,
+    });
+    await logger.flush();
+
+    const report = await createService(logDirectory).buildReport();
+
+    expect(report.logs.records).toEqual([
+      expect.objectContaining({
+        event: TRANSLATION_LOG_EVENTS.providerRequestCompleted,
+        component: 'translation.provider.request',
+        context: {
+          taskRunId: 12,
+          providerRequestId: 3,
+          requestKind: 'compensation',
+          segmentCount: 1,
+          durationMs: 34,
+          success: true,
+          inputTokens: 11,
+          outputTokens: 7,
+        },
+      }),
+    ]);
   });
 
   it('exports the latest 1,000 valid records while preserving chronological order', async () => {

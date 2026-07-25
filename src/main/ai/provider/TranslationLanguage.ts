@@ -10,6 +10,15 @@ const ENGLISH_SIGNAL_WORDS = new Set([
 ]);
 
 /**
+ * True only when a segment contains Unicode letters that could carry
+ * translatable language. Symbols, emoji, separators, and number-only labels
+ * remain in the Reader but do not need a Provider request.
+ */
+export function hasTranslatableText(text: string): boolean {
+  return /\p{L}/u.test(text.normalize('NFKC'));
+}
+
+/**
  * Conservatively identifies segments that are already written in the selected
  * target language. False negatives cost one provider call; false positives can
  * skip a needed translation, so mixed or ambiguous text deliberately returns
