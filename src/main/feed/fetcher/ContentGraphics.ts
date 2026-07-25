@@ -29,6 +29,17 @@ export function removeUntranslatableIcons(root: HTMLElement): void {
   stripVisualEmojiFromText(root);
 }
 
+/**
+ * Readability can discard publisher classes before post-cleanup runs. Remove
+ * source graphics whose own attributes identify them as decorative while
+ * those semantic hints are still available.
+ */
+export function removeSourceDecorativeGraphics(root: HTMLElement): void {
+  for (const graphic of root.querySelectorAll('img, svg')) {
+    if (isDecorativeIcon(graphic)) graphic.remove();
+  }
+}
+
 export function isMathElement(node: Element): boolean {
   if (node.matches(MATH_ELEMENT_SELECTOR)) return true;
   const imageAlt = node.tagName.toLowerCase() === 'img'

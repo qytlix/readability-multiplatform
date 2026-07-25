@@ -1952,6 +1952,47 @@ body.workspace-is-resizing * {
   border-radius: 3px;
 }
 
+.entry-detail-html .reader-author-card {
+  display: flex;
+  margin: 24px 0 34px;
+  align-items: center;
+  gap: 12px;
+  font-family: "Segoe UI", "Noto Sans SC", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.entry-detail-html .reader-author-avatar-link {
+  flex: 0 0 auto;
+}
+
+.entry-detail-html .reader-author-avatar {
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.entry-detail-html .reader-author-details {
+  min-width: 0;
+}
+
+.entry-detail-html .reader-author-details p {
+  margin: 0;
+}
+
+.entry-detail-html .reader-author-name {
+  color: var(--reader-accent-strong);
+  font-weight: 650;
+}
+
+.entry-detail-html .reader-author-bio {
+  margin-top: 3px;
+  color: var(--reader-text-muted);
+  font-size: 12px;
+}
+
 .entry-detail-video-embed {
   width: 100%;
   margin: 0 0 36px;
@@ -3364,6 +3405,7 @@ body.workspace-is-resizing * {
   .story-list-state h2,
   .article-byline strong,
   .article-body,
+  .entry-detail-author,
   .entry-detail-html,
   .translation-bilingual-content,
   .summary-result,

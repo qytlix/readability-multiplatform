@@ -128,6 +128,75 @@ describe('ContentCleaner', () => {
     expect(result.content).toContain('The team celebrates its victory.');
   });
 
+  it('removes publisher placeholder icons before Readability drops icon classes', () => {
+    const articleParagraph = (
+      'The article contains enough useful reporting and explanation for Reader extraction. '
+    ).repeat(12);
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Publisher article</title></head>
+        <body>
+          <article>
+            <p>
+              <span>
+                <img
+                  class="article__header__tag__icon"
+                  src="https://cdn.example.com/ui/img-placeholder.png"
+                  alt="Featured"
+                >
+                <span>Featured</span>
+              </span>
+            </p>
+            <h1>Publisher article</h1>
+            <p>${articleParagraph}</p>
+            <p>${articleParagraph}</p>
+          </article>
+        </body>
+      </html>`,
+      'https://example.com/posts/article',
+    );
+
+    expect(result.content).toContain('Featured');
+    expect(result.content).not.toContain('img-placeholder.png');
+    expect(result.content).not.toContain('alt="Featured"');
+  });
+
+  it('uses real lazy image sources and drops unresolved placeholder images', () => {
+    const articleParagraph = (
+      'The article contains enough useful reporting and explanation for Reader extraction. '
+    ).repeat(12);
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Lazy image article</title></head>
+        <body>
+          <article>
+            <h1>Lazy image article</h1>
+            <p>${articleParagraph}</p>
+            <figure>
+              <img
+                src="/assets/image-placeholder.png"
+                data-src="/photos/real-photo.jpg"
+                alt="Article photo"
+              >
+            </figure>
+            <p>
+              <img src="/assets/img-placeholder.png" alt="Unresolved placeholder">
+            </p>
+            <p>${articleParagraph}</p>
+          </article>
+        </body>
+      </html>`,
+      'https://example.com/posts/article',
+    );
+
+    expect(result.content).toContain(
+      'src="https://example.com/photos/real-photo.jpg"',
+    );
+    expect(result.content).not.toContain('data-src');
+    expect(result.content).not.toContain('placeholder.png');
+    expect(result.content).not.toContain('Unresolved placeholder');
+  });
+
   it('restores Arc Fusion images from structured article metadata', () => {
     const fusionContent = {
       type: 'story',
@@ -253,6 +322,36 @@ describe('ContentCleaner', () => {
     expect(result.content).not.toContain('<svg');
     expect(result.content).toContain('article-photo.jpg');
     expect(result.content).toContain('<math');
+  });
+
+  it('marks linked author avatars without treating article images as avatars', () => {
+    const cleanedHtml = cleaner.cleanStoredHtml(
+      `<div class="publisher-author">
+        <div>
+          <a href="https://example.com/u/kokdemo">
+            <img src="https://example.com/avatars/kokdemo.jpg" alt="kokdemo">
+          </a>
+        </div>
+        <div>
+          <a href="https://example.com/u/kokdemo"><div><p>kokdemo</p></div></a>
+          <p>Author biography</p>
+        </div>
+      </div>
+      <p>
+        <img src="https://example.com/article-photo.jpg" alt="Article photo">
+      </p>`,
+    );
+
+    expect(cleanedHtml).toContain('class="publisher-author reader-author-card"');
+    expect(cleanedHtml).toContain('class="reader-author-avatar"');
+    expect(cleanedHtml).toContain('class="reader-author-name"');
+    expect(cleanedHtml).toContain('class="reader-author-bio"');
+    expect(cleanedHtml).toContain(
+      '<img src="https://example.com/article-photo.jpg" alt="Article photo">',
+    );
+    expect(cleanedHtml).not.toContain(
+      'alt="Article photo" class="reader-author-avatar"',
+    );
   });
 });
 

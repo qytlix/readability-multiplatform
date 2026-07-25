@@ -3,9 +3,12 @@ import { Readability } from '@mozilla/readability';
 import createDOMPurify from 'dompurify';
 import type { CleanResult } from '../../../shared/contracts/content.types';
 import { hydrateArcStructuredContent } from './ArcStructuredContent';
-import { removeUntranslatableIcons } from './ContentGraphics';
+import {
+  removeSourceDecorativeGraphics,
+  removeUntranslatableIcons,
+} from './ContentGraphics';
 
-export const CONTENT_CLEANER_VERSION = 3;
+export const CONTENT_CLEANER_VERSION = 5;
 
 export class ContentCleaner {
   /**
@@ -22,6 +25,7 @@ export class ContentCleaner {
     hydrateArcStructuredContent(dom.window.document, baseUrl);
     removeCssHiddenElements(dom.window.document);
     protectMeaningfulArticleFigures(dom.window.document);
+    removeSourceDecorativeGraphics(dom.window.document.body);
     const reader = new Readability(dom.window.document);
     const result = reader.parse();
 
@@ -43,6 +47,7 @@ export class ContentCleaner {
     removeReaderProtectionClasses(container);
     normalizeReaderImages(container, baseUrl);
     normalizeReaderMedia(container, baseUrl);
+    normalizeReaderAuthorBlocks(container, result.byline ?? undefined);
     removeUntranslatableIcons(container);
 
     return {
@@ -56,6 +61,7 @@ export class ContentCleaner {
   cleanStoredHtml(html: string): string {
     const dom = new JSDOM(`<body>${html}</body>`);
     const body = dom.window.document.body;
+    normalizeReaderAuthorBlocks(body);
     removeUntranslatableIcons(body);
     return body.innerHTML;
   }
@@ -112,22 +118,34 @@ function normalizeReaderImages(
   baseUrl: string,
 ): void {
   for (const image of container.querySelectorAll('img')) {
-    const candidate = image.getAttribute('src')
-      ?? image.getAttribute('data-src')
+    const lazyCandidate = image.getAttribute('data-src')
       ?? image.getAttribute('data-original')
       ?? image.getAttribute('data-lazy-src');
-    if (candidate) {
-      const resolved = resolveSafeMediaUrl(candidate, baseUrl);
-      if (resolved) image.setAttribute('src', resolved);
-      else image.removeAttribute('src');
-    }
+    const sourceCandidate = image.getAttribute('src');
+    const srcset = image.getAttribute('data-srcset')
+      ?? image.getAttribute('srcset');
+    const normalizedSrcset = srcset
+      ? normalizeImageSrcset(srcset, baseUrl)
+      : null;
+    if (normalizedSrcset) image.setAttribute('srcset', normalizedSrcset);
+    else image.removeAttribute('srcset');
 
-    const srcset = image.getAttribute('srcset')
-      ?? image.getAttribute('data-srcset');
-    if (srcset) {
-      const normalized = normalizeImageSrcset(srcset, baseUrl);
-      if (normalized) image.setAttribute('srcset', normalized);
-      else image.removeAttribute('srcset');
+    const resolvedLazyCandidate = lazyCandidate
+      ? resolveSafeMediaUrl(lazyCandidate, baseUrl)
+      : null;
+    const resolvedSourceCandidate = (
+      sourceCandidate
+      && !isPlaceholderImageUrl(sourceCandidate, baseUrl)
+    )
+      ? resolveSafeMediaUrl(sourceCandidate, baseUrl)
+      : null;
+    const resolvedCandidate = resolvedLazyCandidate ?? resolvedSourceCandidate;
+    if (resolvedCandidate) image.setAttribute('src', resolvedCandidate);
+    else image.removeAttribute('src');
+
+    if (!image.hasAttribute('src') && !image.hasAttribute('srcset')) {
+      image.remove();
+      continue;
     }
 
     image.removeAttribute('data-src');
@@ -146,6 +164,81 @@ function normalizeReaderImages(
     }
     source.removeAttribute('data-srcset');
   }
+}
+
+function isPlaceholderImageUrl(candidate: string, baseUrl: string): boolean {
+  const resolved = resolveSafeMediaUrl(candidate, baseUrl);
+  if (!resolved) return false;
+  const pathname = new URL(resolved).pathname.toLocaleLowerCase();
+  const filename = pathname.split('/').pop() ?? '';
+  return /^(?:img|image)[-_]placeholder(?:[.@_-]|$)/.test(filename)
+    || /^placeholder(?:[.@_-]|$)/.test(filename);
+}
+
+/**
+ * Publisher styles are intentionally removed from cleaned content. Preserve a
+ * small, stable semantic hook for compact author cards so avatar images do not
+ * inherit the Reader's full-width article-image layout.
+ */
+function normalizeReaderAuthorBlocks(
+  container: HTMLElement,
+  readabilityByline?: string,
+): void {
+  const normalizedByline = normalizeAuthorText(readabilityByline);
+
+  for (const image of container.querySelectorAll('img')) {
+    const avatarName = normalizeAuthorText(image.getAttribute('alt'));
+    if (
+      !avatarName
+      || (
+        normalizedByline
+        && !normalizedByline.includes(avatarName)
+        && !avatarName.includes(normalizedByline)
+      )
+    ) {
+      continue;
+    }
+
+    const avatarLink = image.closest('a');
+    if (!avatarLink) continue;
+
+    let card: HTMLElement | null = avatarLink.parentElement;
+    for (let depth = 0; card && card !== container && depth < 4; depth += 1) {
+      const nameLink = Array.from(card.querySelectorAll('a')).find((link) => (
+        link !== avatarLink
+        && normalizeAuthorText(link.textContent) === avatarName
+      ));
+      if (nameLink && (card.textContent?.trim().length ?? 0) <= 500) {
+        const details = findDirectChildContaining(card, nameLink);
+        card.classList.add('reader-author-card');
+        avatarLink.classList.add('reader-author-avatar-link');
+        image.classList.add('reader-author-avatar');
+        nameLink.classList.add('reader-author-name');
+        details?.classList.add('reader-author-details');
+        for (const paragraph of details?.querySelectorAll('p') ?? []) {
+          if (!paragraph.contains(nameLink) && paragraph.textContent?.trim()) {
+            paragraph.classList.add('reader-author-bio');
+          }
+        }
+        break;
+      }
+      card = card.parentElement;
+    }
+  }
+}
+
+function normalizeAuthorText(value?: string | null): string {
+  return value?.replace(/\s+/g, ' ').trim().toLocaleLowerCase() ?? '';
+}
+
+function findDirectChildContaining(
+  parent: HTMLElement,
+  descendant: Element,
+): HTMLElement | null {
+  const directChild = Array.from(parent.children).find(
+    (child) => child.contains(descendant),
+  );
+  return directChild ? directChild as HTMLElement : null;
 }
 
 function normalizeImageSrcset(
