@@ -15,6 +15,8 @@ import {
   TranslationGenerateRequest,
   TranslationGenerateResponse,
   TranslationGetRequest,
+  TranslationPauseRequest,
+  TranslationPauseResponse,
   TranslationPrioritizeRequest,
   TranslationPrioritizeResponse,
   TranslationResult,
@@ -350,6 +352,48 @@ export class TranslationService {
     return { accepted: true };
   }
 
+  pause(request: TranslationPauseRequest): TranslationPauseResponse {
+    validateTranslationRequest(request);
+    const activeRun = this.activeRun;
+    if (
+      !activeRun
+      || activeRun.result.id !== request.runId
+      || activeRun.result.entryId !== request.entryId
+      || activeRun.result.sourceLanguage !== request.sourceLanguage
+      || activeRun.result.targetLanguage !== request.targetLanguage
+      || activeRun.result.terminologyPackVersion !== this.getTerminologyVersion(request)
+      || activeRun.result.expertId !== this.resolveExpert(request.expertId).id
+      || activeRun.result.smartContextEnabled !== (request.useSmartContext === true)
+    ) {
+      return { paused: false };
+    }
+
+    if (this.executeTimer) {
+      clearTimeout(this.executeTimer);
+      this.executeTimer = undefined;
+    }
+    activeRun.abortController.abort();
+    const pausedResult = this.translationStore.markRunPaused(
+      activeRun.result.id,
+      toTranslationIpcError(new TranslationError(
+        TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED,
+        'Translation was paused.',
+        true,
+      )),
+    );
+    this.logRunInterrupted(activeRun);
+    this.activeRun = null;
+    this.emit({
+      type: 'paused',
+      runId: pausedResult.id,
+      entryId: pausedResult.entryId,
+      sourceLanguage: pausedResult.sourceLanguage,
+      targetLanguage: pausedResult.targetLanguage,
+      result: pausedResult,
+    });
+    return { paused: true, result: pausedResult };
+  }
+
   abortActiveRun(): void {
     if (!this.activeRun) return;
     const activeRun = this.activeRun;
@@ -620,6 +664,16 @@ export class TranslationService {
 
     const persistOutputs = (outputs: TranslationBatchOutput[]): void => {
       outputs.forEach((output) => {
+        if (
+          providerConfig.abortController.signal.aborted
+          || this.activeRun?.result.id !== result.id
+        ) {
+          throw new TranslationError(
+            TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
+            'Translation generation was interrupted before completion.',
+            true,
+          );
+        }
         if (settledIds.has(output.sourceSegmentId)) {
           throw invalidBatchOutput('The provider returned a duplicate Translation segment.');
         }
@@ -1151,6 +1205,10 @@ function validateTranslationRequest(request: TranslationGetRequest): void {
 
 function toState(result: TranslationResult): TranslationState {
   if (result.status === 'running') return { state: 'running', result };
-  if (result.status === 'failed') return { state: 'failed', result };
+  if (result.status === 'failed') {
+    return result.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED
+      ? { state: 'paused', result }
+      : { state: 'failed', result };
+  }
   return { state: 'succeeded', result };
 }

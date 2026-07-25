@@ -232,6 +232,106 @@ describe('TranslationPanel failure feedback', () => {
     container.remove();
   });
 
+  it('pauses and resumes from the same Translation control', async () => {
+    reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    const runningResult = createResult('running');
+    const pausedResult: TranslationResult = {
+      ...runningResult,
+      status: 'failed',
+      error: {
+        code: 'TRANSLATION_PAUSED',
+        message: 'Translation was paused.',
+        retryable: true,
+      },
+    };
+    const pause = vi.fn().mockResolvedValue({
+      ok: true,
+      data: { paused: true, result: pausedResult },
+    });
+    const generate = vi.fn().mockResolvedValue({
+      ok: true,
+      data: { runId: runningResult.id, reused: false, result: runningResult },
+    });
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        translation: {
+          get: vi.fn().mockResolvedValue({
+            ok: true,
+            data: { state: 'running', result: runningResult },
+          }),
+          generate,
+          pause,
+          prioritize: vi.fn().mockResolvedValue({ ok: true, data: { accepted: true } }),
+          onEvent: vi.fn(() => () => undefined),
+        },
+      } as unknown as typeof window.shaleAPI,
+    });
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const panelRef = createRef<TranslationPanelHandle>();
+    const onGeneratingChange = vi.fn();
+    const onBilingualChange = vi.fn();
+
+    await act(async () => {
+      root.render(createElement(TranslationPanel, {
+        ref: panelRef,
+        entryId: runningResult.entryId,
+        isContentReady: true,
+        sourceLanguage: runningResult.sourceLanguage,
+        targetLanguage: runningResult.targetLanguage,
+        useTerminology: false,
+        useSmartContext: false,
+        expertId: runningResult.expertId,
+        shortcut: {
+          key: 'T',
+          ctrlKey: true,
+          altKey: false,
+          shiftKey: false,
+          metaKey: false,
+        },
+        sourceHtml: '<p>First</p><p>Second</p><p>Third</p>',
+        titleTarget: null,
+        isBilingualVisible: true,
+        onContentClick: vi.fn(),
+        onGeneratingChange,
+        onBilingualChange,
+        onTitleTranslatingChange: vi.fn(),
+        children: createElement('p', undefined, 'Original article'),
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      panelRef.current?.activate();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pause).toHaveBeenCalledWith(expect.objectContaining({
+      runId: runningResult.id,
+      entryId: runningResult.entryId,
+    }));
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(false);
+    expect(onBilingualChange).toHaveBeenCalledWith(true);
+    expect(container.querySelector('.translation-error-popup')).toBeNull();
+    expect(container.querySelector('.translation-pause-toast')?.textContent)
+      .toBe('翻译已暂停，再次点击翻译按钮可继续。');
+
+    await act(async () => {
+      panelRef.current?.activate();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(generate).toHaveBeenCalledOnce();
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(true);
+    expect(container.querySelector('.translation-pause-toast')).toBeNull();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
   it('forwards clicks from bilingual source and translated links to the Reader handler', async () => {
     reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
     const succeededResult = createResult('succeeded');

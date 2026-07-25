@@ -23,6 +23,7 @@ import type {
   InlineTranslationRequest,
   TranslationGenerateRequest,
   TranslationGetRequest,
+  TranslationPauseRequest,
   TranslationPrioritizeRequest,
   TranslationStreamEvent,
 } from '../shared/contracts/translation.types';
@@ -150,6 +151,8 @@ const translationAPI = {
     ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationGet, request),
   generate: (request: TranslationGenerateRequest) =>
     ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationGenerate, request),
+  pause: (request: TranslationPauseRequest) =>
+    ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.translationPause, request),
   translateInline: (request: InlineTranslationRequest) =>
     ipcRenderer.invoke(TRANSLATION_IPC_CHANNELS.inlineTranslate, request),
   cancelInline: () =>

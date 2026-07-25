@@ -8,6 +8,7 @@ export function getRestoredTranslationReaderMode(
 ): TranslationReaderMode {
   if (!wasBilingualVisible) return 'original';
   return translationState.state === 'running'
+    || translationState.state === 'paused'
     || translationState.state === 'failed'
     || translationState.state === 'succeeded'
     ? 'bilingual'

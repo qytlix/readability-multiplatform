@@ -28,6 +28,9 @@ import {
   type TranslationShortcut,
 } from '../settings/keyboardShortcut';
 
+const PAUSE_SESSION_RESTART_MESSAGE =
+  'Pause controls are not active in this app session. Restart Shale and try again.';
+
 interface TranslationPanelProps {
   entryId: number;
   isContentReady: boolean;
@@ -73,6 +76,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   const [isGenerating, setIsGenerating] = useState(false);
   const [message, setMessage] = useState('');
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showPauseNotice, setShowPauseNotice] = useState(false);
   const activeRunIdRef = useRef<number | null>(null);
   const loadSequenceRef = useRef(0);
   const failureTitleId = useId();
@@ -125,6 +129,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   useEffect(() => {
     activeRunIdRef.current = null;
     setShowFeedback(false);
+    setShowPauseNotice(false);
     void loadState();
   }, [loadState]);
 
@@ -146,6 +151,14 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       if (event.type === 'completed') {
         setTranslationState({ state: 'succeeded', result: event.result });
         setIsGenerating(false);
+        onBilingualChange(true);
+        activeRunIdRef.current = null;
+        return;
+      }
+      if (event.type === 'paused') {
+        setTranslationState({ state: 'paused', result: event.result });
+        setIsGenerating(false);
+        setShowPauseNotice(true);
         onBilingualChange(true);
         activeRunIdRef.current = null;
         return;
@@ -175,8 +188,9 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
 
   const generate = useCallback(async (): Promise<void> => {
     setShowFeedback(false);
+    setShowPauseNotice(false);
     setMessage('');
-    onBilingualChange(false);
+    if (!getResult(translationState)) onBilingualChange(false);
     try {
       const result = await window.shaleAPI.translation.generate({
         entryId,
@@ -210,6 +224,60 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     useTerminology,
   ]);
 
+  const pause = useCallback(async (): Promise<void> => {
+    const runId = activeRunIdRef.current;
+    if (runId === null) {
+      await loadState();
+      return;
+    }
+    setShowFeedback(false);
+    setMessage('');
+    const pauseTranslation = window.shaleAPI.translation.pause;
+    if (typeof pauseTranslation !== 'function') {
+      setMessage(PAUSE_SESSION_RESTART_MESSAGE);
+      setShowFeedback(true);
+      return;
+    }
+    try {
+      const response = await pauseTranslation({
+        runId,
+        entryId,
+        sourceLanguage,
+        targetLanguage,
+        useTerminology,
+        useSmartContext,
+        expertId,
+      });
+      if (!response.ok) {
+        setMessage(response.error.message);
+        setShowFeedback(true);
+        return;
+      }
+      if (!response.data.paused) {
+        await loadState();
+        return;
+      }
+      activeRunIdRef.current = null;
+      setTranslationState({ state: 'paused', result: response.data.result });
+      setIsGenerating(false);
+      setShowPauseNotice(true);
+      onBilingualChange(true);
+    } catch {
+      setMessage(PAUSE_SESSION_RESTART_MESSAGE);
+      setShowFeedback(true);
+    }
+  }, [
+    entryId,
+    expertId,
+    loadState,
+    onBilingualChange,
+    sourceLanguage,
+    targetLanguage,
+    translationState,
+    useSmartContext,
+    useTerminology,
+  ]);
+
   const dismissFeedback = useCallback(() => {
     setShowFeedback(false);
     setMessage('');
@@ -225,17 +293,25 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     return () => window.removeEventListener('keydown', dismissOnEscape);
   }, [dismissFeedback, showFeedback]);
 
+  useEffect(() => {
+    if (!showPauseNotice) return;
+    const dismissTimer = window.setTimeout(() => {
+      setShowPauseNotice(false);
+    }, 3_000);
+    return () => window.clearTimeout(dismissTimer);
+  }, [showPauseNotice]);
+
   const activate = useCallback((): void => {
     if (translationState.state === 'succeeded') {
       onBilingualChange(!isBilingualVisible);
       return;
     }
     if (translationState.state === 'running') {
-      onBilingualChange(true);
+      void pause();
       return;
     }
     void generate();
-  }, [generate, isBilingualVisible, onBilingualChange, translationState.state]);
+  }, [generate, isBilingualVisible, onBilingualChange, pause, translationState.state]);
 
   useImperativeHandle(ref, () => ({ activate }), [activate]);
 
@@ -272,11 +348,25 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       : message
     : '';
   const readerPageTarget = document.querySelector<HTMLElement>('.reader-page');
+  const pauseNotice = showPauseNotice
+    ? (
+        <div
+          className="reader-toast translation-pause-toast"
+          role="status"
+          aria-live="polite"
+        >
+          翻译已暂停，再次点击翻译按钮可继续。
+        </div>
+      )
+    : null;
   const failurePopup = failureFeedback
     ? (
         <TranslationErrorPopup
           titleId={failureTitleId}
           descriptionId={failureDescriptionId}
+          heading={translationState.state === 'failed'
+            ? 'Translation paused'
+            : 'Translation unavailable'}
           message={failureFeedback}
           canRetry={translationState.state === 'failed' && result?.error?.retryable === true}
           onDismiss={dismissFeedback}
@@ -335,6 +425,9 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       {failurePopup && readerPageTarget
         ? createPortal(failurePopup, readerPageTarget)
         : failurePopup}
+      {pauseNotice && readerPageTarget
+        ? createPortal(pauseNotice, readerPageTarget)
+        : pauseNotice}
       {result?.contextWarning && (
         <p className="entry-detail-ai-warning" role="status">
           {result.contextWarning.message}
@@ -358,6 +451,7 @@ TranslationPanel.displayName = 'TranslationPanel';
 function TranslationErrorPopup({
   titleId,
   descriptionId,
+  heading,
   message,
   canRetry,
   onDismiss,
@@ -365,6 +459,7 @@ function TranslationErrorPopup({
 }: {
   titleId: string;
   descriptionId: string;
+  heading: string;
   message: string;
   canRetry: boolean;
   onDismiss: () => void;
@@ -383,7 +478,7 @@ function TranslationErrorPopup({
         <span className="translation-error-popup-mark" aria-hidden="true">!</span>
         <div className="translation-error-popup-heading">
           <span>Translation interrupted</span>
-          <h2 id={titleId}>Translation paused</h2>
+          <h2 id={titleId}>{heading}</h2>
         </div>
         <button
           type="button"
@@ -518,6 +613,7 @@ function toTranslationState(result: TranslationResult): TranslationState {
 
 function getResult(state: TranslationState): TranslationResult | undefined {
   return state.state === 'running' || state.state === 'failed' || state.state === 'succeeded'
+    || state.state === 'paused'
     ? state.result
     : undefined;
 }

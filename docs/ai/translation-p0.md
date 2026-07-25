@@ -8,7 +8,7 @@ The translation source is the sanitized `CleanedContent.cleanedHtml` contract pl
 
 Reader also supports non-persisted inline Translation. Pressing the configured keyboard shortcut translates the current Reader selection, or the paragraph under the pointer when there is no selection. Renderer sends bounded text-only source/context, the current expert identity, and language preferences through `translation:inline`; Main validates length limits, freezes the current terminology candidates, and uses the active provider without exposing its key. Selection results use a strict word/phrase/sentence schema with a detected source language, contextual translation, source-language pronunciation metadata, and grouped senses. Plain text or malformed structured output is an explicit error. Starting another inline request aborts the previous one; `translation:inline-cancel` also aborts work when selection, preferences, the card lifecycle, or application shutdown ends the request.
 
-The latency-optimized runtime groups adjacent blocks into batches of at most three segments and 1,600 source characters. It executes at most two provider requests concurrently. Each request returns ordered NDJSON, so Main can validate, persist, and emit each completed segment without waiting for the rest of its batch. A provider failure marks the run failed without deleting already completed segments; generating the same compatible Translation again resumes only pending/failed segments. Cancellation UI and provider fallback remain outside this scope.
+The latency-optimized runtime groups adjacent blocks into batches of at most three segments and 1,600 source characters. It executes at most two provider requests concurrently. Each request returns ordered NDJSON, so Main can validate, persist, and emit each completed segment without waiting for the rest of its batch. A provider failure marks the run failed without deleting already completed segments; generating the same compatible Translation again resumes only pending/failed segments. Clicking the Translation control while a run is active aborts in-flight provider work, persists `TRANSLATION_PAUSED`, keeps completed segments visible, and emits `paused`; clicking it again resumes only unfinished segments. Provider fallback remains outside this scope.
 
 Before contacting the provider, Main performs a conservative per-segment target-language check. High-confidence Simplified Chinese, Japanese, Korean, English, German, French, or Spanish segments, empty blocks, and standalone HTTP(S) URLs are persisted unchanged and emit the same `segment-completed` event as model-produced translations. Hong Kong and Taiwan usage cannot be distinguished from script alone, so automatic Traditional Chinese content still uses the provider. Ambiguous, mixed-language, and short text without enough language evidence also use the provider. An explicit source equal to the target is treated as the user's authoritative instruction.
 
@@ -49,11 +49,12 @@ document tail. This behavior is cache-identified by
 
 - `translation:get`
 - `translation:generate`
+- `translation:pause`: aborts the matching active full-article run while preserving completed segments
 - `translation:inline`: translates a bounded text selection or hovered paragraph without persistence
 - `translation:inline-cancel`: aborts the active non-persisted inline request
 - `translation:prioritize`: updates queued-batch priority with visible segment IDs for the active run
 - `translation:terminology-info`
-- `translation:stream`: `started`, `segment-started`, `segment-completed`, `completed`, `failed`
+- `translation:stream`: `started`, `segment-started`, `segment-completed`, `paused`, `completed`, `failed`
 
 Every event includes `runId`, `entryId`, source language, and target language; segment events also include `sourceSegmentId`. Preload exposes typed methods only. `TranslationPanel` filters events by these identities, removes listeners and viewport observers on article/language changes or unmount, and prioritizes the viewport plus a one-screen margin. Provider deltas remain internal to Main: Renderer receives no partial segment text. Pending blocks keep the original Reader structure and show only an inline spinner; a translated block is inserted only after the complete segment passes structural validation and is persisted. List-item translations are inserted inside the corresponding `<li>` below its source content, while quoted paragraph/citation translations are inserted immediately after the corresponding child inside the existing blockquote.
 
@@ -68,6 +69,7 @@ Automated coverage:
 - SQLite run/segment/provenance persistence and interrupted-run recovery;
 - local preferred/alias terminology matching from the generated pack;
 - adjacent batching, two-request concurrency limit, visible-batch priority, persisted-before-emitted completion, segment-level resume, cache reuse, stale-source protection, and one-active-run behavior;
+- user pause/resume, completed-segment preservation, and rejection of post-pause provider output;
 - complete-segment-only Renderer updates and provider response-header/first-delta timing hooks.
 - `auto + 8` language serialization, source-aware cache separation, legacy
   migration, Hong Kong instructions, conservative skip rules, and eight
@@ -93,7 +95,7 @@ Manual opt-in verification (never CI):
 6. Verify a bad key or network failure gives a readable error and leaves the original article available. Complete the opt-in path once on Windows 11 and native Wayland.
 7. Disconnect the network and confirm the local terminology source/version remains visible and a cached local lookup still supplies terminology candidates.
 8. With a long article, confirm visible segments are translated ahead of queued off-screen segments, pending titles and paragraphs show only an end spinner, no partial Translation text appears, each completed segment is inserted at once, and no more than two provider requests run concurrently.
-9. Interrupt or fail a run after at least one segment completes, retry, and confirm completed segments are not requested again.
+9. Pause a run from the Translation button after at least one segment completes; confirm completed segments remain visible, no new segments appear while paused, and the same button resumes without requesting completed segments again. Also interrupt or fail a run and verify the retry path.
 10. Translate an article containing captioned, standalone, and inline images; confirm each original image remains visible exactly once and in its original article position throughout progressive rendering and after restart.
 11. Select a word and press the configured inline shortcut (Ctrl+Z by default); verify the nearby text-only card shows its contextual translation. Clear the selection, hover a paragraph, press the shortcut again, and verify the translation is inserted directly below that paragraph with the same bilingual styling used by full-article Translation and without opening another page or popup. Record a different modified-key combination in Settings, verify it replaces Ctrl+Z, and confirm inputs/selects keep their native keyboard behavior instead of triggering translation.
 12. Open an article containing a multi-item list and a blockquote with separate quote/citation blocks; confirm each item/block is translated independently and each translation appears immediately below its matching source without duplicate bullets or nested-list text.
@@ -101,4 +103,4 @@ Manual opt-in verification (never CI):
 
 ## Follow-up scope
 
-Cancellation UI, provider fallback, adaptive provider-specific batch sizing, additional licensed terminology sources, richer Reader/Web/Dual integration, and a generic persisted AI runtime remain follow-up work.
+Provider fallback, adaptive provider-specific batch sizing, additional licensed terminology sources, richer Reader/Web/Dual integration, and a generic persisted AI runtime remain follow-up work.

@@ -657,6 +657,7 @@ export const App = () => {
         sidebarOpen ? 'is-sidebar-open' : 'is-sidebar-closed',
         isReadingFocus ? 'is-reading-focus' : '',
         largeType ? 'is-large-type' : '',
+        activeView === 'settings' ? 'is-settings-view' : '',
       ].join(' ')}
       data-theme={readerTheme}
     >
@@ -904,7 +905,7 @@ export const App = () => {
                           setShowReaderMenu(false);
                         }}
                       >
-                        AI 阅读设置
+                        阅读设置
                       </button>
                     </div>
                   )}
@@ -918,6 +919,7 @@ export const App = () => {
               <AISettingsPage
                 preferences={aiPreferences}
                 onPreferencesChange={setAiPreferences}
+                onClose={() => setActiveView('reader')}
               />
             ) : (
               <EntryDetail

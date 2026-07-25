@@ -97,6 +97,7 @@ export type TranslationState =
   | { state: 'idle' }
   | { state: 'stale' }
   | { state: 'running'; result: TranslationResult }
+  | { state: 'paused'; result: TranslationResult }
   | { state: 'failed'; result: TranslationResult }
   | { state: 'succeeded'; result: TranslationResult };
 
@@ -128,6 +129,14 @@ export interface TranslationGenerateResponse {
   reused: boolean;
   result: TranslationResult;
 }
+
+export interface TranslationPauseRequest extends TranslationGetRequest {
+  runId: number;
+}
+
+export type TranslationPauseResponse =
+  | { paused: false }
+  | { paused: true; result: TranslationResult };
 
 export type InlineTranslationKind = 'selection' | 'paragraph';
 export type InlineTranslationInputKind = 'word' | 'phrase' | 'sentence';
@@ -203,5 +212,6 @@ export type TranslationStreamEvent =
       sourceSegmentId: string;
       segment: TranslationSegment;
     })
+  | (TranslationStreamEventBase & { type: 'paused'; result: TranslationResult })
   | (TranslationStreamEventBase & { type: 'completed'; result: TranslationResult })
   | (TranslationStreamEventBase & { type: 'failed'; error: ShaleError });

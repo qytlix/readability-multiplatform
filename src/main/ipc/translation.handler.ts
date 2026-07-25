@@ -15,6 +15,8 @@ import type {
   TranslationGenerateRequest,
   TranslationGenerateResponse,
   TranslationGetRequest,
+  TranslationPauseRequest,
+  TranslationPauseResponse,
   TranslationPrioritizeRequest,
   TranslationPrioritizeResponse,
   TerminologyPackInfo,
@@ -226,6 +228,19 @@ export function registerTranslationIpcHandlers(
   );
 
   ipcMain.handle(
+    TRANSLATION_IPC_CHANNELS.translationPause,
+    (event: IpcMainInvokeEvent, request: unknown): IPCResult<TranslationPauseResponse> => {
+      if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
+      if (!isTranslationPauseRequest(request)) return invalidRequest();
+      try {
+        return success(translationService.pause(request));
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
     TRANSLATION_IPC_CHANNELS.translationPrioritize,
     (event: IpcMainInvokeEvent, request: unknown): IPCResult<TranslationPrioritizeResponse> => {
       if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
@@ -385,6 +400,12 @@ function isTranslationPrioritizeRequest(value: unknown): value is TranslationPri
     && request.sourceSegmentIds.length <= 100
     && request.sourceSegmentIds.every((segmentId) =>
       typeof segmentId === 'string' && segmentId.length > 0 && segmentId.length <= 256);
+}
+
+function isTranslationPauseRequest(value: unknown): value is TranslationPauseRequest {
+  if (!isTranslationRequest(value)) return false;
+  const request = value as unknown as Record<string, unknown>;
+  return Number.isInteger(request.runId) && (request.runId as number) > 0;
 }
 
 function success<T>(data: T): IPCResult<T> {

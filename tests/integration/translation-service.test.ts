@@ -1409,4 +1409,141 @@ describe('TranslationService', () => {
       .toThrow('Another Translation is already being generated');
     pendingService.abortActiveRun();
   });
+
+  it('pauses an active Translation and resumes only unfinished segments', async () => {
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: [
+        '<p>First article paragraph.</p>',
+        '<p>Second article paragraph.</p>',
+        '<p>Third article paragraph.</p>',
+        '<p>Fourth article paragraph.</p>',
+      ].join(''),
+      markdown: [
+        'First article paragraph.',
+        'Second article paragraph.',
+        'Third article paragraph.',
+        'Fourth article paragraph.',
+      ].join('\n\n'),
+      pipelineStatus: 'success',
+    });
+    let resumeMode = false;
+    let firstOutputEmitted = false;
+    let activeInitialStreams = 0;
+    const initialPrompts: BatchPromptSegment[][] = [];
+    const resumedPrompts: BatchPromptSegment[][] = [];
+    const pausableProvider: SummaryProvider = {
+      async *stream(request): AsyncIterable<string> {
+        const segments = parseBatchPrompt(request.prompt);
+        (resumeMode ? resumedPrompts : initialPrompts).push(segments);
+        if (resumeMode) {
+          for (const segment of segments) {
+            yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+          }
+          return;
+        }
+        activeInitialStreams += 1;
+        try {
+          let emittedInitialOutput = false;
+          if (!firstOutputEmitted) {
+            firstOutputEmitted = true;
+            const firstSegment = segments[0];
+            if (firstSegment) {
+              emittedInitialOutput = true;
+              yield `${JSON.stringify(toBatchOutput(firstSegment))}\n`;
+            }
+          }
+          if (!request.signal.aborted) {
+            await new Promise<void>((resolve) => {
+              request.signal.addEventListener('abort', () => resolve(), { once: true });
+            });
+          }
+          const lateSegment = segments[emittedInitialOutput ? 1 : 0];
+          if (lateSegment) {
+            yield `${JSON.stringify(toBatchOutput(lateSegment))}\n`;
+          }
+        } finally {
+          activeInitialStreams -= 1;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const pauseService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      pausableProvider,
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+    };
+    const eventTypes: string[] = [];
+    let completedBeforePause: string | undefined;
+    let pauseAccepted = false;
+    pauseService.subscribe((event) => {
+      eventTypes.push(event.type);
+      if (event.type !== 'segment-completed' || completedBeforePause) return;
+      completedBeforePause = event.sourceSegmentId;
+      pauseAccepted = pauseService.pause({
+        ...request,
+        runId: event.runId,
+      }).paused;
+    });
+
+    const started = pauseService.generate(request);
+    await vi.waitFor(() => {
+      expect(pauseService.getState(request)).toMatchObject({ state: 'paused' });
+    });
+
+    const pausedState = pauseService.getState(request);
+    expect(pauseAccepted).toBe(true);
+    expect(eventTypes).toContain('paused');
+    expect(pausedState).toMatchObject({
+      state: 'paused',
+      result: {
+        id: started.runId,
+        status: 'failed',
+        error: {
+          code: 'TRANSLATION_PAUSED',
+          retryable: true,
+        },
+      },
+    });
+    if (pausedState.state !== 'paused' || !completedBeforePause) {
+      throw new Error('Expected a paused Translation with one completed segment.');
+    }
+    const completedSegment = pausedState.result.segments.find((segment) =>
+      segment.sourceSegmentId === completedBeforePause);
+    expect(completedSegment).toMatchObject({
+      status: 'succeeded',
+      translatedText: 'Translated paragraph.',
+    });
+    const completedEventCount = eventTypes.filter((type) =>
+      type === 'segment-completed').length;
+    await vi.waitFor(() => {
+      expect(activeInitialStreams).toBe(0);
+    });
+    expect(eventTypes.filter((type) => type === 'segment-completed')).toHaveLength(
+      completedEventCount,
+    );
+
+    resumeMode = true;
+    const resumed = pauseService.generate(request);
+    expect(resumed).toMatchObject({
+      runId: started.runId,
+      reused: false,
+      result: { status: 'running' },
+    });
+    await vi.waitFor(() => {
+      expect(pauseService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    expect(initialPrompts.length).toBeGreaterThan(0);
+    expect(resumedPrompts.length).toBeGreaterThan(0);
+    expect(resumedPrompts.flat().map((segment) => segment.sourceSegmentId))
+      .not.toContain(completedBeforePause);
+  });
 });

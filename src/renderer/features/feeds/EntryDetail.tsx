@@ -713,11 +713,11 @@ export const EntryDetail = ({
         <button
           type="button"
           className={aiViewState.translationVisible ? 'is-active' : ''}
-          aria-label={isTranslationGenerating ? '正在翻译' : '翻译或切换双语视图'}
+          aria-label={isTranslationGenerating ? '暂停翻译' : '翻译或切换双语视图'}
           aria-pressed={aiViewState.translationVisible}
-          disabled={!isTranslationReady || isTranslationGenerating}
+          disabled={!isTranslationReady}
           title={isTranslationGenerating
-            ? 'Translating...'
+            ? 'Pause Translation'
             : isTranslationReady
               ? 'Translate or toggle the bilingual view'
             : 'Translation is available after the article loads'}

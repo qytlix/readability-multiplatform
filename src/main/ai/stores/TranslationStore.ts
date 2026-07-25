@@ -312,6 +312,13 @@ export class TranslationStore {
     persist();
   }
 
+  markRunPaused(runId: number, error: ShaleError): TranslationResult {
+    this.markRunFailed(runId, error);
+    const result = this.findById(runId);
+    if (!result) throw new Error('Translation result disappeared while pausing.');
+    return result;
+  }
+
   reconcileInterruptedRuns(): number {
     const now = new Date().toISOString();
     const result = this.db.prepare(`

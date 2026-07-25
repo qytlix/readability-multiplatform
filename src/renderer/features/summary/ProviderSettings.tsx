@@ -73,12 +73,12 @@ export const ProviderSettings = ({
       onSaved(result.data);
       setStatus(
         result.data.keyStorageMode === 'insecure'
-          ? 'Saved locally without encryption. Anyone with access to this computer can use this API key.'
-          : 'Saved securely.',
+          ? '已在本机无加密保存。任何能访问这台电脑的人都可能使用此 API Key。'
+          : '已安全保存。',
       );
       return result.data;
     } catch {
-      setStatus('Unable to save the provider configuration.');
+      setStatus('无法保存模型服务配置。');
       setStatusTone('error');
       return null;
     } finally {
@@ -95,7 +95,7 @@ export const ProviderSettings = ({
       setStatus(result.ok ? result.data.message : result.error.message);
       setStatusTone(result.ok ? 'success' : 'error');
     } catch {
-      setStatus('Unable to test the provider connection.');
+      setStatus('无法测试模型服务连接。');
       setStatusTone('error');
     } finally {
       setSaving(false);
@@ -134,13 +134,20 @@ export const ProviderSettings = ({
   const selectedPreset = getProviderPreset(providerKind);
   const providerHeader = (
     <header className="provider-settings-header">
-      <h2 id={titleId}>Provider</h2>
+      <div>
+        <h2 id={titleId}>模型服务</h2>
+        {mode === 'embedded' && (
+          <p className="provider-settings-description">
+            配置生成摘要和翻译所使用的 Provider、模型与 API Key。
+          </p>
+        )}
+      </div>
       {mode === 'dialog' && (
         <button
           type="button"
           className="provider-settings-close"
           onClick={onClose}
-          aria-label="Close settings"
+          aria-label="关闭设置"
         >
           ×
         </button>
@@ -150,7 +157,7 @@ export const ProviderSettings = ({
   const providerForm = (
     <form onSubmit={handleSubmit}>
         <label>
-          Provider type
+          Provider 类型
           <select
             value={providerKind}
             onChange={(event) => {
@@ -170,7 +177,7 @@ export const ProviderSettings = ({
           </select>
         </label>
         <label>
-          Provider base URL
+          Provider 基础 URL
           <input
             value={baseUrl}
             onChange={(event) => setBaseUrl(event.target.value)}
@@ -180,7 +187,7 @@ export const ProviderSettings = ({
           />
         </label>
         <label>
-          Model
+          模型
           <input
             value={model}
             onChange={(event) => setModel(event.target.value)}
@@ -196,12 +203,12 @@ export const ProviderSettings = ({
           </datalist>
         </label>
         <label>
-          API key
+          API Key
           <input
             ref={apiKeyInputRef}
             type="password"
             name="provider-api-key"
-            placeholder={requiresApiKey ? 'Enter API key' : SAVED_API_KEY_MASK}
+            placeholder={requiresApiKey ? '输入 API Key' : SAVED_API_KEY_MASK}
             autoComplete="new-password"
             spellCheck={false}
             data-1p-ignore="true"
@@ -212,7 +219,7 @@ export const ProviderSettings = ({
         </label>
         {usesInsecureStorage && (
           <p className="provider-settings-note">
-            Secure operating-system key storage is unavailable. The API key is kept in a local file without encryption.
+            操作系统安全密钥存储不可用，API Key 将以未加密方式保存在本地文件中。
           </p>
         )}
         {status && (
@@ -229,10 +236,10 @@ export const ProviderSettings = ({
             onClick={() => void testConnection()}
             disabled={saving || !hasApiKey || hasUnsavedProfileChanges}
           >
-            Test connection
+            测试连接
           </button>
           <button type="submit" className="provider-settings-save" disabled={saving}>
-            {saving ? 'Saving...' : 'Save provider'}
+            {saving ? '正在保存…' : '保存配置'}
           </button>
         </footer>
     </form>

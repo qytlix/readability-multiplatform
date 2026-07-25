@@ -15,7 +15,6 @@ import type {
   TranslationTargetLanguage,
 } from '../../../shared/contracts/translation.types';
 import {
-  TRANSLATION_LANGUAGE_LABELS,
   TRANSLATION_TARGET_LANGUAGES,
 } from '../../../shared/contracts/translation.types';
 import {
@@ -45,19 +44,32 @@ const TRANSLATION_SHORTCUTS: ReadonlyArray<{
   preferenceKey: ShortcutPreferenceKey;
   label: string;
 }> = [
-  { preferenceKey: 'fullTranslationShortcut', label: 'Translate full article' },
-  { preferenceKey: 'paragraphTranslationShortcut', label: 'Translate paragraph' },
-  { preferenceKey: 'selectionTranslationShortcut', label: 'Translate selection' },
+  { preferenceKey: 'fullTranslationShortcut', label: '翻译全文' },
+  { preferenceKey: 'paragraphTranslationShortcut', label: '翻译段落' },
+  { preferenceKey: 'selectionTranslationShortcut', label: '翻译选中内容' },
 ];
+
+const SETTINGS_TRANSLATION_LANGUAGE_LABELS: Record<TranslationTargetLanguage, string> = {
+  'zh-CN': '简体中文',
+  'zh-HK': '繁体中文（香港）',
+  ja: '日语',
+  ko: '韩语',
+  de: '德语',
+  fr: '法语',
+  es: '西班牙语',
+  en: '英语',
+};
 
 interface AISettingsPageProps {
   preferences: AiPreferences;
   onPreferencesChange: (preferences: AiPreferences) => void;
+  onClose: () => void;
 }
 
 export const AISettingsPage = ({
   preferences,
   onPreferencesChange,
+  onClose,
 }: AISettingsPageProps) => {
   const [profile, setProfile] = useState<ProviderProfile | null>(null);
   const [providerError, setProviderError] = useState('');
@@ -95,21 +107,21 @@ export const AISettingsPage = ({
       if (result.ok) setProfile(result.data);
       else setProviderError(result.error.message);
     }).catch(() => {
-      if (!disposed) setProviderError('Unable to load the provider configuration.');
+      if (!disposed) setProviderError('无法加载模型服务配置。');
     });
     void window.shaleAPI.expert.list().then((result) => {
       if (disposed) return;
       if (result.ok) setExperts(result.data.experts);
       else setExpertError(result.error.message);
     }).catch(() => {
-      if (!disposed) setExpertError('Unable to load AI experts.');
+      if (!disposed) setExpertError('无法加载 AI 专家。');
     });
     void window.shaleAPI.terminology.list().then((result) => {
       if (disposed) return;
       if (result.ok) setTerminologyLibraries(result.data.libraries);
       else setTerminologyError(result.error.message);
     }).catch(() => {
-      if (!disposed) setTerminologyError('Unable to load terminology libraries.');
+      if (!disposed) setTerminologyError('无法加载术语库。');
     });
     return () => {
       disposed = true;
@@ -149,10 +161,10 @@ export const AISettingsPage = ({
       }
       await refreshTerminologyLibraries();
       setTerminologyNotice(
-        `${enabled ? 'Enabled' : 'Disabled'} “${library.name}”.`,
+        `已${enabled ? '启用' : '停用'}“${library.name}”。`,
       );
     } catch {
-      setTerminologyError('Unable to update the terminology library.');
+      setTerminologyError('无法更新术语库。');
     }
   };
 
@@ -178,7 +190,7 @@ export const AISettingsPage = ({
       }
       setTerminologyPreview(result.data);
     } catch {
-      setTerminologyError('Unable to read or validate the terminology CSV.');
+      setTerminologyError('无法读取或校验术语 CSV 文件。');
     }
   };
 
@@ -197,14 +209,14 @@ export const AISettingsPage = ({
       }
       await refreshTerminologyLibraries();
       setTerminologyNotice(
-        `Imported terminology library “${terminologyPreview.name}”.`,
+        `已导入术语库“${terminologyPreview.name}”。`,
       );
       setTerminologyName('');
       setTerminologyCsv('');
       setTerminologyPreview(null);
       setShowTerminologyCreator(false);
     } catch {
-      setTerminologyError('Unable to import the terminology library.');
+      setTerminologyError('无法导入术语库。');
     }
   };
 
@@ -212,7 +224,7 @@ export const AISettingsPage = ({
     library: TerminologyLibrary,
   ): Promise<void> => {
     if (library.origin !== 'user') return;
-    if (!window.confirm(`Delete user terminology library “${library.name}”?`)) return;
+    if (!window.confirm(`确定删除用户术语库“${library.name}”吗？`)) return;
     setTerminologyError('');
     try {
       const result = await window.shaleAPI.terminology.remove({ id: library.id });
@@ -221,9 +233,9 @@ export const AISettingsPage = ({
         return;
       }
       await refreshTerminologyLibraries();
-      setTerminologyNotice(`Deleted terminology library “${library.name}”.`);
+      setTerminologyNotice(`已删除术语库“${library.name}”。`);
     } catch {
-      setTerminologyError('Unable to delete the terminology library.');
+      setTerminologyError('无法删除术语库。');
     }
   };
 
@@ -244,7 +256,7 @@ export const AISettingsPage = ({
       }
       setExpertPreview(result.data);
     } catch {
-      setExpertError('Unable to read or validate the AI expert file.');
+      setExpertError('无法读取或校验 AI 专家文件。');
     }
   };
 
@@ -262,18 +274,18 @@ export const AISettingsPage = ({
       }
       await refreshExperts();
       updatePreferences({ translationExpertId: result.data.expertId });
-      setExpertNotice(`Imported AI expert “${expertPreview.expert.name}”.`);
+      setExpertNotice(`已导入 AI 专家“${expertPreview.expert.name}”。`);
       setExpertPreview(null);
       setExpertYaml('');
       setShowExpertCreator(false);
     } catch {
-      setExpertError('Unable to import the AI expert.');
+      setExpertError('无法导入 AI 专家。');
     }
   };
 
   const removeExpert = async (expert: TranslationExpert): Promise<void> => {
     if (expert.origin !== 'user') return;
-    if (!window.confirm(`Delete user AI expert “${expert.name}”?`)) return;
+    if (!window.confirm(`确定删除用户 AI 专家“${expert.name}”吗？`)) return;
     setExpertError('');
     try {
       const result = await window.shaleAPI.expert.remove({ id: expert.id });
@@ -285,9 +297,9 @@ export const AISettingsPage = ({
       if (preferences.translationExpertId === expert.id) {
         updatePreferences({ translationExpertId: DEFAULT_TRANSLATION_EXPERT_ID });
       }
-      setExpertNotice(`Deleted AI expert “${expert.name}”.`);
+      setExpertNotice(`已删除 AI 专家“${expert.name}”。`);
     } catch {
-      setExpertError('Unable to delete the AI expert.');
+      setExpertError('无法删除 AI 专家。');
     }
   };
 
@@ -305,14 +317,14 @@ export const AISettingsPage = ({
     }
     const shortcut = shortcutFromKeyboardEvent(event);
     if (!shortcut) {
-      setShortcutError('Press Ctrl, Alt, or Meta together with another key.');
+      setShortcutError('请同时按下 Ctrl、Alt 或 Meta 与另一个按键。');
       return;
     }
     const conflict = TRANSLATION_SHORTCUTS.find(({ preferenceKey: otherKey }) =>
       otherKey !== preferenceKey
       && areKeyboardShortcutsEqual(preferences[otherKey], shortcut));
     if (conflict) {
-      setShortcutError(`This shortcut is already assigned to “${conflict.label}”.`);
+      setShortcutError(`该快捷键已分配给“${conflict.label}”。`);
       return;
     }
     updatePreferences({ [preferenceKey]: shortcut });
@@ -322,407 +334,504 @@ export const AISettingsPage = ({
 
   return (
     <div className="settings-page">
-      <header className="settings-page-header">
-        <h2>Settings</h2>
-      </header>
-
-      <div className="settings-page-content">
-        <section className="settings-section" aria-labelledby="summary-settings-title">
-          <h3 id="summary-settings-title" className="settings-section-title">Summary</h3>
-          <div className="settings-card">
-            <div className="settings-fields">
-              <label>
-                Language
-                <select
-                  value={preferences.summaryTargetLanguage}
-                  onChange={(event) => updatePreferences({
-                    summaryTargetLanguage: event.target.value as SummaryTargetLanguage,
-                  })}
-                >
-                  <option value="zh-CN">简体中文</option>
-                  <option value="en">English</option>
-                </select>
-              </label>
-              <label>
-                Detail
-                <select
-                  value={preferences.summaryDetailLevel}
-                  onChange={(event) => updatePreferences({
-                    summaryDetailLevel: event.target.value as SummaryDetailLevel,
-                  })}
-                >
-                  <option value="short">Brief</option>
-                  <option value="medium">Medium</option>
-                  <option value="detailed">Detailed</option>
-                </select>
-              </label>
-            </div>
+      <aside className="settings-navigation" aria-label="设置分类">
+        <div className="settings-navigation-header">
+          <button type="button" className="settings-back-button" onClick={onClose}>
+            <span aria-hidden="true">←</span>
+            返回阅读
+          </button>
+          <div>
+            <span className="settings-product-name">Shale</span>
+            <h1>设置</h1>
           </div>
-        </section>
+        </div>
+        <nav className="settings-navigation-links">
+          <a href="#settings-summary">摘要</a>
+          <a href="#settings-translation">翻译</a>
+          <a href="#settings-terminology">术语库</a>
+          <a href="#settings-experts">AI 专家</a>
+          <a href="#settings-shortcuts">快捷键</a>
+          <a href="#settings-provider">模型服务</a>
+          <a href="#settings-diagnostics">诊断</a>
+        </nav>
+        <p className="settings-navigation-note">
+          阅读偏好会自动保存在本机。
+        </p>
+      </aside>
 
-        <section className="settings-section" aria-labelledby="translation-settings-title">
-          <h3 id="translation-settings-title" className="settings-section-title">Translation</h3>
-          <div className="settings-card">
-            <div className="settings-fields">
-              <label>
-                Source language
-                <select
-                  value={preferences.translationSourceLanguage}
-                  onChange={(event) => updatePreferences({
-                    translationSourceLanguage: event.target.value as TranslationSourceLanguage,
-                  })}
-                >
-                  <option value="auto">Detect automatically</option>
-                  {TRANSLATION_TARGET_LANGUAGES.map((language) => (
-                    <option key={language} value={language}>
-                      {TRANSLATION_LANGUAGE_LABELS[language]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Target language
-                <select
-                  value={preferences.translationTargetLanguage}
-                  onChange={(event) => updatePreferences({
-                    translationTargetLanguage: event.target.value as TranslationTargetLanguage,
-                  })}
-                >
-                  {TRANSLATION_TARGET_LANGUAGES.map((language) => (
-                    <option key={language} value={language}>
-                      {TRANSLATION_LANGUAGE_LABELS[language]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="settings-toggle">
-                <input
-                  type="checkbox"
-                  checked={preferences.useTerminology}
-                  onChange={(event) => updatePreferences({
-                    useTerminology: event.target.checked,
-                  })}
-                />
-                <span>
-                  <strong>Use terminology library</strong>
-                  <small>Apply local terminology candidates to every translation mode.</small>
-                </span>
-              </label>
-              <div className="settings-field">
-                <span>Terminology libraries</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowTerminologyCreator((current) => !current);
-                    setTerminologyError('');
-                    setTerminologyNotice('');
-                  }}
-                >
-                  New terminology library
-                </button>
+      <main className="settings-page-main">
+        <header className="settings-page-header">
+          <span className="settings-page-kicker">阅读体验</span>
+          <h2>设置</h2>
+          <p>配置摘要、翻译和模型服务。所有选项均服务于本地阅读流程。</p>
+        </header>
+
+        <div className="settings-page-content">
+          <section
+            id="settings-summary"
+            className="settings-section"
+            aria-labelledby="summary-settings-title"
+          >
+            <div className="settings-section-heading">
+              <div>
+                <h3 id="summary-settings-title" className="settings-section-title">摘要</h3>
+                <p>选择摘要的输出语言和信息密度。</p>
               </div>
-              {showTerminologyCreator && (
-                <div className="settings-import-help">
-                  <h4>Terminology CSV format</h4>
-                  <p>
-                    Create a UTF-8 CSV whose first row is exactly{' '}
-                    <code>source,target,tgt_lng</code>. Empty target preserves the
-                    source spelling. Empty <code>tgt_lng</code> applies to every
-                    target language. Commas, quotes, and newlines must use RFC 4180
-                    quoting.
-                  </p>
-                  <pre>{[
-                    'source,target,tgt_lng',
-                    'Large language model,大语言模型,zh-CN',
-                    'colour,color,en',
-                    'Shale,,',
-                    '"term, with comma","译文，含逗号",zh-CN',
-                  ].join('\n')}</pre>
-                  <label>
-                    Library name
-                    <input
-                      value={terminologyName}
-                      maxLength={120}
-                      onChange={(event) => {
-                        setTerminologyName(event.target.value);
-                        setTerminologyPreview(null);
-                      }}
-                    />
-                  </label>
-                  <input
-                    ref={terminologyFileRef}
-                    type="file"
-                    accept=".csv,text/csv"
-                    hidden
-                    onChange={(event) => void previewTerminologyFile(event)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => terminologyFileRef.current?.click()}
+            </div>
+            <div className="settings-card">
+              <div className="settings-fields settings-fields-two-columns">
+                <label>
+                  摘要语言
+                  <select
+                    value={preferences.summaryTargetLanguage}
+                    onChange={(event) => updatePreferences({
+                      summaryTargetLanguage: event.target.value as SummaryTargetLanguage,
+                    })}
                   >
-                    Choose CSV file
-                  </button>
-                  {terminologyPreview && (
-                    <div className="settings-import-preview">
-                      <strong>
-                        {terminologyPreview.valid
-                          ? `${terminologyPreview.name}: ${terminologyPreview.acceptedRowCount} rows`
-                          : 'This terminology library cannot be imported'}
-                      </strong>
-                      {terminologyPreview.errors.map((issue) => (
-                        <p
-                          key={`error-${issue.line}-${issue.code}-${issue.message}`}
-                          className="settings-page-error"
-                        >
-                          Line {issue.line}: {issue.message}
-                        </p>
-                      ))}
-                      {terminologyPreview.warnings.map((issue) => (
-                        <p key={`warning-${issue.line}-${issue.code}-${issue.message}`}>
-                          Line {issue.line}: {issue.message}
-                        </p>
-                      ))}
-                      {terminologyPreview.valid && (
+                    <option value="zh-CN">简体中文</option>
+                    <option value="en">English</option>
+                  </select>
+                </label>
+                <label>
+                  详细程度
+                  <select
+                    value={preferences.summaryDetailLevel}
+                    onChange={(event) => updatePreferences({
+                      summaryDetailLevel: event.target.value as SummaryDetailLevel,
+                    })}
+                  >
+                    <option value="short">简短</option>
+                    <option value="medium">适中</option>
+                    <option value="detailed">详细</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="settings-translation"
+            className="settings-section"
+            aria-labelledby="translation-settings-title"
+          >
+            <div className="settings-section-heading">
+              <div>
+                <h3 id="translation-settings-title" className="settings-section-title">翻译</h3>
+                <p>设置翻译方向，并决定是否使用术语和全文智能上下文。</p>
+              </div>
+            </div>
+            <div className="settings-card">
+              <div className="settings-fields settings-fields-two-columns">
+                <label>
+                  源语言
+                  <select
+                    value={preferences.translationSourceLanguage}
+                    onChange={(event) => updatePreferences({
+                      translationSourceLanguage: event.target.value as TranslationSourceLanguage,
+                    })}
+                  >
+                    <option value="auto">自动检测</option>
+                    {TRANSLATION_TARGET_LANGUAGES.map((language) => (
+                      <option key={language} value={language}>
+                        {SETTINGS_TRANSLATION_LANGUAGE_LABELS[language]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  目标语言
+                  <select
+                    value={preferences.translationTargetLanguage}
+                    onChange={(event) => updatePreferences({
+                      translationTargetLanguage: event.target.value as TranslationTargetLanguage,
+                    })}
+                  >
+                    {TRANSLATION_TARGET_LANGUAGES.map((language) => (
+                      <option key={language} value={language}>
+                        {SETTINGS_TRANSLATION_LANGUAGE_LABELS[language]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="settings-toggle-grid">
+                <label className="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={preferences.useTerminology}
+                    onChange={(event) => updatePreferences({
+                      useTerminology: event.target.checked,
+                    })}
+                  />
+                  <span>
+                    <strong>使用术语库</strong>
+                    <small>在所有翻译模式中应用本地术语候选。</small>
+                  </span>
+                </label>
+                <label className="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={preferences.useSmartContext}
+                    onChange={(event) => updatePreferences({
+                      useSmartContext: event.target.checked,
+                    })}
+                  />
+                  <span>
+                    <strong>AI 智能上下文</strong>
+                    <small>翻译前分析全文、专业术语和文体，会增加一次或多次模型请求。</small>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="settings-terminology"
+            className="settings-section"
+            aria-labelledby="terminology-settings-title"
+          >
+            <div className="settings-section-heading">
+              <div>
+                <h3 id="terminology-settings-title" className="settings-section-title">术语库</h3>
+                <p>按库启用内置术语，也可以导入自己的 CSV 术语库。</p>
+              </div>
+              <button
+                type="button"
+                className="settings-section-action"
+                onClick={() => {
+                  setShowTerminologyCreator((current) => !current);
+                  setTerminologyError('');
+                  setTerminologyNotice('');
+                }}
+              >
+                {showTerminologyCreator ? '收起导入' : '新建术语库'}
+              </button>
+            </div>
+            <div className="settings-card">
+              <div className="settings-fields">
+                {showTerminologyCreator && (
+                  <div className="settings-import-help">
+                    <h4>术语 CSV 格式</h4>
+                    <p>
+                      使用 UTF-8 CSV，首行必须为{' '}
+                      <code>source,target,tgt_lng</code>。目标词为空时保留源词；
+                      <code>tgt_lng</code> 为空时应用到所有目标语言。逗号、引号和换行
+                      需遵循 RFC 4180 引用规则。
+                    </p>
+                    <pre>{[
+                      'source,target,tgt_lng',
+                      'Large language model,大语言模型,zh-CN',
+                      'colour,color,en',
+                      'Shale,,',
+                      '"term, with comma","译文，含逗号",zh-CN',
+                    ].join('\n')}</pre>
+                    <label>
+                      术语库名称
+                      <input
+                        value={terminologyName}
+                        maxLength={120}
+                        onChange={(event) => {
+                          setTerminologyName(event.target.value);
+                          setTerminologyPreview(null);
+                        }}
+                      />
+                    </label>
+                    <input
+                      ref={terminologyFileRef}
+                      type="file"
+                      accept=".csv,text/csv"
+                      hidden
+                      onChange={(event) => void previewTerminologyFile(event)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => terminologyFileRef.current?.click()}
+                    >
+                      选择 CSV 文件
+                    </button>
+                    {terminologyPreview && (
+                      <div className="settings-import-preview">
+                        <strong>
+                          {terminologyPreview.valid
+                            ? `${terminologyPreview.name}：${terminologyPreview.acceptedRowCount} 行`
+                            : '该术语库无法导入'}
+                        </strong>
+                        {terminologyPreview.errors.map((issue) => (
+                          <p
+                            key={`error-${issue.line}-${issue.code}-${issue.message}`}
+                            className="settings-page-error"
+                          >
+                            第 {issue.line} 行：{issue.message}
+                          </p>
+                        ))}
+                        {terminologyPreview.warnings.map((issue) => (
+                          <p key={`warning-${issue.line}-${issue.code}-${issue.message}`}>
+                            第 {issue.line} 行：{issue.message}
+                          </p>
+                        ))}
+                        {terminologyPreview.valid && (
+                          <button
+                            type="button"
+                            onClick={() => void importPreviewedTerminology()}
+                          >
+                            {terminologyPreview.replacesExistingUserLibrary
+                              ? '确认并替换术语库'
+                              : '导入并启用术语库'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="settings-library-list">
+                  {terminologyLibraries.map((library) => (
+                    <div className="settings-field settings-library-row" key={library.id}>
+                      <label className="settings-toggle">
+                        <input
+                          type="checkbox"
+                          checked={library.enabled}
+                          disabled={!preferences.useTerminology}
+                          onChange={(event) => void setTerminologyLibraryEnabled(
+                            library,
+                            event.target.checked,
+                          )}
+                        />
+                        <span>
+                          <strong>{library.name}</strong>
+                          <small>
+                            {library.origin === 'builtin' ? '内置' : '用户'} ·
+                            {' '}{library.entryCount.toLocaleString()} 条
+                            {library.description ? ` · ${library.description}` : ''}
+                          </small>
+                          {library.usesTraditionalChineseFallback && (
+                            <small>
+                              繁体中文条目来自台湾参考库，并非原生香港术语；
+                              zh-HK 术语会优先使用。
+                            </small>
+                          )}
+                        </span>
+                      </label>
+                      {library.removable && (
                         <button
                           type="button"
-                          onClick={() => void importPreviewedTerminology()}
+                          onClick={() => void removeTerminologyLibrary(library)}
                         >
-                          {terminologyPreview.replacesExistingUserLibrary
-                            ? 'Confirm and replace library'
-                            : 'Import and enable library'}
+                          删除
                         </button>
                       )}
                     </div>
-                  )}
+                  ))}
                 </div>
-              )}
-              {terminologyLibraries.map((library) => (
-                <div className="settings-field" key={library.id}>
-                  <label className="settings-toggle">
-                    <input
-                      type="checkbox"
-                      checked={library.enabled}
-                      disabled={!preferences.useTerminology}
-                      onChange={(event) => void setTerminologyLibraryEnabled(
-                        library,
-                        event.target.checked,
-                      )}
-                    />
-                    <span>
-                      <strong>{library.name}</strong>
-                      <small>
-                        {library.origin === 'builtin' ? 'Built-in' : 'User'} ·
-                        {' '}{library.entryCount.toLocaleString()} entries
-                        {library.description ? ` · ${library.description}` : ''}
-                      </small>
-                      {library.usesTraditionalChineseFallback && (
-                        <small>
-                          Traditional Chinese entries are Taiwan references, not a
-                          native Hong Kong glossary; zh-HK terms take priority.
-                        </small>
-                      )}
-                    </span>
-                  </label>
-                  {library.removable && (
-                    <button
-                      type="button"
-                      onClick={() => void removeTerminologyLibrary(library)}
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              ))}
-              {terminologyError && (
-                <p className="settings-page-error" role="status">
-                  {terminologyError}
-                </p>
-              )}
-              {terminologyNotice && <p role="status">{terminologyNotice}</p>}
-              <label className="settings-toggle">
-                <input
-                  type="checkbox"
-                  checked={preferences.useSmartContext}
-                  onChange={(event) => updatePreferences({
-                    useSmartContext: event.target.checked,
-                  })}
-                />
-                <span>
-                  <strong>AI smart context</strong>
-                  <small>
-                    Analyze the whole article and professional terms before translating.
-                    This uses one or more additional model requests.
-                  </small>
-                </span>
-              </label>
-              <label>
-                AI expert
-                <select
-                  value={preferences.translationExpertId}
-                  onChange={(event) => updatePreferences({
-                    translationExpertId: event.target.value,
-                  })}
-                >
-                  <option value={DEFAULT_TRANSLATION_EXPERT_ID}>No expert</option>
-                  <optgroup label="Built-in experts">
-                    {experts.filter((expert) => expert.origin === 'builtin').map((expert) => (
-                      <option key={expert.id} value={expert.id}>{expert.name}</option>
-                    ))}
-                  </optgroup>
-                  {experts.some((expert) => expert.origin === 'user') && (
-                    <optgroup label="My experts">
-                      {experts.filter((expert) => expert.origin === 'user').map((expert) => (
+                {terminologyError && (
+                  <p className="settings-page-error" role="status">
+                    {terminologyError}
+                  </p>
+                )}
+                {terminologyNotice && <p role="status">{terminologyNotice}</p>}
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="settings-experts"
+            className="settings-section"
+            aria-labelledby="expert-settings-title"
+          >
+            <div className="settings-section-heading">
+              <div>
+                <h3 id="expert-settings-title" className="settings-section-title">AI 专家</h3>
+                <p>选择领域翻译专家，或从受限 YAML 文件导入自定义专家。</p>
+              </div>
+              <button
+                type="button"
+                className="settings-section-action"
+                onClick={() => {
+                  setShowExpertCreator((current) => !current);
+                  setExpertError('');
+                  setExpertNotice('');
+                }}
+              >
+                {showExpertCreator ? '收起导入' : '新建 AI 专家'}
+              </button>
+            </div>
+            <div className="settings-card">
+              <div className="settings-fields">
+                <label>
+                  当前专家
+                  <select
+                    value={preferences.translationExpertId}
+                    onChange={(event) => updatePreferences({
+                      translationExpertId: event.target.value,
+                    })}
+                  >
+                    <option value={DEFAULT_TRANSLATION_EXPERT_ID}>不使用专家</option>
+                    <optgroup label="内置专家">
+                      {experts.filter((expert) => expert.origin === 'builtin').map((expert) => (
                         <option key={expert.id} value={expert.id}>{expert.name}</option>
                       ))}
                     </optgroup>
-                  )}
-                </select>
-              </label>
-              {preferences.translationExpertId !== DEFAULT_TRANSLATION_EXPERT_ID && (() => {
-                const selectedExpert = experts.find((expert) =>
-                  expert.id === preferences.translationExpertId);
-                return selectedExpert ? (
-                  <div className="settings-import-preview">
-                    <strong>{selectedExpert.name}</strong>
-                    <p>{selectedExpert.description || selectedExpert.details}</p>
-                    <small>
-                      {selectedExpert.origin === 'builtin' ? 'Built-in' : 'User'} ·
-                      {' '}v{selectedExpert.version} · {selectedExpert.author}
-                    </small>
-                    {selectedExpert.warnings.map((warning) => (
-                      <p key={warning}>{warning}</p>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="settings-page-error" role="status">
-                    The selected AI expert is no longer available. Choose another expert.
-                  </p>
-                );
-              })()}
-              <div className="settings-field">
-                <span>Custom AI experts</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowExpertCreator((current) => !current);
-                    setExpertError('');
-                    setExpertNotice('');
-                  }}
-                >
-                  New AI expert
-                </button>
-              </div>
-              {showExpertCreator && (
-                <div className="settings-import-help">
-                  <h4>AI expert YAML format</h4>
-                  <p>
-                    Save a UTF-8 <code>.yml</code> or <code>.yaml</code> file with
-                    an ID, version, name, and domain/style instruction. The optional
-                    variables are <code>{'{{sourceLanguage}}'}</code> and{' '}
-                    <code>{'{{targetLanguage}}'}</code>.
-                  </p>
-                  <pre>{[
-                    'id: my-medical-expert',
-                    'version: 1.0.0',
-                    'name: Medical translation',
-                    'author: Me',
-                    'description: Preserve clinical terminology.',
-                    'instruction: |',
-                    '  Use standard {{targetLanguage}} clinical terminology.',
-                    '  Preserve drug names and units exactly.',
-                    'matches:',
-                    '  - medical',
-                  ].join('\n')}</pre>
-                  <p>
-                    Files are validated locally. Custom YAML tags, aliases, unknown
-                    variables, and instructions that replace the output format are rejected
-                    or removed before import.
-                  </p>
-                  <input
-                    ref={expertFileRef}
-                    type="file"
-                    accept=".yml,.yaml,text/yaml,application/yaml"
-                    hidden
-                    onChange={(event) => void previewExpertFile(event)}
-                  />
-                  <button type="button" onClick={() => expertFileRef.current?.click()}>
-                    Choose YAML file
-                  </button>
-                  {expertPreview && (
+                    {experts.some((expert) => expert.origin === 'user') && (
+                      <optgroup label="我的专家">
+                        {experts.filter((expert) => expert.origin === 'user').map((expert) => (
+                          <option key={expert.id} value={expert.id}>{expert.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </label>
+                {preferences.translationExpertId !== DEFAULT_TRANSLATION_EXPERT_ID && (() => {
+                  const selectedExpert = experts.find((expert) =>
+                    expert.id === preferences.translationExpertId);
+                  return selectedExpert ? (
                     <div className="settings-import-preview">
-                      <strong>
-                        {expertPreview.valid && expertPreview.expert
-                          ? `${expertPreview.expert.name} (${expertPreview.expert.id})`
-                          : 'This expert cannot be imported'}
-                      </strong>
-                      {expertPreview.errors.map((error) => (
-                        <p key={error} className="settings-page-error">{error}</p>
-                      ))}
-                      {expertPreview.warnings.map((warning) => (
+                      <strong>{selectedExpert.name}</strong>
+                      <p>{selectedExpert.description || selectedExpert.details}</p>
+                      <small>
+                        {selectedExpert.origin === 'builtin' ? '内置' : '用户'} ·
+                        {' '}v{selectedExpert.version} · {selectedExpert.author}
+                      </small>
+                      {selectedExpert.warnings.map((warning) => (
                         <p key={warning}>{warning}</p>
                       ))}
-                      {expertPreview.valid && expertPreview.expert && (
-                        <button type="button" onClick={() => void importPreviewedExpert()}>
-                          {expertPreview.replacesExistingUserExpert
-                            ? 'Confirm and replace user expert'
-                            : 'Import expert'}
-                        </button>
-                      )}
                     </div>
-                  )}
-                </div>
-              )}
-              {experts.filter((expert) => expert.origin === 'user').map((expert) => (
-                <div className="settings-field" key={`manage-${expert.id}`}>
-                  <span>{expert.name}</span>
-                  <button type="button" onClick={() => void removeExpert(expert)}>
-                    Delete
-                  </button>
-                </div>
-              ))}
-              {expertError && <p className="settings-page-error" role="status">{expertError}</p>}
-              {expertNotice && <p role="status">{expertNotice}</p>}
-            </div>
-            <div className="translation-shortcut-grid">
-              {TRANSLATION_SHORTCUTS.map(({ preferenceKey, label }) => {
-                const isRecording = recordingShortcut === preferenceKey;
-                return (
-                  <div className="settings-field" key={preferenceKey}>
-                    <span>{label}</span>
-                    <button
-                      type="button"
-                      className={`shortcut-recorder${isRecording ? ' is-recording' : ''}`}
-                      aria-pressed={isRecording}
-                      onClick={() => {
-                        setRecordingShortcut(preferenceKey);
-                        setShortcutError('');
-                      }}
-                      onKeyDown={(event) => recordShortcut(preferenceKey, event)}
-                      onBlur={() => {
-                        if (recordingShortcut === preferenceKey) setRecordingShortcut(null);
-                      }}
-                    >
-                      {isRecording
-                        ? 'Press shortcut…'
-                        : formatKeyboardShortcut(preferences[preferenceKey])}
+                  ) : (
+                    <p className="settings-page-error" role="status">
+                      当前选择的 AI 专家已不可用，请选择其他专家。
+                    </p>
+                  );
+                })()}
+                {showExpertCreator && (
+                  <div className="settings-import-help">
+                    <h4>AI 专家 YAML 格式</h4>
+                    <p>
+                      保存 UTF-8 <code>.yml</code> 或 <code>.yaml</code> 文件，
+                      其中包含 ID、版本、名称以及领域或文体指令。可选变量为{' '}
+                      <code>{'{{sourceLanguage}}'}</code> 和{' '}
+                      <code>{'{{targetLanguage}}'}</code>。
+                    </p>
+                    <pre>{[
+                      'id: my-medical-expert',
+                      'version: 1.0.0',
+                      'name: Medical translation',
+                      'author: Me',
+                      'description: Preserve clinical terminology.',
+                      'instruction: |',
+                      '  Use standard {{targetLanguage}} clinical terminology.',
+                      '  Preserve drug names and units exactly.',
+                      'matches:',
+                      '  - medical',
+                    ].join('\n')}</pre>
+                    <p>
+                      文件会在本地校验。自定义 YAML 标签、别名、未知变量，以及试图替换
+                      输出格式的指令会被拒绝或移除。
+                    </p>
+                    <input
+                      ref={expertFileRef}
+                      type="file"
+                      accept=".yml,.yaml,text/yaml,application/yaml"
+                      hidden
+                      onChange={(event) => void previewExpertFile(event)}
+                    />
+                    <button type="button" onClick={() => expertFileRef.current?.click()}>
+                      选择 YAML 文件
+                    </button>
+                    {expertPreview && (
+                      <div className="settings-import-preview">
+                        <strong>
+                          {expertPreview.valid && expertPreview.expert
+                            ? `${expertPreview.expert.name} (${expertPreview.expert.id})`
+                            : '该专家无法导入'}
+                        </strong>
+                        {expertPreview.errors.map((error) => (
+                          <p key={error} className="settings-page-error">{error}</p>
+                        ))}
+                        {expertPreview.warnings.map((warning) => (
+                          <p key={warning}>{warning}</p>
+                        ))}
+                        {expertPreview.valid && expertPreview.expert && (
+                          <button type="button" onClick={() => void importPreviewedExpert()}>
+                            {expertPreview.replacesExistingUserExpert
+                              ? '确认并替换用户专家'
+                              : '导入专家'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {experts.filter((expert) => expert.origin === 'user').map((expert) => (
+                  <div className="settings-field settings-library-row" key={`manage-${expert.id}`}>
+                    <span>{expert.name}</span>
+                    <button type="button" onClick={() => void removeExpert(expert)}>
+                      删除
                     </button>
                   </div>
-                );
-              })}
+                ))}
+                {expertError && <p className="settings-page-error" role="status">{expertError}</p>}
+                {expertNotice && <p role="status">{expertNotice}</p>}
+              </div>
             </div>
-            {shortcutError && <p className="settings-shortcut-error" role="status">{shortcutError}</p>}
+          </section>
+
+          <section
+            id="settings-shortcuts"
+            className="settings-section"
+            aria-labelledby="shortcut-settings-title"
+          >
+            <div className="settings-section-heading">
+              <div>
+                <h3 id="shortcut-settings-title" className="settings-section-title">快捷键</h3>
+                <p>点击按键框后录入组合键；按 Esc 可取消录入。</p>
+              </div>
+            </div>
+            <div className="settings-card">
+              <div className="translation-shortcut-grid">
+                {TRANSLATION_SHORTCUTS.map(({ preferenceKey, label }) => {
+                  const isRecording = recordingShortcut === preferenceKey;
+                  return (
+                    <div className="settings-field" key={preferenceKey}>
+                      <span>{label}</span>
+                      <button
+                        type="button"
+                        className={`shortcut-recorder${isRecording ? ' is-recording' : ''}`}
+                        aria-pressed={isRecording}
+                        onClick={() => {
+                          setRecordingShortcut(preferenceKey);
+                          setShortcutError('');
+                        }}
+                        onKeyDown={(event) => recordShortcut(preferenceKey, event)}
+                        onBlur={() => {
+                          if (recordingShortcut === preferenceKey) setRecordingShortcut(null);
+                        }}
+                      >
+                        {isRecording
+                          ? '请按下快捷键…'
+                          : formatKeyboardShortcut(preferences[preferenceKey])}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {shortcutError && (
+                <p className="settings-shortcut-error" role="status">{shortcutError}</p>
+              )}
+            </div>
+          </section>
+
+          <div id="settings-provider" className="settings-section-anchor">
+            {providerError && <p className="settings-page-error" role="status">{providerError}</p>}
+            <ProviderSettings
+              mode="embedded"
+              profile={profile}
+              onSaved={setProfile}
+            />
           </div>
-        </section>
 
-        <DiagnosticsSection />
-
-        {providerError && <p className="settings-page-error" role="status">{providerError}</p>}
-        <ProviderSettings
-          mode="embedded"
-          profile={profile}
-          onSaved={setProfile}
-        />
-      </div>
+          <div id="settings-diagnostics" className="settings-section-anchor">
+            <DiagnosticsSection />
+          </div>
+        </div>
+      </main>
     </div>
   );
 };
