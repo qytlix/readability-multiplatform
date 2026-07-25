@@ -226,7 +226,7 @@ struct EntryListItem: Identifiable, Hashable {
 
 ## 2. LLM
 
-> **当前 P0 Summary 实现（迁移 006/007）**：下方 Mercury 参考模型仍保留给后续多 Provider / Translation 设计。当前运行代码使用更小的 `ai_provider_profile`、`agent_task_run` 和 `summary_result` 三表，不直接实现参考模型中的 `agent_model_profile`、`agent_profile` 或 Usage 表。
+> **当前运行实现（迁移 006～012）**：下方 Mercury 多 Provider 模型仍是参考设计。运行代码使用较小的 `ai_provider_profile`、Summary 的 `agent_task_run` / `summary_result`、Translation 的 `translation_result` / `translation_segment`，以及实际生效的 `llm_usage_event` 请求账本。尚未实现参考模型中的 `agent_model_profile` 或 `agent_profile`。
 
 ### ai_provider_profile — 当前 Summary Provider
 
@@ -345,39 +345,40 @@ Key 位于 Electron `userData/ai-secrets.json`。系统 `safeStorage` 可用时�
 
 ### llm_usage_event — LLM 调用记录
 
-每次 LLM API 调用的计费/用量记录，包含请求时刻的快照信息以确保即使配置变更后数据仍然可追溯。
+每次 Summary 或全文 Translation 的实际 Provider 请求各写一条本地账本记录。记录在请求开始时以 `running` 创建，随后更新为 `succeeded`、`failed` 或 `interrupted`。启动恢复会将遗留 `running` 记录标记为 `interrupted`。
+
+每次非复用的 Summary 或全文 Translation 启动会生成新的 `attemptId`。同次 Translation 的 batch 与 compensation 共享该值；重试同一 `taskRunId` 时使用新的值。迁移前的历史行保留 `NULL`。
+
+`taskType + taskRunId` 是逻辑归属，不为 `taskRunId` 设置强外键：Summary run 位于 `agent_task_run`，而 Translation run 位于 `translation_result`。这是为了避免把 Translation 关联到错误的任务表；查询时必须同时使用两个字段。
+
+账本不保存 prompt、文章正文、模型响应、API Key、Authorization header 或 Provider base URL。
+
+只读统计从本表按请求开始时间、功能、Provider profile 和模型聚合。Token 总计只累加 Provider 明确报告的字段，并同时返回对应的 coverage；`NULL` 不按 `0` 估算。`knownAttemptCount` 是非空 `attemptId` 的去重数，`unassignedRequestCount` 则单列历史 `NULL attemptId` 请求，不能据此推断完整执行次数。
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | `id` | INTEGER | PK, 自增 | 主键 |
-| `taskRunId` | INTEGER | → agent_task_run(id) SET NULL | 所属任务运行 |
-| `entryId` | INTEGER | → entry(id) SET NULL | 目标文章 |
-| `taskType` | TEXT | NOT NULL | 任务类型 |
-| `providerProfileId` | INTEGER | → provider(id) SET NULL | 使用时提供商 ID |
-| `modelProfileId` | INTEGER | → model(id) SET NULL | 使用时模型 ID |
-| `providerBaseURLSnapshot` | TEXT | NOT NULL | 快照：提供商基 URL |
-| `providerResolvedURLSnapshot` | TEXT | — | 快照：实际请求完整 URL |
-| `providerResolvedHostSnapshot` | TEXT | — | 快照：请求 Host |
-| `providerResolvedPathSnapshot` | TEXT | — | 快照：请求路径 |
-| `providerNameSnapshot` | TEXT | — | 快照：提供商名称 |
-| `modelNameSnapshot` | TEXT | NOT NULL | 快照：模型名称 |
-| `requestPhase` | TEXT | NOT NULL | 阶段：`normal` / `repair` / `retry` |
-| `requestStatus` | TEXT | NOT NULL | 状态：`succeeded` / `failed` / `cancelled` / `timedOut` |
-| `promptTokens` | INTEGER | — | 输入 Token 数 |
-| `completionTokens` | INTEGER | — | 输出 Token 数 |
+| `providerRequestId` | INTEGER | NOT NULL, UNIQUE | Main 进程内生成的请求身份；Translation batch / compensation 复用其运行时 ID |
+| `attemptId` | TEXT | 可空 | 本次 AI 执行的 UUID；同一 Translation attempt 的所有真实请求相同，历史记录为 `NULL` |
+| `taskType` | TEXT | NOT NULL | `summary` / `translation` |
+| `taskRunId` | INTEGER | NOT NULL，无强外键 | 任务逻辑归属；必须与 `taskType` 联合解释 |
+| `providerProfileId` | INTEGER | NOT NULL → `ai_provider_profile(id)` | 发起请求时使用的 Provider 配置 |
+| `model` | TEXT | NOT NULL | 发起请求时的模型名快照 |
+| `requestKind` | TEXT | NOT NULL | `summary` / `batch` / `compensation` |
+| `requestStatus` | TEXT | NOT NULL | `running` / `succeeded` / `failed` / `interrupted` |
+| `errorCode` | TEXT | — | 稳定错误码；不保存原始 Provider 错误文本 |
+| `inputTokens` | INTEGER | — | 输入 Token 数 |
+| `outputTokens` | INTEGER | — | 输出 Token 数 |
 | `totalTokens` | INTEGER | — | 总 Token 数 |
-| `usageAvailability` | TEXT | NOT NULL | 用量数据可用性：`actual` / `missing` |
-| `startedAt` | DATETIME | — | 请求开始时间 |
-| `finishedAt` | DATETIME | — | 请求结束时间 |
-| `createdAt` | DATETIME | NOT NULL | 记录创建时间 |
+| `usageAvailability` | TEXT | NOT NULL | `reported`（三项齐全）/ `partial`（仅部分字段）/ `missing`（Provider 未报告） |
+| `startedAt` | DATETIME | NOT NULL | 请求开始时间 |
+| `finishedAt` | DATETIME | — | 请求收尾时间 |
 
 **索引：**
-- `idx_llm_usage_created` — `createdAt`
-- `idx_llm_usage_task_created` — `(taskType, createdAt)`
-- `idx_llm_usage_provider_created` — `(providerProfileId, createdAt)`
-- `idx_llm_usage_model_created` — `(modelProfileId, createdAt)`
-- `idx_llm_usage_status_created` — `(requestStatus, createdAt)`
-- `idx_llm_usage_task_run` — `taskRunId`
+- `idx_llm_usage_event_started` — `startedAt DESC`
+- `idx_llm_usage_event_task_started` — `(taskType, taskRunId, startedAt DESC)`
+- `idx_llm_usage_event_model_started` — `(providerProfileId, model, startedAt DESC)`
+- `idx_llm_usage_event_status_started` — `(requestStatus, startedAt DESC)`
 
 ---
 

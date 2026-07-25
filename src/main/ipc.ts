@@ -19,10 +19,12 @@ import {
 import {
   registerTranslationIpcHandlers,
 } from './ipc/translation.handler';
+import { registerUsageIpcHandlers } from './ipc/usage.handler';
 import {
   getFeedServices,
   getSummaryServices,
   getTranslationServices,
+  getUsageServices,
 } from './services';
 
 export type GetMainWindow = () => BrowserWindow | null;
@@ -144,5 +146,10 @@ export function registerIpcHandlers(
   const translationServices = getTranslationServices();
   if (translationServices) {
     registerTranslationIpcHandlers(getMainWindow, translationServices);
+  }
+
+  const usageServices = getUsageServices();
+  if (usageServices) {
+    registerUsageIpcHandlers(getMainWindow, usageServices.usageStatisticsService);
   }
 }

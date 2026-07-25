@@ -72,6 +72,25 @@ describe('OpenAICompatibleProvider', () => {
     expect(onUsage.mock.calls[0]?.[0]).not.toHaveProperty('totalTokens');
   });
 
+  it('normalizes input/output usage names and prioritizes prompt/completion when both exist', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
+      'data: {"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":7,"input_tokens":111,"output_tokens":77,"total_tokens":18}}\n',
+      'data: [DONE]\n',
+    ].join(''), { status: 200 })));
+    const onUsage = vi.fn();
+    const provider = new OpenAICompatibleProvider();
+
+    for await (const chunk of provider.stream({ ...request(), requestUsage: true, onUsage })) {
+      void chunk;
+    }
+
+    expect(onUsage).toHaveBeenCalledWith({
+      inputTokens: 11,
+      outputTokens: 7,
+      totalTokens: 18,
+    });
+  });
+
   it('maps authentication responses to a stable safe error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 401 })));
     const provider = new OpenAICompatibleProvider();

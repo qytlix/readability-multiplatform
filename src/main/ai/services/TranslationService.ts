@@ -26,6 +26,7 @@ import {
 import type { ProviderProfileStore } from '../stores/ProviderProfileStore';
 import type { SecretStore } from '../stores/SecretStore';
 import type { ProviderTokenUsage, SummaryProvider } from '../provider/SummaryProvider';
+import { sanitizeProviderTokenUsage } from '../provider/ProviderTokenUsage';
 import {
   hasTranslatableText,
   isLikelyAlreadyTargetLanguage,
@@ -54,6 +55,13 @@ import {
   type TranslationProviderRequestKind,
   type TranslationRunFailureStage,
 } from './TranslationLogging';
+import {
+  createProviderRequestId,
+  createUsageAttemptId,
+  NoopUsageRecorder,
+  type UsageRecorderPort,
+  type UsageRequestHandle,
+} from './UsageRecorder';
 
 export interface TranslationContentLookup {
   findByEntry(entryId: number): CleanedContent | undefined;
@@ -67,6 +75,7 @@ interface TranslationSource {
 
 interface ActiveTranslationRun {
   result: TranslationResult;
+  attemptId: string;
   abortController: AbortController;
   startedAt: number;
   terminalLogRecorded: boolean;
@@ -74,6 +83,7 @@ interface ActiveTranslationRun {
   sourceSegmentId?: string;
   priorityRanks: Map<string, number>;
   batches: TranslationBatchWork[];
+  providerRequests: Set<ActiveProviderRequest>;
 }
 
 interface TranslationRunDiagnostics {
@@ -93,6 +103,7 @@ interface ActiveProviderRequest {
   requestKind: TranslationProviderRequestKind;
   segmentCount: number;
   startedAt: number;
+  usageRequest: UsageRequestHandle;
 }
 
 interface TranslationBatchWork {
@@ -121,8 +132,6 @@ const MAX_TERMINOLOGY_CANDIDATES = 5;
  */
 const MAX_COMPENSATION_REQUESTS_PER_BATCH = MAX_BATCH_SEGMENTS;
 
-let latestProviderRequestId = 0;
-
 /** Bounded-concurrency Translation runtime with progressive per-segment persistence. */
 export class TranslationService {
   private activeRun: ActiveTranslationRun | null = null;
@@ -138,6 +147,7 @@ export class TranslationService {
     private readonly segmenter = new ContentSegmenter(),
     private readonly terminologyLookup: TerminologyLookup = new EmptyTerminologyLookup(),
     private readonly logger?: TranslationOperationLogger,
+    private readonly usageRecorder: UsageRecorderPort = new NoopUsageRecorder(),
   ) {}
 
   subscribe(listener: (event: TranslationStreamEvent) => void): () => void {
@@ -238,12 +248,14 @@ export class TranslationService {
     const startedAt = performance.now();
     this.activeRun = {
       result,
+      attemptId: createUsageAttemptId(),
       abortController,
       startedAt,
       terminalLogRecorded: false,
       diagnostics: createTranslationRunDiagnostics(),
       priorityRanks: new Map(),
       batches: [],
+      providerRequests: new Set(),
     };
     this.emit({
       type: 'started',
@@ -258,6 +270,7 @@ export class TranslationService {
         baseUrl: profile.baseUrl,
         model: profile.model,
         apiKey,
+        providerProfileId: profile.id,
         abortController,
       });
     }, 0);
@@ -296,6 +309,13 @@ export class TranslationService {
       true,
     ));
     activeRun.abortController.abort();
+    activeRun.providerRequests.forEach((providerRequest) => {
+      this.usageRecorder.interrupt(
+        providerRequest.usageRequest,
+        undefined,
+        TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
+      );
+    });
     this.translationStore.markRunFailed(
       activeRun.result.id,
       error,
@@ -318,6 +338,7 @@ export class TranslationService {
       baseUrl: string;
       model: string;
       apiKey: string;
+      providerProfileId: number;
       abortController: AbortController;
     },
   ): Promise<void> {
@@ -478,6 +499,7 @@ export class TranslationService {
       baseUrl: string;
       model: string;
       apiKey: string;
+      providerProfileId: number;
       abortController: AbortController;
     },
   ): Promise<SegmentTranslationFailure[]> {
@@ -553,7 +575,12 @@ export class TranslationService {
       segmentCount: number,
     ): Promise<number> => {
       const parser = new TranslationBatchStreamParser();
-      const providerRequest = this.startProviderRequest(active, requestKind, segmentCount);
+      const providerRequest = this.startProviderRequest(
+        active,
+        requestKind,
+        segmentCount,
+        providerConfig,
+      );
       latestBatchProviderRequestId = providerRequest.providerRequestId;
       let usage: ProviderTokenUsage | undefined;
       try {
@@ -565,7 +592,7 @@ export class TranslationService {
           signal: providerConfig.abortController.signal,
           requestUsage: true,
           onUsage: (reportedUsage) => {
-            usage = reportedUsage;
+            usage = sanitizeProviderTokenUsage(reportedUsage);
           },
         })) {
           let completedOutputs: ReturnType<TranslationBatchStreamParser['append']>;
@@ -725,6 +752,7 @@ export class TranslationService {
     activeRun: ActiveTranslationRun,
     requestKind: TranslationProviderRequestKind,
     segmentCount: number,
+    providerConfig: { providerProfileId: number; model: string },
   ): ActiveProviderRequest {
     const providerRequestId = createProviderRequestId();
     activeRun.diagnostics.providerRequestCount += 1;
@@ -733,12 +761,22 @@ export class TranslationService {
     } else {
       activeRun.diagnostics.compensationRequestCount += 1;
     }
-    const request = {
+    const request: ActiveProviderRequest = {
       providerRequestId,
       requestKind,
       segmentCount,
       startedAt: performance.now(),
+      usageRequest: this.usageRecorder.start({
+        providerRequestId,
+        attemptId: activeRun.attemptId,
+        taskType: 'translation',
+        taskRunId: activeRun.result.id,
+        providerProfileId: providerConfig.providerProfileId,
+        model: providerConfig.model,
+        requestKind,
+      }),
     };
+    activeRun.providerRequests.add(request);
     logTranslationProviderRequestStarted(this.logger, {
       taskRunId: activeRun.result.id,
       providerRequestId: request.providerRequestId,
@@ -754,6 +792,8 @@ export class TranslationService {
     usage: ProviderTokenUsage | undefined,
   ): void {
     const reportedUsage = toSafeProviderTokenUsage(usage);
+    this.usageRecorder.complete(request.usageRequest, reportedUsage);
+    activeRun.providerRequests.delete(request);
     this.recordProviderUsage(activeRun.diagnostics, reportedUsage);
     activeRun.diagnostics.providerRequestSuccessCount += 1;
     logTranslationProviderRequestCompleted(this.logger, {
@@ -774,6 +814,15 @@ export class TranslationService {
     error: { code: string },
   ): void {
     const reportedUsage = toSafeProviderTokenUsage(usage);
+    const requestStatus = error.code === TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED
+      ? 'interrupted'
+      : 'failed';
+    if (requestStatus === 'interrupted') {
+      this.usageRecorder.interrupt(request.usageRequest, reportedUsage, error.code);
+    } else {
+      this.usageRecorder.fail(request.usageRequest, error.code, reportedUsage);
+    }
+    activeRun.providerRequests.delete(request);
     this.recordProviderUsage(activeRun.diagnostics, reportedUsage);
     activeRun.diagnostics.providerRequestFailureCount += 1;
     logTranslationProviderRequestFailed(this.logger, {
@@ -923,33 +972,10 @@ function createTranslationRunDiagnostics(): TranslationRunDiagnostics {
   };
 }
 
-function createProviderRequestId(): number {
-  const timestampBasedId = Date.now() * 1_000;
-  latestProviderRequestId = Math.max(latestProviderRequestId + 1, timestampBasedId);
-  return latestProviderRequestId;
-}
-
 function toSafeProviderTokenUsage(
   usage: ProviderTokenUsage | undefined,
 ): ProviderTokenUsage | undefined {
-  if (!usage) return undefined;
-  const inputTokens = toSafeTokenCount(usage.inputTokens);
-  const outputTokens = toSafeTokenCount(usage.outputTokens);
-  const totalTokens = toSafeTokenCount(usage.totalTokens);
-  if (inputTokens === undefined && outputTokens === undefined && totalTokens === undefined) {
-    return undefined;
-  }
-  return {
-    ...(inputTokens === undefined ? {} : { inputTokens }),
-    ...(outputTokens === undefined ? {} : { outputTokens }),
-    ...(totalTokens === undefined ? {} : { totalTokens }),
-  };
-}
-
-function toSafeTokenCount(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : undefined;
+  return sanitizeProviderTokenUsage(usage);
 }
 
 function invalidBatchOutput(message: string): TranslationError {

@@ -1,9 +1,6 @@
-/** Token values explicitly returned by a Provider response. */
-export interface ProviderTokenUsage {
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-}
+import type { ProviderTokenUsage } from './ProviderTokenUsage';
+
+export type { ProviderTokenUsage } from './ProviderTokenUsage';
 
 export interface SummaryProviderRequest {
   baseUrl: string;

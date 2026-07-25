@@ -1,9 +1,12 @@
 import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summary.errors';
 import type {
-  ProviderTokenUsage,
   SummaryProvider,
   SummaryProviderRequest,
 } from './SummaryProvider';
+import {
+  normalizeProviderTokenUsage,
+  type ProviderTokenUsage,
+} from './ProviderTokenUsage';
 
 const REQUEST_TIMEOUT_MS = 60_000;
 
@@ -216,33 +219,11 @@ function parseStreamEvent(line: string): { delta?: string; usage?: ProviderToken
       usage?: unknown;
     };
     const content = parsed.choices?.[0]?.delta?.content;
-    const usage = toProviderTokenUsage(parsed.usage);
+    const usage = normalizeProviderTokenUsage(parsed.usage);
     return typeof content === 'string' || usage
       ? { ...(typeof content === 'string' ? { delta: content } : {}), ...(usage ? { usage } : {}) }
       : undefined;
   } catch {
     return undefined;
   }
-}
-
-function toProviderTokenUsage(value: unknown): ProviderTokenUsage | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const usage = value as Record<string, unknown>;
-  const inputTokens = toSafeTokenCount(usage.prompt_tokens);
-  const outputTokens = toSafeTokenCount(usage.completion_tokens);
-  const totalTokens = toSafeTokenCount(usage.total_tokens);
-  if (inputTokens === undefined && outputTokens === undefined && totalTokens === undefined) {
-    return undefined;
-  }
-  return {
-    ...(inputTokens === undefined ? {} : { inputTokens }),
-    ...(outputTokens === undefined ? {} : { outputTokens }),
-    ...(totalTokens === undefined ? {} : { totalTokens }),
-  };
-}
-
-function toSafeTokenCount(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : undefined;
 }
