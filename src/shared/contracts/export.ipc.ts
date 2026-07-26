@@ -1,6 +1,7 @@
 import type {
   ArticleAvailability,
   PerArticleOptions,
+  TranslationLanguage,
 } from './export.types';
 
 // ── 清洗状态检查 ──
@@ -32,6 +33,8 @@ export interface CleanProgressEvent {
 export interface ExportSingleRequest {
   entryId: number;
   options: PerArticleOptions;
+  /** 翻译语言对。不传或 includeTranslation=false 时跳过翻译。 */
+  translationLanguage?: TranslationLanguage;
 }
 
 export interface ExportSingleResult {
@@ -44,6 +47,8 @@ export interface ExportMultipleRequest {
   entries: Array<{
     entryId: number;
     options: PerArticleOptions;
+    /** 翻译语言对。不传或 includeTranslation=false 时跳过翻译。 */
+    translationLanguage?: TranslationLanguage;
   }>;
 }
 

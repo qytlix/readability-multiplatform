@@ -1,9 +1,12 @@
+import { JSDOM } from 'jsdom';
+import { MarkdownConverter } from '../feed/fetcher/MarkdownConverter';
 import type {
   ExportableArticle,
   PerArticleOptions,
 } from '../../shared/contracts/export.types';
 import { DEFAULT_PER_ARTICLE_OPTIONS } from '../../shared/contracts/export.types';
 import type { EntryAnnotation } from '../../shared/contracts/annotation.types';
+import type { TranslationSegment } from '../../shared/contracts/translation.types';
 
 // ── 脚注相关公开类型 ───────────────────────────────────────
 
@@ -195,6 +198,11 @@ export function serializeSingle(
     footnotes = result.footnotes;
   }
 
+  // Interleaved translation: inject blockquotes into the body
+  if (opts.includeTranslation && article.translationSegments && article.translationSegments.length > 0) {
+    body = serializeInterleavedTranslation(body, article.translationSegments);
+  }
+
   parts.push(body || '*(无正文内容)*');
 
   // ── AI 摘要 ──
@@ -203,8 +211,11 @@ export function serializeSingle(
     parts.push(`> **AI 摘要：**\n>\n> ${article.summary.trim()}`);
   }
 
-  // ── 翻译 ──
-  if (opts.includeTranslation && article.translation?.trim()) {
+  // ── 翻译（旧格式，仅在未使用 interleaved 时输出）──
+  if (opts.includeTranslation
+    && !(article.translationSegments && article.translationSegments.length > 0)
+    && article.translation?.trim()
+  ) {
     parts.push('---');
     parts.push(`> **翻译：**\n>\n> ${article.translation.trim()}`);
   }
@@ -264,6 +275,11 @@ function serializeBody(
     footnotes = result.footnotes;
   }
 
+  // Interleaved translation: inject blockquotes into the body
+  if (options.includeTranslation && article.translationSegments && article.translationSegments.length > 0) {
+    body = serializeInterleavedTranslation(body, article.translationSegments);
+  }
+
   parts.push(body || '*(无正文内容)*');
 
   // ── AI 摘要 ──
@@ -272,8 +288,11 @@ function serializeBody(
     parts.push(`> **AI 摘要：**\n>\n> ${article.summary.trim()}`);
   }
 
-  // ── 翻译 ──
-  if (options.includeTranslation && article.translation?.trim()) {
+  // ── 翻译（旧格式，仅在未使用 interleaved 时输出）──
+  if (options.includeTranslation
+    && !(article.translationSegments && article.translationSegments.length > 0)
+    && article.translation?.trim()
+  ) {
     parts.push('---');
     parts.push(`> **翻译：**\n>\n> ${article.translation.trim()}`);
   }
@@ -330,4 +349,88 @@ export function serializeMultiple(
   }
 
   return parts.join('\n\n');
+}
+
+// ── Interleaved Translation (Bilingual) ──────────────────────
+
+/**
+ * Shared MarkdownConverter instance (Turndown is stateless).
+ */
+const mdConverter = new MarkdownConverter();
+
+/**
+ * Build an interleaved (bilingual) body from translation segments.
+ *
+ * Injects each successful translation as a blockquote after the matching
+ * paragraph in the markdown body. Segments are matched in document order
+ * by converting each segment's sourceHtml to Markdown via Turndown, then
+ * locating it in the plain body.
+ */
+export function serializeInterleavedTranslation(
+  body: string,
+  segments: TranslationSegment[],
+): string {
+  const active = segments.filter(
+    (s) => s.status === 'succeeded'
+      && s.translatedText
+      && s.sourceType !== 'title'
+      && s.sourceType !== 'byline',
+  );
+  if (active.length === 0) return body;
+
+  let result = body;
+  let searchPos = 0;
+
+  for (const segment of active) {
+    const translatedText = segment.translatedText?.trim();
+    if (!translatedText) continue;
+
+    // Convert segment's sourceHtml to Markdown for matching
+    const segmentMd = segmentSourceHtmlToMd(segment);
+    if (!segmentMd) continue;
+
+    // Find in body, starting from where we left off
+    const idx = result.indexOf(segmentMd, searchPos);
+    if (idx === -1) {
+      // Fallback: try from beginning (handles edge cases where insertions
+      // shifted positions unexpectedly)
+      const fallbackIdx = result.indexOf(segmentMd);
+      if (fallbackIdx === -1 || fallbackIdx < searchPos - 300) continue;
+      searchPos = fallbackIdx;
+    } else {
+      searchPos = idx;
+    }
+
+    // Insert translation blockquote after the matched text
+    const insertPos = searchPos + segmentMd.length;
+    const block = `\n\n> ${translatedText}`;
+
+    // Handle newlines after the matched text gracefully
+    const after = result.slice(insertPos);
+    if (after.startsWith('\n')) {
+      const nlMatch = after.match(/^\n+/);
+      const nlLen = nlMatch ? nlMatch[0].length : 0;
+      result = result.slice(0, insertPos + nlLen) + block + '\n' + result.slice(insertPos + nlLen);
+    } else {
+      result = result.slice(0, insertPos) + block + result.slice(insertPos);
+    }
+
+    searchPos += segmentMd.length + block.length;
+  }
+
+  return result;
+}
+
+/**
+ * Convert a TranslationSegment's sourceHtml to Markdown for text matching.
+ * List items are wrapped in <ul> so Turndown produces bullet syntax.
+ */
+function segmentSourceHtmlToMd(segment: TranslationSegment): string {
+  let html: string;
+  if (segment.sourceType === 'list') {
+    html = `<ul>${segment.sourceHtml}</ul>`;
+  } else {
+    html = segment.sourceHtml;
+  }
+  return mdConverter.convert(html).trim();
 }

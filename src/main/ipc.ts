@@ -172,6 +172,7 @@ export function registerIpcHandlers(
       feedServices.contentService,
       db,
       annotationServices?.annotationService,
+      translationServices?.translationStore,
     );
     registerExportIpcHandlers(getMainWindow, exportService);
   }
