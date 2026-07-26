@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3';
 import { safeStorage } from 'electron';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -79,6 +80,13 @@ export interface AnnotationServices {
 
 // ── Module-level Singletons ─────────────────────────────
 
+let dbSingleton: Database.Database | null = null;
+
+/** Returns the raw database handle. */
+export function getDatabase(): Database.Database | null {
+  return dbSingleton;
+}
+
 let feedServicesSingleton: FeedServices | null = null;
 let summaryServicesSingleton: SummaryServices | null = null;
 let translationServicesSingleton: TranslationServices | null = null;
@@ -148,6 +156,7 @@ export function initializeServices(
   terminologyDbPath?: string,
 ): FeedServices {
   const dbManager = new DatabaseManager(dbPath);
+  dbSingleton = dbManager.getDb();
   dbManager.runMigrations();
 
   const feedStore = new FeedStore(dbManager.getDb());

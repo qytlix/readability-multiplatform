@@ -6,6 +6,7 @@ import type { DiagnosticsAPI } from './contracts/diagnostics.ipc';
 import type { UsageAPI } from './contracts/usage.ipc';
 import type { AnnotationAPI } from './contracts/annotation.ipc';
 import type {
+  ExportAPI,
   FeedAPI,
   EntryAPI,
   ContentAPI,
@@ -54,4 +55,5 @@ export interface ShaleAPI {
   diagnostics: DiagnosticsAPI;
   usage: UsageAPI;
   annotation: AnnotationAPI;
+  export: ExportAPI;
 }

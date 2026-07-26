@@ -29,8 +29,15 @@ import {
 } from '../translation/TranslationPanel';
 import type { AiPreferences } from '../settings/aiPreferences';
 import { InlineTranslationOverlay } from '../translation/InlineTranslationOverlay';
-import { SummaryIcon, TranslateIcon } from '../reader/ReaderIcons';
+import { SummaryIcon, TranslateIcon, ExportIcon } from '../reader/ReaderIcons';
 import { formatArticleDate, getArticleDateLocale } from './articleMetadata';
+import {
+  checkAvailability,
+  exportSingleEntry,
+} from './entryExport';
+import { ExportOptionsDialog } from './ExportOptionsDialog';
+import type { ArticleAvailability } from '../../../shared/contracts/export.types';
+import type { PerArticleOptions } from '../../../shared/contracts/export.types';
 import type { EntryAIViewState } from './entryAIViewState';
 import {
   calculateReadingProgress,
@@ -57,6 +64,7 @@ interface EntryDetailProps {
   onRetryEntries: () => void;
   aiPreferences: AiPreferences;
   aiToolbarTarget: HTMLDivElement | null;
+  exportToolbarTarget?: HTMLDivElement | null;
   onAIViewStateChange: (
     entryId: number,
     change: Partial<EntryAIViewState>,
@@ -66,6 +74,9 @@ interface EntryDetailProps {
     entryId: number,
     result: { ok: true } | { ok: false; message: string },
   ) => void;
+  selectionMode?: boolean;
+  selectedIds?: Set<number>;
+  onExportRequest?: () => void;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -87,7 +98,11 @@ export const EntryDetail = ({
   onRetryEntries,
   aiPreferences,
   aiToolbarTarget,
+  exportToolbarTarget = null,
   onAIViewStateChange,
+  selectionMode = false,
+  selectedIds,
+  onExportRequest,
   onReadingProgressChange,
   onContentRefreshComplete,
 }: EntryDetailProps) => {
@@ -99,6 +114,8 @@ export const EntryDetail = ({
   const [isSummaryGenerating, setIsSummaryGenerating] = useState(false);
   const [isTranslationGenerating, setIsTranslationGenerating] = useState(false);
   const [isTitleTranslating, setIsTitleTranslating] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportArticleAvail, setExportArticleAvail] = useState<ArticleAvailability | null>(null);
   const [titleTranslationTarget, setTitleTranslationTarget] = useState<HTMLDivElement | null>(null);
   const [isFloatingHeaderVisible, setIsFloatingHeaderVisible] = useState(false);
   const prevEntryId = useRef<number | null>(null);
@@ -428,6 +445,41 @@ export const EntryDetail = ({
     return () => window.removeEventListener('mousemove', revealHeaderAtWindowTop);
   }, []);
 
+  const handleExportClick = useCallback(async (): Promise<void> => {
+    if (selectionMode && selectedIds && selectedIds.size > 0) {
+      onExportRequest?.();
+      return;
+    }
+    if (!entry) return;
+    const result = await checkAvailability([entry.id]);
+    if (!result.ok) {
+      return;
+    }
+    const avail = result.data.articles[0];
+    if (!avail) return;
+    setExportArticleAvail(avail);
+    setShowExportDialog(true);
+  }, [entry, selectionMode, selectedIds, onExportRequest]);
+
+  const handleExportConfirm = useCallback(
+    async (perArticleOptions: Map<number, PerArticleOptions>): Promise<void> => {
+      setShowExportDialog(false);
+      if (!entry) return;
+      const options = perArticleOptions.get(entry.id);
+      if (!options) return;
+      const result = await exportSingleEntry(entry.id, options);
+      if (result.ok) {
+        const filePath = result.data.filePath;
+        console.log('Export saved to:', filePath);
+      }
+    },
+    [entry],
+  );
+
+  const handleExportCancel = useCallback((): void => {
+    setShowExportDialog(false);
+  }, []);
+
   if (readerDisplayState === 'feed-loading') {
     return <div className="entry-detail empty entry-detail-empty-state">正在载入订阅源…</div>;
   }
@@ -737,9 +789,36 @@ export const EntryDetail = ({
     )
     : null;
 
+  const isExportDisabled = selectionMode && selectedIds && selectedIds.size > 0
+    ? false
+    : status !== 'success' || !content?.markdown.trim();
+
+  const exportTooltip = selectionMode && selectedIds && selectedIds.size > 0
+    ? `导出所选 ${selectedIds.size} 篇文章`
+    : status !== 'success' || !content?.markdown.trim()
+      ? '文章尚未完成内容清洗'
+      : '导出为 Markdown';
+
+  const exportToolbar = exportToolbarTarget && !selectionMode
+    ? createPortal(
+      <button
+        type="button"
+        className="type-button"
+        aria-label={exportTooltip}
+        disabled={isExportDisabled}
+        title={exportTooltip}
+        onClick={() => void handleExportClick()}
+      >
+        <ExportIcon />
+      </button>,
+      exportToolbarTarget,
+    )
+    : null;
+
   return (
     <>
       {aiToolbar}
+      {exportToolbar}
       <div className="entry-detail">
         <div
           ref={scrollContainerRef}
@@ -879,6 +958,13 @@ export const EntryDetail = ({
           expertId={aiPreferences.translationExpertId}
         />
       </div>
+
+      <ExportOptionsDialog
+        open={showExportDialog}
+        articles={exportArticleAvail ? [exportArticleAvail] : []}
+        onConfirm={handleExportConfirm}
+        onCancel={handleExportCancel}
+      />
     </>
   );
 };

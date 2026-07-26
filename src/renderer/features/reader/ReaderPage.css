@@ -577,7 +577,7 @@ body.workspace-is-resizing * {
   display: flex;
   margin-bottom: 9px;
   align-items: baseline;
-  gap: 10px;
+  gap: 0;
 }
 
 .story-card h2 {
@@ -597,6 +597,7 @@ body.workspace-is-resizing * {
 
 .story-card-reading-progress {
   flex: none;
+  margin-left: auto;
   color: #aeb8ac;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -715,6 +716,11 @@ body.workspace-is-resizing * {
 }
 
 .article-ai-actions-slot {
+  display: flex;
+  align-items: center;
+}
+
+.article-export-slot {
   display: flex;
   align-items: center;
 }
@@ -4846,6 +4852,241 @@ body.workspace-is-resizing * {
   .usage-statistics-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* ── Export Options Dialog ────────────────────────────── */
+
+.export-options-dialog {
+  width: min(520px, 100%);
+  max-height: 80vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.export-option-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--reader-text);
+  color-scheme: dark;
+}
+
+.reader-page[data-theme="light"] .export-option-checkbox {
+  color-scheme: light;
+}
+
+.export-option-checkbox.is-disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.export-option-checkbox input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--reader-accent-strong);
+}
+
+/* Multi-article column toggles */
+
+.export-options-column-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--reader-line);
+}
+
+.export-options-column-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid var(--reader-line);
+  border-radius: 6px;
+  color: var(--reader-text);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.export-options-column-toggle:hover {
+  background: var(--reader-hover);
+  border-color: var(--reader-text-muted);
+}
+
+.export-options-list {
+  display: grid;
+  margin-top: 12px;
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.export-options-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--reader-surface);
+  overflow: hidden;
+}
+
+.export-options-row:hover {
+  background: var(--reader-hover);
+}
+
+.export-options-row-title {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--reader-text);
+}
+
+.export-options-row-fields {
+  display: flex;
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.export-options-row-fields .export-option-checkbox {
+  font-size: 11px;
+}
+
+/* ── Multi-select mode (EntryList) ──────────────── */
+
+.story-list-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.story-card-checkbox {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding-right: 5px;
+  color-scheme: dark;
+}
+
+.story-card-checkbox input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--reader-accent-strong);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.reader-page[data-theme="light"] .story-card-checkbox {
+  color-scheme: light;
+}
+
+.export-selection-bar {
+  display: flex;
+  align-items: center;
+  height: 37px;
+  padding: 0 22px 0;
+  border-bottom: 1px solid var(--reader-line);
+  color: var(--reader-text-soft);
+  font-size: 12px;
+}
+
+.export-selection-bar strong {
+  color: var(--reader-accent-strong);
+}
+
+/* ── Multi-article export dialog: pipeline status ── */
+
+.export-options-row-status {
+  flex-shrink: 0;
+  width: 18px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.export-options-row-status.is-failed {
+  color: var(--reader-danger);
+}
+
+.export-options-row-status.is-cleaning {
+  opacity: 0.7;
+}
+
+.export-options-row-unwashed {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-options-unwashed-label {
+  font-size: 11px;
+  color: var(--reader-text-muted);
+}
+
+.export-options-cleaning-label {
+  font-size: 11px;
+  color: var(--reader-text-muted);
+  font-style: italic;
+}
+
+.export-options-failed-label {
+  font-size: 11px;
+  color: var(--reader-danger);
+}
+
+.export-options-clean-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--reader-line);
+  border-radius: 5px;
+  color: var(--reader-accent-strong);
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.export-options-clean-btn:hover {
+  background: var(--reader-hover);
+  border-color: var(--reader-accent-strong);
+}
+
+.export-options-clean-all {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+
+.export-options-clean-all-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--reader-line);
+  border-radius: 6px;
+  color: var(--reader-text);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.export-options-clean-all-btn:hover {
+  background: var(--reader-hover);
+  border-color: var(--reader-text-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

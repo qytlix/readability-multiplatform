@@ -21,7 +21,10 @@ import {
 } from './ipc/translation.handler';
 import { registerUsageIpcHandlers } from './ipc/usage.handler';
 import { registerAnnotationIpcHandlers } from './ipc/annotation.handler';
+import { registerExportIpcHandlers } from './ipc/export.handler';
+import { ExportService } from './export/ExportService';
 import {
+  getDatabase,
   getFeedServices,
   getSummaryServices,
   getTranslationServices,
@@ -158,5 +161,18 @@ export function registerIpcHandlers(
   const annotationServices = getAnnotationServices();
   if (annotationServices) {
     registerAnnotationIpcHandlers(getMainWindow, annotationServices);
+  }
+
+  // Export module handlers
+  const db = getDatabase();
+  if (feedServices && db) {
+    const exportService = new ExportService(
+      feedServices.entryStore,
+      feedServices.contentStore,
+      feedServices.contentService,
+      db,
+      annotationServices?.annotationService,
+    );
+    registerExportIpcHandlers(getMainWindow, exportService);
   }
 }
