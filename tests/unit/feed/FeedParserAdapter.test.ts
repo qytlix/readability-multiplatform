@@ -214,6 +214,51 @@ describe('FeedParserAdapter', () => {
       ).rejects.toThrow('JSON Feed parse failed');
     });
 
+    it('should resolve relative site and entry links against the feed URL', async () => {
+      const relativeLinkFeed = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>Paradigm X</title>
+  <link>/</link>
+  <item>
+    <guid>/posts/good-code/</guid>
+    <title>什么是好的代码</title>
+    <link>/posts/good-code/</link>
+  </item>
+</channel></rss>`;
+
+      const result = await adapter.parse(
+        relativeLinkFeed,
+        'https://soulhacker.me/index.xml',
+      );
+
+      expect(result.siteUrl).toBe('https://soulhacker.me/');
+      expect(result.entries[0].guid).toBe('/posts/good-code/');
+      expect(result.entries[0].url).toBe(
+        'https://soulhacker.me/posts/good-code/',
+      );
+    });
+
+    it('should resolve relative JSON Feed links against the feed URL', async () => {
+      const result = await adapter.parse(JSON.stringify({
+        version: 'https://jsonfeed.org/version/1.1',
+        title: 'Paradigm X',
+        home_page_url: '/',
+        feed_url: '/index.json',
+        items: [{
+          id: '/posts/good-code/',
+          url: '/posts/good-code/',
+          title: '什么是好的代码',
+        }],
+      }), 'https://soulhacker.me/feeds/main.json');
+
+      expect(result.siteUrl).toBe('https://soulhacker.me/');
+      expect(result.feedUrl).toBe('https://soulhacker.me/index.json');
+      expect(result.entries[0]).toMatchObject({
+        guid: '/posts/good-code/',
+        url: 'https://soulhacker.me/posts/good-code/',
+      });
+    });
+
     it('should throw on JSON without valid feed version', async () => {
       await expect(
         adapter.parse(
