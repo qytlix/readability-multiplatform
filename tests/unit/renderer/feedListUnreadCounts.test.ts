@@ -57,6 +57,18 @@ const createFeedListProps = (
   ...overrides,
 });
 
+const createRect = (top: number, height: number): DOMRect => ({
+  x: 0,
+  y: top,
+  width: 248,
+  height,
+  top,
+  right: 248,
+  bottom: top + height,
+  left: 0,
+  toJSON: () => ({}),
+});
+
 describe('FeedList unread counts', () => {
   it('shows each feed unread count and defaults missing statistics to zero', () => {
     const markup = renderToStaticMarkup(
@@ -67,6 +79,78 @@ describe('FeedList unread counts', () => {
       .map((count) => count.textContent);
 
     expect(counts).toEqual(['3', '0']);
+  });
+
+  it('moves one shared selection indicator between range and feed items', async () => {
+    const unsubscribe = vi.fn();
+    vi.stubGlobal('shaleAPI', {
+      feed: {
+        onSyncProgress: vi.fn(() => unsubscribe),
+      },
+    } as unknown as typeof window.shaleAPI);
+
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(createElement(FeedList, createFeedListProps()));
+      });
+
+      const sidebar = container.querySelector<HTMLElement>('.sidebar-content');
+      const allArticles = container.querySelector<HTMLElement>('.sidebar-all');
+      const selectedFeed = container.querySelectorAll<HTMLElement>('.sidebar-feed')[1];
+      const indicator = container.querySelector<HTMLElement>(
+        '.sidebar-selection-indicator',
+      );
+
+      expect(sidebar).not.toBeNull();
+      expect(allArticles).not.toBeNull();
+      expect(selectedFeed).toBeDefined();
+      expect(indicator).not.toBeNull();
+      expect(container.querySelectorAll('.sidebar-selection-indicator')).toHaveLength(1);
+      if (!sidebar || !allArticles || !selectedFeed || !indicator) return;
+
+      vi.spyOn(sidebar, 'getBoundingClientRect')
+        .mockReturnValue(createRect(100, 600));
+      vi.spyOn(allArticles, 'getBoundingClientRect')
+        .mockReturnValue(createRect(150, 38));
+      vi.spyOn(selectedFeed, 'getBoundingClientRect')
+        .mockReturnValue(createRect(310, 38));
+
+      act(() => window.dispatchEvent(new Event('resize')));
+      expect(indicator.style.getPropertyValue('--sidebar-selection-y')).toBe('54px');
+      expect(indicator.style.opacity).toBe('1');
+
+      await act(async () => {
+        root.render(createElement(
+          FeedList,
+          createFeedListProps({ selectedFeedId: feeds[1].id }),
+        ));
+      });
+
+      expect(indicator.style.getPropertyValue('--sidebar-selection-y')).toBe('214px');
+      expect(selectedFeed.classList.contains('is-active')).toBe(true);
+      expect(allArticles.classList.contains('is-active')).toBe(false);
+
+      await act(async () => {
+        root.render(createElement(
+          FeedList,
+          createFeedListProps({
+            searchInput: 'local search',
+            selectedFeedId: feeds[1].id,
+          }),
+        ));
+      });
+
+      expect(indicator.style.opacity).toBe('0');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('rotates only the clicked feed sync icon until that request finishes', async () => {

@@ -36,12 +36,14 @@ import {
 import {
   ForwardIcon,
   BookmarkIcon,
+  CheckIcon,
+  CopyIcon,
   FocusIcon,
   LinkIcon,
   MenuIcon,
   MoonIcon,
-  MoreIcon,
   ReadIcon,
+  SyncIcon,
   SunIcon,
 } from './features/reader/ReaderIcons';
 import {
@@ -113,7 +115,8 @@ export const App = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isReadingFocus, setIsReadingFocus] = useState(false);
   const [largeType, setLargeType] = useState(false);
-  const [showReaderMenu, setShowReaderMenu] = useState(false);
+  const [copiedOriginalEntryId, setCopiedOriginalEntryId] =
+    useState<number | null>(null);
   const [readerFeedback, setReaderFeedback] = useState('');
   const [contentRefreshVersions, setContentRefreshVersions] =
     useState<Record<number, number>>({});
@@ -370,7 +373,7 @@ export const App = () => {
     setHasMoreEntries(true);
     setSelectedEntryId(null);
     setSelectedEntry(null);
-    setShowReaderMenu(false);
+    setCopiedOriginalEntryId(null);
     void requestEntries(undefined, false);
   }, [requestEntries]);
 
@@ -384,9 +387,7 @@ export const App = () => {
       }
 
       if (event.key !== 'Escape') return;
-      if (showReaderMenu) {
-        setShowReaderMenu(false);
-      } else if (isReadingFocus) {
+      if (isReadingFocus) {
         setIsReadingFocus(false);
       } else if (normalizedInput) {
         setSearchInput('');
@@ -397,13 +398,19 @@ export const App = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isReadingFocus, normalizedInput, showReaderMenu]);
+  }, [isReadingFocus, normalizedInput]);
 
   useEffect(() => {
     if (!readerFeedback) return;
     const timer = window.setTimeout(() => setReaderFeedback(''), 2200);
     return () => window.clearTimeout(timer);
   }, [readerFeedback]);
+
+  useEffect(() => {
+    if (copiedOriginalEntryId === null) return;
+    const timer = window.setTimeout(() => setCopiedOriginalEntryId(null), 2800);
+    return () => window.clearTimeout(timer);
+  }, [copiedOriginalEntryId]);
 
   const reloadLocalData = useCallback(async () => {
     await Promise.all([
@@ -453,13 +460,14 @@ export const App = () => {
     if (selectedEntryId === entryId) {
       setSelectedEntryId(null);
       setSelectedEntry(null);
-      setShowReaderMenu(false);
+      setCopiedOriginalEntryId(null);
       setReaderFeedback('');
       return;
     }
 
     setSelectedEntryId(entryId);
     setSelectedEntry(toEntry(listEntry));
+    setCopiedOriginalEntryId(null);
     setReaderFeedback('');
   }, [entries, selectedEntryId]);
 
@@ -576,14 +584,15 @@ export const App = () => {
       setReaderFeedback('这篇文章没有可复制的链接。');
       return;
     }
+    const entryId = selectedEntry.id;
     try {
       await navigator.clipboard.writeText(selectedEntry.url);
       setReaderFeedback('原文链接已复制。');
-      setShowReaderMenu(false);
+      setCopiedOriginalEntryId(entryId);
     } catch {
       setReaderFeedback('无法访问剪贴板。');
     }
-  }, [selectedEntry?.url]);
+  }, [selectedEntry]);
 
   const handleRefreshContent = useCallback(() => {
     if (!selectedEntry?.url) {
@@ -598,7 +607,6 @@ export const App = () => {
     }));
     setRefreshingContentEntryId(entryId);
     setReaderFeedback('正在重新获取并提取正文…');
-    setShowReaderMenu(false);
   }, [selectedEntry]);
 
   const handleContentRefreshComplete = useCallback((
@@ -627,7 +635,7 @@ export const App = () => {
     if (window.innerWidth < 900) setSidebarOpen(false);
   }, []);
 
-  const handleSelectFilter = useCallback((filter: EntryFilter) => {
+  const handleSelectSidebarFilter = useCallback((filter: EntryFilter) => {
     setActiveView('reader');
     setSearchInput('');
     setAppliedSearchQuery('');
@@ -635,6 +643,14 @@ export const App = () => {
     setEntryFilter(filter);
     if (filter !== 'all') setSelectedFeedId(null);
     if (window.innerWidth < 900) setSidebarOpen(false);
+  }, []);
+
+  const handleEntryListFilter = useCallback((filter: EntryFilter) => {
+    setActiveView('reader');
+    setSearchInput('');
+    setAppliedSearchQuery('');
+    setSearchStatus('idle');
+    setEntryFilter(filter);
   }, []);
 
   const hasNoFeeds = feedLoadStatus === 'success' && feeds.length === 0;
@@ -715,7 +731,7 @@ export const App = () => {
             searchStatus={effectiveSearchStatus}
             searchInputRef={searchInputRef}
             onSearchInputChange={setSearchInput}
-            onSelectFilter={handleSelectFilter}
+            onSelectFilter={handleSelectSidebarFilter}
             onSelectFeed={handleSelectFeed}
             onRefresh={handleSyncAll}
             onLocalRefresh={reloadLocalData}
@@ -747,7 +763,7 @@ export const App = () => {
             searchQuery={normalizedInput}
             searchStatus={effectiveSearchStatus}
             filter={entryFilter}
-            onFilterChange={handleSelectFilter}
+            onFilterChange={handleEntryListFilter}
             onSelectEntry={handleSelectEntry}
             onLoadMore={handleLoadMore}
             hasMore={hasNoFeeds ? false : hasMoreEntries}
@@ -871,45 +887,62 @@ export const App = () => {
                     Aa
                   </button>
                 </span>
-                <div className="article-more">
-                  <button
-                    type="button"
-                    className={`icon-button${showReaderMenu ? ' is-active' : ''}`}
-                    aria-label="更多文章操作"
-                    aria-expanded={showReaderMenu}
-                    onClick={() => setShowReaderMenu((visible) => !visible)}
-                  >
-                    <MoreIcon />
-                  </button>
-                  {showReaderMenu && (
-                    <div className="article-more-menu">
-                      <button
-                        type="button"
-                        disabled={
-                          !selectedEntry?.url
-                          || refreshingContentEntryId === selectedEntry.id
-                        }
-                        onClick={handleRefreshContent}
-                      >
-                        {refreshingContentEntryId === selectedEntry?.id
-                          ? '正在重新获取正文…'
-                          : '重新获取正文'}
-                      </button>
-                      <button type="button" onClick={() => void handleCopyOriginal()}>
-                        复制原文链接
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveView('settings');
-                          setShowReaderMenu(false);
-                        }}
-                      >
-                        阅读设置
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  className={`article-toolbar-action article-refresh-button${
+                    refreshingContentEntryId === selectedEntry?.id
+                      ? ' is-loading'
+                      : ''
+                  }`}
+                  aria-label={
+                    refreshingContentEntryId === selectedEntry?.id
+                      ? '正在重新获取正文'
+                      : '重新获取正文'
+                  }
+                  aria-busy={refreshingContentEntryId === selectedEntry?.id}
+                  title={
+                    refreshingContentEntryId === selectedEntry?.id
+                      ? '正在重新获取正文'
+                      : '重新获取正文'
+                  }
+                  disabled={
+                    !selectedEntry?.url
+                    || refreshingContentEntryId === selectedEntry.id
+                  }
+                  onClick={handleRefreshContent}
+                >
+                  <SyncIcon />
+                </button>
+                <button
+                  type="button"
+                  className={`article-toolbar-action article-copy-button${
+                    copiedOriginalEntryId === selectedEntry?.id
+                      ? ' is-copied'
+                      : ''
+                  }`}
+                  aria-label={
+                    copiedOriginalEntryId === selectedEntry?.id
+                      ? '原文链接已复制'
+                      : '复制原文链接'
+                  }
+                  title={
+                    copiedOriginalEntryId === selectedEntry?.id
+                      ? '原文链接已复制'
+                      : '复制原文链接'
+                  }
+                  disabled={
+                    !selectedEntry?.url
+                    || copiedOriginalEntryId === selectedEntry.id
+                  }
+                  onClick={() => void handleCopyOriginal()}
+                >
+                  <span className="article-copy-button-default" aria-hidden="true">
+                    <CopyIcon />
+                  </span>
+                  <span className="article-copy-button-success" aria-hidden="true">
+                    <CheckIcon />
+                  </span>
+                </button>
               </div>
             )}
           </div>
