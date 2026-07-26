@@ -40,8 +40,12 @@ the same left-to-right arrangement with either Reader sidebar open. The note is
 also clamped to the actual Reader pane rather than the full application window.
 
 The first version applies only to cleaned Reader HTML. Raw Markdown, embedded
-video views, translated output, exports, synchronization, and overlapping
-highlights are outside this scope.
+video views, translated output, synchronization, and overlapping highlights
+are outside this scope. Markdown export is the exception: persisted highlights
+are projected onto the exported article body as semantic inline `<mark>` HTML.
+The selected color is retained in `data-shale-highlight` and an inline
+background color. Exporting note text remains optional and does not control
+whether the article highlight itself is preserved.
 
 ## Data and process boundaries
 

@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { writeFileSync } from 'node:fs';
 import type {
   ArticleAvailability,
+  ExportTranslationSegment,
   ExportableArticle,
   PerArticleOptions,
 } from '../../shared/contracts/export.types';
@@ -13,6 +14,10 @@ import type { EntryStore } from '../feed/stores/EntryStore';
 import type { ContentStore } from '../feed/stores/ContentStore';
 import type { ContentService } from '../feed/services/ContentService';
 import type { AnnotationService } from '../annotations/AnnotationService';
+import {
+  ExportImageLocalizer,
+  type ExportImageLocalizationResult,
+} from './ExportImageLocalizer';
 
 export class ExportService {
   constructor(
@@ -21,6 +26,7 @@ export class ExportService {
     private contentService: ContentService,
     private db: Database.Database,
     private annotationService?: AnnotationService,
+    private imageLocalizer = new ExportImageLocalizer(),
   ) {}
 
   // ── 清洗状态检查 ────────────────────────────────────────
@@ -90,7 +96,8 @@ export class ExportService {
 
   /**
    * 聚合单篇文章的导出数据。
-   * 按 options 决定是否读取 summary/translation/notes。
+   * 按 options 决定是否读取 summary/translation/note text。
+   * 高亮属于正文，始终读取并随正文导出。
    */
   prepareArticleData(
     entryId: number,
@@ -124,6 +131,7 @@ export class ExportService {
       author: entry.author,
       publishedAt: entry.publishedAt,
       cleanedMarkdown: content.markdown || '',
+      cleanedHtml: content.cleanedHtml || '',
     };
 
     // Feed title from entry → feed relation
@@ -141,20 +149,27 @@ export class ExportService {
 
     // Translation
     if (options.includeTranslation) {
-      result.translation = this.findTranslationContent(entryId);
+      const translationSegments = this.findTranslationSegments(entryId);
+      if (translationSegments.length > 0) {
+        result.translationSegments = translationSegments;
+        // 保留旧字段，供仍只识别全文翻译的调用方降级使用。
+        result.translation = translationSegments
+          .map((segment) => segment.translatedText ?? '')
+          .filter(Boolean)
+          .join('\n\n');
+      }
     }
 
-    // Notes (P1) — 同时填充 annotations 原始数据供脚注格式使用
-    if (options.includeNotes) {
-      const annotations = this.findAnnotations(entryId);
-      result.annotations = annotations;
-      // 向后兼容：保留旧格式 notes 字符串
-      if (annotations.length > 0) {
+    // 高亮属于正文，不能因用户取消“包含笔记”而丢失。
+    const annotations = this.findAnnotations(entryId);
+    result.annotations = annotations;
+
+    // Notes (P1) — 仅在用户选择后填充向后兼容的纯文本字段。
+    if (options.includeNotes && annotations.length > 0) {
         result.notes = annotations
           .map((a) => a.noteText || a.selectedText)
           .filter(Boolean)
           .join('\n');
-      }
     }
 
     result.exportOptions = options;
@@ -202,9 +217,27 @@ export class ExportService {
 
   private hasTranslation(entryId: number): boolean {
     const row = this.db
-      .prepare('SELECT 1 FROM translation_result WHERE entryId = ? LIMIT 1')
+      .prepare(
+        `SELECT 1 FROM translation_result
+         WHERE entryId = ? AND status = 'succeeded'
+         LIMIT 1`,
+      )
       .get(entryId);
     return !!row;
+  }
+
+  /**
+   * 将远程图片本地化到 Markdown 同目录的资源文件夹，再写入最终文档。
+   * 单张图片下载失败时保留原始 URL，同时通过结果计数向调用方暴露降级。
+   */
+  async writeMarkdownExport(
+    filePath: string,
+    markdown: string,
+    articles: readonly ExportableArticle[],
+  ): Promise<ExportImageLocalizationResult> {
+    const localized = await this.imageLocalizer.localize(filePath, markdown, articles);
+    this.writeFile(filePath, localized.markdown);
+    return localized;
   }
 
   private hasNotes(entryId: number): boolean {
@@ -222,18 +255,46 @@ export class ExportService {
     return row?.content;
   }
 
-  private findTranslationContent(entryId: number): string | undefined {
+  private findTranslationSegments(entryId: number): ExportTranslationSegment[] {
     const rows = this.db
       .prepare(
-        `SELECT ts.translatedText
-         FROM translation_result tr
-         JOIN translation_segment ts ON ts.translationResultId = tr.id
-         WHERE tr.entryId = ? AND tr.status = 'succeeded'
+        `SELECT
+           ts.sourceSegmentId,
+           ts.orderIndex,
+           ts.sourceType,
+           ts.sourceHtml,
+           ts.sourceText,
+           ts.translatedText,
+           ts.translatedHtml
+         FROM translation_segment ts
+         WHERE ts.translationResultId = (
+           SELECT tr.id
+           FROM translation_result tr
+           WHERE tr.entryId = ? AND tr.status = 'succeeded'
+           ORDER BY tr.updatedAt DESC, tr.id DESC
+           LIMIT 1
+         )
+           AND ts.status = 'succeeded'
          ORDER BY ts.orderIndex ASC`,
       )
-      .all(entryId) as Array<{ translatedText: string | null }>;
-    if (rows.length === 0) return undefined;
-    return rows.map((r) => r.translatedText ?? '').join('\n\n');
+      .all(entryId) as Array<{
+        sourceSegmentId: string;
+        orderIndex: number;
+        sourceType: ExportTranslationSegment['sourceType'];
+        sourceHtml: string;
+        sourceText: string;
+        translatedText: string | null;
+        translatedHtml: string | null;
+      }>;
+    return rows.map((row) => ({
+      sourceSegmentId: row.sourceSegmentId,
+      orderIndex: row.orderIndex,
+      sourceType: row.sourceType,
+      sourceHtml: row.sourceHtml,
+      sourceText: row.sourceText,
+      translatedText: row.translatedText ?? undefined,
+      translatedHtml: row.translatedHtml ?? undefined,
+    }));
   }
 
   private findAnnotations(entryId: number): import('../../shared/contracts/annotation.types').EntryAnnotation[] {

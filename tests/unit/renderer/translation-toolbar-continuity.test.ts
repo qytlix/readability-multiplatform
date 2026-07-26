@@ -215,6 +215,18 @@ describe('Translation toolbar continuity', () => {
     expect(toolbarTarget.querySelectorAll('.entry-detail-ai-actions')).toHaveLength(1);
     expect(toolbarTarget.querySelectorAll('.annotation-toolbar')).toHaveLength(1);
     expect(toolbarTarget.querySelectorAll('.annotation-tool-button')).toHaveLength(1);
+    const aiButtons = toolbarTarget.querySelectorAll<HTMLButtonElement>(
+      '.entry-detail-ai-actions button',
+    );
+    const aiTooltips = Array.from(toolbarTarget.querySelectorAll<HTMLElement>(
+      '.entry-detail-ai-actions > .article-action-tooltip',
+    )).map((tooltip) => tooltip.getAttribute('data-tooltip'));
+    expect(aiButtons).toHaveLength(2);
+    expect(aiTooltips).toEqual(['总结', '翻译']);
+    aiButtons.forEach((button) => {
+      expect(button.closest('.article-action-tooltip')).not.toBeNull();
+      expect(button.hasAttribute('title')).toBe(false);
+    });
     expect(toolbarTarget.querySelectorAll(
       '[aria-label="翻译或切换双语视图"], [aria-label="暂停翻译"]',
     )).toHaveLength(1);

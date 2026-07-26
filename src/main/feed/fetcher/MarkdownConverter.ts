@@ -47,6 +47,30 @@ export class MarkdownConverter {
           : ` $${formula}$ `;
       },
     });
+
+    // Exported Reader annotations use a private marker so publisher-provided
+    // <mark> elements keep their existing conversion behavior. Inline HTML is
+    // used because CommonMark has no standard highlight syntax.
+    this.turndown.addRule('shale-export-highlight', {
+      filter: (node: HTMLElement) => (
+        node.tagName.toLowerCase() === 'mark'
+        && node.hasAttribute('data-shale-export-highlight')
+      ),
+      replacement: (content: string, node: HTMLElement) => {
+        const color = toExportHighlightColor(
+          node.getAttribute('data-annotation-color'),
+        );
+        const annotationId = toPositiveInteger(
+          node.getAttribute('data-annotation-id'),
+        );
+        const annotationAttribute = annotationId === undefined
+          ? ''
+          : ` data-shale-annotation-id="${annotationId}"`;
+        return `<mark data-shale-highlight="${color}"${annotationAttribute}`
+          + ` style="background-color: ${EXPORT_HIGHLIGHT_COLORS[color]};">`
+          + `${content}</mark>`;
+      },
+    });
   }
 
   convert(html: string): string {
@@ -55,6 +79,27 @@ export class MarkdownConverter {
     removeUntranslatableIcons(body);
     return normalizeMarkdown(this.turndown.turndown(body));
   }
+}
+
+const EXPORT_HIGHLIGHT_COLORS = {
+  yellow: '#f4d35e',
+  green: '#7ed391',
+  blue: '#69b5eb',
+  pink: '#ec84ab',
+} as const;
+
+type ExportHighlightColor = keyof typeof EXPORT_HIGHLIGHT_COLORS;
+
+function toExportHighlightColor(value: string | null): ExportHighlightColor {
+  return value !== null && Object.hasOwn(EXPORT_HIGHLIGHT_COLORS, value)
+    ? value as ExportHighlightColor
+    : 'yellow';
+}
+
+function toPositiveInteger(value: string | null): number | undefined {
+  if (value === null || !/^\d+$/.test(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function extractFormula(node: HTMLElement): string {

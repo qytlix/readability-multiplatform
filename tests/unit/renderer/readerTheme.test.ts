@@ -175,4 +175,38 @@ describe('reader theme preferences', () => {
     expect(style.background).toBe('var(--reader-panel-raised)');
     expect(style.opacity).toBe('1');
   });
+
+  it('darkens Summary and Translation icons when hovered in day mode', () => {
+    const css = fs.readFileSync(
+      path.resolve(
+        __dirname,
+        '../../../src/renderer/features/reader/ReaderPage.css',
+      ),
+      'utf8',
+    );
+    const hoverRule = css.match(
+      /\.reader-page\[data-theme="light"\] \.entry-detail-ai-actions button:hover:not\(:disabled\) \{([^}]+)\}/,
+    );
+
+    expect(hoverRule?.[1]).toContain('border-color: var(--reader-accent-strong);');
+    expect(hoverRule?.[1]).toContain('color: var(--reader-text);');
+    expect(hoverRule?.[1]).toContain('background: var(--reader-hover);');
+  });
+
+  it('anchors the theme tooltip inside the right edge of the window', () => {
+    const css = fs.readFileSync(
+      path.resolve(
+        __dirname,
+        '../../../src/renderer/features/reader/ReaderPage.css',
+      ),
+      'utf8',
+    );
+
+    expect(css).toMatch(
+      /\.theme-toggle-tooltip\s*\{[^}]*position: fixed;[^}]*right: 18px;/s,
+    );
+    expect(css).toMatch(
+      /\.theme-toggle-tooltip::after\s*\{[^}]*right: 0;[^}]*left: auto;/s,
+    );
+  });
 });

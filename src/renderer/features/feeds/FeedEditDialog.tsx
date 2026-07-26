@@ -1,5 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import type { Feed } from '../../../shared/contracts/feed.types';
+import { CheckIcon, CopyIcon } from '../reader/ReaderIcons';
 
 interface FeedEditDialogProps {
   feed: Feed;
@@ -13,6 +15,26 @@ export const FeedEditDialog = ({ feed, onSave, onClose }: FeedEditDialogProps) =
   const [syncIntervalMin, setSyncIntervalMin] = useState(String(feed.syncIntervalMin));
   const [status, setStatus] = useState<'idle' | 'saving' | 'error'>('idle');
   const [error, setError] = useState('');
+  const [copiedField, setCopiedField] = useState<'title' | 'siteURL' | null>(null);
+
+  useEffect(() => {
+    if (copiedField === null) return;
+    const timer = window.setTimeout(() => setCopiedField(null), 2800);
+    return () => window.clearTimeout(timer);
+  }, [copiedField]);
+
+  const handleCopy = async (
+    field: 'title' | 'siteURL',
+    value: string,
+  ): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(field);
+    } catch {
+      setStatus('error');
+      setError('Failed to copy to clipboard');
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -41,33 +63,73 @@ export const FeedEditDialog = ({ feed, onSave, onClose }: FeedEditDialogProps) =
     }
   };
 
-  return (
+  const dialog = (
     <div className="dialog-overlay" onClick={onClose}>
-      <div className="dialog" onClick={(e) => e.stopPropagation()}>
-        <h2>Edit Feed</h2>
+      <div
+        className="dialog feed-edit-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="feed-edit-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="feed-edit-title">Edit Feed</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="edit-title">Title</label>
-            <input
-              id="edit-title"
-              type="text"
-              placeholder="Feed title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              autoFocus
-              disabled={status === 'saving'}
-            />
+            <div className="feed-edit-copy-row">
+              <input
+                id="edit-title"
+                type="text"
+                placeholder="Feed title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                autoFocus
+                disabled={status === 'saving'}
+              />
+              <button
+                type="button"
+                className={`feed-edit-copy-button${
+                  copiedField === 'title' ? ' is-copied' : ''
+                }`}
+                aria-label={copiedField === 'title' ? 'Title copied' : 'Copy title'}
+                disabled={
+                  status === 'saving'
+                  || title.length === 0
+                  || copiedField === 'title'
+                }
+                onClick={() => void handleCopy('title', title)}
+              >
+                {copiedField === 'title' ? <CheckIcon /> : <CopyIcon />}
+              </button>
+            </div>
           </div>
           <div className="form-group">
             <label htmlFor="edit-site-url">Site URL</label>
-            <input
-              id="edit-site-url"
-              type="url"
-              placeholder="https://example.com"
-              value={siteURL}
-              onChange={(e) => setSiteURL(e.target.value)}
-              disabled={status === 'saving'}
-            />
+            <div className="feed-edit-copy-row">
+              <input
+                id="edit-site-url"
+                type="url"
+                placeholder="https://example.com"
+                value={siteURL}
+                onChange={(e) => setSiteURL(e.target.value)}
+                disabled={status === 'saving'}
+              />
+              <button
+                type="button"
+                className={`feed-edit-copy-button${
+                  copiedField === 'siteURL' ? ' is-copied' : ''
+                }`}
+                aria-label={copiedField === 'siteURL' ? 'Site URL copied' : 'Copy Site URL'}
+                disabled={
+                  status === 'saving'
+                  || siteURL.length === 0
+                  || copiedField === 'siteURL'
+                }
+                onClick={() => void handleCopy('siteURL', siteURL)}
+              >
+                {copiedField === 'siteURL' ? <CheckIcon /> : <CopyIcon />}
+              </button>
+            </div>
           </div>
           <div className="form-group">
             <label htmlFor="edit-sync-interval">Sync Interval (minutes)</label>
@@ -98,4 +160,7 @@ export const FeedEditDialog = ({ feed, onSave, onClose }: FeedEditDialogProps) =
       </div>
     </div>
   );
+
+  const portalHost = document.querySelector<HTMLElement>('.reader-page');
+  return createPortal(dialog, portalHost ?? document.body);
 };

@@ -727,17 +727,21 @@ export const App = () => {
         </div>
       </header>
 
-      <button
-        type="button"
-        className="icon-button theme-toggle"
-        aria-label={readerTheme === 'dark' ? '切换到白天模式' : '切换到黑夜模式'}
-        aria-pressed={readerTheme === 'light'}
-        title={readerTheme === 'dark' ? '切换到白天模式' : '切换到黑夜模式'}
-        onClick={() => setReaderTheme((theme) =>
-          theme === 'dark' ? 'light' : 'dark')}
+      <span
+        className="article-action-tooltip theme-toggle-tooltip"
+        data-tooltip={readerTheme === 'dark' ? '切换到白天模式' : '切换到黑夜模式'}
       >
-        {readerTheme === 'dark' ? <SunIcon /> : <MoonIcon />}
-      </button>
+        <button
+          type="button"
+          className="icon-button theme-toggle"
+          aria-label={readerTheme === 'dark' ? '切换到白天模式' : '切换到黑夜模式'}
+          aria-pressed={readerTheme === 'light'}
+          onClick={() => setReaderTheme((theme) =>
+            theme === 'dark' ? 'light' : 'dark')}
+        >
+          {readerTheme === 'dark' ? <SunIcon /> : <MoonIcon />}
+        </button>
+      </span>
 
       <div
         ref={workspaceRef}
@@ -835,17 +839,22 @@ export const App = () => {
         <main ref={articlePaneRef} className="article-pane">
           <div className="article-toolbar">
             <div className="article-toolbar-source">
-              <button
-                type="button"
-                className="icon-button reader-focus-toggle"
-                aria-label={isReadingFocus ? '退出专注阅读' : '进入专注阅读'}
-                aria-pressed={isReadingFocus}
-                onClick={() => beginReaderLayoutTransition(() => {
-                  setIsReadingFocus((focused) => !focused);
-                })}
+              <span
+                className="article-action-tooltip"
+                data-tooltip={isReadingFocus ? '退出专注阅读' : '进入专注阅读'}
               >
-                {isReadingFocus ? <ForwardIcon /> : <FocusIcon />}
-              </button>
+                <button
+                  type="button"
+                  className="icon-button reader-focus-toggle"
+                  aria-label={isReadingFocus ? '退出专注阅读' : '进入专注阅读'}
+                  aria-pressed={isReadingFocus}
+                  onClick={() => beginReaderLayoutTransition(() => {
+                    setIsReadingFocus((focused) => !focused);
+                  })}
+                >
+                  {isReadingFocus ? <ForwardIcon /> : <FocusIcon />}
+                </button>
+              </span>
               {!isReadingFocus && (
                 <span>{activeView === 'settings' ? '设置' : selectedSourceTitle}</span>
               )}
@@ -943,7 +952,7 @@ export const App = () => {
                     >
                       <button
                         type="button"
-                        className="type-button"
+                        className="type-button article-export-button"
                         aria-label={selectedIds.size > 0
                           ? `导出所选 ${selectedIds.size} 篇文章`
                           : '请先选择文章'}
@@ -955,62 +964,70 @@ export const App = () => {
                     </span>
                   )}
                 </div>
-                <button
-                  type="button"
-                  className={`article-toolbar-action article-refresh-button${
-                    refreshingContentEntryId === selectedEntry?.id
-                      ? ' is-loading'
-                      : ''
-                  }`}
-                  aria-label={
+                <span
+                  className="article-action-tooltip"
+                  data-tooltip={
                     refreshingContentEntryId === selectedEntry?.id
                       ? '正在重新获取正文'
                       : '重新获取正文'
                   }
-                  aria-busy={refreshingContentEntryId === selectedEntry?.id}
-                  title={
-                    refreshingContentEntryId === selectedEntry?.id
-                      ? '正在重新获取正文'
-                      : '重新获取正文'
-                  }
-                  disabled={
-                    !selectedEntry?.url
-                    || refreshingContentEntryId === selectedEntry.id
-                  }
-                  onClick={handleRefreshContent}
                 >
-                  <SyncIcon />
-                </button>
-                <button
-                  type="button"
-                  className={`article-toolbar-action article-copy-button${
-                    copiedOriginalEntryId === selectedEntry?.id
-                      ? ' is-copied'
-                      : ''
-                  }`}
-                  aria-label={
+                  <button
+                    type="button"
+                    className={`article-toolbar-action article-refresh-button${
+                      refreshingContentEntryId === selectedEntry?.id
+                        ? ' is-loading'
+                        : ''
+                    }`}
+                    aria-label={
+                      refreshingContentEntryId === selectedEntry?.id
+                        ? '正在重新获取正文'
+                        : '重新获取正文'
+                    }
+                    aria-busy={refreshingContentEntryId === selectedEntry?.id}
+                    disabled={
+                      !selectedEntry?.url
+                      || refreshingContentEntryId === selectedEntry.id
+                    }
+                    onClick={handleRefreshContent}
+                  >
+                    <SyncIcon />
+                  </button>
+                </span>
+                <span
+                  className="article-action-tooltip"
+                  data-tooltip={
                     copiedOriginalEntryId === selectedEntry?.id
                       ? '原文链接已复制'
                       : '复制原文链接'
                   }
-                  title={
-                    copiedOriginalEntryId === selectedEntry?.id
-                      ? '原文链接已复制'
-                      : '复制原文链接'
-                  }
-                  disabled={
-                    !selectedEntry?.url
-                    || copiedOriginalEntryId === selectedEntry.id
-                  }
-                  onClick={() => void handleCopyOriginal()}
                 >
-                  <span className="article-copy-button-default" aria-hidden="true">
-                    <CopyIcon />
-                  </span>
-                  <span className="article-copy-button-success" aria-hidden="true">
-                    <CheckIcon />
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    className={`article-toolbar-action article-copy-button${
+                      copiedOriginalEntryId === selectedEntry?.id
+                        ? ' is-copied'
+                        : ''
+                    }`}
+                    aria-label={
+                      copiedOriginalEntryId === selectedEntry?.id
+                        ? '原文链接已复制'
+                        : '复制原文链接'
+                    }
+                    disabled={
+                      !selectedEntry?.url
+                      || copiedOriginalEntryId === selectedEntry.id
+                    }
+                    onClick={() => void handleCopyOriginal()}
+                  >
+                    <span className="article-copy-button-default" aria-hidden="true">
+                      <CopyIcon />
+                    </span>
+                    <span className="article-copy-button-success" aria-hidden="true">
+                      <CheckIcon />
+                    </span>
+                  </button>
+                </span>
               </div>
             )}
           </div>
@@ -1056,6 +1073,7 @@ export const App = () => {
                 selectionMode={selectionMode}
                 selectedIds={selectedIds}
                 onExportRequest={handleExportRequest}
+                onFeedback={setReaderFeedback}
               />
             )}
           </div>
@@ -1089,6 +1107,7 @@ export const App = () => {
             if (result.ok) {
               setSelectionMode(false);
               setSelectedIds(new Set());
+              setReaderFeedback('Markdown 文档已成功导出。');
             }
           }}
         />
