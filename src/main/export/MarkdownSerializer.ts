@@ -1,9 +1,33 @@
 import type {
+  ExportTranslationSegment,
   ExportableArticle,
   PerArticleOptions,
 } from '../../shared/contracts/export.types';
 import { DEFAULT_PER_ARTICLE_OPTIONS } from '../../shared/contracts/export.types';
 import type { EntryAnnotation } from '../../shared/contracts/annotation.types';
+import { JSDOM } from 'jsdom';
+import { MarkdownConverter } from '../feed/fetcher/MarkdownConverter';
+
+const TRANSLATABLE_BLOCK_SELECTOR = [
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'p',
+  'li',
+  'blockquote',
+  'cite',
+  'pre',
+  'figcaption',
+  'caption',
+].join(', ');
+
+const TRANSLATION_MEDIA_SELECTOR =
+  'img, picture, video, audio, iframe, object, embed, svg, canvas';
+
+const markdownConverter = new MarkdownConverter();
 
 // ── 脚注相关公开类型 ───────────────────────────────────────
 
@@ -11,6 +35,12 @@ export interface FootnoteDef {
   index: number;
   selectedText: string;
   noteText?: string;
+}
+
+interface SourceTextNode {
+  node: Text;
+  startOffset: number;
+  endOffset: number;
 }
 
 // ── 脚注帮助函数 ───────────────────────────────────────────
@@ -76,7 +106,10 @@ export function insertFootnoteMarkers(
   for (let i = numbered.length - 1; i >= 0; i--) {
     const { annotation: ann, n } = numbered[i];
 
-    const idx = findSelectedTextInMarkdown(work, ann);
+    const highlightEnd = findExportHighlightEnd(work, ann.id);
+    const idx = highlightEnd === -1
+      ? findSelectedTextInMarkdown(work, ann)
+      : highlightEnd;
 
     if (idx === -1) {
       // 找不到 → 降级：不插入标记
@@ -84,9 +117,12 @@ export function insertFootnoteMarkers(
       continue;
     }
 
-    // 找到 → 在 selectedText 后插入 [^N]
+    // 找到导出高亮时把脚注放在 </mark> 之后；旧数据则仍放在选中文本之后。
     const marker = `[^${n}]`;
-    work = work.slice(0, idx + ann.selectedText.length) + marker + work.slice(idx + ann.selectedText.length);
+    const insertionIndex = highlightEnd === -1
+      ? idx + ann.selectedText.length
+      : highlightEnd;
+    work = work.slice(0, insertionIndex) + marker + work.slice(insertionIndex);
     footnotes.push({ index: n, selectedText: ann.selectedText, noteText: ann.noteText || undefined });
   }
 
@@ -149,6 +185,460 @@ export function serializeFootnotes(footnotes: FootnoteDef[]): string {
     .join('\n');
 }
 
+function findExportHighlightEnd(markdown: string, annotationId: number): number {
+  const attribute = `data-shale-annotation-id="${annotationId}"`;
+  let searchOffset = 0;
+  let lastEnd = -1;
+
+  while (searchOffset < markdown.length) {
+    const attributeIndex = markdown.indexOf(attribute, searchOffset);
+    if (attributeIndex === -1) break;
+    const tagEnd = markdown.indexOf('>', attributeIndex + attribute.length);
+    const closingTag = tagEnd === -1
+      ? -1
+      : markdown.indexOf('</mark>', tagEnd + 1);
+    if (closingTag === -1) break;
+    lastEnd = closingTag + '</mark>'.length;
+    searchOffset = lastEnd;
+  }
+
+  return lastEnd;
+}
+
+/**
+ * 把逐段译文投影回 Reader HTML 骨架，再转换为 Markdown。
+ * 译文使用 blockquote，因此在常见 Markdown 阅读器中会显示左侧竖线。
+ */
+export function serializeBilingualBody(article: ExportableArticle): string {
+  const sourceMarkdown = serializeSourceBody(article);
+  const segments = [...(article.translationSegments ?? [])]
+    .sort((left, right) => left.orderIndex - right.orderIndex);
+  if (!article.cleanedHtml?.trim() || segments.length === 0) {
+    return sourceMarkdown;
+  }
+
+  const dom = new JSDOM(`<body>${article.cleanedHtml}</body>`);
+  const body = dom.window.document.body;
+  const candidates = Array.from(
+    body.querySelectorAll<HTMLElement>(TRANSLATABLE_BLOCK_SELECTOR),
+  ).filter((element) => !shouldSkipTranslationCandidate(element));
+  let candidateIndex = 0;
+  let insertedCount = 0;
+
+  for (const segment of segments) {
+    if (segment.sourceType === 'title' || segment.sourceType === 'byline') continue;
+
+    const matchingIndex = findMatchingTranslationCandidate(
+      candidates,
+      candidateIndex,
+      segment,
+    );
+    if (matchingIndex === -1) continue;
+    candidateIndex = matchingIndex + 1;
+
+    if (!hasDistinctTranslation(segment)) continue;
+    const sourceElement = candidates[matchingIndex];
+    if (!sourceElement) continue;
+
+    const translatedBlock = createTranslatedBlock(sourceElement, segment);
+    insertTranslatedBlock(sourceElement, translatedBlock);
+    insertedCount += 1;
+  }
+
+  if (insertedCount === 0) return sourceMarkdown;
+  applyExportAnnotationHighlights(body, article.annotations ?? []);
+  return markdownConverter.convert(body.innerHTML);
+}
+
+function serializeSourceBody(article: ExportableArticle): string {
+  const sourceMarkdown = article.cleanedMarkdown.trim();
+  const annotations = article.annotations ?? [];
+  if (annotations.length === 0) return sourceMarkdown;
+
+  if (article.cleanedHtml?.trim()) {
+    const dom = new JSDOM(`<body>${article.cleanedHtml}</body>`);
+    const body = dom.window.document.body;
+    applyExportAnnotationHighlights(body, annotations);
+    return markdownConverter.convert(body.innerHTML);
+  }
+
+  return applyMarkdownAnnotationHighlights(sourceMarkdown, annotations);
+}
+
+function applyExportAnnotationHighlights(
+  root: HTMLElement,
+  annotations: readonly EntryAnnotation[],
+): void {
+  if (annotations.length === 0) return;
+  const textNodes = collectSourceTextNodes(root);
+  const fullText = textNodes.map(({ node }) => node.data).join('');
+  const resolved = annotations
+    .map((annotation) => resolveAnnotationOffsets(annotation, fullText))
+    .filter((range): range is {
+      annotation: EntryAnnotation;
+      startOffset: number;
+      endOffset: number;
+    } => range !== null)
+    .sort((left, right) => right.startOffset - left.startOffset);
+
+  for (const range of resolved) {
+    wrapExportTextRange(root, range);
+  }
+}
+
+function collectSourceTextNodes(root: HTMLElement): SourceTextNode[] {
+  const nodeFilter = root.ownerDocument.defaultView?.NodeFilter;
+  if (!nodeFilter) return [];
+  const walker = root.ownerDocument.createTreeWalker(
+    root,
+    nodeFilter.SHOW_TEXT,
+    {
+      acceptNode: (node) => node.parentElement?.closest(
+        'script, style, [data-shale-export-translation], '
+        + 'mark[data-shale-export-highlight]',
+      )
+        ? nodeFilter.FILTER_REJECT
+        : nodeFilter.FILTER_ACCEPT,
+    },
+  );
+  const textNodes: SourceTextNode[] = [];
+  let textOffset = 0;
+  let current = walker.nextNode();
+  while (current) {
+    const textNode = current as Text;
+    const endOffset = textOffset + textNode.data.length;
+    textNodes.push({ node: textNode, startOffset: textOffset, endOffset });
+    textOffset = endOffset;
+    current = walker.nextNode();
+  }
+  return textNodes;
+}
+
+function resolveAnnotationOffsets(
+  annotation: EntryAnnotation,
+  fullText: string,
+): {
+  annotation: EntryAnnotation;
+  startOffset: number;
+  endOffset: number;
+} | null {
+  if (
+    annotation.startOffset >= 0
+    && annotation.endOffset <= fullText.length
+    && fullText.slice(annotation.startOffset, annotation.endOffset)
+      === annotation.selectedText
+  ) {
+    return {
+      annotation,
+      startOffset: annotation.startOffset,
+      endOffset: annotation.endOffset,
+    };
+  }
+
+  const candidates: number[] = [];
+  let searchOffset = 0;
+  while (searchOffset <= fullText.length - annotation.selectedText.length) {
+    const candidate = fullText.indexOf(annotation.selectedText, searchOffset);
+    if (candidate < 0) break;
+    candidates.push(candidate);
+    searchOffset = candidate + Math.max(1, annotation.selectedText.length);
+  }
+  if (candidates.length === 0) return null;
+
+  const bestStart = candidates.reduce((best, candidate) => {
+    const candidateScore = scoreAnnotationContext(annotation, fullText, candidate);
+    const bestScore = scoreAnnotationContext(annotation, fullText, best);
+    if (candidateScore !== bestScore) {
+      return candidateScore > bestScore ? candidate : best;
+    }
+    return Math.abs(candidate - annotation.startOffset)
+      < Math.abs(best - annotation.startOffset)
+      ? candidate
+      : best;
+  });
+  return {
+    annotation,
+    startOffset: bestStart,
+    endOffset: bestStart + annotation.selectedText.length,
+  };
+}
+
+function scoreAnnotationContext(
+  annotation: EntryAnnotation,
+  fullText: string,
+  startOffset: number,
+): number {
+  const prefix = fullText.slice(
+    Math.max(0, startOffset - annotation.prefixText.length),
+    startOffset,
+  );
+  const endOffset = startOffset + annotation.selectedText.length;
+  const suffix = fullText.slice(
+    endOffset,
+    endOffset + annotation.suffixText.length,
+  );
+  return matchingSuffixLength(prefix, annotation.prefixText)
+    + matchingPrefixLength(suffix, annotation.suffixText);
+}
+
+function matchingSuffixLength(left: string, right: string): number {
+  let matches = 0;
+  while (
+    matches < left.length
+    && matches < right.length
+    && left[left.length - matches - 1] === right[right.length - matches - 1]
+  ) {
+    matches += 1;
+  }
+  return matches;
+}
+
+function matchingPrefixLength(left: string, right: string): number {
+  let matches = 0;
+  while (
+    matches < left.length
+    && matches < right.length
+    && left[matches] === right[matches]
+  ) {
+    matches += 1;
+  }
+  return matches;
+}
+
+function wrapExportTextRange(
+  root: HTMLElement,
+  range: {
+    annotation: EntryAnnotation;
+    startOffset: number;
+    endOffset: number;
+  },
+): void {
+  const textNodes = collectSourceTextNodes(root);
+  for (const candidate of textNodes) {
+    const intersectionStart = Math.max(range.startOffset, candidate.startOffset);
+    const intersectionEnd = Math.min(range.endOffset, candidate.endOffset);
+    if (intersectionStart >= intersectionEnd) continue;
+    const localStart = intersectionStart - candidate.startOffset;
+    const localLength = intersectionEnd - intersectionStart;
+    const selectedNode = localStart > 0
+      ? candidate.node.splitText(localStart)
+      : candidate.node;
+    if (localLength < selectedNode.data.length) {
+      selectedNode.splitText(localLength);
+    }
+    const mark = root.ownerDocument.createElement('mark');
+    mark.dataset.shaleExportHighlight = '';
+    mark.dataset.annotationId = String(range.annotation.id);
+    mark.dataset.annotationColor = range.annotation.color;
+    selectedNode.parentNode?.insertBefore(mark, selectedNode);
+    mark.append(selectedNode);
+  }
+}
+
+function applyMarkdownAnnotationHighlights(
+  markdown: string,
+  annotations: readonly EntryAnnotation[],
+): string {
+  const matches = annotations
+    .map((annotation) => ({
+      annotation,
+      index: findSelectedTextInMarkdown(markdown, annotation),
+    }))
+    .filter(({ index }) => index >= 0)
+    .sort((left, right) => right.index - left.index);
+  let highlighted = markdown;
+
+  for (const { annotation, index } of matches) {
+    const end = index + annotation.selectedText.length;
+    const opening = `<mark data-shale-highlight="${annotation.color}" `
+      + `data-shale-annotation-id="${annotation.id}" `
+      + `style="background-color: ${getHighlightColor(annotation.color)};">`;
+    highlighted = highlighted.slice(0, index)
+      + opening
+      + highlighted.slice(index, end)
+      + '</mark>'
+      + highlighted.slice(end);
+  }
+  return highlighted;
+}
+
+function getHighlightColor(color: EntryAnnotation['color']): string {
+  switch (color) {
+    case 'green': return '#7ed391';
+    case 'blue': return '#69b5eb';
+    case 'pink': return '#ec84ab';
+    case 'yellow': return '#f4d35e';
+  }
+}
+
+function quoteMarkdown(markdown: string): string {
+  return markdown
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line ? `> ${line}` : '>')
+    .join('\n');
+}
+
+function serializeSummary(summary: string, headingLevel: 2 | 3 = 2): string {
+  return `${'#'.repeat(headingLevel)} AI SUMMARY\n\n${quoteMarkdown(summary.trim())}`;
+}
+
+function serializeLegacyTranslation(translation: string): string {
+  return quoteMarkdown(`**翻译：**\n\n${translation.trim()}`);
+}
+
+function serializeTranslatedTitle(
+  segments: readonly ExportTranslationSegment[] | undefined,
+): string | undefined {
+  const translatedTitle = segments
+    ?.find((segment) => segment.sourceType === 'title' && hasDistinctTranslation(segment))
+    ?.translatedText
+    ?.trim();
+  return translatedTitle ? quoteMarkdown(translatedTitle) : undefined;
+}
+
+function hasDistinctTranslation(segment: ExportTranslationSegment): boolean {
+  const translatedText = normalizeWhitespace(segment.translatedText ?? '');
+  if (!translatedText) return false;
+  if (translatedText !== normalizeWhitespace(segment.sourceText)) return true;
+  return Boolean(
+    segment.translatedHtml
+    && normalizeSegmentHtml(segment.translatedHtml, segment.sourceType)
+      !== normalizeSegmentHtml(segment.sourceHtml, segment.sourceType),
+  );
+}
+
+function findMatchingTranslationCandidate(
+  candidates: readonly HTMLElement[],
+  startIndex: number,
+  segment: ExportTranslationSegment,
+): number {
+  const expectedHtml = normalizeSegmentHtml(segment.sourceHtml, segment.sourceType);
+  for (let index = startIndex; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
+    if (
+      candidate
+      && toSegmentType(candidate) === segment.sourceType
+      && getCandidateHtml(candidate, segment.sourceType) === expectedHtml
+    ) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function createTranslatedBlock(
+  sourceElement: HTMLElement,
+  segment: ExportTranslationSegment,
+): HTMLElement {
+  const blockquote = sourceElement.ownerDocument.createElement('blockquote');
+  blockquote.setAttribute('data-shale-export-translation', '');
+
+  if (segment.translatedHtml) {
+    blockquote.innerHTML = getTranslatedContent(sourceElement, segment.translatedHtml);
+  } else {
+    const paragraph = sourceElement.ownerDocument.createElement('p');
+    paragraph.textContent = segment.translatedText ?? '';
+    blockquote.append(paragraph);
+  }
+
+  blockquote.querySelectorAll(TRANSLATION_MEDIA_SELECTOR)
+    .forEach((element) => element.remove());
+  return blockquote;
+}
+
+function getTranslatedContent(
+  sourceElement: HTMLElement,
+  translatedHtml: string,
+): string {
+  if (sourceElement.tagName.toLowerCase() !== 'li') return translatedHtml;
+  const template = sourceElement.ownerDocument.createElement('template');
+  template.innerHTML = translatedHtml;
+  const translatedRoot = template.content.firstElementChild;
+  return translatedRoot?.tagName.toLowerCase() === 'li'
+    ? translatedRoot.innerHTML
+    : translatedHtml;
+}
+
+function insertTranslatedBlock(
+  sourceElement: HTMLElement,
+  translatedBlock: HTMLElement,
+): void {
+  if (sourceElement.tagName.toLowerCase() !== 'li') {
+    sourceElement.insertAdjacentElement('afterend', translatedBlock);
+    return;
+  }
+  const nestedList = sourceElement.querySelector(':scope > ul, :scope > ol');
+  if (nestedList) {
+    nestedList.insertAdjacentElement('beforebegin', translatedBlock);
+    return;
+  }
+  sourceElement.append(translatedBlock);
+}
+
+function getCandidateHtml(
+  element: HTMLElement,
+  type: ExportTranslationSegment['sourceType'],
+): string {
+  if (type === 'preformatted') {
+    return element.outerHTML.replace(/\r\n?/g, '\n').trim();
+  }
+  const source = type === 'list'
+    ? cloneWithoutNestedLists(element)
+    : element;
+  return normalizeSegmentHtml(source.outerHTML, type);
+}
+
+function normalizeSegmentHtml(
+  value: string,
+  type: ExportTranslationSegment['sourceType'],
+): string {
+  if (type === 'preformatted') return value.replace(/\r\n?/g, '\n').trim();
+  return normalizeWhitespace(value)
+    .replace(/>\s+/g, '>')
+    .replace(/\s+</g, '<');
+}
+
+function cloneWithoutNestedLists(element: HTMLElement): HTMLElement {
+  const clone = element.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('ul, ol').forEach((list) => list.remove());
+  return clone;
+}
+
+function shouldSkipTranslationCandidate(element: HTMLElement): boolean {
+  const type = toSegmentType(element);
+  if (type === 'list') return false;
+  if (type === 'blockquote') {
+    if (element.tagName.toLowerCase() !== 'blockquote') return false;
+    return Boolean(element.querySelector(':scope > p, :scope > cite'));
+  }
+  if (element.parentElement?.closest('li, blockquote, ul, ol')) return true;
+  return element.tagName.toLowerCase() === 'p' && Boolean(element.closest('figure'));
+}
+
+function toSegmentType(
+  element: HTMLElement,
+): ExportTranslationSegment['sourceType'] | undefined {
+  const tagName = element.tagName.toLowerCase();
+  if (/^h[1-6]$/.test(tagName)) return 'heading';
+  if (
+    tagName === 'blockquote'
+    || ((tagName === 'p' || tagName === 'cite')
+      && element.parentElement?.tagName.toLowerCase() === 'blockquote')
+  ) {
+    return 'blockquote';
+  }
+  if (tagName === 'p') return 'paragraph';
+  if (tagName === 'li') return 'list';
+  if (tagName === 'pre') return 'preformatted';
+  if (tagName === 'figcaption' || tagName === 'caption') return 'caption';
+  return undefined;
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
 /**
  * 将单篇文章序列化为 Markdown 字符串。
  *
@@ -184,9 +674,20 @@ export function serializeSingle(
     parts.push(metaLines.join('  \n'));
   }
 
+  // ── 标题翻译与 AI 摘要（与 Reader 顶部顺序一致）──
+  if (opts.includeTranslation) {
+    const translatedTitle = serializeTranslatedTitle(article.translationSegments);
+    if (translatedTitle) parts.push(translatedTitle);
+  }
+  if (opts.includeSummary && article.summary?.trim()) {
+    parts.push(serializeSummary(article.summary));
+  }
+
   // ── 正文（提前处理脚注标记）──
   parts.push('---');
-  let body = article.cleanedMarkdown.trim();
+  let body = opts.includeTranslation
+    ? serializeBilingualBody(article)
+    : serializeSourceBody(article);
   let footnotes: FootnoteDef[] = [];
 
   if (opts.includeNotes && article.annotations && article.annotations.length > 0) {
@@ -197,16 +698,14 @@ export function serializeSingle(
 
   parts.push(body || '*(无正文内容)*');
 
-  // ── AI 摘要 ──
-  if (opts.includeSummary && article.summary?.trim()) {
+  // 旧导出数据没有逐段契约时，保留全文翻译 fallback。
+  if (
+    opts.includeTranslation
+    && !article.translationSegments?.length
+    && article.translation?.trim()
+  ) {
     parts.push('---');
-    parts.push(`> **AI 摘要：**\n>\n> ${article.summary.trim()}`);
-  }
-
-  // ── 翻译 ──
-  if (opts.includeTranslation && article.translation?.trim()) {
-    parts.push('---');
-    parts.push(`> **翻译：**\n>\n> ${article.translation.trim()}`);
+    parts.push(serializeLegacyTranslation(article.translation));
   }
 
   // ── 笔记（脚注格式优先，旧引用块格式作为 fallback）──
@@ -253,9 +752,20 @@ function serializeBody(
     parts.push(metaLines.join('  \n'));
   }
 
+  // ── 标题翻译与 AI 摘要（与 Reader 顶部顺序一致）──
+  if (options.includeTranslation) {
+    const translatedTitle = serializeTranslatedTitle(article.translationSegments);
+    if (translatedTitle) parts.push(translatedTitle);
+  }
+  if (options.includeSummary && article.summary?.trim()) {
+    parts.push(serializeSummary(article.summary, 3));
+  }
+
   // ── 正文（提前处理脚注标记）──
   parts.push('---');
-  let body = article.cleanedMarkdown.trim();
+  let body = options.includeTranslation
+    ? serializeBilingualBody(article)
+    : serializeSourceBody(article);
   let footnotes: FootnoteDef[] = [];
 
   if (options.includeNotes && article.annotations && article.annotations.length > 0) {
@@ -266,16 +776,14 @@ function serializeBody(
 
   parts.push(body || '*(无正文内容)*');
 
-  // ── AI 摘要 ──
-  if (options.includeSummary && article.summary?.trim()) {
+  // 旧导出数据没有逐段契约时，保留全文翻译 fallback。
+  if (
+    options.includeTranslation
+    && !article.translationSegments?.length
+    && article.translation?.trim()
+  ) {
     parts.push('---');
-    parts.push(`> **AI 摘要：**\n>\n> ${article.summary.trim()}`);
-  }
-
-  // ── 翻译 ──
-  if (options.includeTranslation && article.translation?.trim()) {
-    parts.push('---');
-    parts.push(`> **翻译：**\n>\n> ${article.translation.trim()}`);
+    parts.push(serializeLegacyTranslation(article.translation));
   }
 
   // ── 笔记（脚注格式优先，旧引用块格式作为 fallback）──

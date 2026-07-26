@@ -952,7 +952,7 @@ export const App = () => {
                     >
                       <button
                         type="button"
-                        className="type-button"
+                        className="type-button article-export-button"
                         aria-label={selectedIds.size > 0
                           ? `导出所选 ${selectedIds.size} 篇文章`
                           : '请先选择文章'}
@@ -1073,6 +1073,7 @@ export const App = () => {
                 selectionMode={selectionMode}
                 selectedIds={selectedIds}
                 onExportRequest={handleExportRequest}
+                onFeedback={setReaderFeedback}
               />
             )}
           </div>
@@ -1106,6 +1107,7 @@ export const App = () => {
             if (result.ok) {
               setSelectionMode(false);
               setSelectedIds(new Set());
+              setReaderFeedback('Markdown 文档已成功导出。');
             }
           }}
         />

@@ -152,6 +152,114 @@ describe('full-screen settings page', () => {
     expect(css).toMatch(
       /\.settings-navigation-links a\.is-active::after\s*\{\s*transform: scaleX\(1\);/s,
     );
+    expect(css).toMatch(
+      /\.reader-page\[data-theme="light"\] \.shortcut-recorder\s*\{[^}]*color: var\(--reader-text\);[^}]*font-weight: 650;/s,
+    );
+  });
+
+  it('shows only ten terminology libraries and experts until each list is expanded', async () => {
+    reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    const experts: TranslationExpert[] = Array.from({ length: 12 }, (_, index) => ({
+      id: `builtin:expert-${index + 1}`,
+      version: '1.0.0',
+      name: `专家 ${index + 1}`,
+      description: `专家描述 ${index + 1}`,
+      author: 'Official',
+      details: '',
+      origin: 'builtin',
+      instruction: `Translate topic ${index + 1}.`,
+      contentHash: `expert-hash-${index + 1}`,
+      matches: [],
+      warnings: [],
+    }));
+    const terminologyLibraries: TerminologyLibrary[] = Array.from(
+      { length: 12 },
+      (_, index) => ({
+        id: `builtin:library-${index + 1}`,
+        name: `术语库 ${index + 1}`,
+        description: `术语库描述 ${index + 1}`,
+        author: 'immersive',
+        version: '1.0.0',
+        origin: 'builtin',
+        enabled: false,
+        orderIndex: index,
+        entryCount: index + 1,
+        contentHash: `terminology-hash-${index + 1}`,
+        availableTargetLanguages: ['zh-CN'],
+        usesTraditionalChineseFallback: false,
+        removable: false,
+      }),
+    );
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        provider: {
+          get: vi.fn().mockResolvedValue({ ok: true, data: null }),
+        },
+        expert: {
+          list: vi.fn().mockResolvedValue({
+            ok: true,
+            data: { experts },
+          }),
+        },
+        terminology: {
+          list: vi.fn().mockResolvedValue({
+            ok: true,
+            data: { libraries: terminologyLibraries, enabledSetHash: 'hash' },
+          }),
+        },
+      } as unknown as typeof window.shaleAPI,
+    });
+
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(AISettingsPage, {
+        preferences: DEFAULT_AI_PREFERENCES,
+        onPreferencesChange: vi.fn(),
+        onClose: vi.fn(),
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.querySelectorAll(
+      '#settings-terminology .settings-option-card',
+    )).toHaveLength(10);
+    expect(container.querySelectorAll(
+      '#settings-experts .settings-option-card',
+    )).toHaveLength(10);
+
+    const terminologyToggle = container.querySelector<HTMLButtonElement>(
+      '#settings-terminology .settings-option-list-toggle',
+    );
+    const expertToggle = container.querySelector<HTMLButtonElement>(
+      '#settings-experts .settings-option-list-toggle',
+    );
+    expect(terminologyToggle?.textContent).toBe('显示更多');
+    expect(expertToggle?.textContent).toBe('显示更多');
+    expect(terminologyToggle?.getAttribute('aria-expanded')).toBe('false');
+    expect(expertToggle?.getAttribute('aria-expanded')).toBe('false');
+
+    act(() => terminologyToggle?.click());
+    expect(container.querySelectorAll(
+      '#settings-terminology .settings-option-card',
+    )).toHaveLength(12);
+    expect(container.querySelectorAll(
+      '#settings-experts .settings-option-card',
+    )).toHaveLength(10);
+    expect(terminologyToggle?.textContent).toBe('收起');
+
+    act(() => expertToggle?.click());
+    expect(container.querySelectorAll(
+      '#settings-experts .settings-option-card',
+    )).toHaveLength(12);
+    expect(expertToggle?.textContent).toBe('收起');
+
+    act(() => root.unmount());
+    container.remove();
   });
 
   it('renders terminology and experts as switch cards and preserves their selection behavior', async () => {

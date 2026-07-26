@@ -36,8 +36,10 @@ import {
   exportSingleEntry,
 } from './entryExport';
 import { ExportOptionsDialog } from './ExportOptionsDialog';
-import type { ArticleAvailability } from '../../../shared/contracts/export.types';
-import type { PerArticleOptions } from '../../../shared/contracts/export.types';
+import type {
+  ArticleAvailability,
+  PerArticleOptions,
+} from '../../../shared/contracts/export.types';
 import type { EntryAIViewState } from './entryAIViewState';
 import {
   calculateReadingProgress,
@@ -86,6 +88,7 @@ interface EntryDetailProps {
   selectionMode?: boolean;
   selectedIds?: Set<number>;
   onExportRequest?: () => void;
+  onFeedback?: (message: string) => void;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -113,6 +116,7 @@ export const EntryDetail = ({
   selectionMode = false,
   selectedIds,
   onExportRequest,
+  onFeedback,
   onReadingProgressChange,
   onContentRefreshComplete,
 }: EntryDetailProps) => {
@@ -498,11 +502,10 @@ export const EntryDetail = ({
       if (!options) return;
       const result = await exportSingleEntry(entry.id, options);
       if (result.ok) {
-        const filePath = result.data.filePath;
-        console.log('Export saved to:', filePath);
+        onFeedback?.('Markdown 文档已成功导出。');
       }
     },
-    [entry],
+    [entry, onFeedback],
   );
 
   const handleExportCancel = useCallback((): void => {
@@ -882,7 +885,7 @@ export const EntryDetail = ({
       >
         <button
           type="button"
-          className="type-button"
+          className="type-button article-export-button"
           aria-label={exportTooltip}
           disabled={isExportDisabled}
           onClick={() => void handleExportClick()}

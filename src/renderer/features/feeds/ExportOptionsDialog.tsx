@@ -9,9 +9,10 @@ import {
   type MouseEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import type { ArticleAvailability } from '../../../shared/contracts/export.types';
-import type { PerArticleOptions } from '../../../shared/contracts/export.types';
-import { DEFAULT_PER_ARTICLE_OPTIONS } from '../../../shared/contracts/export.types';
+import type {
+  ArticleAvailability,
+  PerArticleOptions,
+} from '../../../shared/contracts/export.types';
 import type { CleanProgressEvent } from '../../../shared/contracts/export.ipc';
 import { cleanSingle } from './entryExport';
 
@@ -39,7 +40,9 @@ export const ExportOptionsDialog = ({
 }: ExportOptionsDialogProps) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const feedbackTimerRef = useRef<number | null>(null);
   const titleId = useId();
+  const [feedback, setFeedback] = useState('');
 
   // 每篇文章的选项：Map<entryId, PerArticleOptions>
   const [perArticleOptions, setPerArticleOptions] = useState<
@@ -53,6 +56,23 @@ export const ExportOptionsDialog = ({
   const [refreshedArticleStatus, setRefreshedArticleStatus] = useState<
     Map<number, ArticleAvailability['pipelineStatus']>
   >(() => new Map());
+
+  const showFeedback = useCallback((message: string): void => {
+    if (feedbackTimerRef.current !== null) {
+      window.clearTimeout(feedbackTimerRef.current);
+    }
+    setFeedback(message);
+    feedbackTimerRef.current = window.setTimeout(() => {
+      setFeedback('');
+      feedbackTimerRef.current = null;
+    }, 2600);
+  }, []);
+
+  useEffect(() => () => {
+    if (feedbackTimerRef.current !== null) {
+      window.clearTimeout(feedbackTimerRef.current);
+    }
+  }, []);
 
   // 获取文章当前实际 pipelineStatus（考虑本地清洗结果）
   const getEffectiveStatus = useCallback(
@@ -115,19 +135,19 @@ export const ExportOptionsDialog = ({
 
   // 项级全选状态
   const columnAll = useMemo(() => {
-    const all = {
-      includeSummary: true,
-      includeTranslation: true,
-      includeNotes: true,
+    const isEveryAvailableOptionSelected = (
+      field: keyof PerArticleOptions,
+    ): boolean => {
+      const availableArticles = articles.filter((article) =>
+        isOptionAvailable(article, field));
+      return availableArticles.length > 0 && availableArticles.every((article) =>
+        perArticleOptions.get(article.entryId)?.[field] === true);
     };
-    for (const article of articles) {
-      const opts = perArticleOptions.get(article.entryId);
-      if (!opts) continue;
-      if (!opts.includeSummary) all.includeSummary = false;
-      if (!opts.includeTranslation) all.includeTranslation = false;
-      if (!opts.includeNotes) all.includeNotes = false;
-    }
-    return all;
+    return {
+      includeSummary: isEveryAvailableOptionSelected('includeSummary'),
+      includeTranslation: isEveryAvailableOptionSelected('includeTranslation'),
+      includeNotes: isEveryAvailableOptionSelected('includeNotes'),
+    };
   }, [articles, perArticleOptions]);
 
   // 初始化 / articles 变化时重置
@@ -144,6 +164,11 @@ export const ExportOptionsDialog = ({
     setPerArticleOptions(map);
     setCleaningIds(new Set());
     setRefreshedArticleStatus(new Map());
+    setFeedback('');
+    if (feedbackTimerRef.current !== null) {
+      window.clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = null;
+    }
 
     // 焦点
     requestAnimationFrame(() => {
@@ -210,11 +235,18 @@ export const ExportOptionsDialog = ({
 
   const toggleColumn = useCallback(
     (field: keyof PerArticleOptions) => {
+      const availableArticles = articles.filter((article) =>
+        isOptionAvailable(article, field));
+      if (availableArticles.length === 0) {
+        showFeedback(`所选文章均暂无${OPTION_LABELS[field]}，无法选择。`);
+        return;
+      }
       const currentAll = columnAll[field];
       const newValue = !currentAll;
       setPerArticleOptions((prev) => {
         const next = new Map(prev);
-        for (const [entryId] of next) {
+        for (const article of availableArticles) {
+          const entryId = article.entryId;
           const existing = next.get(entryId);
           if (existing) {
             next.set(entryId, { ...existing, [field]: newValue });
@@ -223,26 +255,36 @@ export const ExportOptionsDialog = ({
         return next;
       });
     },
-    [columnAll],
+    [articles, columnAll, showFeedback],
   );
 
   if (!open) return null;
 
   const renderCheckbox = (
-    entryId: number,
+    article: ArticleAvailability,
     field: keyof PerArticleOptions,
     label: string,
     enabled: boolean,
   ) => {
-    const checked = perArticleOptions.get(entryId)?.[field] ?? false;
+    const checked = perArticleOptions.get(article.entryId)?.[field] ?? false;
+    const unavailableMessage = `“${article.title}”暂无${label}，无法选择。`;
     return (
-      <label className={`export-option-checkbox${!enabled ? ' is-disabled' : ''}`}>
+      <label
+        className={`export-option-checkbox${!enabled ? ' is-disabled' : ''}`}
+        title={enabled ? undefined : unavailableMessage}
+      >
         <input
           type="checkbox"
           checked={checked}
-          disabled={!enabled}
-          onChange={() => {
-            if (enabled) setOption(entryId, field, !checked);
+          aria-disabled={!enabled}
+          aria-label={enabled ? label : `${label}不可选：暂无${label}`}
+          onChange={(event) => {
+            if (!enabled) {
+              event.currentTarget.checked = false;
+              showFeedback(unavailableMessage);
+              return;
+            }
+            setOption(article.entryId, field, !checked);
           }}
         />
         <span>{label}</span>
@@ -317,19 +359,19 @@ export const ExportOptionsDialog = ({
                 {pipelineSuccess && (
                   <div className="export-options-row-fields">
                     {renderCheckbox(
-                      a.entryId,
+                      a,
                       'includeSummary',
                       '总结',
                       a.hasSummary,
                     )}
                     {renderCheckbox(
-                      a.entryId,
+                      a,
                       'includeTranslation',
                       '翻译',
                       a.hasTranslation,
                     )}
                     {renderCheckbox(
-                      a.entryId,
+                      a,
                       'includeNotes',
                       '笔记',
                       a.hasNotes,
@@ -399,9 +441,35 @@ export const ExportOptionsDialog = ({
           </button>
         </div>
       </div>
+      {feedback && (
+        <div
+          className="reader-toast export-options-feedback"
+          role="status"
+          aria-live="polite"
+        >
+          {feedback}
+        </div>
+      )}
     </div>
   );
 
   const pageRoot = document.querySelector<HTMLElement>('.reader-page');
   return createPortal(dialog, pageRoot ?? document.body);
 };
+
+const OPTION_LABELS: Record<keyof PerArticleOptions, string> = {
+  includeSummary: '总结',
+  includeTranslation: '翻译',
+  includeNotes: '笔记',
+};
+
+function isOptionAvailable(
+  article: ArticleAvailability,
+  field: keyof PerArticleOptions,
+): boolean {
+  switch (field) {
+    case 'includeSummary': return article.hasSummary;
+    case 'includeTranslation': return article.hasTranslation;
+    case 'includeNotes': return article.hasNotes;
+  }
+}

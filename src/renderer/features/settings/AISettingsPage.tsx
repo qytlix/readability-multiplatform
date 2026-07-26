@@ -42,6 +42,8 @@ type ShortcutPreferenceKey =
   | 'paragraphTranslationShortcut'
   | 'selectionTranslationShortcut';
 
+const SETTINGS_OPTION_PREVIEW_LIMIT = 10;
+
 const TRANSLATION_SHORTCUTS: ReadonlyArray<{
   preferenceKey: ShortcutPreferenceKey;
   label: string;
@@ -106,6 +108,7 @@ export const AISettingsPage = ({
   const [expertPreview, setExpertPreview] =
     useState<TranslationExpertImportPreview | null>(null);
   const [showExpertCreator, setShowExpertCreator] = useState(false);
+  const [showAllExperts, setShowAllExperts] = useState(false);
   const expertFileRef = useRef<HTMLInputElement>(null);
   const [terminologyLibraries, setTerminologyLibraries] =
     useState<TerminologyLibrary[]>([]);
@@ -116,6 +119,8 @@ export const AISettingsPage = ({
   const [terminologyPreview, setTerminologyPreview] =
     useState<TerminologyImportPreview | null>(null);
   const [showTerminologyCreator, setShowTerminologyCreator] = useState(false);
+  const [showAllTerminologyLibraries, setShowAllTerminologyLibraries] =
+    useState(false);
   const [pendingTerminologyLibraryId, setPendingTerminologyLibraryId] =
     useState<string | null>(null);
   const terminologyFileRef = useRef<HTMLInputElement>(null);
@@ -467,6 +472,13 @@ export const AISettingsPage = ({
     setShortcutError('');
   };
 
+  const displayedTerminologyLibraries = showAllTerminologyLibraries
+    ? terminologyLibraries
+    : terminologyLibraries.slice(0, SETTINGS_OPTION_PREVIEW_LIMIT);
+  const displayedExperts = showAllExperts
+    ? experts
+    : experts.slice(0, SETTINGS_OPTION_PREVIEW_LIMIT);
+
   return (
     <div className="settings-page">
       <aside className="settings-navigation" aria-label="设置分类">
@@ -731,8 +743,11 @@ export const AISettingsPage = ({
               </div>
             )}
             {terminologyLibraries.length > 0 ? (
-              <div className="settings-option-grid settings-terminology-grid">
-                {terminologyLibraries.map((library) => {
+              <div
+                id="settings-terminology-options"
+                className="settings-option-grid settings-terminology-grid"
+              >
+                {displayedTerminologyLibraries.map((library) => {
                   const isPending = pendingTerminologyLibraryId === library.id;
                   const descriptionId = `terminology-description-${library.id}`;
                   return (
@@ -796,6 +811,17 @@ export const AISettingsPage = ({
               <div className="settings-card settings-option-empty">
                 暂无可用术语库。
               </div>
+            )}
+            {terminologyLibraries.length > SETTINGS_OPTION_PREVIEW_LIMIT && (
+              <button
+                type="button"
+                className="settings-section-action settings-option-list-toggle"
+                aria-controls="settings-terminology-options"
+                aria-expanded={showAllTerminologyLibraries}
+                onClick={() => setShowAllTerminologyLibraries((current) => !current)}
+              >
+                {showAllTerminologyLibraries ? '收起' : '显示更多'}
+              </button>
             )}
             {terminologyError && (
               <p className="settings-page-error" role="status">
@@ -891,8 +917,11 @@ export const AISettingsPage = ({
               </div>
             )}
             {experts.length > 0 ? (
-              <div className="settings-option-grid settings-expert-grid">
-                {experts.map((expert) => {
+              <div
+                id="settings-expert-options"
+                className="settings-option-grid settings-expert-grid"
+              >
+                {displayedExperts.map((expert) => {
                   const isSelected = preferences.translationExpertId === expert.id;
                   const descriptionId = `expert-description-${expert.id}`;
                   return (
@@ -950,6 +979,17 @@ export const AISettingsPage = ({
               <div className="settings-card settings-option-empty">
                 暂无可用 AI 专家。
               </div>
+            )}
+            {experts.length > SETTINGS_OPTION_PREVIEW_LIMIT && (
+              <button
+                type="button"
+                className="settings-section-action settings-option-list-toggle"
+                aria-controls="settings-expert-options"
+                aria-expanded={showAllExperts}
+                onClick={() => setShowAllExperts((current) => !current)}
+              >
+                {showAllExperts ? '收起' : '显示更多'}
+              </button>
             )}
             {preferences.translationExpertId !== DEFAULT_TRANSLATION_EXPERT_ID
               && !experts.some((expert) => expert.id === preferences.translationExpertId)

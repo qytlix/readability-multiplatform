@@ -95,6 +95,28 @@ describe('FeedParserAdapter', () => {
       expect(first.title).toBe('New Breakthrough in Fusion Energy');
       expect(first.guid).toBe('urn:uuid:fusion-2026');
     });
+
+    it('should convert HTML summaries to readable plain text', async () => {
+      const htmlSummaryFeed = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Release Feed</title>
+  <entry>
+    <id>ruff-v0.16.0</id>
+    <title>Ruff v0.16.0</title>
+    <link href="https://astral.sh/blog/ruff-v0.16.0" />
+    <summary type="html">&lt;p&gt;&lt;strong&gt;&lt;a href="https://astral.sh/blog/ruff-v0.16.0"&gt;Ruff v0.16.0&lt;/a&gt;&lt;/strong&gt;&lt;/p&gt; Astral shipped a significant release &amp;amp; more.</summary>
+  </entry>
+</feed>`;
+
+      const result = await adapter.parse(
+        htmlSummaryFeed,
+        'https://example.com/feed.xml',
+      );
+
+      expect(result.entries[0].summary).toBe(
+        'Ruff v0.16.0 Astral shipped a significant release & more.',
+      );
+    });
   });
 
   // ── JSON Feed ────────────────────────────────────────────

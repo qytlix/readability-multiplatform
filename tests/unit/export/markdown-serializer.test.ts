@@ -5,6 +5,7 @@ import {
   detectExistingFootnoteNumbers,
   insertFootnoteMarkers,
   serializeFootnotes,
+  serializeMultiple,
   serializeSingle,
   type FootnoteDef,
 } from '../../../src/main/export/MarkdownSerializer';
@@ -23,13 +24,6 @@ function makeAnnotation(overrides: Partial<EntryAnnotation> & { selectedText: st
     noteText: '',
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
-    ...overrides,
-  };
-}
-
-function makeArticle(overrides: Partial<ExportableArticle> & { cleanedMarkdown: string }): ExportableArticle {
-  return {
-    entryId: 1,
     ...overrides,
   };
 }
@@ -303,7 +297,10 @@ describe('serializeSingle() with annotations', () => {
     const article = { ...baseArticle, annotations };
     const result = serializeSingle(article, article.exportOptions);
 
-    expect(result).toContain('key finding[^1]');
+    expect(result).toContain(
+      '<mark data-shale-highlight="yellow" data-shale-annotation-id="1" '
+      + 'style="background-color: #f4d35e;">key finding</mark>[^1]',
+    );
     expect(result).toContain('[^1]: "key finding" — Crucial point');
     expect(result).not.toContain('> **笔记：**');
   });
@@ -316,9 +313,73 @@ describe('serializeSingle() with annotations', () => {
     const article = { ...baseArticle, annotations };
     const result = serializeSingle(article, article.exportOptions);
 
-    expect(result).toContain('key finding[^1]');
+    expect(result).toContain(
+      '<mark data-shale-highlight="yellow" data-shale-annotation-id="1" '
+      + 'style="background-color: #f4d35e;">key finding</mark>[^1]',
+    );
     expect(result).toContain('[^1]: "key finding"');
     expect(result).not.toContain('—');
+  });
+
+  it('preserves highlights when note export is disabled', () => {
+    const article: ExportableArticle = {
+      ...baseArticle,
+      annotations: [
+        makeAnnotation({
+          selectedText: 'key finding',
+          color: 'blue',
+          noteText: 'Do not export this note',
+        }),
+      ],
+      exportOptions: {
+        includeSummary: false,
+        includeTranslation: false,
+        includeNotes: false,
+      },
+    };
+
+    const result = serializeSingle(article, article.exportOptions);
+
+    expect(result).toContain(
+      '<mark data-shale-highlight="blue" data-shale-annotation-id="1" '
+      + 'style="background-color: #69b5eb;">key finding</mark>',
+    );
+    expect(result).not.toContain('[^1]');
+    expect(result).not.toContain('Do not export this note');
+  });
+
+  it('preserves a colored highlight that spans multiple HTML text nodes', () => {
+    const selectedText = 'this important result';
+    const article: ExportableArticle = {
+      ...baseArticle,
+      cleanedHtml: '<p>Read <strong>this important</strong> result.</p>',
+      cleanedMarkdown: 'Read **this important** result.',
+      annotations: [
+        makeAnnotation({
+          selectedText,
+          startOffset: 5,
+          endOffset: 5 + selectedText.length,
+          color: 'green',
+        }),
+      ],
+      exportOptions: {
+        includeSummary: false,
+        includeTranslation: false,
+        includeNotes: false,
+      },
+    };
+
+    const result = serializeSingle(article, article.exportOptions);
+
+    expect(result.match(/data-shale-highlight="green"/g)).toHaveLength(2);
+    expect(result).toContain(
+      '<mark data-shale-highlight="green" data-shale-annotation-id="1" '
+      + 'style="background-color: #7ed391;">this important</mark>',
+    );
+    expect(result).toContain(
+      '<mark data-shale-highlight="green" data-shale-annotation-id="1" '
+      + 'style="background-color: #7ed391;">result</mark>',
+    );
   });
 
   it('outputs old quote format when only notes string is available', () => {
@@ -372,8 +433,28 @@ describe('serializeSingle() with annotations', () => {
     const article: ExportableArticle = {
       ...baseArticle,
       annotations,
+      cleanedHtml: '<p>This is a key finding in the text.</p>',
       summary: 'This is a summary.',
-      translation: 'This is a translation.',
+      translationSegments: [
+        {
+          sourceSegmentId: 'seg-title',
+          orderIndex: 0,
+          sourceType: 'title',
+          sourceHtml: '<h2 class="translation-reader-title">Test Article</h2>',
+          sourceText: 'Test Article',
+          translatedText: '测试文章',
+          translatedHtml: '<h2 class="translation-reader-title">测试文章</h2>',
+        },
+        {
+          sourceSegmentId: 'seg-paragraph',
+          orderIndex: 1,
+          sourceType: 'paragraph',
+          sourceHtml: '<p>This is a key finding in the text.</p>',
+          sourceText: 'This is a key finding in the text.',
+          translatedText: '这是正文的逐段翻译。',
+          translatedHtml: '<p>这是正文的逐段翻译。</p>',
+        },
+      ],
       exportOptions: {
         includeSummary: true,
         includeTranslation: true,
@@ -383,19 +464,142 @@ describe('serializeSingle() with annotations', () => {
 
     const result = serializeSingle(article, article.exportOptions);
 
-    expect(result).toContain('key finding[^1]');
-    expect(result).toContain('> **AI 摘要：**');
-    expect(result).toContain('> **翻译：**');
+    expect(result).toContain('key finding</mark>[^1]');
+    expect(result).toContain('## AI SUMMARY');
+    expect(result).toContain('> 测试文章');
+    expect(result).toContain('> 这是正文的逐段翻译。');
+    expect(result).not.toContain('> **翻译：**');
     expect(result).toContain('[^1]: "key finding" — Important');
 
-    // Verify order: body → summary → translation → footnotes
-    const bodyIndex = result.indexOf('key finding[^1]');
-    const summaryIndex = result.indexOf('AI 摘要');
-    const translationIndex = result.indexOf('翻译');
+    // Reader order: title translation → summary → source paragraph → paragraph translation.
+    const titleTranslationIndex = result.indexOf('测试文章');
+    const summaryIndex = result.indexOf('AI SUMMARY');
+    const bodyIndex = result.indexOf('key finding</mark>[^1]');
+    const translationIndex = result.indexOf('这是正文的逐段翻译。');
     const footnoteIndex = result.indexOf('[^1]:');
+    expect(summaryIndex).toBeGreaterThan(titleTranslationIndex);
+    expect(bodyIndex).toBeGreaterThan(summaryIndex);
+    expect(translationIndex).toBeGreaterThan(bodyIndex);
     expect(footnoteIndex).toBeGreaterThan(translationIndex);
-    expect(translationIndex).toBeGreaterThan(summaryIndex);
-    expect(summaryIndex).toBeGreaterThan(bodyIndex);
+  });
+
+  it('quotes every summary line below metadata and before the article body', () => {
+    const article: ExportableArticle = {
+      ...baseArticle,
+      summary: 'First summary line.\n\n- Second summary point',
+      exportOptions: {
+        includeSummary: true,
+        includeTranslation: false,
+        includeNotes: false,
+      },
+    };
+
+    const result = serializeSingle(article, article.exportOptions);
+
+    expect(result).toContain(
+      '## AI SUMMARY\n\n> First summary line.\n>\n> - Second summary point',
+    );
+    expect(result.indexOf('AI SUMMARY')).toBeLessThan(result.indexOf('key finding'));
+  });
+
+  it('places every translated Reader block immediately after its source block', () => {
+    const article: ExportableArticle = {
+      entryId: 2,
+      title: 'Bilingual article',
+      cleanedHtml: [
+        '<h2>First heading</h2>',
+        '<p>First paragraph.</p>',
+        '<p>Second <strong>paragraph</strong>.</p>',
+      ].join(''),
+      cleanedMarkdown: [
+        '## First heading',
+        '',
+        'First paragraph.',
+        '',
+        'Second **paragraph**.',
+      ].join('\n'),
+      translationSegments: [
+        {
+          sourceSegmentId: 'heading',
+          orderIndex: 0,
+          sourceType: 'heading',
+          sourceHtml: '<h2>First heading</h2>',
+          sourceText: 'First heading',
+          translatedText: '第一个标题',
+          translatedHtml: '<h2>第一个标题</h2>',
+        },
+        {
+          sourceSegmentId: 'first',
+          orderIndex: 1,
+          sourceType: 'paragraph',
+          sourceHtml: '<p>First paragraph.</p>',
+          sourceText: 'First paragraph.',
+          translatedText: '第一段。',
+          translatedHtml: '<p>第一段。</p>',
+        },
+        {
+          sourceSegmentId: 'second',
+          orderIndex: 2,
+          sourceType: 'paragraph',
+          sourceHtml: '<p>Second <strong>paragraph</strong>.</p>',
+          sourceText: 'Second paragraph.',
+          translatedText: '第二个段落。',
+          translatedHtml: '<p>第二个<strong>段落</strong>。</p>',
+        },
+      ],
+      exportOptions: {
+        includeSummary: false,
+        includeTranslation: true,
+        includeNotes: false,
+      },
+    };
+
+    const result = serializeSingle(article, article.exportOptions);
+    const sourceHeadingIndex = result.indexOf('## First heading');
+    const translatedHeadingIndex = result.indexOf('第一个标题');
+    const firstSourceIndex = result.indexOf('First paragraph.');
+    const firstTranslationIndex = result.indexOf('第一段。');
+    const secondSourceIndex = result.indexOf('Second **paragraph**.');
+    const secondTranslationIndex = result.indexOf('第二个**段落**。');
+
+    expect(translatedHeadingIndex).toBeGreaterThan(sourceHeadingIndex);
+    expect(firstSourceIndex).toBeGreaterThan(translatedHeadingIndex);
+    expect(firstTranslationIndex).toBeGreaterThan(firstSourceIndex);
+    expect(secondSourceIndex).toBeGreaterThan(firstTranslationIndex);
+    expect(secondTranslationIndex).toBeGreaterThan(secondSourceIndex);
+    expect(result).toContain('> 第一段。');
+    expect(result).toContain('> 第二个**段落**。');
+  });
+
+  it('uses the same top-summary and inline-translation structure in multi-article exports', () => {
+    const article: ExportableArticle = {
+      entryId: 3,
+      title: 'Multi export article',
+      cleanedHtml: '<p>Source paragraph.</p>',
+      cleanedMarkdown: 'Source paragraph.',
+      summary: 'Summary first.',
+      translationSegments: [{
+        sourceSegmentId: 'source',
+        orderIndex: 0,
+        sourceType: 'paragraph',
+        sourceHtml: '<p>Source paragraph.</p>',
+        sourceText: 'Source paragraph.',
+        translatedText: '逐段翻译。',
+        translatedHtml: '<p>逐段翻译。</p>',
+      }],
+      exportOptions: {
+        includeSummary: true,
+        includeTranslation: true,
+        includeNotes: false,
+      },
+    };
+
+    const result = serializeMultiple([article]);
+
+    expect(result).toContain('## 1. Multi export article');
+    expect(result).toContain('### AI SUMMARY\n\n> Summary first.');
+    expect(result.indexOf('AI SUMMARY')).toBeLessThan(result.indexOf('Source paragraph.'));
+    expect(result.indexOf('逐段翻译。')).toBeGreaterThan(result.indexOf('Source paragraph.'));
   });
 
   it('handles empty annotations array gracefully', () => {
