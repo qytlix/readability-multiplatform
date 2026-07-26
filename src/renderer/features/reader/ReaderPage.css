@@ -577,7 +577,7 @@ body.workspace-is-resizing * {
   display: flex;
   margin-bottom: 9px;
   align-items: baseline;
-  gap: 10px;
+  gap: 0;
 }
 
 .story-card h2 {
@@ -597,6 +597,7 @@ body.workspace-is-resizing * {
 
 .story-card-reading-progress {
   flex: none;
+  margin-left: auto;
   color: #aeb8ac;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -4721,6 +4722,11 @@ body.workspace-is-resizing * {
   user-select: none;
   font-size: 13px;
   color: var(--reader-text);
+  color-scheme: dark;
+}
+
+.reader-page[data-theme="light"] .export-option-checkbox {
+  color-scheme: light;
 }
 
 .export-option-checkbox.is-disabled {
@@ -4821,7 +4827,8 @@ body.workspace-is-resizing * {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  padding-right: 8px;
+  padding-right: 5px;
+  color-scheme: dark;
 }
 
 .story-card-checkbox input[type="checkbox"] {
@@ -4830,6 +4837,10 @@ body.workspace-is-resizing * {
   width: 16px;
   height: 16px;
   cursor: pointer;
+}
+
+.reader-page[data-theme="light"] .story-card-checkbox {
+  color-scheme: light;
 }
 
 .export-selection-bar {

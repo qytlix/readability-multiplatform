@@ -132,9 +132,9 @@ export const EntryList = ({
         <span>{entries.length} 篇文章{hasMore ? '+' : ''}</span>
       </div>
 
-      {selectionMode && selectedIds && selectedIds.size > 0 && (
+      {selectionMode && (
         <div className="export-selection-bar">
-          <span>已选 <strong>{selectedIds.size}</strong> 篇</span>
+          <span>{selectedIds && selectedIds.size > 0 ? <>已选 <strong>{selectedIds.size}</strong> 篇</> : '选择模式'}</span>
         </div>
       )}
 
@@ -164,18 +164,18 @@ export const EntryList = ({
                 }
               }}
             >
-              {selectionMode && (
-                <span className="story-card-checkbox" onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds?.has(entry.id) ?? false}
-                    onChange={() => onSelectionToggle?.(entry.id)}
-                    aria-label={`选择「${entry.title ?? '无标题文章'}」`}
-                  />
-                </span>
-              )}
               <div className="story-card-copy">
                 <div className="story-card-title">
+                  {selectionMode && (
+                    <span className="story-card-checkbox" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds?.has(entry.id) ?? false}
+                        onChange={() => onSelectionToggle?.(entry.id)}
+                        aria-label={`选择「${entry.title ?? '无标题文章'}」`}
+                      />
+                    </span>
+                  )}
                   <h2>{entry.title ?? '无标题文章'}</h2>
                   <span
                     className="story-card-reading-progress"
