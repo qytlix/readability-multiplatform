@@ -21,7 +21,7 @@ import type { PerArticleOptions } from '../../shared/contracts/export.types';
 import type { ShaleError } from '../../shared/errors/feed.errors';
 import { isAuthorizedSender, type GetMainWindow } from '../ipc';
 import type { ExportService } from '../export/ExportService';
-import { safeFilename } from '../export/safeFilename';
+import { markdownExportFilename } from '../export/safeFilename';
 import { serializeSingle, serializeMultiple } from '../export/MarkdownSerializer';
 
 /** Build a successful IPC result. */
@@ -151,7 +151,10 @@ export function registerExportIpcHandlers(
 
         // 打开保存对话框
         const mainWindow = getMainWindow();
-        const defaultName = safeFilename(article.title ?? 'untitled') + '.md';
+        const defaultName = markdownExportFilename(
+          article.title ?? 'untitled',
+          [options],
+        );
         const dialogResult = mainWindow
           ? await dialog.showSaveDialog(mainWindow, {
               title: '导出文章为 Markdown',
@@ -171,10 +174,19 @@ export function registerExportIpcHandlers(
           );
         }
 
-        // 写入文件
-        exportService.writeFile(dialogResult.filePath, markdown);
+        // 下载远程图片并改写为相对路径，然后写入 Markdown。
+        const imageResult = await exportService.writeMarkdownExport(
+          dialogResult.filePath,
+          markdown,
+          [article],
+        );
 
-        return ok({ filePath: dialogResult.filePath });
+        return ok({
+          filePath: dialogResult.filePath,
+          assetDirectory: imageResult.assetDirectory,
+          downloadedImageCount: imageResult.downloadedImageCount,
+          failedImageCount: imageResult.failedImageCount,
+        });
       } catch (error) {
         return failFromError(error);
       }
@@ -227,7 +239,10 @@ export function registerExportIpcHandlers(
         const markdown = serializeMultiple(articles);
 
         // 打开保存对话框
-        const defaultName = `文摘-${new Date().toISOString().slice(0, 10)}.md`;
+        const defaultName = markdownExportFilename(
+          `文摘-${new Date().toISOString().slice(0, 10)}`,
+          entries.map(({ options }) => options),
+        );
         const mainWindow = getMainWindow();
         const dialogResult = mainWindow
           ? await dialog.showSaveDialog(mainWindow, {
@@ -248,10 +263,19 @@ export function registerExportIpcHandlers(
           );
         }
 
-        // 写入文件
-        exportService.writeFile(dialogResult.filePath, markdown);
+        // 下载远程图片并改写为相对路径，然后写入 Markdown。
+        const imageResult = await exportService.writeMarkdownExport(
+          dialogResult.filePath,
+          markdown,
+          articles,
+        );
 
-        return ok({ filePath: dialogResult.filePath });
+        return ok({
+          filePath: dialogResult.filePath,
+          assetDirectory: imageResult.assetDirectory,
+          downloadedImageCount: imageResult.downloadedImageCount,
+          failedImageCount: imageResult.failedImageCount,
+        });
       } catch (error) {
         return failFromError(error);
       }

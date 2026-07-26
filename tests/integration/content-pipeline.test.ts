@@ -133,6 +133,23 @@ describe('ContentCleaner', () => {
     expect(result.content).not.toContain('<script');
   });
 
+  it('sanitizes short feed entry HTML without Readability heuristics', () => {
+    const result = cleaner.cleanFeedContent(
+      `<p onclick="steal()">Publisher-provided fallback text.</p>
+       <script>steal()</script>
+       <a href="javascript:steal()">unsafe link</a>`,
+      'https://example.com/posts/linked-item',
+      'Linked item',
+      'Feed author',
+    );
+
+    expect(result.title).toBe('Linked item');
+    expect(result.content).toContain('Publisher-provided fallback text.');
+    expect(result.content).not.toContain('<script');
+    expect(result.content).not.toContain('onclick');
+    expect(result.content).not.toContain('javascript:');
+  });
+
   it('excludes CSS-hidden runtime payloads before Readability scoring', () => {
     const hiddenPayload = JSON.stringify({
       ENV: 'production',

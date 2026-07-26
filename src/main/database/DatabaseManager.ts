@@ -19,6 +19,8 @@ import { MIGRATION_014 } from '../migrations/014_add_translation_context_and_exp
 import { MIGRATION_015 } from '../migrations/015_add_terminology_libraries';
 import { runMigration016 } from '../migrations/016_normalize_relative_entry_urls';
 import { MIGRATION_017 } from '../migrations/017_add_translation_active_result';
+import { runMigration017 } from '../migrations/017_normalize_entry_summaries';
+import { MIGRATION_018 } from '../migrations/018_add_feed_content_html';
 
 interface Migration {
   id: string;
@@ -52,6 +54,8 @@ const MIGRATIONS: Migration[] = [
   { id: '015_add_terminology_libraries', sql: MIGRATION_015 },
   { id: '016_normalize_relative_entry_urls', run: runMigration016 },
   { id: '017_add_translation_active_result', sql: MIGRATION_017 },
+  { id: '017_normalize_entry_summaries', run: runMigration017 },
+  { id: '018_add_feed_content_html', sql: MIGRATION_018 },
 ];
 
 export class DatabaseManager {

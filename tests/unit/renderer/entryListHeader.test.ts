@@ -32,13 +32,27 @@ describe('EntryList header', () => {
     const filterButton = container.querySelector<HTMLButtonElement>('.story-list-filter');
     expect(tooltip?.getAttribute('data-tooltip')).toBe(entryListCopy.filterArticles);
     expect(filterButton?.getAttribute('aria-label')).toBe(entryListCopy.filterArticles);
-    expect(filterButton?.getAttribute('title')).toBe(entryListCopy.filterArticles);
+    expect(filterButton?.hasAttribute('title')).toBe(false);
 
     await act(async () => filterButton?.focus());
     expect(document.activeElement).toBe(filterButton);
 
     await act(async () => filterButton?.click());
     expect(onFilterChange).toHaveBeenCalledWith('unread');
+  });
+
+  it('uses the shared tooltip for article selection mode', async () => {
+    const onSelectionModeChange = vi.fn();
+    await render({ onSelectionModeChange });
+
+    const button = container.querySelector<HTMLButtonElement>('.story-list-select');
+    const tooltip = button?.closest<HTMLElement>('.story-list-select-tooltip');
+    expect(tooltip?.getAttribute('data-tooltip')).toBe('选择文章');
+    expect(button?.getAttribute('aria-label')).toBe('选择文章');
+    expect(button?.hasAttribute('title')).toBe(false);
+
+    await act(async () => button?.click());
+    expect(onSelectionModeChange).toHaveBeenCalledWith(true);
   });
 
   it('keeps header actions present when an empty result has a long feed heading', async () => {

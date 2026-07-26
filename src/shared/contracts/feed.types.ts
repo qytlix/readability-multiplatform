@@ -25,7 +25,7 @@ export interface Entry {
   title?: string;
   author?: string;
   publishedAt?: string;                 // ISO-8601 datetime
-  summary?: string;
+  summary?: string;                     // 纯文本；不得包含 Feed HTML 标记
   isRead: boolean;
   readingProgress: number;
   isStarred: boolean;
@@ -50,7 +50,7 @@ export interface EntryListItem {
   isRead: boolean;
   readingProgress: number;
   isStarred: boolean;
-  summary?: string;
+  summary?: string;                     // 纯文本；不得包含 Feed HTML 标记
   pipelineStatus: PipelineStatus;
 }
 
@@ -81,7 +81,7 @@ export interface ParsedEntry {
   title?: string;
   author?: string;
   publishedAt?: string;                 // ISO-8601
-  summary?: string;
+  summary?: string;                     // 纯文本；不得包含 Feed HTML 标记
   contentHtml?: string;                 // Feed 内嵌 HTML
 }
 

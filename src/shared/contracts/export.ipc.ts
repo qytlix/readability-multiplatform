@@ -36,6 +36,9 @@ export interface ExportSingleRequest {
 
 export interface ExportSingleResult {
   filePath: string;
+  assetDirectory?: string;
+  downloadedImageCount: number;
+  failedImageCount: number;
 }
 
 // ── 多篇导出（已确认选项后） ──
@@ -49,6 +52,9 @@ export interface ExportMultipleRequest {
 
 export interface ExportMultipleResult {
   filePath: string;
+  assetDirectory?: string;
+  downloadedImageCount: number;
+  failedImageCount: number;
 }
 
 // ── 错误码 ──

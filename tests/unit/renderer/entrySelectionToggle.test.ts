@@ -374,9 +374,31 @@ describe('article selection toggle', () => {
     const refreshButton =
       container.querySelector<HTMLButtonElement>('.article-refresh-button');
     expect(refreshButton?.getAttribute('aria-label')).toBe('文章同步操作');
+    expect(
+      refreshButton?.closest('.article-action-tooltip')?.getAttribute('data-tooltip'),
+    ).toBe('文章同步操作');
+    expect(refreshButton?.hasAttribute('title')).toBe(false);
     expect(refreshButton?.textContent?.trim()).toBe('');
     expect(container.querySelector('[aria-label="更多文章操作"]')).toBeNull();
     expect(container.textContent).not.toContain('阅读设置');
+
+    const focusButton =
+      container.querySelector<HTMLButtonElement>('.reader-focus-toggle');
+    expect(
+      focusButton?.closest('.article-action-tooltip')?.getAttribute('data-tooltip'),
+    ).toBe('进入专注阅读');
+    const themeButton = container.querySelector<HTMLButtonElement>('.theme-toggle');
+    expect(
+      themeButton?.closest('.theme-toggle-tooltip')?.getAttribute('data-tooltip'),
+    ).toBe('切换到白天模式');
+    expect(themeButton?.hasAttribute('title')).toBe(false);
+    const exportButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="导出为 Markdown"]',
+    );
+    expect(
+      exportButton?.closest('.article-action-tooltip')?.getAttribute('data-tooltip'),
+    ).toBe('导出为 Markdown');
+    expect(exportButton?.hasAttribute('title')).toBe(false);
 
     act(() => refreshButton?.click());
     const refreshMenuItem = Array.from(container.querySelectorAll<HTMLButtonElement>(
@@ -413,6 +435,10 @@ describe('article selection toggle', () => {
     const copyButton =
       container.querySelector<HTMLButtonElement>('.article-copy-button');
     expect(copyButton?.getAttribute('aria-label')).toBe('复制原文链接');
+    expect(
+      copyButton?.closest('.article-action-tooltip')?.getAttribute('data-tooltip'),
+    ).toBe('复制原文链接');
+    expect(copyButton?.hasAttribute('title')).toBe(false);
     expect(copyButton?.textContent?.trim()).toBe('');
 
     await act(async () => {
@@ -423,6 +449,9 @@ describe('article selection toggle', () => {
     expect(writeText).toHaveBeenCalledWith(entries[0].url);
     expect(copyButton?.classList.contains('is-copied')).toBe(true);
     expect(copyButton?.getAttribute('aria-label')).toBe('原文链接已复制');
+    expect(
+      copyButton?.closest('.article-action-tooltip')?.getAttribute('data-tooltip'),
+    ).toBe('原文链接已复制');
     expect(copyButton?.disabled).toBe(true);
     expect(copyButton?.querySelector('.article-copy-button-success')).not.toBeNull();
 

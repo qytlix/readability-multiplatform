@@ -53,7 +53,7 @@ describe('Advanced Translation upgrade and restart hardening', () => {
     });
   });
 
-  it('upgrades an M0 database through 012-016, reconciles interruption, and restarts', () => {
+  it('upgrades an M0 database through 012-017, reconciles interruption, and restarts', () => {
     const directory = mkdtempSync(path.join(tmpdir(), 'shale-at-m6-'));
     temporaryDirectories.push(directory);
     const databasePath = path.join(directory, 'shale.sqlite');
@@ -128,6 +128,8 @@ describe('Advanced Translation upgrade and restart hardening', () => {
         { filename: '015_add_terminology_libraries' },
         { filename: '016_normalize_relative_entry_urls' },
         { filename: '017_add_translation_active_result' },
+        { filename: '017_normalize_entry_summaries' },
+        { filename: '018_add_feed_content_html' },
       ]);
       expect(restarted.getDb().prepare(`
         SELECT name FROM sqlite_master

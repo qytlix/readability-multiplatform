@@ -1,5 +1,9 @@
 import { performance } from 'node:perf_hooks';
-import type { Feed, EntryListItem } from '../../../shared/contracts/feed.types';
+import type {
+  Feed,
+  EntryListItem,
+  ParsedEntry,
+} from '../../../shared/contracts/feed.types';
 import { createFeedError } from '../../../shared/errors/feed.errors';
 import { FeedStore, EntryStore } from '../stores';
 import { FeedParserAdapter, type IFeedParserAdapter } from '../parser/FeedParserAdapter';
@@ -296,7 +300,7 @@ export class FeedService {
 
   private syncEntries(
     feedId: number,
-    entries: Array<{ guid: string; url?: string; title?: string; author?: string; publishedAt?: string; summary?: string }>,
+    entries: ParsedEntry[],
   ): { newCount: number; entries: EntryListItem[] } {
     let newCount = 0;
 
@@ -309,6 +313,7 @@ export class FeedService {
         author: entry.author,
         publishedAt: entry.publishedAt,
         summary: entry.summary,
+        feedContentHtml: entry.contentHtml,
       });
 
       if (result.isNew) {

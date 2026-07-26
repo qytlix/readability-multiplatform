@@ -1,5 +1,6 @@
 import type { ParsedFeed, ParsedEntry } from '../../../shared/contracts/feed.types';
 import Parser from 'rss-parser';
+import { normalizeFeedSummary } from './FeedSummary';
 
 const CDATA_PLACEHOLDER = '__CDATA_BLOCK_';
 
@@ -162,7 +163,7 @@ export class FeedParserAdapter implements IFeedParserAdapter {
           url: (item.url as string) ?? undefined,
           title: (item.title as string) ?? undefined,
           publishedAt: (item.date_published as string) ?? undefined,
-          summary: (item.summary as string) ?? undefined,
+          summary: normalizeFeedSummary(item.summary),
           contentHtml: (item.content_html as string) ?? undefined,
         };
 
@@ -196,7 +197,8 @@ export class FeedParserAdapter implements IFeedParserAdapter {
       title: item.title as string | undefined,
       author: (item.creator ?? item.author) as string | undefined,
       publishedAt: (item.isoDate ?? item.pubDate) as string | undefined,
-      summary: (item.summary ?? item.contentSnippet) as string | undefined,
+      summary: normalizeFeedSummary(item.summary)
+        ?? normalizeFeedSummary(item.contentSnippet),
       contentHtml: (item.content ?? item.content_html) as string | undefined,
     };
   }

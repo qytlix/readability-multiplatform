@@ -65,6 +65,11 @@ const CONTEXT_FIELD_TYPES = {
   inputCharacters: 'number',
   outputCharacters: 'number',
   durationMs: 'number',
+  fetchDurationMs: 'number',
+  cleanDurationMs: 'number',
+  convertDurationMs: 'number',
+  persistDurationMs: 'number',
+  attemptCount: 'number',
   httpStatus: 'number',
   errorCode: 'string',
   reasonCode: 'string',
@@ -74,6 +79,7 @@ const CONTEXT_FIELD_TYPES = {
   finishReason: 'string',
   affectedSegmentIdHashes: 'hash-list',
   stage: 'string',
+  strategy: 'string',
   requestKind: 'string',
   trigger: 'string',
   outcome: 'string',
@@ -140,6 +146,11 @@ export interface StructuredLogContext {
   inputCharacters?: number;
   outputCharacters?: number;
   durationMs?: number;
+  fetchDurationMs?: number;
+  cleanDurationMs?: number;
+  convertDurationMs?: number;
+  persistDurationMs?: number;
+  attemptCount?: number;
   httpStatus?: number;
   errorCode?: string;
   reasonCode?: string;
@@ -149,6 +160,7 @@ export interface StructuredLogContext {
   finishReason?: string;
   affectedSegmentIdHashes?: string[];
   stage?: string;
+  strategy?: string;
   requestKind?: string;
   trigger?: string;
   outcome?: string;

@@ -3,6 +3,8 @@
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import { AISettingsPage } from '../../../src/renderer/features/settings/AISettingsPage';
 import { DEFAULT_AI_PREFERENCES } from '../../../src/renderer/features/settings/aiPreferences';
 import type { TranslationExpert } from '../../../src/shared/contracts/translation-expert.types';
@@ -67,10 +69,194 @@ describe('full-screen settings page', () => {
       .toHaveLength(8);
     expect(container.textContent).not.toContain('Settings');
 
+    const navigationIndicator = container.querySelector<HTMLElement>(
+      '.settings-selection-indicator',
+    );
+    expect(navigationIndicator).not.toBeNull();
+    expect(navigationIndicator?.style.opacity).toBe('1');
+    expect(navigationLabels[0]).toBe('摘要');
+    expect(
+      container.querySelector<HTMLAnchorElement>(
+        '.settings-navigation-links a.is-active',
+      )?.getAttribute('href'),
+    ).toBe('#settings-summary');
+
+    const translationLink = container.querySelector<HTMLAnchorElement>(
+      '[data-settings-section="settings-translation"]',
+    );
+    await act(async () => translationLink?.click());
+    expect(translationLink?.classList.contains('is-active')).toBe(true);
+    expect(translationLink?.getAttribute('aria-current')).toBe('location');
+
+    const settingsMain = container.querySelector<HTMLElement>('.settings-page-main');
+    const translationSection = container.querySelector<HTMLElement>('#settings-translation');
+    if (!settingsMain || !translationSection) {
+      throw new Error('Settings scroll fixture did not render');
+    }
+    Object.defineProperties(settingsMain, {
+      clientHeight: { configurable: true, value: 500 },
+      scrollHeight: { configurable: true, value: 2_000 },
+      scrollTop: { configurable: true, value: 40, writable: true },
+    });
+    vi.spyOn(settingsMain, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      bottom: 500,
+      height: 500,
+      left: 0,
+      right: 800,
+      width: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(translationSection, 'getBoundingClientRect').mockReturnValue({
+      top: 620,
+      bottom: 1_020,
+      height: 400,
+      left: 0,
+      right: 800,
+      width: 800,
+      x: 0,
+      y: 620,
+      toJSON: () => ({}),
+    });
+
+    await act(async () => settingsMain.dispatchEvent(new Event('scroll')));
+    expect(translationLink?.classList.contains('is-active')).toBe(true);
+    expect(translationLink?.getAttribute('aria-current')).toBe('location');
+
     const backButton = container.querySelector<HTMLButtonElement>('.settings-back-button');
     expect(backButton?.textContent).toContain('返回阅读');
     act(() => backButton?.click());
     expect(onClose).toHaveBeenCalledOnce();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it('uses the shared sliding indicator and horizontal hover reveal', () => {
+    const css = fs.readFileSync(
+      path.resolve(
+        __dirname,
+        '../../../src/renderer/features/reader/ReaderPage.css',
+      ),
+      'utf8',
+    );
+
+    expect(css).toMatch(
+      /\.settings-selection-indicator\s*\{[^}]*background: var\(--reader-accent\);[^}]*transform: translateY\(var\(--settings-selection-y, 0\)\);/s,
+    );
+    expect(css).toMatch(
+      /\.settings-navigation-links a::after\s*\{[^}]*background: var\(--reader-sidebar-active\);[^}]*transform: scaleX\(0\);/s,
+    );
+    expect(css).toMatch(
+      /\.settings-navigation-links a\.is-active::after\s*\{\s*transform: scaleX\(1\);/s,
+    );
+    expect(css).toMatch(
+      /\.reader-page\[data-theme="light"\] \.shortcut-recorder\s*\{[^}]*color: var\(--reader-text\);[^}]*font-weight: 650;/s,
+    );
+  });
+
+  it('shows only ten terminology libraries and experts until each list is expanded', async () => {
+    reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    const experts: TranslationExpert[] = Array.from({ length: 12 }, (_, index) => ({
+      id: `builtin:expert-${index + 1}`,
+      version: '1.0.0',
+      name: `专家 ${index + 1}`,
+      description: `专家描述 ${index + 1}`,
+      author: 'Official',
+      details: '',
+      origin: 'builtin',
+      instruction: `Translate topic ${index + 1}.`,
+      contentHash: `expert-hash-${index + 1}`,
+      matches: [],
+      warnings: [],
+    }));
+    const terminologyLibraries: TerminologyLibrary[] = Array.from(
+      { length: 12 },
+      (_, index) => ({
+        id: `builtin:library-${index + 1}`,
+        name: `术语库 ${index + 1}`,
+        description: `术语库描述 ${index + 1}`,
+        author: 'immersive',
+        version: '1.0.0',
+        origin: 'builtin',
+        enabled: false,
+        orderIndex: index,
+        entryCount: index + 1,
+        contentHash: `terminology-hash-${index + 1}`,
+        availableTargetLanguages: ['zh-CN'],
+        usesTraditionalChineseFallback: false,
+        removable: false,
+      }),
+    );
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        provider: {
+          get: vi.fn().mockResolvedValue({ ok: true, data: null }),
+        },
+        expert: {
+          list: vi.fn().mockResolvedValue({
+            ok: true,
+            data: { experts },
+          }),
+        },
+        terminology: {
+          list: vi.fn().mockResolvedValue({
+            ok: true,
+            data: { libraries: terminologyLibraries, enabledSetHash: 'hash' },
+          }),
+        },
+      } as unknown as typeof window.shaleAPI,
+    });
+
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(AISettingsPage, {
+        preferences: DEFAULT_AI_PREFERENCES,
+        onPreferencesChange: vi.fn(),
+        onClose: vi.fn(),
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.querySelectorAll(
+      '#settings-terminology .settings-option-card',
+    )).toHaveLength(10);
+    expect(container.querySelectorAll(
+      '#settings-experts .settings-option-card',
+    )).toHaveLength(10);
+
+    const terminologyToggle = container.querySelector<HTMLButtonElement>(
+      '#settings-terminology .settings-option-list-toggle',
+    );
+    const expertToggle = container.querySelector<HTMLButtonElement>(
+      '#settings-experts .settings-option-list-toggle',
+    );
+    expect(terminologyToggle?.textContent).toBe('显示更多');
+    expect(expertToggle?.textContent).toBe('显示更多');
+    expect(terminologyToggle?.getAttribute('aria-expanded')).toBe('false');
+    expect(expertToggle?.getAttribute('aria-expanded')).toBe('false');
+
+    act(() => terminologyToggle?.click());
+    expect(container.querySelectorAll(
+      '#settings-terminology .settings-option-card',
+    )).toHaveLength(12);
+    expect(container.querySelectorAll(
+      '#settings-experts .settings-option-card',
+    )).toHaveLength(10);
+    expect(terminologyToggle?.textContent).toBe('收起');
+
+    act(() => expertToggle?.click());
+    expect(container.querySelectorAll(
+      '#settings-experts .settings-option-card',
+    )).toHaveLength(12);
+    expect(expertToggle?.textContent).toBe('收起');
 
     act(() => root.unmount());
     container.remove();

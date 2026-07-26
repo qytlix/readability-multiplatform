@@ -39,13 +39,24 @@ import {
   exportSingleEntry,
 } from './entryExport';
 import { ExportOptionsDialog } from './ExportOptionsDialog';
-import type { ArticleAvailability } from '../../../shared/contracts/export.types';
-import type { PerArticleOptions } from '../../../shared/contracts/export.types';
+import type {
+  ArticleAvailability,
+  PerArticleOptions,
+} from '../../../shared/contracts/export.types';
 import type { EntryAIViewState } from './entryAIViewState';
 import {
   calculateReadingProgress,
   getScrollTopForReadingProgress,
 } from './readingProgress';
+import { ReadingProgressBook } from './ReadingProgressBook';
+import {
+  getReadingBookTurnDirection,
+  getReadingBookTurnDuration,
+  getReadingBookTurnVariant,
+  SINGLE_PAGE_SCROLL_DISTANCE_PX,
+  type ReadingBookTurnDirection,
+  type ReadingBookTurnMotion,
+} from './readingProgressBookMotion';
 import {
   getNativeVideoHtml,
   getTrustedVideoEmbed,
@@ -86,11 +97,13 @@ interface EntryDetailProps {
   selectionMode?: boolean;
   selectedIds?: Set<number>;
   onExportRequest?: () => void;
+  onFeedback?: (message: string) => void;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
 
 const WINDOW_TOP_REVEAL_ZONE = 60;
+const BOOK_SCROLL_GESTURE_IDLE_MS = 180;
 
 export const EntryDetail = ({
   entry,
@@ -112,6 +125,7 @@ export const EntryDetail = ({
   selectionMode = false,
   selectedIds,
   onExportRequest,
+  onFeedback,
   onReadingProgressChange,
   onContentRefreshComplete,
   retranslationRequest,
@@ -133,6 +147,13 @@ export const EntryDetail = ({
   const [exportArticleAvail, setExportArticleAvail] = useState<ArticleAvailability | null>(null);
   const [titleTranslationTarget, setTitleTranslationTarget] = useState<HTMLDivElement | null>(null);
   const [isFloatingHeaderVisible, setIsFloatingHeaderVisible] = useState(false);
+  const [visibleReadingProgress, setVisibleReadingProgress] = useState(
+    entry?.readingProgress ?? 0,
+  );
+  const [readingBookTurn, setReadingBookTurn] =
+    useState<ReadingBookTurnMotion | null>(null);
+  const [readingJumpTarget, setReadingJumpTarget] =
+    useState<'start' | 'end'>('end');
   const prevEntryId = useRef<number | null>(null);
   const handledRefreshVersionsRef = useRef(new Map<number, number>());
   const handledRetranslationRequestRef = useRef<number | null>(null);
@@ -151,6 +172,10 @@ export const EntryDetail = ({
   const isRestoringProgressRef = useRef(false);
   const hasUserScrolledSinceRestoreRef = useRef(false);
   const programmaticScrollRef = useRef<{ entryId: number; scrollTop: number } | null>(null);
+  const readingBookTurnIdRef = useRef(0);
+  const lastReadingBookSampleAtRef = useRef<number | null>(null);
+  const readingBookDirectionRef = useRef<ReadingBookTurnDirection | null>(null);
+  const readingBookDistanceRef = useRef(0);
 
   const readerDisplayState = getReaderDisplayState({
     feedLoadStatus,
@@ -172,6 +197,7 @@ export const EntryDetail = ({
   );
   const hasArticleVideo = trustedVideoEmbed !== null || nativeVideoHtml !== null;
   const isTranslationReady = status === 'success'
+    && content?.isPreview !== true
     && !hasArticleVideo
     && Boolean(content?.cleanedHtml.trim());
   const handleSummaryVisibleChange = useCallback((summaryVisible: boolean): void => {
@@ -237,6 +263,7 @@ export const EntryDetail = ({
       setError('');
       setLinkError('');
       abortRef.current = new AbortController();
+      let showingPreview = false;
 
       try {
         // First check if content already exists
@@ -259,7 +286,8 @@ export const EntryDetail = ({
           if (existingContent && hasRenderableCachedContent) {
             setContent(existingContent);
             setStatus('success');
-            return;
+            if (!existingContent.isPreview) return;
+            showingPreview = true;
           }
         }
 
@@ -267,6 +295,7 @@ export const EntryDetail = ({
         const fetchResult = await window.shaleAPI.content.fetchAndClean(entry.id);
         if (!fetchResult.ok) {
           const message = fetchResult.error?.message ?? 'Failed to fetch content';
+          if (showingPreview) return;
           setStatus('error');
           setError(message);
           if (forceRefresh) {
@@ -277,6 +306,7 @@ export const EntryDetail = ({
         if (fetchResult.data.pipelineStatus !== 'success') {
           const message =
             fetchResult.data.pipelineError ?? 'Failed to extract article content';
+          if (showingPreview) return;
           setStatus('error');
           setError(message);
           if (forceRefresh) {
@@ -292,6 +322,7 @@ export const EntryDetail = ({
       } catch (err: unknown) {
         // Ignore abort errors
         if (err instanceof Error && err.name === 'AbortError') return;
+        if (showingPreview) return;
         const message =
           err instanceof Error ? err.message : 'Failed to load content';
         setStatus('error');
@@ -340,6 +371,12 @@ export const EntryDetail = ({
     setTranslationControlState(null);
     setRetranslationStatus(null);
     setIsTitleTranslating(false);
+    setVisibleReadingProgress(entry?.readingProgress ?? 0);
+    setReadingBookTurn(null);
+    setReadingJumpTarget('end');
+    lastReadingBookSampleAtRef.current = null;
+    readingBookDirectionRef.current = null;
+    readingBookDistanceRef.current = 0;
   }, [entry?.id]);
 
   useEffect(() => {
@@ -377,6 +414,7 @@ export const EntryDetail = ({
       || readerDisplayState !== 'article'
       || status !== 'success'
       || !content
+      || content.isPreview
       || restoredEntryIdRef.current === entry.id
     ) {
       return;
@@ -384,6 +422,12 @@ export const EntryDetail = ({
 
     const entryId = entry.id;
     const savedReadingProgress = entry.readingProgress;
+    if (savedReadingProgress >= 1) {
+      restoredEntryIdRef.current = entryId;
+      isRestoringProgressRef.current = false;
+      return;
+    }
+
     let secondFrame = 0;
     let restoreFrame = 0;
     let releaseFrame = 0;
@@ -420,6 +464,11 @@ export const EntryDetail = ({
       previousScrollTopRef.current = restoredScrollTop;
       lastReportedProgressRef.current = savedReadingProgress;
       restoredEntryIdRef.current = entryId;
+      setVisibleReadingProgress(calculateReadingProgress({
+        scrollTop: restoredScrollTop,
+        scrollHeight: container.scrollHeight,
+        clientHeight: container.clientHeight,
+      }));
 
       if (releaseFrame) window.cancelAnimationFrame(releaseFrame);
       releaseFrame = window.requestAnimationFrame(releaseRestoration);
@@ -523,11 +572,10 @@ export const EntryDetail = ({
       if (!options) return;
       const result = await exportSingleEntry(entry.id, options);
       if (result.ok) {
-        const filePath = result.data.filePath;
-        console.log('Export saved to:', filePath);
+        onFeedback?.('Markdown 文档已成功导出。');
       }
     },
-    [entry],
+    [entry, onFeedback],
   );
 
   const handleExportCancel = useCallback((): void => {
@@ -664,9 +712,11 @@ export const EntryDetail = ({
 
   const handleReaderScroll = (event: UIEvent<HTMLDivElement>): void => {
     const currentScrollTop = event.currentTarget.scrollTop;
+    const previousScrollTop = previousScrollTopRef.current;
+    const scrollDelta = currentScrollTop - previousScrollTop;
     const action = getFloatingReaderHeaderAction({
       currentScrollTop,
-      previousScrollTop: previousScrollTopRef.current,
+      previousScrollTop,
       headerHeight: flowHeaderRef.current?.offsetHeight ?? 0,
       isHeaderHovered: isFloatingHeaderHoveredRef.current,
     });
@@ -691,6 +741,7 @@ export const EntryDetail = ({
       isRestoringProgressRef.current
       || status !== 'success'
       || !content
+      || content.isPreview
     ) {
       return;
     }
@@ -702,6 +753,48 @@ export const EntryDetail = ({
       scrollHeight: event.currentTarget.scrollHeight,
       clientHeight: event.currentTarget.clientHeight,
     });
+    setVisibleReadingProgress(readingProgress);
+
+    const turnDirection = getReadingBookTurnDirection(scrollDelta);
+    if (turnDirection) {
+      setReadingJumpTarget(turnDirection === 'left' ? 'end' : 'start');
+      const sampleAt = event.timeStamp;
+      const previousSampleAt = lastReadingBookSampleAtRef.current;
+      const elapsedSinceSample = previousSampleAt === null
+        ? 120
+        : Math.max(1, sampleAt - previousSampleAt);
+      const directionChanged = readingBookDirectionRef.current !== null
+        && readingBookDirectionRef.current !== turnDirection;
+      const isNewGesture = previousSampleAt === null
+        || elapsedSinceSample >= BOOK_SCROLL_GESTURE_IDLE_MS
+        || directionChanged;
+
+      if (isNewGesture) {
+        readingBookDistanceRef.current = 0;
+      }
+      readingBookDistanceRef.current += Math.abs(scrollDelta);
+      lastReadingBookSampleAtRef.current = sampleAt;
+      readingBookDirectionRef.current = turnDirection;
+
+      if (
+        isNewGesture
+        || readingBookDistanceRef.current >= SINGLE_PAGE_SCROLL_DISTANCE_PX
+      ) {
+        const turnDistance = readingBookDistanceRef.current;
+        readingBookTurnIdRef.current += 1;
+        setReadingBookTurn({
+          id: readingBookTurnIdRef.current,
+          direction: turnDirection,
+          durationMs: getReadingBookTurnDuration(
+            scrollDelta,
+            elapsedSinceSample,
+          ),
+          variant: getReadingBookTurnVariant(turnDistance),
+        });
+        readingBookDistanceRef.current = 0;
+      }
+    }
+
     const lastReportedProgress = lastReportedProgressRef.current;
     if (
       lastReportedProgress !== null
@@ -734,13 +827,26 @@ export const EntryDetail = ({
   };
 
   const handleReaderScrollIntent = (): void => {
-    if (status !== 'success' || !content) return;
+    if (status !== 'success' || !content || content.isPreview) return;
     hasUserScrolledSinceRestoreRef.current = true;
     isRestoringProgressRef.current = false;
     programmaticScrollRef.current = null;
   };
 
+  const handleReadingJump = (): void => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    handleReaderScrollIntent();
+    const top = readingJumpTarget === 'start'
+      ? 0
+      : Math.max(0, container.scrollHeight - container.clientHeight);
+    container.scrollTo({ top, behavior: 'smooth' });
+  };
+
+  const isPreview = content?.isPreview === true;
   const isSummaryReady = status === 'success'
+    && !isPreview
     && !hasArticleVideo
     && Boolean(content?.markdown.trim());
   const articleDateLocale = getArticleDateLocale(
@@ -776,19 +882,6 @@ export const EntryDetail = ({
           : currentTranslationControlState?.hasCompleteTranslation
             ? aiViewState.translationVisible ? '隐藏译文' : '显示译文'
             : '翻译或切换双语视图';
-  const translationButtonTooltip = currentRetranslationStatus?.state === 'running'
-    ? '暂停重新翻译'
-    : currentRetranslationStatus?.state === 'paused'
-      ? '继续重新翻译'
-      : currentTranslationControlState?.state === 'running'
-        ? '暂停翻译'
-          : currentTranslationControlState?.state === 'paused'
-          ? '继续翻译'
-          : currentTranslationControlState?.hasCompleteTranslation
-            ? aiViewState.translationVisible ? '隐藏译文' : '显示译文'
-            : isTranslationReady
-              ? '翻译或切换双语视图'
-              : '文章完成加载后即可翻译';
 
   const activateSummary = (fromFloatingHeader: boolean): void => {
     summaryPanelRef.current?.activate();
@@ -841,38 +934,45 @@ export const EntryDetail = ({
     </div>
   );
 
+  const summaryTooltip = '总结';
+  const translationTooltip = '翻译';
+
   const aiToolbar = aiToolbarTarget
     ? createPortal(
       <div className="entry-detail-ai-actions" aria-label="AI reading aids">
-        <button
-          type="button"
-          className={aiViewState.summaryVisible ? 'is-active' : ''}
-          aria-label={isSummaryGenerating ? '正在生成摘要' : '生成或显示摘要'}
-          aria-controls="summary-result"
-          aria-expanded={aiViewState.summaryVisible}
-          aria-busy={isSummaryGenerating}
-          disabled={!isSummaryReady || isSummaryGenerating}
-          title={isSummaryGenerating
-            ? 'Summarizing...'
-            : isSummaryReady
-              ? 'Generate or show Summary'
-            : 'Summary is available after the article loads'}
-          onClick={() => activateSummary(true)}
+        <span
+          className="article-action-tooltip"
+          data-tooltip={summaryTooltip}
         >
-          <SummaryIcon />
-        </button>
-        <button
-          type="button"
-          className={aiViewState.translationVisible ? 'is-active' : ''}
-          aria-label={translationButtonLabel}
-          aria-pressed={aiViewState.translationVisible}
-          disabled={!isTranslationReady}
-          title={translationButtonTooltip}
-          onClick={activateTranslation}
-          aria-busy={isTranslationGenerating}
+          <button
+            type="button"
+            className={aiViewState.summaryVisible ? 'is-active' : ''}
+            aria-label={isSummaryGenerating ? '正在生成摘要' : '生成或显示摘要'}
+            aria-controls="summary-result"
+            aria-expanded={aiViewState.summaryVisible}
+            aria-busy={isSummaryGenerating}
+            disabled={!isSummaryReady || isSummaryGenerating}
+            onClick={() => activateSummary(true)}
+          >
+            <SummaryIcon />
+          </button>
+        </span>
+        <span
+          className="article-action-tooltip"
+          data-tooltip={translationTooltip}
         >
-          <TranslateIcon />
-        </button>
+          <button
+            type="button"
+            className={aiViewState.translationVisible ? 'is-active' : ''}
+            aria-label={translationButtonLabel}
+            aria-pressed={aiViewState.translationVisible}
+            disabled={!isTranslationReady}
+            onClick={activateTranslation}
+            aria-busy={isTranslationGenerating}
+          >
+            <TranslateIcon />
+          </button>
+        </span>
         {currentRetranslationStatus && (
           <RetranslationStatusNotice status={currentRetranslationStatus} />
         )}
@@ -883,26 +983,30 @@ export const EntryDetail = ({
 
   const isExportDisabled = selectionMode && selectedIds && selectedIds.size > 0
     ? false
-    : status !== 'success' || !content?.markdown.trim();
+    : status !== 'success' || isPreview || !content?.markdown.trim();
 
   const exportTooltip = selectionMode && selectedIds && selectedIds.size > 0
     ? `导出所选 ${selectedIds.size} 篇文章`
-    : status !== 'success' || !content?.markdown.trim()
+    : status !== 'success' || isPreview || !content?.markdown.trim()
       ? '文章尚未完成内容清洗'
       : '导出为 Markdown';
 
   const exportToolbar = exportToolbarTarget && !selectionMode
     ? createPortal(
-      <button
-        type="button"
-        className="type-button"
-        aria-label={exportTooltip}
-        disabled={isExportDisabled}
-        title={exportTooltip}
-        onClick={() => void handleExportClick()}
+      <span
+        className="article-action-tooltip"
+        data-tooltip={exportTooltip}
       >
-        <ExportIcon />
-      </button>,
+        <button
+          type="button"
+          className="type-button article-export-button"
+          aria-label={exportTooltip}
+          disabled={isExportDisabled}
+          onClick={() => void handleExportClick()}
+        >
+          <ExportIcon />
+        </button>
+      </span>,
       exportToolbarTarget,
     )
     : null;
@@ -1002,6 +1106,11 @@ export const EntryDetail = ({
 
           {!hasArticleVideo && status === 'success' && content && (
             <div className="entry-detail-content">
+              {isPreview && (
+                <div className="entry-detail-loading" role="status">
+                  <p>正在显示订阅摘要，并在后台获取完整原文…</p>
+                </div>
+              )}
               {showRaw ? (
                 <pre className="entry-detail-markdown">{content.markdown}</pre>
               ) : (
@@ -1051,6 +1160,12 @@ export const EntryDetail = ({
           targetLanguage={aiPreferences.translationTargetLanguage}
           useTerminology={aiPreferences.useTerminology}
           expertId={aiPreferences.translationExpertId}
+        />
+        <ReadingProgressBook
+          readingProgress={visibleReadingProgress}
+          turnMotion={readingBookTurn}
+          jumpTarget={readingJumpTarget}
+          onJump={handleReadingJump}
         />
       </div>
 

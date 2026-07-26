@@ -109,7 +109,8 @@ export const ArticleSyncMenu = ({
   return (
     <div
       ref={rootRef}
-      className="article-sync-menu"
+      className={`article-sync-menu article-action-tooltip${isOpen ? ' is-open' : ''}`}
+      data-tooltip={isRefreshing ? '正在重新获取正文' : '文章同步操作'}
       onPointerEnter={openMenu}
       onPointerLeave={scheduleClose}
       onFocusCapture={openMenu}
@@ -128,7 +129,6 @@ export const ArticleSyncMenu = ({
         aria-busy={isRefreshing}
         aria-haspopup="menu"
         aria-expanded={isOpen}
-        title={isRefreshing ? '正在重新获取正文' : '文章同步操作'}
         disabled={!hasEntry || isRefreshing}
         onClick={() => {
           if (isOpen) closeMenu();

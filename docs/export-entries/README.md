@@ -39,6 +39,7 @@
 | Summary 可选包含 | P0 | 已存在的 Summary 结果写入导出文件 |
 | Translation 可选包含 | P0 | 已存在的 Translation 结果写入导出文件 |
 | 笔记可选包含 | P1 | 已存在的用户笔记写入导出文件（预留字段等待笔记接口就绪） |
+| 用户高亮保留 | P1 | 高亮属于正文，始终以 `<mark>` 内嵌 HTML 保留位置与颜色；笔记选项只控制脚注文字 |
 
 ### 1.2 范围外
 
@@ -132,8 +133,10 @@ export interface ExportableArticle {
   author?: string;
   publishedAt?: string;   // ISO-8601
   cleanedMarkdown: string;
+  cleanedHtml?: string;   // Reader HTML 骨架
   summary?: string;       // 已存在的 Summary（可选）
-  translation?: string;   // 已存在的 Translation 全文（可选）
+  translation?: string;   // 旧版全文 Translation fallback（可选）
+  translationSegments?: ExportTranslationSegment[]; // Reader 逐段翻译快照
   notes?: string;         // 已存在的用户笔记文本聚合（可选，P1）
 }
 ```
@@ -276,8 +279,10 @@ export function serializeSingle(
 - 缺失的可选字段（作者、来源、日期、链接）**直接省略**，不显示 `undefined` 或空占位符
 - Summary/Translation/Notes 根据用户选择的 `ExportOptions` 决定是否输出
 - 用户选择不包含 → 即使数据存在也直接省略
-- Summary 输出 `> **AI 摘要：**` + 引用块
-- Translation 输出 `> **翻译（语言）：**` + 引用块
+- Summary 紧跟文章标题/元信息，输出 `AI SUMMARY` 小节，内容使用引用块显示左侧竖线
+- Translation 使用 Reader 的清洗 HTML 和逐段翻译快照恢复双语顺序；每段译文紧跟对应原文，并使用引用块显示左侧竖线
+- 旧数据只有全文 `translation` 时，保留末尾全文引用块作为兼容降级
+- 用户高亮使用 `<mark data-shale-highlight="颜色" style="background-color: ...">` 写回正文；这是因为 CommonMark 没有标准高亮语法。关闭“包含笔记”时仍保留高亮，只省略脚注和笔记文字
 - 笔记输出 `> **笔记：**` + 无序列表
 - 字段之间用 `---` 分隔
 
@@ -586,13 +591,19 @@ interface ExportOptionsDialogProps {
 - 通过 typed IPC + Preload 暴露最小接口
 - 文件写入只发生在 `showSaveDialog` 用户确认之后
 - 写入路径由系统对话框返回，不接受 Renderer 传入路径
+- HTTP(S) 图片在导出时使用文章 URL 作为受限 Referer 下载到同目录
+  `<Markdown 文件名>.assets/`，Markdown 只写入相对资源路径；单图限制 20 MB，
+  单次最多处理 100 个唯一图片 URL、合计 200 MB，并限制为 4 个并发请求
+- 图片响应必须是受支持的栅格格式；下载失败时保留原始远程 URL，并通过 typed
+  导出结果返回成功/失败计数
 - API Key 等信息绝不进入导出内容
 - 笔记内容经过 Store 已有的清洗逻辑再写入
 - 用户选择在导出时控制是否包含 Summary / Translation / 笔记
 
 ### 9.3 清理
 
-- 导出操作为一次性写入，不产生临时文件
+- 有远程图片时会产生与 Markdown 同名的 `.assets` 资源目录；重复导出只覆盖
+  相同 URL 对应的 hash 文件，不删除目录中的其他文件
 - 写入失败时确保不产生空文件（写入完成后再 rename，或捕获异常后删除空文件）
 - 导出操作**不修改**数据库中的任何数据
 
@@ -623,6 +634,7 @@ interface ExportOptionsDialogProps {
 | 测试 | 覆盖内容 |
 |------|---------|
 | `markdown-serializer.test.ts` | 各种字段组合的序列化输出 |
+| `image-localizer.test.ts` | Referer、防盗链图片下载、相对路径改写、失败降级 |
 | `safeFilename.test.ts` | 中英文、特殊字符、Emoji、空标题、超长标题 |
 
 **MarkdownSerializer 测试用例：**
@@ -654,14 +666,16 @@ interface ExportOptionsDialogProps {
 2. 多篇导出，验证结构正确
 3. 缺少必要数据时导出失败
 4. 文件写入失败时的错误返回
+5. 防盗链图片携带文章 Referer 下载到 `.assets`，导出 Markdown 使用相对路径
 
 ### 11.3 人工验证（平台冒烟）
 
 1. 启动应用，打开一篇文章 → 导出 → 用文本编辑器/Markdown 预览打开验证
 2. 多选文章 → 导出文摘 → 验证结构和内容
 3. 取消保存对话框 → 无空文件产生
-4. 断网后导出已持久化文章 → 正常工作
-5. 导出后验证数据库文章状态没有改变
+4. 导出含防盗链图片的文章，断网后确认 Markdown 仍可从同目录 `.assets` 显示图片
+5. 断网后导出已持久化文章 → 正常工作
+6. 导出后验证数据库文章状态没有改变
 
 ---
 

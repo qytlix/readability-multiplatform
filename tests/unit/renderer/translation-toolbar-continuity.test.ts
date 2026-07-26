@@ -211,7 +211,10 @@ describe('Translation toolbar continuity', () => {
     const pauseButton = toolbarTarget.querySelector<HTMLButtonElement>(
       '[aria-label="暂停重新翻译"]',
     );
-    expect(pauseButton?.title).toBe('暂停重新翻译');
+    expect(pauseButton?.hasAttribute('title')).toBe(false);
+    expect(
+      pauseButton?.closest('.article-action-tooltip')?.getAttribute('data-tooltip'),
+    ).toBe('翻译');
 
     const pausedResult: TranslationResult = {
       ...replacementResult,
@@ -235,7 +238,10 @@ describe('Translation toolbar continuity', () => {
     const resumeButton = toolbarTarget.querySelector<HTMLButtonElement>(
       '[aria-label="继续重新翻译"]',
     );
-    expect(resumeButton?.title).toBe('继续重新翻译');
+    expect(resumeButton?.hasAttribute('title')).toBe(false);
+    expect(
+      resumeButton?.closest('.article-action-tooltip')?.getAttribute('data-tooltip'),
+    ).toBe('翻译');
 
     const otherLanguagePreferences = {
       ...DEFAULT_AI_PREFERENCES,
@@ -278,6 +284,18 @@ describe('Translation toolbar continuity', () => {
     expect(toolbarTarget.querySelectorAll('.entry-detail-ai-actions')).toHaveLength(1);
     expect(toolbarTarget.querySelectorAll('.annotation-toolbar')).toHaveLength(1);
     expect(toolbarTarget.querySelectorAll('.annotation-tool-button')).toHaveLength(1);
+    const aiButtons = toolbarTarget.querySelectorAll<HTMLButtonElement>(
+      '.entry-detail-ai-actions button',
+    );
+    const aiTooltips = Array.from(toolbarTarget.querySelectorAll<HTMLElement>(
+      '.entry-detail-ai-actions > .article-action-tooltip',
+    )).map((tooltip) => tooltip.getAttribute('data-tooltip'));
+    expect(aiButtons).toHaveLength(2);
+    expect(aiTooltips).toEqual(['总结', '翻译']);
+    aiButtons.forEach((button) => {
+      expect(button.closest('.article-action-tooltip')).not.toBeNull();
+      expect(button.hasAttribute('title')).toBe(false);
+    });
     expect(toolbarTarget.querySelectorAll(
       '[aria-label="翻译或切换双语视图"], [aria-label="暂停翻译"], [aria-label="显示译文"], [aria-label="隐藏译文"]',
     )).toHaveLength(1);

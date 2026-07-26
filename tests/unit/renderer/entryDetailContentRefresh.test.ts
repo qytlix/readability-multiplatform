@@ -210,4 +210,77 @@ describe('EntryDetail content refresh', () => {
     expect(container.textContent).toContain('Newest update');
     expect(container.textContent).not.toContain('ERR_INVALID_URL');
   });
+
+  it('shows a Feed preview while the full article loads in the background', async () => {
+    const previewContent: CleanedContent = {
+      ...cachedContent,
+      isPreview: true,
+      cleanedHtml: '<article><p>Immediate Feed preview</p></article>',
+      markdown: 'Immediate Feed preview',
+    };
+    let resolveFetch!: (value: {
+      ok: true;
+      data: CleanedContent;
+    }) => void;
+    const pendingFetch = new Promise<{
+      ok: true;
+      data: CleanedContent;
+    }>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const getContent = vi.fn().mockResolvedValue({
+      ok: true,
+      data: previewContent,
+    });
+    const fetchAndClean = vi.fn(() => pendingFetch);
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        content: {
+          get: getContent,
+          fetchAndClean,
+        },
+        annotation: {
+          list: vi.fn().mockResolvedValue({ ok: true, data: [] }),
+        },
+      } as unknown as typeof window.shaleAPI,
+    });
+
+    await act(async () => {
+      root.render(createElement(EntryDetail, {
+        entry,
+        contentRefreshVersion: 0,
+        aiViewState: { summaryVisible: false, translationVisible: false },
+        feedLoadStatus: 'success',
+        feedLoadError: '',
+        feedCount: 1,
+        entryLoadStatus: 'success',
+        entryLoadError: '',
+        entryCount: 1,
+        onAddFeed: vi.fn(),
+        onRetryFeeds: vi.fn(),
+        onRetryEntries: vi.fn(),
+        aiPreferences: DEFAULT_AI_PREFERENCES,
+        aiToolbarTarget: null,
+        onAIViewStateChange: vi.fn(),
+        onReadingProgressChange: vi.fn().mockResolvedValue(undefined),
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchAndClean).toHaveBeenCalledWith(entry.id);
+    expect(container.textContent).toContain('Immediate Feed preview');
+    expect(container.textContent).toContain('正在显示订阅摘要');
+
+    await act(async () => {
+      resolveFetch({ ok: true, data: refreshedContent });
+      await pendingFetch;
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Newest update');
+    expect(container.textContent).not.toContain('Immediate Feed preview');
+    expect(container.textContent).not.toContain('正在显示订阅摘要');
+  });
 });

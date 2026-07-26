@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -41,6 +42,8 @@ type ShortcutPreferenceKey =
   | 'paragraphTranslationShortcut'
   | 'selectionTranslationShortcut';
 
+const SETTINGS_OPTION_PREVIEW_LIMIT = 10;
+
 const TRANSLATION_SHORTCUTS: ReadonlyArray<{
   preferenceKey: ShortcutPreferenceKey;
   label: string;
@@ -70,6 +73,19 @@ const formatSettingsAuthor = (
   return origin === 'builtin' ? '@Shale' : '@我';
 };
 
+const SETTINGS_NAVIGATION = [
+  { id: 'settings-summary', label: '摘要' },
+  { id: 'settings-translation', label: '翻译' },
+  { id: 'settings-terminology', label: '术语库' },
+  { id: 'settings-experts', label: 'AI 专家' },
+  { id: 'settings-shortcuts', label: '快捷键' },
+  { id: 'settings-provider', label: '模型服务' },
+  { id: 'settings-usage', label: '用量统计' },
+  { id: 'settings-diagnostics', label: '诊断' },
+] as const;
+
+type SettingsSectionId = (typeof SETTINGS_NAVIGATION)[number]['id'];
+
 interface AISettingsPageProps {
   preferences: AiPreferences;
   onPreferencesChange: (preferences: AiPreferences) => void;
@@ -92,6 +108,7 @@ export const AISettingsPage = ({
   const [expertPreview, setExpertPreview] =
     useState<TranslationExpertImportPreview | null>(null);
   const [showExpertCreator, setShowExpertCreator] = useState(false);
+  const [showAllExperts, setShowAllExperts] = useState(false);
   const expertFileRef = useRef<HTMLInputElement>(null);
   const [terminologyLibraries, setTerminologyLibraries] =
     useState<TerminologyLibrary[]>([]);
@@ -102,9 +119,19 @@ export const AISettingsPage = ({
   const [terminologyPreview, setTerminologyPreview] =
     useState<TerminologyImportPreview | null>(null);
   const [showTerminologyCreator, setShowTerminologyCreator] = useState(false);
+  const [showAllTerminologyLibraries, setShowAllTerminologyLibraries] =
+    useState(false);
   const [pendingTerminologyLibraryId, setPendingTerminologyLibraryId] =
     useState<string | null>(null);
   const terminologyFileRef = useRef<HTMLInputElement>(null);
+  const [activeSettingsSection, setActiveSettingsSection] =
+    useState<SettingsSectionId>('settings-summary');
+  const settingsNavigationRef = useRef<HTMLElement>(null);
+  const settingsSelectionIndicatorRef = useRef<HTMLSpanElement>(null);
+  const settingsPageMainRef = useRef<HTMLElement>(null);
+  const pendingSettingsSectionRef = useRef<SettingsSectionId | null>(null);
+  const pendingSettingsSectionTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -140,8 +167,106 @@ export const AISettingsPage = ({
     };
   }, []);
 
+  useEffect(() => {
+    const main = settingsPageMainRef.current;
+    if (!main) return;
+
+    const updateActiveSection = (): void => {
+      const mainRect = main.getBoundingClientRect();
+      if (mainRect.height === 0 && main.clientHeight === 0) return;
+
+      if (pendingSettingsSectionRef.current) {
+        if (pendingSettingsSectionTimerRef.current !== null) {
+          clearTimeout(pendingSettingsSectionTimerRef.current);
+        }
+        pendingSettingsSectionTimerRef.current = setTimeout(() => {
+          pendingSettingsSectionRef.current = null;
+          pendingSettingsSectionTimerRef.current = null;
+          updateActiveSection();
+        }, 160);
+        return;
+      }
+
+      const remainingScroll = main.scrollHeight - main.scrollTop - main.clientHeight;
+      const activationLine = mainRect.top + Math.min(160, mainRect.height * 0.28);
+      let nextSection: SettingsSectionId = SETTINGS_NAVIGATION[0].id;
+
+      for (const item of SETTINGS_NAVIGATION) {
+        const section = main.querySelector<HTMLElement>(`#${item.id}`);
+        if (section && section.getBoundingClientRect().top <= activationLine) {
+          nextSection = item.id;
+        }
+      }
+
+      if (main.scrollHeight > main.clientHeight && remainingScroll <= 2) {
+        nextSection = SETTINGS_NAVIGATION[SETTINGS_NAVIGATION.length - 1].id;
+      }
+      setActiveSettingsSection((current) =>
+        current === nextSection ? current : nextSection);
+    };
+
+    updateActiveSection();
+    main.addEventListener('scroll', updateActiveSection, { passive: true });
+    window.addEventListener('resize', updateActiveSection);
+    return () => {
+      main.removeEventListener('scroll', updateActiveSection);
+      window.removeEventListener('resize', updateActiveSection);
+      if (pendingSettingsSectionTimerRef.current !== null) {
+        clearTimeout(pendingSettingsSectionTimerRef.current);
+        pendingSettingsSectionTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const navigation = settingsNavigationRef.current;
+    const indicator = settingsSelectionIndicatorRef.current;
+    const activeLink = navigation?.querySelector<HTMLElement>(
+      `[data-settings-section="${activeSettingsSection}"]`,
+    );
+    if (!navigation || !indicator || !activeLink) return;
+
+    const updateIndicator = (): void => {
+      const navigationRect = navigation.getBoundingClientRect();
+      const linkRect = activeLink.getBoundingClientRect();
+      const linkHeight = linkRect.height || activeLink.offsetHeight || 35;
+      const indicatorHeight = Math.min(30, linkHeight);
+      const verticalInset = (linkHeight - indicatorHeight) / 2;
+      const targetY = linkRect.top - navigationRect.top + verticalInset;
+
+      indicator.style.height = `${indicatorHeight}px`;
+      indicator.style.setProperty('--settings-selection-y', `${targetY}px`);
+      indicator.style.opacity = '1';
+    };
+
+    updateIndicator();
+    window.addEventListener('resize', updateIndicator);
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updateIndicator);
+    resizeObserver?.observe(navigation);
+    resizeObserver?.observe(activeLink);
+
+    return () => {
+      window.removeEventListener('resize', updateIndicator);
+      resizeObserver?.disconnect();
+    };
+  }, [activeSettingsSection]);
+
   const updatePreferences = (update: Partial<AiPreferences>): void => {
     onPreferencesChange({ ...preferences, ...update });
+  };
+
+  const selectSettingsSection = (sectionId: SettingsSectionId): void => {
+    pendingSettingsSectionRef.current = sectionId;
+    if (pendingSettingsSectionTimerRef.current !== null) {
+      clearTimeout(pendingSettingsSectionTimerRef.current);
+    }
+    pendingSettingsSectionTimerRef.current = setTimeout(() => {
+      pendingSettingsSectionRef.current = null;
+      pendingSettingsSectionTimerRef.current = null;
+    }, 240);
+    setActiveSettingsSection(sectionId);
   };
 
   const refreshExperts = async (): Promise<void> => {
@@ -347,6 +472,13 @@ export const AISettingsPage = ({
     setShortcutError('');
   };
 
+  const displayedTerminologyLibraries = showAllTerminologyLibraries
+    ? terminologyLibraries
+    : terminologyLibraries.slice(0, SETTINGS_OPTION_PREVIEW_LIMIT);
+  const displayedExperts = showAllExperts
+    ? experts
+    : experts.slice(0, SETTINGS_OPTION_PREVIEW_LIMIT);
+
   return (
     <div className="settings-page">
       <aside className="settings-navigation" aria-label="设置分类">
@@ -360,22 +492,31 @@ export const AISettingsPage = ({
             <h1>设置</h1>
           </div>
         </div>
-        <nav className="settings-navigation-links">
-          <a href="#settings-summary">摘要</a>
-          <a href="#settings-translation">翻译</a>
-          <a href="#settings-terminology">术语库</a>
-          <a href="#settings-experts">AI 专家</a>
-          <a href="#settings-shortcuts">快捷键</a>
-          <a href="#settings-provider">模型服务</a>
-          <a href="#settings-usage">用量统计</a>
-          <a href="#settings-diagnostics">诊断</a>
+        <nav ref={settingsNavigationRef} className="settings-navigation-links">
+          <span
+            ref={settingsSelectionIndicatorRef}
+            className="settings-selection-indicator"
+            aria-hidden="true"
+          />
+          {SETTINGS_NAVIGATION.map((item) => (
+            <a
+              key={item.id}
+              href={`#${item.id}`}
+              className={activeSettingsSection === item.id ? 'is-active' : ''}
+              data-settings-section={item.id}
+              aria-current={activeSettingsSection === item.id ? 'location' : undefined}
+              onClick={() => selectSettingsSection(item.id)}
+            >
+              {item.label}
+            </a>
+          ))}
         </nav>
         <p className="settings-navigation-note">
           阅读偏好会自动保存在本机。
         </p>
       </aside>
 
-      <main className="settings-page-main">
+      <main ref={settingsPageMainRef} className="settings-page-main">
         <header className="settings-page-header">
           <span className="settings-page-kicker">阅读体验</span>
           <h2>设置</h2>
@@ -602,8 +743,11 @@ export const AISettingsPage = ({
               </div>
             )}
             {terminologyLibraries.length > 0 ? (
-              <div className="settings-option-grid settings-terminology-grid">
-                {terminologyLibraries.map((library) => {
+              <div
+                id="settings-terminology-options"
+                className="settings-option-grid settings-terminology-grid"
+              >
+                {displayedTerminologyLibraries.map((library) => {
                   const isPending = pendingTerminologyLibraryId === library.id;
                   const descriptionId = `terminology-description-${library.id}`;
                   return (
@@ -667,6 +811,17 @@ export const AISettingsPage = ({
               <div className="settings-card settings-option-empty">
                 暂无可用术语库。
               </div>
+            )}
+            {terminologyLibraries.length > SETTINGS_OPTION_PREVIEW_LIMIT && (
+              <button
+                type="button"
+                className="settings-section-action settings-option-list-toggle"
+                aria-controls="settings-terminology-options"
+                aria-expanded={showAllTerminologyLibraries}
+                onClick={() => setShowAllTerminologyLibraries((current) => !current)}
+              >
+                {showAllTerminologyLibraries ? '收起' : '显示更多'}
+              </button>
             )}
             {terminologyError && (
               <p className="settings-page-error" role="status">
@@ -762,8 +917,11 @@ export const AISettingsPage = ({
               </div>
             )}
             {experts.length > 0 ? (
-              <div className="settings-option-grid settings-expert-grid">
-                {experts.map((expert) => {
+              <div
+                id="settings-expert-options"
+                className="settings-option-grid settings-expert-grid"
+              >
+                {displayedExperts.map((expert) => {
                   const isSelected = preferences.translationExpertId === expert.id;
                   const descriptionId = `expert-description-${expert.id}`;
                   return (
@@ -821,6 +979,17 @@ export const AISettingsPage = ({
               <div className="settings-card settings-option-empty">
                 暂无可用 AI 专家。
               </div>
+            )}
+            {experts.length > SETTINGS_OPTION_PREVIEW_LIMIT && (
+              <button
+                type="button"
+                className="settings-section-action settings-option-list-toggle"
+                aria-controls="settings-expert-options"
+                aria-expanded={showAllExperts}
+                onClick={() => setShowAllExperts((current) => !current)}
+              >
+                {showAllExperts ? '收起' : '显示更多'}
+              </button>
             )}
             {preferences.translationExpertId !== DEFAULT_TRANSLATION_EXPERT_ID
               && !experts.some((expert) => expert.id === preferences.translationExpertId)

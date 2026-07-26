@@ -60,6 +60,13 @@ const otherEntry: Entry = {
   readingProgress: 0.25,
 };
 
+const completedEntry: Entry = {
+  ...entry,
+  title: 'Completed article',
+  isRead: true,
+  readingProgress: 1,
+};
+
 describe('EntryDetail reading-progress restoration', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -140,6 +147,47 @@ describe('EntryDetail reading-progress restoration', () => {
     expect(onReadingProgressChange).not.toHaveBeenCalled();
   });
 
+  it('opens a completed article at the beginning instead of restoring 100% progress', async () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function height(
+      this: HTMLElement,
+    ) {
+      return this.classList.contains('entry-detail-scroll') ? 1500 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function height(
+      this: HTMLElement,
+    ) {
+      return this.classList.contains('entry-detail-scroll') ? 500 : 0;
+    });
+    const onReadingProgressChange = vi.fn().mockResolvedValue(undefined);
+
+    await act(async () => {
+      root.render(createElement(EntryDetail, {
+        entry: completedEntry,
+        aiViewState: { summaryVisible: false, translationVisible: false },
+        feedLoadStatus: 'success',
+        feedLoadError: '',
+        feedCount: 1,
+        entryLoadStatus: 'success',
+        entryLoadError: '',
+        entryCount: 1,
+        onAddFeed: vi.fn(),
+        onRetryFeeds: vi.fn(),
+        onRetryEntries: vi.fn(),
+        aiPreferences: DEFAULT_AI_PREFERENCES,
+        aiToolbarTarget: null,
+        onAIViewStateChange: vi.fn(),
+        onReadingProgressChange,
+      }));
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector<HTMLDivElement>('.entry-detail-scroll')?.scrollTop).toBe(0);
+    expect(
+      container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'),
+    ).toBe('100');
+    expect(onReadingProgressChange).not.toHaveBeenCalled();
+  });
+
   it('restores and resumes saving when content loads before the article pane mounts', async () => {
     vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function height(
       this: HTMLElement,
@@ -182,12 +230,36 @@ describe('EntryDetail reading-progress restoration', () => {
 
     await renderWithLoadStatus('success');
     const scrollContainer = container.querySelector<HTMLDivElement>('.entry-detail-scroll');
+    const scrollTo = vi.fn();
+    if (scrollContainer) {
+      scrollContainer.scrollTo = scrollTo;
+    }
     expect(scrollContainer?.scrollTop).toBe(500);
+    expect(
+      container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'),
+    ).toBe('50');
+    expect(container.querySelectorAll('.reading-progress-book-page')).toHaveLength(6);
+    expect(
+      container.querySelectorAll(
+        '.reading-progress-book-flips.is-resting .reading-progress-book-flip',
+      ),
+    ).toHaveLength(7);
 
     vi.useFakeTimers();
     act(() => {
       if (!scrollContainer) return;
       scrollContainer.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+      scrollContainer.scrollTop = 524;
+      scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    expect(
+      container.querySelector(
+        '.reading-progress-book-single-page.is-turning-left',
+      ),
+    ).not.toBeNull();
+
+    act(() => {
+      if (!scrollContainer) return;
       scrollContainer.scrollTop = 750;
       scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
     });
@@ -197,6 +269,41 @@ describe('EntryDetail reading-progress restoration', () => {
     vi.useRealTimers();
 
     expect(onReadingProgressChange).toHaveBeenCalledWith(entry.id, 0.75);
+    expect(
+      container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'),
+    ).toBe('75');
+    expect(
+      container.querySelector(
+        '.reading-progress-book-flips.is-turning-left',
+      ),
+    ).not.toBeNull();
+    const jumpToEndButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="跳转到文章末尾"]',
+    );
+    expect(jumpToEndButton).not.toBeNull();
+    act(() => jumpToEndButton?.click());
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 1000, behavior: 'smooth' });
+
+    act(() => {
+      if (!scrollContainer) return;
+      scrollContainer.scrollTop = 650;
+      scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+
+    expect(
+      container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'),
+    ).toBe('65');
+    expect(
+      container.querySelector(
+        '.reading-progress-book-flips.is-turning-right',
+      ),
+    ).not.toBeNull();
+    const jumpToStartButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="跳转到文章开头"]',
+    );
+    expect(jumpToStartButton).not.toBeNull();
+    act(() => jumpToStartButton?.click());
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'smooth' });
   });
 
   it('reapplies saved progress when delayed content increases the scroll height', async () => {

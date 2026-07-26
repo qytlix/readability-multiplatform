@@ -34,28 +34,52 @@ export class ContentCleaner {
       throw new Error('Readability could not extract content');
     }
 
-    // Create DOMPurify instance bound to the JSDOM window
-    // JSDOM.fragment creates a DocumentFragment from the HTML string,
-    // which DOMPurify sanitizes properly, preserving DOM structure
-    // while removing all XSS vectors.
-    const purify = createDOMPurify(dom.window as any);
-    const fragment = JSDOM.fragment(result.content);
-    const sanitized = purify.sanitize(fragment);
-
-    // DOMPurify may wrap output in a container; serialize back to string
-    const container = dom.window.document.createElement('div');
-    container.innerHTML = sanitized;
-    removePublisherChrome(container);
-    removeReaderProtectionClasses(container);
-    normalizeReaderImages(container, baseUrl);
-    normalizeReaderMedia(container, baseUrl);
-    normalizeReaderAuthorBlocks(container, result.byline ?? undefined);
-    removeUntranslatableIcons(container);
-
     return {
       title: result.title,
       byline: result.byline ?? undefined,
-      content: container.innerHTML,
+      content: sanitizeReaderContent(
+        dom,
+        result.content,
+        baseUrl,
+        result.byline ?? undefined,
+      ),
+      documentBaseURL: baseUrl,
+    };
+  }
+
+  /**
+   * Feed entry HTML is already scoped to a single item. Sanitize it directly
+   * instead of applying Readability's document-length heuristics again.
+   */
+  cleanFeedContent(
+    html: string,
+    baseUrl: string,
+    title: string,
+    byline?: string,
+  ): CleanResult {
+    const dom = new JSDOM(
+      '<html><head></head><body><article></article></body></html>',
+      { url: baseUrl },
+    );
+    const article = dom.window.document.querySelector('article');
+    if (!article) {
+      throw new Error('Feed content could not be prepared');
+    }
+    article.innerHTML = html;
+    removePublisherChrome(article);
+    removeCssHiddenElements(dom.window.document);
+    removeSourceDecorativeGraphics(article);
+
+    const content = sanitizeReaderContent(dom, article.innerHTML, baseUrl, byline);
+    const text = JSDOM.fragment(content).textContent?.replace(/\s+/g, ' ').trim();
+    if (!text && !/<(?:img|video|audio|iframe)\b/i.test(content)) {
+      throw new Error('Feed content is empty after sanitization');
+    }
+
+    return {
+      title,
+      byline,
+      content,
       documentBaseURL: baseUrl,
     };
   }
@@ -68,6 +92,29 @@ export class ContentCleaner {
     removeUntranslatableIcons(body);
     return body.innerHTML;
   }
+}
+
+function sanitizeReaderContent(
+  dom: JSDOM,
+  html: string,
+  baseUrl: string,
+  readabilityByline?: string,
+): string {
+  // JSDOM.fragment creates a DocumentFragment from the HTML string, which
+  // DOMPurify sanitizes while preserving the Reader DOM structure.
+  const purify = createDOMPurify(dom.window as any);
+  const fragment = JSDOM.fragment(html);
+  const sanitized = purify.sanitize(fragment);
+
+  const container = dom.window.document.createElement('div');
+  container.innerHTML = sanitized;
+  removePublisherChrome(container);
+  removeReaderProtectionClasses(container);
+  normalizeReaderImages(container, baseUrl);
+  normalizeReaderMedia(container, baseUrl);
+  normalizeReaderAuthorBlocks(container, readabilityByline);
+  removeUntranslatableIcons(container);
+  return container.innerHTML;
 }
 
 /**
