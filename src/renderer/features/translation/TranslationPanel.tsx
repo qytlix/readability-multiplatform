@@ -434,14 +434,22 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         </p>
       )}
 
-      {readerMode === 'bilingual' && hasTranslation && result
-        ? <BilingualProjection
-            result={result}
-            sourceHtml={sourceHtml}
-            onVisibleSegmentIds={prioritizeVisibleSegments}
-            onContentClick={onContentClick}
-          />
-        : children}
+      {/*
+       * Keep the original Reader branch mounted while the translated body is shown.
+       * It owns the portals for common Reader actions, including annotation, which
+       * must continue to target the single shared toolbar.
+       */}
+      <div hidden={readerMode === 'bilingual' && hasTranslation}>
+        {children}
+      </div>
+      {readerMode === 'bilingual' && hasTranslation && result && (
+        <BilingualProjection
+          result={result}
+          sourceHtml={sourceHtml}
+          onVisibleSegmentIds={prioritizeVisibleSegments}
+          onContentClick={onContentClick}
+        />
+      )}
     </>
   );
 });
