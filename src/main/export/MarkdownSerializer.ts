@@ -526,131 +526,140 @@ function findMatchingSegment(
 }
 
 /**
- * Build a stripped (plain text) version of markdown and a position map
- * that tells where each stripped character originated in the original.
- */
-function buildPositionMap(markdown: string): {
-  stripped: string;
-  posMap: number[];
-} {
-  const chars: string[] = [];
-  const posMap: number[] = [];
-  let oi = 0;
-
-  while (oi < markdown.length) {
-    // Skip **bold** — keep content, drop markers
-    if (markdown.startsWith('**', oi)) {
-      oi += 2;
-      const close = markdown.indexOf('**', oi);
-      if (close !== -1) {
-        for (let i = oi; i < close; i++) {
-          chars.push(markdown[i]);
-          posMap.push(i);
-        }
-        oi = close + 2;
-        continue;
-      }
-    }
-    // Skip *italic* — keep content, drop markers
-    if (markdown[oi] === '*' && oi + 1 < markdown.length && markdown[oi + 1] !== '*') {
-      oi++;
-      const close = markdown.indexOf('*', oi);
-      if (close !== -1) {
-        for (let i = oi; i < close; i++) {
-          chars.push(markdown[i]);
-          posMap.push(i);
-        }
-        oi = close + 1;
-        continue;
-      }
-    }
-    // Skip [text](url) — keep text, drop url
-    if (markdown[oi] === '[') {
-      const closeB = markdown.indexOf(']', oi);
-      if (closeB !== -1) {
-        const closeP = markdown.indexOf(')', closeB);
-        if (closeP !== -1) {
-          for (let i = oi + 1; i < closeB; i++) {
-            chars.push(markdown[i]);
-            posMap.push(i);
-          }
-          oi = closeP + 1;
-          continue;
-        }
-      }
-    }
-    // Skip `inline code` — keep content, drop markers
-    if (markdown[oi] === '`') {
-      const close = markdown.indexOf('`', oi + 1);
-      if (close !== -1) {
-        for (let i = oi + 1; i < close; i++) {
-          chars.push(markdown[i]);
-          posMap.push(i);
-        }
-        oi = close + 1;
-        continue;
-      }
-    }
-
-    chars.push(markdown[oi]);
-    posMap.push(oi);
-    oi++;
-  }
-
-  return { stripped: chars.join(''), posMap };
-}
-
-/**
  * Fallback: text-matching approach on cleanedMarkdown (used when cleanedHtml is unavailable).
- * Builds a position map for accurate matching through markdown formatting.
  */
 function serializeByTextMatching(
   body: string,
   segments: TranslationSegment[],
 ): string {
-  // Build position map: stripped (plain) text → original markdown positions
-  const { stripped, posMap } = buildPositionMap(body);
-
-  // Collect all insertion points
-  const insertions: Array<{ position: number; text: string }> = [];
+  let result = body;
   let searchPos = 0;
 
   for (const segment of segments) {
     const translatedText = segment.translatedText?.trim();
     if (!translatedText) continue;
+
+    // Use sourceText (plain text) for matching, strip any markdown from body
     const sourceText = normalizeWhitespaceFn(segment.sourceText);
     if (!sourceText) continue;
 
-    // Find in stripped text (no markdown formatting to interfere)
-    const idx = stripped.indexOf(sourceText, searchPos);
+    // Find sourceText in the markdown body, allowing for markdown formatting
+    // by progressively relaxing the search
+    const idx = findTextInMarkdown(result, sourceText, searchPos);
     if (idx === -1) {
-      // Fallback: try from beginning
-      const fallbackIdx = stripped.indexOf(sourceText, 0);
-      if (fallbackIdx === -1 || fallbackIdx < searchPos - 500) continue;
+      const fallbackIdx = findTextInMarkdown(result, sourceText, 0);
+      if (fallbackIdx === -1 || fallbackIdx < searchPos - 300) continue;
       searchPos = fallbackIdx;
     } else {
       searchPos = idx;
     }
 
-    const origPos = posMap[searchPos];
-    if (origPos === undefined) continue;
+    // Find end of this paragraph (next double newline or end of string)
+    let paraEnd = result.indexOf('\n\n', searchPos);
+    if (paraEnd === -1) paraEnd = result.length;
+    const block = `\n\n> ${translatedText}`;
 
-    // Find paragraph end in original body
-    const paraEnd = body.indexOf('\n\n', origPos);
-    const endPos = paraEnd === -1 ? body.length : paraEnd;
-
-    insertions.push({ position: endPos, text: `\n\n> ${translatedText}` });
-    searchPos += sourceText.length;
-  }
-
-  // Apply insertions from last to first (to avoid position shifting)
-  insertions.sort((a, b) => b.position - a.position);
-  let result = body;
-  for (const ins of insertions) {
-    result = result.slice(0, ins.position) + ins.text + result.slice(ins.position);
+    result = result.slice(0, paraEnd) + block + result.slice(paraEnd);
+    searchPos = paraEnd + block.length;
   }
 
   return result;
+}
+
+/**
+ * Find plain text in markdown body, accounting for markdown formatting.
+ * E.g., searching for "This is bold text" will match "This is **bold** text".
+ */
+function findTextInMarkdown(markdown: string, plainText: string, fromIndex: number): number {
+  if (!plainText) return -1;
+  // Try exact substring first (fast path)
+  const exactIdx = markdown.indexOf(plainText, fromIndex);
+  if (exactIdx !== -1) return exactIdx;
+
+  // Fallback: strip markdown and search
+  const stripped = markdown
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1')
+    .replace(/`(.+?)`/g, '$1');
+
+  const idx = stripped.indexOf(plainText, fromIndex);
+  if (idx === -1) return -1;
+
+  // Map back to original position: find the position in original text
+  // that corresponds to this position in stripped text
+  return mapStrippedToOriginal(markdown, idx);
+}
+
+/**
+ * Map a position in the stripped text back to the original markdown.
+ * Simple heuristic: walk both strings in parallel until we reach the target position.
+ */
+function mapStrippedToOriginal(original: string, strippedPos: number): number {
+  let oi = 0;
+  let si = 0;
+  const stripped = original
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1')
+    .replace(/`(.+?)`/g, '$1');
+
+  while (si < strippedPos && oi < original.length) {
+    if (oi >= original.length) break;
+    const oc = original[oi];
+
+    // Check if we're at a markdown sequence
+    if (original.startsWith('**', oi)) {
+      oi += 2; // skip opening **
+      // Read until closing **
+      const closeIdx = original.indexOf('**', oi);
+      if (closeIdx !== -1) {
+        const contentLen = closeIdx - oi;
+        oi = closeIdx + 2; // skip past closing **
+        si += contentLen;
+        continue;
+      }
+    }
+    if (oc === '*' && original.length > oi + 1 && original[oi + 1] !== '*') {
+      // Single * for italic — skip opening, find closing
+      oi += 1;
+      const closeIdx = original.indexOf('*', oi);
+      if (closeIdx !== -1) {
+        const contentLen = closeIdx - oi;
+        oi = closeIdx + 1;
+        si += contentLen;
+        continue;
+      }
+    }
+    if (oc === '[') {
+      // Link — skip to ] then skip (url)
+      const closeBracket = original.indexOf(']', oi);
+      if (closeBracket !== -1) {
+        const contentLen = closeBracket - oi - 1; // text inside [ ]
+        const closeParen = original.indexOf(')', closeBracket);
+        if (closeParen !== -1) {
+          oi = closeParen + 1;
+          si += contentLen;
+          continue;
+        }
+      }
+    }
+    if (oc === '`') {
+      // Inline code
+      const closeBacktick = original.indexOf('`', oi + 1);
+      if (closeBacktick !== -1) {
+        const contentLen = closeBacktick - oi - 1;
+        oi = closeBacktick + 1;
+        si += contentLen;
+        continue;
+      }
+    }
+
+    oi++;
+    si++;
+  }
+
+  return oi;
 }
 
 /**
