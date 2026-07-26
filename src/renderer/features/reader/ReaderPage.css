@@ -1524,6 +1524,279 @@ body.workspace-is-resizing * {
   scrollbar-width: thin;
 }
 
+.reading-progress-book {
+  position: absolute;
+  z-index: 14;
+  right: clamp(12px, 2.2%, 22px);
+  bottom: 20px;
+  display: grid;
+  min-width: 94px;
+  justify-items: center;
+  color: var(--reader-text-soft);
+  pointer-events: none;
+  user-select: none;
+}
+
+.reading-progress-book-visual {
+  position: relative;
+  width: 100px;
+  height: 60px;
+}
+
+.reading-progress-book-model {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 520px;
+  height: 300px;
+  margin-left: -260px;
+  perspective: 630px;
+  perspective-origin: center 50px;
+  filter: drop-shadow(0 10px 5px rgba(0, 0, 0, 0.25));
+  transform: scale(0.22);
+  transform-origin: top center;
+  transform-style: preserve-3d;
+}
+
+.reading-progress-book-pages,
+.reading-progress-book-flips {
+  transform-style: preserve-3d;
+}
+
+.reading-progress-book-page {
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 210px;
+  height: 300px;
+  border: 1px solid #ddd;
+  background-color: #f5f5f5;
+  transform-origin: 100% 100%;
+  transform-style: preserve-3d;
+}
+
+.reading-progress-book-page:nth-child(1) {
+  transform: rotateX(60deg) rotateY(3deg);
+}
+
+.reading-progress-book-page:nth-child(2) {
+  transform: rotateX(60deg) rotateY(4.5deg);
+}
+
+.reading-progress-book-page:nth-child(3) {
+  transform: rotateX(60deg) rotateY(6deg);
+}
+
+.reading-progress-book-page:nth-child(4) {
+  transform: rotateX(60deg) rotateY(177deg);
+}
+
+.reading-progress-book-page:nth-child(5) {
+  transform: rotateX(60deg) rotateY(175.5deg);
+}
+
+.reading-progress-book-page:nth-child(6) {
+  overflow: hidden;
+  transform: rotateX(60deg) rotateY(174deg);
+}
+
+.reading-progress-book-page:nth-child(6)::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 210px;
+  height: 300px;
+  background-color: #f5f5f5;
+  content: "";
+  transform: rotateY(180deg);
+  transform-origin: center;
+}
+
+.reading-progress-book-gap {
+  position: absolute;
+  top: 0;
+  left: calc(50% - 5px);
+  width: 10px;
+  height: 300px;
+  background: none;
+  transform: rotateX(60deg);
+  transform-origin: bottom;
+}
+
+.reading-progress-book-gap::after {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 10px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: #555;
+  content: "";
+  transform: translate(-50%, 50%);
+}
+
+.reading-progress-book-flip {
+  position: absolute;
+  top: 0;
+  right: 100%;
+  width: 32px;
+  height: 300px;
+  border: solid #ddd;
+  border-width: 1px 0;
+  background-color: #f5f5f5;
+  perspective: 4200px;
+  perspective-origin: center;
+  transform-origin: 100% 100%;
+  transform-style: preserve-3d;
+}
+
+.reading-progress-book-flip::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #f5f5f5;
+  content: "";
+  transform-origin: center;
+}
+
+.reading-progress-book-flip.flip1 {
+  right: 50%;
+  border-width: 2px 2px 2px 0;
+}
+
+.reading-progress-book-flip:not(.flip1) {
+  top: -2px;
+  right: calc(100% - 2px);
+  transform: rotateY(0deg) translateY(0);
+  transform-origin: right;
+}
+
+.reading-progress-book-flip.flip7 {
+  width: 30px;
+  border-width: 2px 0 2px 2px;
+}
+
+.reading-progress-book-single-page {
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 210px;
+  height: 300px;
+  border: 1px solid #ddd;
+  background-color: #f5f5f5;
+  transform-origin: 100% 100%;
+  transform-style: preserve-3d;
+}
+
+.reading-progress-book-single-page::after {
+  position: absolute;
+  inset: -1px;
+  border: inherit;
+  background-color: #f5f5f5;
+  content: "";
+  transform: rotateY(180deg);
+}
+
+.reading-progress-book-flips.is-resting .flip1 {
+  transform: rotateX(60deg) rotateY(6deg);
+}
+
+.reading-progress-book-single-page.is-turning-left {
+  animation: reading-book-reference-turn-left var(--reading-book-turn-duration)
+    ease-in-out forwards;
+}
+
+.reading-progress-book-single-page.is-turning-right {
+  animation: reading-book-reference-turn-right var(--reading-book-turn-duration)
+    ease-in-out forwards;
+}
+
+.reading-progress-book-flips.is-turning-left > .flip1 {
+  animation: reading-book-reference-turn-left var(--reading-book-turn-duration)
+    ease-in-out forwards;
+}
+
+.reading-progress-book-flips.is-turning-left
+  .reading-progress-book-flip:not(.flip1) {
+  animation: reading-book-reference-curl-left var(--reading-book-turn-duration)
+    ease-in-out forwards;
+}
+
+.reading-progress-book-flips.is-turning-right > .flip1 {
+  animation: reading-book-reference-turn-right var(--reading-book-turn-duration)
+    ease-in-out forwards;
+}
+
+.reading-progress-book-flips.is-turning-right
+  .reading-progress-book-flip:not(.flip1) {
+  animation: reading-book-reference-curl-right var(--reading-book-turn-duration)
+    ease-in-out forwards;
+}
+
+.reading-progress-book-label {
+  margin-top: 2px;
+  text-align: center;
+}
+
+.reading-progress-book-label strong {
+  color: var(--reader-text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-family: Georgia, "Times New Roman", "Noto Serif SC", serif;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+@keyframes reading-book-reference-turn-left {
+  0% {
+    transform: rotateX(60deg) rotateY(6deg);
+  }
+
+  100% {
+    transform: rotateX(60deg) rotateY(174deg);
+  }
+}
+
+@keyframes reading-book-reference-turn-right {
+  0% {
+    transform: rotateX(60deg) rotateY(174deg);
+  }
+
+  100% {
+    transform: rotateX(60deg) rotateY(6deg);
+  }
+}
+
+@keyframes reading-book-reference-curl-left {
+  0% {
+    transform: rotateY(0deg) translateY(0);
+  }
+
+  50% {
+    transform: rotateY(-15deg) translateY(0);
+  }
+
+  100% {
+    transform: rotateY(0deg) translateY(0);
+  }
+}
+
+@keyframes reading-book-reference-curl-right {
+  0% {
+    transform: rotateY(0deg) translateY(0);
+  }
+
+  50% {
+    transform: rotateY(15deg) translateY(0);
+  }
+
+  100% {
+    transform: rotateY(0deg) translateY(0);
+  }
+}
+
 .entry-detail-header {
   width: min(980px, calc(100% - 64px));
   margin: 0 auto;
@@ -4938,6 +5211,13 @@ body.workspace-is-resizing * {
     padding-top: 42px;
   }
 
+  .reading-progress-book {
+    right: 10px;
+    bottom: 12px;
+    transform: scale(0.88);
+    transform-origin: right bottom;
+  }
+
   .entry-detail-title-row h2 {
     font-size: 32px;
   }
@@ -5231,6 +5511,11 @@ body.workspace-is-resizing * {
   .article-refresh-button.is-loading .reader-icon,
   .article-copy-button.is-copied {
     animation: none;
+  }
+
+  .reading-progress-book-flips:not(.is-resting),
+  .reading-progress-book-single-page {
+    display: none;
   }
 
   .article-copy-button.is-copied .article-copy-button-success {

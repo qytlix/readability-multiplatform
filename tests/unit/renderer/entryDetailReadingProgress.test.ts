@@ -183,11 +183,31 @@ describe('EntryDetail reading-progress restoration', () => {
     await renderWithLoadStatus('success');
     const scrollContainer = container.querySelector<HTMLDivElement>('.entry-detail-scroll');
     expect(scrollContainer?.scrollTop).toBe(500);
+    expect(
+      container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'),
+    ).toBe('50');
+    expect(container.querySelectorAll('.reading-progress-book-page')).toHaveLength(6);
+    expect(
+      container.querySelectorAll(
+        '.reading-progress-book-flips.is-resting .reading-progress-book-flip',
+      ),
+    ).toHaveLength(7);
 
     vi.useFakeTimers();
     act(() => {
       if (!scrollContainer) return;
       scrollContainer.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+      scrollContainer.scrollTop = 524;
+      scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    expect(
+      container.querySelector(
+        '.reading-progress-book-single-page.is-turning-left',
+      ),
+    ).not.toBeNull();
+
+    act(() => {
+      if (!scrollContainer) return;
       scrollContainer.scrollTop = 750;
       scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
     });
@@ -197,6 +217,29 @@ describe('EntryDetail reading-progress restoration', () => {
     vi.useRealTimers();
 
     expect(onReadingProgressChange).toHaveBeenCalledWith(entry.id, 0.75);
+    expect(
+      container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'),
+    ).toBe('75');
+    expect(
+      container.querySelector(
+        '.reading-progress-book-flips.is-turning-left',
+      ),
+    ).not.toBeNull();
+
+    act(() => {
+      if (!scrollContainer) return;
+      scrollContainer.scrollTop = 650;
+      scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+
+    expect(
+      container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'),
+    ).toBe('65');
+    expect(
+      container.querySelector(
+        '.reading-progress-book-flips.is-turning-right',
+      ),
+    ).not.toBeNull();
   });
 
   it('reapplies saved progress when delayed content increases the scroll height', async () => {
