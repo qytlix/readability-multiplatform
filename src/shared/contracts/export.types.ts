@@ -1,3 +1,5 @@
+import type { EntryAnnotation } from './annotation.types';
+
 /** 用户为单篇文章选择的导出选项 */
 export interface PerArticleOptions {
   includeSummary: boolean;
@@ -46,8 +48,11 @@ export interface ExportableArticle {
   summary?: string;
   translation?: string;
 
-  /** 可选用户笔记（P1，预留） */
+  /** 可选用户笔记（P1，预留 — 向后兼容的纯文本拼接） */
   notes?: string;
+
+  /** 可选原始注释数据（用于脚注格式导出） */
+  annotations?: EntryAnnotation[];
 
   /** 用户选择的选项（序列化时根据此决定输出哪些字段） */
   exportOptions?: PerArticleOptions;
