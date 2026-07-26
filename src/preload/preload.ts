@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, type PingResponse, type ShaleAPI } from '../shared/ipc';
+import type { ExportAPI } from '../shared/domain-api';
 import {
   FEED_IPC_CHANNELS,
   type FeedSyncProgress,
@@ -212,6 +213,14 @@ const annotationAPI = {
     ipcRenderer.invoke(ANNOTATION_IPC_CHANNELS.delete, request),
 };
 
+// Placeholder — full implementation in EXP-03
+const exportAPI: ExportAPI = {
+  checkAvailability: () => Promise.reject(new Error('not implemented')),
+  cleanSingle: () => Promise.reject(new Error('not implemented')),
+  single: () => Promise.reject(new Error('not implemented')),
+  multiple: () => Promise.reject(new Error('not implemented')),
+};
+
 const shaleAPI: ShaleAPI = {
   system: {
     ping,
@@ -230,6 +239,7 @@ const shaleAPI: ShaleAPI = {
   diagnostics: diagnosticsAPI,
   usage: usageAPI,
   annotation: annotationAPI,
+  export: exportAPI,
 };
 
 contextBridge.exposeInMainWorld('shaleAPI', shaleAPI);
