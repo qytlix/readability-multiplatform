@@ -2,6 +2,7 @@ import type { IPCResult } from '../../../shared/contracts/feed.ipc';
 import type {
   CheckAvailabilityResponse,
   CleanProgressEvent,
+  ExportMultipleResult,
   ExportSingleResult,
 } from '../../../shared/contracts/export.ipc';
 import type { PerArticleOptions } from '../../../shared/contracts/export.types';
@@ -40,4 +41,13 @@ export async function exportSingleEntry(
   options: PerArticleOptions,
 ): Promise<IPCResult<ExportSingleResult>> {
   return window.shaleAPI.export.single(entryId, options);
+}
+
+/**
+ * 多篇导出：传入 entryId + options 数组，Main 打开保存对话框并写入文件。
+ */
+export async function exportMultipleEntries(
+  entries: Array<{ entryId: number; options: PerArticleOptions }>,
+): Promise<IPCResult<ExportMultipleResult>> {
+  return window.shaleAPI.export.multiple(entries);
 }

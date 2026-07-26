@@ -74,6 +74,9 @@ interface EntryDetailProps {
     entryId: number,
     result: { ok: true } | { ok: false; message: string },
   ) => void;
+  selectionMode?: boolean;
+  selectedIds?: Set<number>;
+  onExportRequest?: () => void;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -97,6 +100,9 @@ export const EntryDetail = ({
   aiToolbarTarget,
   exportToolbarTarget = null,
   onAIViewStateChange,
+  selectionMode = false,
+  selectedIds,
+  onExportRequest,
   onReadingProgressChange,
   onContentRefreshComplete,
 }: EntryDetailProps) => {
@@ -434,6 +440,10 @@ export const EntryDetail = ({
   }, []);
 
   const handleExportClick = useCallback(async (): Promise<void> => {
+    if (selectionMode && selectedIds && selectedIds.size > 0) {
+      onExportRequest?.();
+      return;
+    }
     if (!entry) return;
     const result = await checkAvailability([entry.id]);
     if (!result.ok) {
@@ -443,7 +453,7 @@ export const EntryDetail = ({
     if (!avail) return;
     setExportArticleAvail(avail);
     setShowExportDialog(true);
-  }, [entry]);
+  }, [entry, selectionMode, selectedIds, onExportRequest]);
 
   const handleExportConfirm = useCallback(
     async (perArticleOptions: Map<number, PerArticleOptions>): Promise<void> => {
@@ -773,16 +783,24 @@ export const EntryDetail = ({
     )
     : null;
 
+  const isExportDisabled = selectionMode && selectedIds && selectedIds.size > 0
+    ? false
+    : status !== 'success' || !content?.markdown.trim();
+
+  const exportTooltip = selectionMode && selectedIds && selectedIds.size > 0
+    ? `导出所选 ${selectedIds.size} 篇文章`
+    : status !== 'success' || !content?.markdown.trim()
+      ? '文章尚未完成内容清洗'
+      : '导出为 Markdown';
+
   const exportToolbar = exportToolbarTarget
     ? createPortal(
       <button
         type="button"
         className="type-button"
-        aria-label="导出为 Markdown"
-        disabled={status !== 'success' || !content?.markdown.trim()}
-        title={status !== 'success' || !content?.markdown.trim()
-          ? '文章尚未完成内容清洗'
-          : '导出为 Markdown'}
+        aria-label={exportTooltip}
+        disabled={isExportDisabled}
+        title={exportTooltip}
         onClick={() => void handleExportClick()}
       >
         <ExportIcon />

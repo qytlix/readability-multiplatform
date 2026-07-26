@@ -34,6 +34,12 @@ import {
   type AiPreferences,
 } from './features/settings/aiPreferences';
 import {
+  checkAvailability,
+  exportMultipleEntries,
+} from './features/feeds/entryExport';
+import { ExportOptionsDialog } from './features/feeds/ExportOptionsDialog';
+import type { ArticleAvailability } from '../shared/contracts/export.types';
+import {
   ForwardIcon,
   BookmarkIcon,
   FocusIcon,
@@ -120,6 +126,10 @@ export const App = () => {
   const [refreshingContentEntryId, setRefreshingContentEntryId] =
     useState<number | null>(null);
   const [markingReadEntryId, setMarkingReadEntryId] = useState<number | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportArticles, setExportArticles] = useState<ArticleAvailability[]>([]);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(() =>
     loadReaderTheme(window.localStorage));
   const [articleAIToolbarTarget, setArticleAIToolbarTarget] = useState<HTMLDivElement | null>(null);
@@ -625,6 +635,8 @@ export const App = () => {
     setAppliedSearchQuery('');
     setSearchStatus('idle');
     setSelectedFeedId(feedId);
+    setSelectionMode(false);
+    setSelectedIds(new Set());
     if (window.innerWidth < 900) setSidebarOpen(false);
   }, []);
 
@@ -634,6 +646,8 @@ export const App = () => {
     setAppliedSearchQuery('');
     setSearchStatus('idle');
     setEntryFilter(filter);
+    setSelectionMode(false);
+    setSelectedIds(new Set());
     if (filter !== 'all') setSelectedFeedId(null);
     if (window.innerWidth < 900) setSidebarOpen(false);
   }, []);
@@ -647,6 +661,16 @@ export const App = () => {
       : entryFilter === 'starred'
         ? '收藏文章'
         : selectedFeed?.title ?? (selectedFeed ? selectedFeed.feedURL : '全部文章');
+  const handleExportRequest = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    const result = await checkAvailability(ids);
+    if (!result.ok) return;
+    setExportArticles(result.data.articles);
+    setShowExportDialog(true);
+  }, [selectedIds]);
+
   const selectedSourceTitle = selectedEntryFeed?.title
     ?? selectedEntryFeed?.feedURL
     ?? '';
@@ -752,6 +776,20 @@ export const App = () => {
             onSelectEntry={handleSelectEntry}
             onLoadMore={handleLoadMore}
             hasMore={hasNoFeeds ? false : hasMoreEntries}
+            selectionMode={selectionMode}
+            selectedIds={selectedIds}
+            onSelectionModeChange={(enabled: boolean) => {
+              if (!enabled) setSelectedIds(new Set());
+              setSelectionMode(enabled);
+            }}
+            onSelectionToggle={(entryId: number) => {
+              setSelectedIds((prev: Set<number>) => {
+                const next = new Set(prev);
+                if (next.has(entryId)) next.delete(entryId);
+                else next.add(entryId);
+                return next;
+              });
+            }}
           />
         </section>
 
@@ -954,6 +992,9 @@ export const App = () => {
                 onAIViewStateChange={handleEntryAIViewStateChange}
                 onReadingProgressChange={handleReadingProgressChange}
                 onContentRefreshComplete={handleContentRefreshComplete}
+                selectionMode={selectionMode}
+                selectedIds={selectedIds}
+                onExportRequest={handleExportRequest}
               />
             )}
           </div>
@@ -970,6 +1011,29 @@ export const App = () => {
         <FeedAddDialog
           onAdd={handleAddFeed}
           onClose={() => setShowAddFeedDialog(false)}
+        />
+      )}
+
+      {showExportDialog && exportArticles.length > 0 && (
+        <ExportOptionsDialog
+          open={showExportDialog}
+          articles={exportArticles}
+          onCancel={() => {
+            setShowExportDialog(false);
+            // Keep selection mode and selected IDs on cancel
+          }}
+          onConfirm={async (perArticleOptions) => {
+            setShowExportDialog(false);
+            const entries = Array.from(perArticleOptions.entries()).map(
+              ([entryId, options]) => ({ entryId, options }),
+            );
+            const result = await exportMultipleEntries(entries);
+            if (result.ok) {
+              setSelectionMode(false);
+              setSelectedIds(new Set());
+            }
+            // If save cancelled (not ok), keep selection mode
+          }}
         />
       )}
     </div>

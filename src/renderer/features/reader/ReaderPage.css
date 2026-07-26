@@ -4826,6 +4826,126 @@ body.workspace-is-resizing * {
   font-size: 11px;
 }
 
+/* ── Multi-select mode (EntryList) ──────────────── */
+
+.story-list-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.story-card-checkbox {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding-right: 8px;
+}
+
+.story-card-checkbox input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--reader-accent-strong);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.export-selection-bar {
+  display: flex;
+  align-items: center;
+  height: 37px;
+  padding: 0 22px 0;
+  border-bottom: 1px solid var(--reader-line);
+  color: var(--reader-text-soft);
+  font-size: 12px;
+}
+
+.export-selection-bar strong {
+  color: var(--reader-accent-strong);
+}
+
+/* ── Multi-article export dialog: pipeline status ── */
+
+.export-options-row-status {
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.export-options-row-status.is-failed {
+  color: var(--reader-danger);
+}
+
+.export-options-row-status.is-cleaning {
+  opacity: 0.7;
+}
+
+.export-options-row-unwashed {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-options-unwashed-label {
+  font-size: 11px;
+  color: var(--reader-text-muted);
+}
+
+.export-options-cleaning-label {
+  font-size: 11px;
+  color: var(--reader-text-muted);
+  font-style: italic;
+}
+
+.export-options-failed-label {
+  font-size: 11px;
+  color: var(--reader-danger);
+}
+
+.export-options-clean-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--reader-line);
+  border-radius: 5px;
+  color: var(--reader-accent-strong);
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.export-options-clean-btn:hover {
+  background: var(--reader-hover);
+  border-color: var(--reader-accent-strong);
+}
+
+.export-options-clean-all {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+
+.export-options-clean-all-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--reader-line);
+  border-radius: 6px;
+  color: var(--reader-text);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.export-options-clean-all-btn:hover {
+  background: var(--reader-hover);
+  border-color: var(--reader-text-muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

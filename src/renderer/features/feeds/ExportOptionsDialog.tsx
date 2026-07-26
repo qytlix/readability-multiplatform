@@ -12,6 +12,8 @@ import { createPortal } from 'react-dom';
 import type { ArticleAvailability } from '../../../shared/contracts/export.types';
 import type { PerArticleOptions } from '../../../shared/contracts/export.types';
 import { DEFAULT_PER_ARTICLE_OPTIONS } from '../../../shared/contracts/export.types';
+import type { CleanProgressEvent } from '../../../shared/contracts/export.ipc';
+import { cleanSingle } from './entryExport';
 
 interface ExportOptionsDialogProps {
   open: boolean;
@@ -44,6 +46,73 @@ export const ExportOptionsDialog = ({
     Map<number, PerArticleOptions>
   >(() => new Map());
 
+  // 正在清洗中的 entryId 集合
+  const [cleaningIds, setCleaningIds] = useState<Set<number>>(new Set());
+
+  // 已通过「现在清洗」完成的文章
+  const [refreshedArticleStatus, setRefreshedArticleStatus] = useState<
+    Map<number, ArticleAvailability['pipelineStatus']>
+  >(() => new Map());
+
+  // 获取文章当前实际 pipelineStatus（考虑本地清洗结果）
+  const getEffectiveStatus = useCallback(
+    (entryId: number): ArticleAvailability['pipelineStatus'] => {
+      const localStatus = refreshedArticleStatus.get(entryId);
+      if (localStatus) return localStatus;
+      const article = articles.find((a) => a.entryId === entryId);
+      return article?.pipelineStatus ?? 'pending';
+    },
+    [articles, refreshedArticleStatus],
+  );
+
+  // 清洗单篇文章
+  const handleCleanSingle = useCallback(async (entryId: number) => {
+    setCleaningIds((prev) => new Set(prev).add(entryId));
+    try {
+      await cleanSingle(entryId, (event: CleanProgressEvent) => {
+        if (event.entryId === entryId) {
+          if (event.status === 'success') {
+            setRefreshedArticleStatus((prev) => {
+              const next = new Map(prev);
+              next.set(entryId, 'success');
+              return next;
+            });
+            // Also mark original article as selectable by setting options
+            setPerArticleOptions((prev) => {
+              const next = new Map(prev);
+              if (!next.has(entryId)) {
+                next.set(entryId, {
+                  includeSummary: false,
+                  includeTranslation: false,
+                  includeNotes: false,
+                });
+              }
+              return next;
+            });
+          } else if (event.status === 'failed') {
+            setRefreshedArticleStatus((prev) => {
+              const next = new Map(prev);
+              next.set(entryId, 'failed');
+              return next;
+            });
+          }
+        }
+      });
+    } catch {
+      setRefreshedArticleStatus((prev) => {
+        const next = new Map(prev);
+        next.set(entryId, 'failed');
+        return next;
+      });
+    } finally {
+      setCleaningIds((prev) => {
+        const next = new Set(prev);
+        next.delete(entryId);
+        return next;
+      });
+    }
+  }, []);
+
   // 项级全选状态
   const columnAll = useMemo(() => {
     const all = {
@@ -73,6 +142,8 @@ export const ExportOptionsDialog = ({
       });
     }
     setPerArticleOptions(map);
+    setCleaningIds(new Set());
+    setRefreshedArticleStatus(new Map());
 
     // 焦点
     requestAnimationFrame(() => {
@@ -252,32 +323,97 @@ export const ExportOptionsDialog = ({
             </div>
 
             <div className="export-options-list">
-              {articles.map((a) => (
-                <div key={a.entryId} className="export-options-row">
-                  <span className="export-options-row-title">{a.title}</span>
-                  <div className="export-options-row-fields">
-                    {renderCheckbox(
-                      a.entryId,
-                      'includeSummary',
-                      '总结',
-                      a.hasSummary,
+              {articles.map((a) => {
+                const effectiveStatus = getEffectiveStatus(a.entryId);
+                const isCleaning = cleaningIds.has(a.entryId);
+                const pipelineSuccess = effectiveStatus === 'success';
+                const pipelineFailed = effectiveStatus === 'failed';
+
+                return (
+                  <div key={a.entryId} className="export-options-row">
+                    <span className={`export-options-row-status${
+                      pipelineFailed ? ' is-failed' : ''
+                    }${isCleaning ? ' is-cleaning' : ''}`}>
+                      {pipelineSuccess
+                        ? '✅'
+                        : pipelineFailed
+                          ? '❌'
+                          : isCleaning
+                            ? '⏳'
+                            : '⏳'}
+                    </span>
+                    <span className="export-options-row-title">{a.title}</span>
+                    {pipelineSuccess && (
+                      <div className="export-options-row-fields">
+                        {renderCheckbox(
+                          a.entryId,
+                          'includeSummary',
+                          '总结',
+                          a.hasSummary,
+                        )}
+                        {renderCheckbox(
+                          a.entryId,
+                          'includeTranslation',
+                          '翻译',
+                          a.hasTranslation,
+                        )}
+                        {renderCheckbox(
+                          a.entryId,
+                          'includeNotes',
+                          '笔记',
+                          a.hasNotes,
+                        )}
+                      </div>
                     )}
-                    {renderCheckbox(
-                      a.entryId,
-                      'includeTranslation',
-                      '翻译',
-                      a.hasTranslation,
-                    )}
-                    {renderCheckbox(
-                      a.entryId,
-                      'includeNotes',
-                      '笔记',
-                      a.hasNotes,
+                    {!pipelineSuccess && (
+                      <div className="export-options-row-unwashed">
+                        {pipelineFailed ? (
+                          <span className="export-options-failed-label">清洗失败</span>
+                        ) : isCleaning ? (
+                          <span className="export-options-cleaning-label">清洗中…</span>
+                        ) : (
+                          <>
+                            <span className="export-options-unwashed-label">🧹未清洗</span>
+                            <button
+                              type="button"
+                              className="export-options-clean-btn"
+                              onClick={() => void handleCleanSingle(a.entryId)}
+                            >
+                              现在清洗
+                            </button>
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
+
+            {(() => {
+              const unwashedCount = articles.filter(
+                (a) => getEffectiveStatus(a.entryId) !== 'success',
+              ).length;
+              const hasCleaningInProgress = cleaningIds.size > 0;
+              return unwashedCount > 0 && !hasCleaningInProgress ? (
+                <div className="export-options-clean-all">
+                  <button
+                    type="button"
+                    className="export-options-clean-all-btn"
+                    onClick={async () => {
+                      const unwashed = articles.filter(
+                        (a) => getEffectiveStatus(a.entryId) !== 'success',
+                      );
+                      for (const article of unwashed) {
+                        await handleCleanSingle(article.entryId);
+                      }
+                    }}
+                  >
+                    🧹 清洗全部未清洗（{unwashedCount}篇）
+                  </button>
+                </div>
+              ) : null;
+            })()}
           </>
         )}
 
@@ -287,6 +423,7 @@ export const ExportOptionsDialog = ({
           </button>
           <button
             type="button"
+            disabled={cleaningIds.size > 0}
             onClick={() => onConfirm(perArticleOptions)}
           >
             下一步

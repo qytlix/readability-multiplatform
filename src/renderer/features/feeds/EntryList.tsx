@@ -25,6 +25,10 @@ interface EntryListProps {
   onSelectEntry: (entryId: number) => void;
   onLoadMore: () => void;
   hasMore: boolean;
+  selectionMode?: boolean;
+  selectedIds?: Set<number>;
+  onSelectionModeChange?: (enabled: boolean) => void;
+  onSelectionToggle?: (entryId: number) => void;
 }
 
 const nextFilter = (filter: EntryFilter): EntryFilter => {
@@ -47,6 +51,10 @@ export const EntryList = ({
   onSelectEntry,
   onLoadMore,
   hasMore,
+  selectionMode = false,
+  selectedIds,
+  onSelectionModeChange,
+  onSelectionToggle,
 }: EntryListProps) => {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const selectionIndicatorRef = useRef<HTMLSpanElement>(null);
@@ -96,22 +104,39 @@ export const EntryList = ({
         <div>
           <h1 title={heading}>{heading}</h1>
         </div>
-        {!showsSearch && (
+        <div className="story-list-header-actions">
+          {!showsSearch && (
+            <button
+              type="button"
+              className="icon-button story-list-filter"
+              aria-label={`切换文章筛选，当前为 ${filter}`}
+              title="切换：全部 / 未读 / 收藏"
+              onClick={() => onFilterChange(nextFilter(filter))}
+            >
+              <FilterIcon />
+            </button>
+          )}
           <button
             type="button"
-            className="icon-button story-list-filter"
-            aria-label={`切换文章筛选，当前为 ${filter}`}
-            title="切换：全部 / 未读 / 收藏"
-            onClick={() => onFilterChange(nextFilter(filter))}
+            className={`icon-button story-list-select${selectionMode ? ' is-active' : ''}`}
+            aria-label={selectionMode ? '退出选择模式' : '选择文章'}
+            title={selectionMode ? '退出选择模式' : '选择文章'}
+            onClick={() => onSelectionModeChange?.(!selectionMode)}
           >
-            <FilterIcon />
+            ☑
           </button>
-        )}
+        </div>
       </header>
 
       <div className="story-list-meta">
         <span>{entries.length} 篇文章{hasMore ? '+' : ''}</span>
       </div>
+
+      {selectionMode && selectedIds && selectedIds.size > 0 && (
+        <div className="export-selection-bar">
+          <span>已选 <strong>{selectedIds.size}</strong> 篇</span>
+        </div>
+      )}
 
       <div className="story-cards">
         <span
@@ -131,8 +156,24 @@ export const EntryList = ({
               }}
               className={`story-card${selectedEntryId === entry.id ? ' is-active' : ''}`}
               aria-pressed={selectedEntryId === entry.id}
-              onClick={() => onSelectEntry(entry.id)}
+              onClick={() => {
+                if (selectionMode) {
+                  onSelectionToggle?.(entry.id);
+                } else {
+                  onSelectEntry(entry.id);
+                }
+              }}
             >
+              {selectionMode && (
+                <span className="story-card-checkbox" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds?.has(entry.id) ?? false}
+                    onChange={() => onSelectionToggle?.(entry.id)}
+                    aria-label={`选择「${entry.title ?? '无标题文章'}」`}
+                  />
+                </span>
+              )}
               <div className="story-card-copy">
                 <div className="story-card-title">
                   <h2>{entry.title ?? '无标题文章'}</h2>
