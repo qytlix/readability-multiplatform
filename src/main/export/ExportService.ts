@@ -226,9 +226,12 @@ export class ExportService {
     const rows = this.db
       .prepare(
         `SELECT ts.translatedText
-         FROM translation_result tr
-         JOIN translation_segment ts ON ts.translationResultId = tr.id
-         WHERE tr.entryId = ? AND tr.status = 'succeeded'
+         FROM translation_segment ts
+         WHERE ts.translationResultId = (
+           SELECT id FROM translation_result
+           WHERE entryId = ? AND status = 'succeeded'
+           ORDER BY updatedAt DESC LIMIT 1
+         )
          ORDER BY ts.orderIndex ASC`,
       )
       .all(entryId) as Array<{ translatedText: string | null }>;
