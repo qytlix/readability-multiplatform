@@ -175,4 +175,39 @@ describe('reader theme preferences', () => {
     expect(style.background).toBe('var(--reader-panel-raised)');
     expect(style.opacity).toBe('1');
   });
+
+  it('keeps Translation notice confirmation text legible in day mode', () => {
+    const css = fs.readFileSync(
+      path.resolve(
+        __dirname,
+        '../../../src/renderer/features/reader/ReaderPage.css',
+      ),
+      'utf8',
+    );
+    const dom = new JSDOM(`
+      <style>${css}</style>
+      <div class="reader-page" data-theme="light">
+        <section class="dialog translation-notice-dialog">
+          <div class="dialog-actions">
+            <button type="submit">确认</button>
+          </div>
+        </section>
+        <section class="dialog translation-setup-notice-dialog">
+          <div class="dialog-actions">
+            <button type="submit">确认</button>
+          </div>
+        </section>
+      </div>
+    `);
+    const buttons = dom.window.document.querySelectorAll<HTMLElement>(
+      '.dialog-actions button',
+    );
+
+    expect(buttons).toHaveLength(2);
+    buttons.forEach((button) => {
+      const style = dom.window.getComputedStyle(button);
+      expect(style.color).toBe('rgb(255, 255, 255)');
+      expect(style.fontWeight).toBe('650');
+    });
+  });
 });

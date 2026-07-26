@@ -4637,6 +4637,14 @@ body.workspace-is-resizing * {
 }
 
 .reader-page[data-theme="light"] :is(
+  .translation-notice-dialog,
+  .translation-setup-notice-dialog
+) .dialog-actions button[type="submit"] {
+  color: #fff;
+  font-weight: 650;
+}
+
+.reader-page[data-theme="light"] :is(
   .article-hero,
   .sidebar-feed-actions,
   .reader-toast,
