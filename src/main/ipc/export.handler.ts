@@ -134,7 +134,7 @@ export function registerExportIpcHandlers(
         return fail('UNAUTHORIZED', 'Unauthorized IPC sender.');
       }
       try {
-        const { entryId, options, translationLanguage } = request as ExportSingleRequest;
+        const { entryId, options } = request as ExportSingleRequest;
         if (!Number.isInteger(entryId) || entryId <= 0) {
           return fail(
             EXPORT_ERROR_CODES.EXPORT_ENTRY_NOT_FOUND,
@@ -144,7 +144,7 @@ export function registerExportIpcHandlers(
         validateOptions(options);
 
         // 聚合数据
-        const article = exportService.prepareArticleData(entryId, options, translationLanguage);
+        const article = exportService.prepareArticleData(entryId, options);
 
         // 序列化
         const markdown = serializeSingle(article, options);
@@ -220,7 +220,7 @@ export function registerExportIpcHandlers(
           validateOptions(options);
         }
 
-        // 聚合数据（每个 entry 都携带自己的 translationLanguage）
+        // 聚合数据
         const articles = exportService.prepareMultipleArticleData(entries);
 
         // 序列化（每篇使用自己的 exportOptions）

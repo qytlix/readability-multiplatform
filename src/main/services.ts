@@ -68,7 +68,6 @@ export interface TranslationServices {
   inlineTranslationService: InlineTranslationService;
   expertService: TranslationExpertService;
   terminologyStore: TerminologyStore | null;
-  translationStore: TranslationStore;
 }
 
 export interface UsageServices {
@@ -253,7 +252,6 @@ export function initializeServices(
     inlineTranslationService,
     expertService,
     terminologyStore,
-    translationStore,
   };
   annotationServicesSingleton = { annotationService };
   usageServicesSingleton = { usageStatisticsService };

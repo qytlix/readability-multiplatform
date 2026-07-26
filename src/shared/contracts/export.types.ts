@@ -1,9 +1,4 @@
 import type { EntryAnnotation } from './annotation.types';
-import type {
-  TranslationSegment,
-  TranslationSourceLanguage,
-  TranslationTargetLanguage,
-} from './translation.types';
 
 /** 用户为单篇文章选择的导出选项 */
 export interface PerArticleOptions {
@@ -35,12 +30,6 @@ export interface ArticleAvailability {
   hasNotes: boolean;
 }
 
-/** 翻译语言对。导出时用于查找对应语言的翻译结果。 */
-export interface TranslationLanguage {
-  sourceLanguage: TranslationSourceLanguage;
-  targetLanguage: TranslationTargetLanguage;
-}
-
 /** 单篇文章的导出数据聚合 */
 export interface ExportableArticle {
   entryId: number;
@@ -54,14 +43,10 @@ export interface ExportableArticle {
 
   /** 正文 */
   cleanedMarkdown: string;
-  /** 清洗后的 HTML（用于 interleaved 译文格式的 DOM 匹配） */
-  cleanedHtml?: string;
 
   /** 可选 AI 内容（不存在时省略） */
   summary?: string;
   translation?: string;
-  /** 逐段译文数据。存在时 MarkdownSerializer 使用 interleaved 格式代替旧块引用。 */
-  translationSegments?: TranslationSegment[];
 
   /** 可选用户笔记（P1，预留 — 向后兼容的纯文本拼接） */
   notes?: string;

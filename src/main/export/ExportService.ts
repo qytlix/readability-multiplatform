@@ -8,9 +8,6 @@ import type {
 import { EXPORT_ERROR_CODES } from '../../shared/contracts/export.ipc';
 import type { ShaleError } from '../../shared/contracts/feed.ipc';
 import type { PipelineStatus } from '../../shared/contracts/content.types';
-import type { TranslationLanguage } from '../../shared/contracts/export.types';
-import type { TranslationStore } from '../ai/stores/TranslationStore';
-import type { TranslationSegment } from '../../shared/contracts/translation.types';
 
 import type { EntryStore } from '../feed/stores/EntryStore';
 import type { ContentStore } from '../feed/stores/ContentStore';
@@ -24,7 +21,6 @@ export class ExportService {
     private contentService: ContentService,
     private db: Database.Database,
     private annotationService?: AnnotationService,
-    private translationStore?: TranslationStore,
   ) {}
 
   // ── 清洗状态检查 ────────────────────────────────────────
@@ -99,7 +95,6 @@ export class ExportService {
   prepareArticleData(
     entryId: number,
     options: PerArticleOptions,
-    translationLanguage?: TranslationLanguage,
   ): ExportableArticle {
     const entry = this.entryStore.findById(entryId);
     if (!entry) {
@@ -129,7 +124,6 @@ export class ExportService {
       author: entry.author,
       publishedAt: entry.publishedAt,
       cleanedMarkdown: content.markdown || '',
-      cleanedHtml: content.cleanedHtml,
     };
 
     // Feed title from entry → feed relation
@@ -147,21 +141,7 @@ export class ExportService {
 
     // Translation
     if (options.includeTranslation) {
-      if (translationLanguage && this.translationStore) {
-        const segments = this.findTranslationSegments(
-          entryId,
-          translationLanguage.sourceLanguage,
-          translationLanguage.targetLanguage,
-        );
-        if (segments) {
-          result.translationSegments = segments;
-        } else {
-          // Fallback to old plain text approach if segments unavailable
-          result.translation = this.findTranslationContent(entryId);
-        }
-      } else {
-        result.translation = this.findTranslationContent(entryId);
-      }
+      result.translation = this.findTranslationContent(entryId);
     }
 
     // Notes (P1) — 同时填充 annotations 原始数据供脚注格式使用
@@ -185,14 +165,10 @@ export class ExportService {
    * 聚合多篇文章的导出数据。
    */
   prepareMultipleArticleData(
-    entries: Array<{
-      entryId: number;
-      options: PerArticleOptions;
-      translationLanguage?: TranslationLanguage;
-    }>,
+    entries: Array<{ entryId: number; options: PerArticleOptions }>,
   ): ExportableArticle[] {
-    return entries.map(({ entryId, options, translationLanguage }) =>
-      this.prepareArticleData(entryId, options, translationLanguage),
+    return entries.map(({ entryId, options }) =>
+      this.prepareArticleData(entryId, options),
     );
   }
 
@@ -250,37 +226,14 @@ export class ExportService {
     const rows = this.db
       .prepare(
         `SELECT ts.translatedText
-         FROM translation_segment ts
-         WHERE ts.translationResultId = (
-           SELECT id FROM translation_result
-           WHERE entryId = ? AND status = 'succeeded'
-           ORDER BY updatedAt DESC LIMIT 1
-         )
+         FROM translation_result tr
+         JOIN translation_segment ts ON ts.translationResultId = tr.id
+         WHERE tr.entryId = ? AND tr.status = 'succeeded'
          ORDER BY ts.orderIndex ASC`,
       )
       .all(entryId) as Array<{ translatedText: string | null }>;
     if (rows.length === 0) return undefined;
     return rows.map((r) => r.translatedText ?? '').join('\n\n');
-  }
-
-  /**
-   * 通过 TranslationStore 查找最新成功 run 的 segments（每段含原文 HTML，用于 interleaved 格式）。
-   * 只取最新一个 run，修复旧 SQL 混用多个 run 的重复/乱序 bug。
-   */
-  private findTranslationSegments(
-    entryId: number,
-    sourceLanguage: import('../../shared/contracts/translation.types').TranslationSourceLanguage,
-    targetLanguage: import('../../shared/contracts/translation.types').TranslationTargetLanguage,
-  ): TranslationSegment[] | undefined {
-    if (!this.translationStore) return undefined;
-    const result = this.translationStore.findLatestResult(
-      entryId,
-      sourceLanguage,
-      targetLanguage,
-    );
-    if (!result || result.status !== 'succeeded') return undefined;
-    // 只返回成功的 segment
-    return result.segments.filter((s) => s.status === 'succeeded');
   }
 
   private findAnnotations(entryId: number): import('../../shared/contracts/annotation.types').EntryAnnotation[] {
