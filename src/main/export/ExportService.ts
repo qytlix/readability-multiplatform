@@ -264,12 +264,8 @@ export class ExportService {
   }
 
   /**
-   * 通过 TranslationStore 查找翻译 segments（每段含原文 HTML，用于 interleaved 格式）。
-   *
-   * 策略：
-   * 1. 优先取最新 run（user 可能刚触发翻译，latest 就是用户要的）
-   * 2. 如果最新 run 不是 succeeded，降级到找最新 succeeded run
-   *    （content 变更后 re-translate 可能还没完成，但旧结果还能用）
+   * 通过 TranslationStore 查找最新成功 run 的 segments（每段含原文 HTML，用于 interleaved 格式）。
+   * 只取最新一个 run，修复旧 SQL 混用多个 run 的重复/乱序 bug。
    */
   private findTranslationSegments(
     entryId: number,
@@ -277,28 +273,14 @@ export class ExportService {
     targetLanguage: import('../../shared/contracts/translation.types').TranslationTargetLanguage,
   ): TranslationSegment[] | undefined {
     if (!this.translationStore) return undefined;
-
-    // 策略 1：最新 run（可能 succeed/running/failed）
-    const latest = this.translationStore.findLatestResult(
+    const result = this.translationStore.findLatestResult(
       entryId,
       sourceLanguage,
       targetLanguage,
     );
-    if (latest && latest.status === 'succeeded') {
-      return latest.segments.filter((s) => s.status === 'succeeded');
-    }
-
-    // 策略 2：找最新 succeeded run（覆盖 re-translate 还没完成的情况）
-    const succeeded = this.translationStore.findLatestSucceededResult(
-      entryId,
-      sourceLanguage,
-      targetLanguage,
-    );
-    if (succeeded) {
-      return succeeded.segments.filter((s) => s.status === 'succeeded');
-    }
-
-    return undefined;
+    if (!result || result.status !== 'succeeded') return undefined;
+    // 只返回成功的 segment
+    return result.segments.filter((s) => s.status === 'succeeded');
   }
 
   private findAnnotations(entryId: number): import('../../shared/contracts/annotation.types').EntryAnnotation[] {
