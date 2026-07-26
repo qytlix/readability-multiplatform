@@ -137,6 +137,12 @@ export const ExportOptionsDialog = ({
     includeNotes: articles.some((a) => a.hasNotes),
   }), [articles]);
 
+  // 是否有至少一篇已就绪（清洗成功）的文章
+  const hasReadyArticles = useMemo(
+    () => articles.some((a) => getEffectiveStatus(a.entryId) === 'success'),
+    [articles, getEffectiveStatus],
+  );
+
   // 初始化 / articles 变化时重置
   useEffect(() => {
     if (!open) return;
@@ -403,8 +409,18 @@ export const ExportOptionsDialog = ({
           </button>
           <button
             type="button"
-            disabled={cleaningIds.size > 0}
-            onClick={() => onConfirm(perArticleOptions)}
+            disabled={cleaningIds.size > 0 || !hasReadyArticles}
+            onClick={() => {
+              const readyOptions = new Map(
+                Array.from(perArticleOptions.entries()).filter(([entryId]) => {
+                  const article = articles.find((a) => a.entryId === entryId);
+                  return article && getEffectiveStatus(article.entryId) === 'success';
+                })
+              );
+              if (readyOptions.size > 0) {
+                onConfirm(readyOptions);
+              }
+            }}
           >
             下一步
           </button>
