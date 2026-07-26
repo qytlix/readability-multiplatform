@@ -29,8 +29,15 @@ import {
 } from '../translation/TranslationPanel';
 import type { AiPreferences } from '../settings/aiPreferences';
 import { InlineTranslationOverlay } from '../translation/InlineTranslationOverlay';
-import { SummaryIcon, TranslateIcon } from '../reader/ReaderIcons';
+import { SummaryIcon, TranslateIcon, ExportIcon } from '../reader/ReaderIcons';
 import { formatArticleDate, getArticleDateLocale } from './articleMetadata';
+import {
+  checkAvailability,
+  exportSingleEntry,
+} from './entryExport';
+import { ExportOptionsDialog } from './ExportOptionsDialog';
+import type { ArticleAvailability } from '../../../shared/contracts/export.types';
+import type { PerArticleOptions } from '../../../shared/contracts/export.types';
 import type { EntryAIViewState } from './entryAIViewState';
 import {
   calculateReadingProgress,
@@ -99,6 +106,8 @@ export const EntryDetail = ({
   const [isSummaryGenerating, setIsSummaryGenerating] = useState(false);
   const [isTranslationGenerating, setIsTranslationGenerating] = useState(false);
   const [isTitleTranslating, setIsTitleTranslating] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportArticleAvail, setExportArticleAvail] = useState<ArticleAvailability | null>(null);
   const [titleTranslationTarget, setTitleTranslationTarget] = useState<HTMLDivElement | null>(null);
   const [isFloatingHeaderVisible, setIsFloatingHeaderVisible] = useState(false);
   const prevEntryId = useRef<number | null>(null);
@@ -422,6 +431,37 @@ export const EntryDetail = ({
     return () => window.removeEventListener('mousemove', revealHeaderAtWindowTop);
   }, []);
 
+  const handleExportClick = useCallback(async (): Promise<void> => {
+    if (!entry) return;
+    const result = await checkAvailability([entry.id]);
+    if (!result.ok) {
+      return;
+    }
+    const avail = result.data.articles[0];
+    if (!avail) return;
+    setExportArticleAvail(avail);
+    setShowExportDialog(true);
+  }, [entry]);
+
+  const handleExportConfirm = useCallback(
+    async (perArticleOptions: Map<number, PerArticleOptions>): Promise<void> => {
+      setShowExportDialog(false);
+      if (!entry) return;
+      const options = perArticleOptions.get(entry.id);
+      if (!options) return;
+      const result = await exportSingleEntry(entry.id, options);
+      if (result.ok) {
+        const filePath = result.data.filePath;
+        console.log('Export saved to:', filePath);
+      }
+    },
+    [entry],
+  );
+
+  const handleExportCancel = useCallback((): void => {
+    setShowExportDialog(false);
+  }, []);
+
   if (readerDisplayState === 'feed-loading') {
     return <div className="entry-detail empty entry-detail-empty-state">正在载入订阅源…</div>;
   }
@@ -726,6 +766,18 @@ export const EntryDetail = ({
         >
           <TranslateIcon />
         </button>
+        <button
+          type="button"
+          className=""
+          aria-label="导出为 Markdown"
+          disabled={status !== 'success' || !content?.markdown.trim()}
+          title={status !== 'success' || !content?.markdown.trim()
+            ? '文章尚未完成内容清洗'
+            : '导出为 Markdown'}
+          onClick={() => void handleExportClick()}
+        >
+          <ExportIcon />
+        </button>
       </div>,
       aiToolbarTarget,
     )
@@ -873,6 +925,13 @@ export const EntryDetail = ({
           expertId={aiPreferences.translationExpertId}
         />
       </div>
+
+      <ExportOptionsDialog
+        open={showExportDialog}
+        articles={exportArticleAvail ? [exportArticleAvail] : []}
+        onConfirm={handleExportConfirm}
+        onCancel={handleExportCancel}
+      />
     </>
   );
 };
