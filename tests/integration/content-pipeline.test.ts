@@ -53,6 +53,77 @@ describe('ContentCleaner', () => {
     expect(result.content).toContain('虚拟 DOM');
   });
 
+  it('removes publisher chrome outside the primary article root', () => {
+    const articleParagraph = (
+      '正文段落保留站内链接和文章本身的信息，同时提供足够文本供正文提取器稳定识别。'
+    ).repeat(12);
+    const result = cleaner.clean(
+      `<html>
+        <head><title>我的 AI 编程旅程 Part 1</title></head>
+        <body>
+          <div id="container">
+            <header>
+              <h1><a href="/">Paradigm X</a></h1>
+              <p><em>Vision quests of a soulhacker</em></p>
+            </header>
+            <nav>
+              <ul>
+                <li><a href="/posts/">全部文章</a></li>
+                <li><a href="/tags/">标签</a></li>
+                <li><a href="/about/">关于</a></li>
+              </ul>
+            </nav>
+            <main>
+              <article>
+                <h1>我的 AI 编程旅程 Part 1</h1>
+                <p>${articleParagraph}</p>
+                <p><a href="/posts/good-code/">文章中的相关链接</a></p>
+                <p>${articleParagraph}</p>
+              </article>
+            </main>
+          </div>
+        </body>
+      </html>`,
+      'https://soulhacker.me/posts/ai-coding-pt1/',
+    );
+
+    expect(result.content).toContain('正文段落保留站内链接');
+    expect(result.content).toContain('文章中的相关链接');
+    expect(result.content).not.toContain('Paradigm X');
+    expect(result.content).not.toContain('Vision quests of a soulhacker');
+    expect(result.content).not.toContain('全部文章');
+    expect(result.content).not.toContain('标签');
+    expect(result.content).not.toContain('关于');
+  });
+
+  it('removes publisher chrome from stale cached Reader HTML', () => {
+    const cleanedHtml = cleaner.cleanStoredHtml(
+      `<div id="readability-page-1">
+        <div id="container">
+          <header>
+            <h2><a href="https://soulhacker.me/">Paradigm X</a></h2>
+            <p><em>Vision quests of a soulhacker</em></p>
+          </header>
+          <nav>
+            <a href="https://soulhacker.me/posts/">全部文章</a>
+            <a href="https://soulhacker.me/tags/">标签</a>
+            <a href="https://soulhacker.me/about/">关于</a>
+          </nav>
+          <main>
+            <article>
+              <p>应当保留的正文内容。</p>
+            </article>
+          </main>
+        </div>
+      </div>`,
+    );
+
+    expect(cleanedHtml).toContain('应当保留的正文内容');
+    expect(cleanedHtml).not.toContain('Paradigm X');
+    expect(cleanedHtml).not.toContain('Vision quests of a soulhacker');
+    expect(cleanedHtml).not.toContain('全部文章');
+  });
+
   it('should sanitize scripts and event handlers', () => {
     const result = cleaner.clean(
       `<html><body><article><h1>Test</h1><p>Hello</p></article></body></html>`,

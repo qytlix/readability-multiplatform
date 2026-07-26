@@ -205,9 +205,15 @@ export const EntryDetail = ({
             return;
           }
 
-          if (existingResult.data !== null) {
-            // Already has cleaned content
-            setContent(existingResult.data);
+          const existingContent = existingResult.data;
+          const hasRenderableCachedContent =
+            existingContent?.pipelineStatus === 'success'
+            && (
+              existingContent.cleanedHtml.trim().length > 0
+              || Boolean(existingContent.html?.trim())
+            );
+          if (existingContent && hasRenderableCachedContent) {
+            setContent(existingContent);
             setStatus('success');
             return;
           }

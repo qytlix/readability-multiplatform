@@ -8,7 +8,7 @@ import {
   removeUntranslatableIcons,
 } from './ContentGraphics';
 
-export const CONTENT_CLEANER_VERSION = 5;
+export const CONTENT_CLEANER_VERSION = 6;
 
 export class ContentCleaner {
   /**
@@ -23,6 +23,7 @@ export class ContentCleaner {
   clean(html: string, baseUrl: string): CleanResult {
     const dom = new JSDOM(html, { url: baseUrl });
     hydrateArcStructuredContent(dom.window.document, baseUrl);
+    removePublisherChrome(dom.window.document);
     removeCssHiddenElements(dom.window.document);
     protectMeaningfulArticleFigures(dom.window.document);
     removeSourceDecorativeGraphics(dom.window.document.body);
@@ -44,6 +45,7 @@ export class ContentCleaner {
     // DOMPurify may wrap output in a container; serialize back to string
     const container = dom.window.document.createElement('div');
     container.innerHTML = sanitized;
+    removePublisherChrome(container);
     removeReaderProtectionClasses(container);
     normalizeReaderImages(container, baseUrl);
     normalizeReaderMedia(container, baseUrl);
@@ -61,10 +63,57 @@ export class ContentCleaner {
   cleanStoredHtml(html: string): string {
     const dom = new JSDOM(`<body>${html}</body>`);
     const body = dom.window.document.body;
+    removePublisherChrome(body);
     normalizeReaderAuthorBlocks(body);
     removeUntranslatableIcons(body);
     return body.innerHTML;
   }
+}
+
+/**
+ * Readability can fall back to a common ancestor when a publisher wraps its
+ * site header, navigation, and article in the same container. Remove only the
+ * semantic chrome outside the strongest article/main root so article-local
+ * headers and navigation remain available to the extractor.
+ */
+function removePublisherChrome(root: ParentNode): void {
+  const readingRoot = findPrimaryReadingRoot(root);
+  if (!readingRoot) return;
+
+  for (const element of root.querySelectorAll(
+    'header, nav, footer, [role="banner"], [role="navigation"], [role="contentinfo"]',
+  )) {
+    if (
+      element === readingRoot
+      || element.contains(readingRoot)
+      || readingRoot.contains(element)
+    ) {
+      continue;
+    }
+    element.remove();
+  }
+}
+
+function findPrimaryReadingRoot(root: ParentNode): Element | null {
+  const article = findLongestElement(root.querySelectorAll('article'));
+  if (article) return article;
+  return findLongestElement(root.querySelectorAll('main, [role="main"]'));
+}
+
+function findLongestElement(elements: NodeListOf<Element>): Element | null {
+  let longest: Element | null = null;
+  let longestTextLength = -1;
+
+  for (const element of elements) {
+    const textLength = element.textContent?.replace(/\s+/g, ' ').trim().length
+      ?? 0;
+    if (textLength > longestTextLength) {
+      longest = element;
+      longestTextLength = textLength;
+    }
+  }
+
+  return longest;
 }
 
 /**
