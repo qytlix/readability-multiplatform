@@ -4636,6 +4636,17 @@ body.workspace-is-resizing * {
   color: var(--reader-text-muted);
 }
 
+/* Make the retranslation acknowledgement action easy to read in both themes. */
+.translation-notice-dialog .translation-notice-confirm {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* Keep the retranslation acknowledgement legible against its accent surface. */
+.reader-page[data-theme="light"] .translation-notice-dialog .translation-notice-confirm {
+  color: #0f211a;
+}
+
 .reader-page[data-theme="light"] :is(
   .translation-notice-dialog,
   .translation-setup-notice-dialog
