@@ -80,7 +80,7 @@ export class FeedParserAdapter implements IFeedParserAdapter {
 
       result = {
         title: parsed.title ?? undefined,
-        siteUrl: parsed.link ?? undefined,
+        siteUrl: resolveFeedUrl(parsed.link, sourceUrl),
         feedUrl: sourceUrl,
         entries: [],
       };
@@ -188,15 +188,33 @@ export class FeedParserAdapter implements IFeedParserAdapter {
   ): ParsedEntry {
     // GUID 优先级：guid > id(JSON Feed) > link > sourceUrl
     const guid = (item.guid ?? item.id ?? item.link ?? sourceUrl) as string;
+    const entryUrl = item.link ?? item.url;
 
     return {
       guid: guid ?? '',
-      url: (item.link ?? item.url) as string | undefined,
+      url: resolveFeedUrl(entryUrl, sourceUrl),
       title: item.title as string | undefined,
       author: (item.creator ?? item.author) as string | undefined,
       publishedAt: (item.isoDate ?? item.pubDate) as string | undefined,
       summary: (item.summary ?? item.contentSnippet) as string | undefined,
       contentHtml: (item.content ?? item.content_html) as string | undefined,
     };
+  }
+}
+
+function resolveFeedUrl(value: unknown, sourceUrl: string): string | undefined {
+  if (typeof value !== 'string' || value.trim() === '') return undefined;
+  const trimmedValue = value.trim();
+
+  try {
+    new URL(trimmedValue);
+    return trimmedValue;
+  } catch {
+    try {
+      return new URL(trimmedValue, sourceUrl).href;
+    } catch {
+      // Keep the publisher value available for downstream diagnostics.
+      return value;
+    }
   }
 }

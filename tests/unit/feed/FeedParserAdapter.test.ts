@@ -214,6 +214,30 @@ describe('FeedParserAdapter', () => {
       ).rejects.toThrow('JSON Feed parse failed');
     });
 
+    it('should resolve relative site and entry links against the feed URL', async () => {
+      const relativeLinkFeed = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>Paradigm X</title>
+  <link>/</link>
+  <item>
+    <guid>/posts/good-code/</guid>
+    <title>什么是好的代码</title>
+    <link>/posts/good-code/</link>
+  </item>
+</channel></rss>`;
+
+      const result = await adapter.parse(
+        relativeLinkFeed,
+        'https://soulhacker.me/index.xml',
+      );
+
+      expect(result.siteUrl).toBe('https://soulhacker.me/');
+      expect(result.entries[0].guid).toBe('/posts/good-code/');
+      expect(result.entries[0].url).toBe(
+        'https://soulhacker.me/posts/good-code/',
+      );
+    });
+
     it('should throw on JSON without valid feed version', async () => {
       await expect(
         adapter.parse(

@@ -17,6 +17,7 @@ import { MIGRATION_012 } from '../migrations/012_expand_ai_providers';
 import { MIGRATION_013 } from '../migrations/013_expand_translation_languages';
 import { MIGRATION_014 } from '../migrations/014_add_translation_context_and_experts';
 import { MIGRATION_015 } from '../migrations/015_add_terminology_libraries';
+import { runMigration016 } from '../migrations/016_normalize_relative_entry_urls';
 
 interface Migration {
   id: string;
@@ -48,6 +49,7 @@ const MIGRATIONS: Migration[] = [
   { id: '013_expand_translation_languages', sql: MIGRATION_013 },
   { id: '014_add_translation_context_and_experts', sql: MIGRATION_014 },
   { id: '015_add_terminology_libraries', sql: MIGRATION_015 },
+  { id: '016_normalize_relative_entry_urls', run: runMigration016 },
 ];
 
 export class DatabaseManager {
