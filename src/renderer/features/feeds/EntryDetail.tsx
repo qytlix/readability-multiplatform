@@ -137,6 +137,8 @@ export const EntryDetail = ({
   );
   const [readingBookTurn, setReadingBookTurn] =
     useState<ReadingBookTurnMotion | null>(null);
+  const [readingJumpTarget, setReadingJumpTarget] =
+    useState<'start' | 'end'>('end');
   const prevEntryId = useRef<number | null>(null);
   const handledRefreshVersionsRef = useRef(new Map<number, number>());
   const abortRef = useRef<AbortController | null>(null);
@@ -341,6 +343,7 @@ export const EntryDetail = ({
     setIsTitleTranslating(false);
     setVisibleReadingProgress(entry?.readingProgress ?? 0);
     setReadingBookTurn(null);
+    setReadingJumpTarget('end');
     lastReadingBookSampleAtRef.current = null;
     readingBookDirectionRef.current = null;
     readingBookDistanceRef.current = 0;
@@ -364,6 +367,12 @@ export const EntryDetail = ({
 
     const entryId = entry.id;
     const savedReadingProgress = entry.readingProgress;
+    if (savedReadingProgress >= 1) {
+      restoredEntryIdRef.current = entryId;
+      isRestoringProgressRef.current = false;
+      return;
+    }
+
     let secondFrame = 0;
     let restoreFrame = 0;
     let releaseFrame = 0;
@@ -693,6 +702,7 @@ export const EntryDetail = ({
 
     const turnDirection = getReadingBookTurnDirection(scrollDelta);
     if (turnDirection) {
+      setReadingJumpTarget(turnDirection === 'left' ? 'end' : 'start');
       const sampleAt = event.timeStamp;
       const previousSampleAt = lastReadingBookSampleAtRef.current;
       const elapsedSinceSample = previousSampleAt === null
@@ -766,6 +776,17 @@ export const EntryDetail = ({
     hasUserScrolledSinceRestoreRef.current = true;
     isRestoringProgressRef.current = false;
     programmaticScrollRef.current = null;
+  };
+
+  const handleReadingJump = (): void => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    handleReaderScrollIntent();
+    const top = readingJumpTarget === 'start'
+      ? 0
+      : Math.max(0, container.scrollHeight - container.clientHeight);
+    container.scrollTo({ top, behavior: 'smooth' });
   };
 
   const isPreview = content?.isPreview === true;
@@ -1057,6 +1078,8 @@ export const EntryDetail = ({
         <ReadingProgressBook
           readingProgress={visibleReadingProgress}
           turnMotion={readingBookTurn}
+          jumpTarget={readingJumpTarget}
+          onJump={handleReadingJump}
         />
       </div>
 
