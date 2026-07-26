@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, type PingResponse, type ShaleAPI } from '../shared/ipc';
 import type { ExportAPI } from '../shared/domain-api';
+import type { PerArticleOptions } from '../shared/contracts/export.types';
 import {
   FEED_IPC_CHANNELS,
   type FeedSyncProgress,
@@ -16,6 +17,8 @@ import { DIAGNOSTICS_IPC_CHANNELS } from '../shared/contracts/diagnostics.ipc';
 import { USAGE_IPC_CHANNELS } from '../shared/contracts/usage.ipc';
 import type { UsageStatisticsQuery } from '../shared/contracts/usage.types';
 import { ANNOTATION_IPC_CHANNELS } from '../shared/contracts/annotation.ipc';
+import { EXPORT_IPC_CHANNELS } from '../shared/contracts/export.ipc';
+import type { CleanProgressEvent } from '../shared/contracts/export.ipc';
 import type {
   AnnotationIdRequest,
   AnnotationListRequest,
@@ -213,12 +216,38 @@ const annotationAPI = {
     ipcRenderer.invoke(ANNOTATION_IPC_CHANNELS.delete, request),
 };
 
-// Placeholder — full implementation in EXP-03
 const exportAPI: ExportAPI = {
-  checkAvailability: () => Promise.reject(new Error('not implemented')),
-  cleanSingle: () => Promise.reject(new Error('not implemented')),
-  single: () => Promise.reject(new Error('not implemented')),
-  multiple: () => Promise.reject(new Error('not implemented')),
+  checkAvailability: (entryIds: number[]) =>
+    ipcRenderer.invoke(EXPORT_IPC_CHANNELS.checkAvailability, { entryIds }),
+  cleanSingle: (
+    entryId: number,
+    onProgress?: (event: CleanProgressEvent) => void,
+  ) => {
+    if (onProgress) {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        progress: CleanProgressEvent,
+      ) => onProgress(progress);
+      ipcRenderer.on(EXPORT_IPC_CHANNELS.cleanSingleProgress, handler);
+    }
+    const promise = ipcRenderer.invoke(EXPORT_IPC_CHANNELS.cleanSingle, {
+      entryId,
+    });
+    if (onProgress) {
+      promise.finally(() => {
+        ipcRenderer.removeAllListeners(EXPORT_IPC_CHANNELS.cleanSingleProgress);
+      });
+    }
+    return promise;
+  },
+  single: (entryId: number, options: PerArticleOptions) =>
+    ipcRenderer.invoke(EXPORT_IPC_CHANNELS.exportSingle, {
+      entryId,
+      options,
+    }),
+  multiple: (
+    entries: Array<{ entryId: number; options: PerArticleOptions }>,
+  ) => ipcRenderer.invoke(EXPORT_IPC_CHANNELS.exportMultiple, { entries }),
 };
 
 const shaleAPI: ShaleAPI = {
