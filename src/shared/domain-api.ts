@@ -11,6 +11,35 @@ import type {
   OPMLImportResult,
 } from './contracts/feed.ipc';
 import type { ExternalOpenRequest } from './contracts/external.ipc';
+import type {
+  CleanProgressEvent,
+  ExportMultipleResult,
+  ExportSingleResult,
+} from './contracts/export.ipc';
+import type {
+  ArticleAvailability,
+  PerArticleOptions,
+} from './contracts/export.types';
+
+export interface ExportAPI {
+  checkAvailability: (
+    entryIds: number[],
+  ) => Promise<IPCResult<{
+    articles: ArticleAvailability[];
+    unwashedIds: number[];
+  }>>;
+  cleanSingle: (
+    entryId: number,
+    onProgress?: (event: CleanProgressEvent) => void,
+  ) => Promise<IPCResult<void>>;
+  single: (
+    entryId: number,
+    options: PerArticleOptions,
+  ) => Promise<IPCResult<ExportSingleResult>>;
+  multiple: (
+    entries: Array<{ entryId: number; options: PerArticleOptions }>,
+  ) => Promise<IPCResult<ExportMultipleResult>>;
+}
 
 /**
  * Renderer-facing domain API interfaces.

@@ -224,6 +224,13 @@ export const LockIcon = ({ locked }: { locked: boolean }) => (
   </Icon>
 );
 
+export const ExportIcon = () => (
+  <Icon size={18}>
+    <path d="M8 1L8 10M8 10L5 7M8 10L11 7" />
+    <path d="M2 11L2 13C2 14.1046 2.89543 15 4 15L12 15C13.1046 15 14 14.1046 14 13L14 11" />
+  </Icon>
+);
+
 export const CloseIcon = () => (
   <Icon size={16}>
     <path d="m6 6 12 12M18 6 6 18" />
