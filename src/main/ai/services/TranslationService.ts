@@ -1150,6 +1150,28 @@ export class TranslationService {
       }
     };
 
+    const recoverMissingInput = async (
+      sourceRequest: ActiveProviderRequest,
+      input: SegmentTranslationInput,
+    ): Promise<ActiveProviderRequest | undefined> => {
+      if (sourceRequest.htmlValidationFailedSegmentIds.has(
+        input.segment.sourceSegmentId,
+      )) {
+        return streamTextSlotCompensation(input);
+      }
+
+      try {
+        return await streamPrompt([input], 'compensation');
+      } catch (error) {
+        if (!isHtmlValidationFailure(error)) throw error;
+
+        // A segment omitted by the batch has no HTML response to classify up
+        // front. If its one normal compensation attempt then changes the DOM,
+        // escalate once to the source-DOM-backed text-slot protocol.
+        return streamTextSlotCompensation(input);
+      }
+    };
+
     const compensateMissingInputs = async (providerRequest: ActiveProviderRequest): Promise<void> => {
       const missingInputs = inputs.filter(({ segment }) =>
         !settledIds.has(segment.sourceSegmentId));
@@ -1167,11 +1189,10 @@ export class TranslationService {
       });
       for (const missingInput of compensationInputs) {
         try {
-          const compensationRequest = providerRequest.htmlValidationFailedSegmentIds.has(
-            missingInput.segment.sourceSegmentId,
-          )
-            ? await streamTextSlotCompensation(missingInput)
-            : await streamPrompt([missingInput], 'compensation');
+          const compensationRequest = await recoverMissingInput(
+            providerRequest,
+            missingInput,
+          );
           if (
             compensationRequest
             && compensationRequest.responseDiagnostics.missingSegmentCount > 0

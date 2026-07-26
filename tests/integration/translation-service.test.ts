@@ -1096,6 +1096,127 @@ describe('TranslationService', () => {
     ]));
   });
 
+  it('escalates an omitted seven-slot segment to local DOM reconstruction when normal compensation changes its structure', async () => {
+    const complexSourceHtml = '<p>alpha <strong>beta</strong> three <a href="https://example.test/fixed" title="fixed">four</a> five <em>six</em> seven</p>';
+    const batchPrompts: BatchPromptSegment[][] = [];
+    const textSlotPrompts: TextSlotPromptSlot[][] = [];
+    const records: TranslationLogRecord[] = [];
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: `<p>intro.</p>${complexSourceHtml}`,
+      markdown: 'intro.\n\nsynthetic complex paragraph.',
+      pipelineStatus: 'success',
+    });
+    const recoveringProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        providerRequest.onFinishReason?.('stop');
+        if (providerRequest.prompt.includes('<text-slots-ndjson>')) {
+          const slots = parseTextSlotPrompt(providerRequest.prompt);
+          textSlotPrompts.push(slots);
+          for (const [index, slot] of slots.entries()) {
+            yield `${JSON.stringify({
+              textSlotId: slot.textSlotId,
+              translatedText: `slot-${index + 1}`,
+              appliedTermIds: [],
+            })}\n`;
+          }
+          return;
+        }
+
+        const segments = parseBatchPrompt(providerRequest.prompt);
+        batchPrompts.push(segments);
+        for (const segment of segments) {
+          if (
+            segments.length > 1
+            && segment.sourceHtml.includes('https://example.test/fixed')
+          ) {
+            continue;
+          }
+          const output = toBatchOutput(segment);
+          if (segment.sourceHtml.includes('https://example.test/fixed')) {
+            output.translatedHtml = output.translatedHtml.replace(
+              /<strong>.*?<\/strong>/,
+              '',
+            );
+          }
+          yield `${JSON.stringify(output)}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const recoveringService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      recoveringProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+    );
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
+
+    recoveringService.generate(request);
+    await vi.waitFor(() => {
+      expect(recoveringService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    const state = recoveringService.getState(request);
+    if (state.state !== 'succeeded') throw new Error('Expected recovered Translation.');
+    const recoveredSegment = state.result.segments.find((segment) =>
+      segment.sourceHtml.includes('https://example.test/fixed'));
+    expect(recoveredSegment).toMatchObject({ status: 'succeeded' });
+    expect(recoveredSegment?.translatedHtml).toContain('<strong>slot-2</strong>');
+    expect(recoveredSegment?.translatedHtml).toContain('href="https://example.test/fixed"');
+    expect(recoveredSegment?.translatedHtml).toContain('title="fixed"');
+    expect(batchPrompts.map((segments) => segments.length)).toEqual([3, 1]);
+    expect(textSlotPrompts).toHaveLength(1);
+    expect(textSlotPrompts[0]?.map((slot) => slot.textSlotId)).toEqual([
+      'slot-0001',
+      'slot-0002',
+      'slot-0003',
+      'slot-0004',
+      'slot-0005',
+      'slot-0006',
+      'slot-0007',
+    ]);
+
+    const failedNormalCompensation = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed
+      && (record.context as { requestKind?: unknown }).requestKind === 'compensation'
+      && (record.context as { compensationProtocol?: unknown }).compensationProtocol === undefined);
+    const completedTextSlotCompensation = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestCompleted
+      && (record.context as { compensationProtocol?: unknown }).compensationProtocol === 'text-slots');
+    const completedRun = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.runCompleted);
+    expect(failedNormalCompensation?.context).toMatchObject({
+      errorCode: TRANSLATION_LOG_ERROR_CODES.invalidStructure,
+      reasonCode: 'html_structure_invalid',
+      validationStage: 'html-validation',
+      htmlValidationReason: 'html_element_count_mismatch',
+      requestKind: 'compensation',
+    });
+    expect(completedTextSlotCompensation?.context).toMatchObject({
+      compensationProtocol: 'text-slots',
+      expectedTextSlotCount: 7,
+      acceptedTextSlotCount: 7,
+      missingTextSlotCount: 0,
+      acceptedSegmentCount: 1,
+    });
+    expect(completedRun?.context).toMatchObject({
+      providerRequestCount: 3,
+      batchRequestCount: 1,
+      compensationRequestCount: 2,
+      providerRequestSuccessCount: 2,
+      providerRequestFailureCount: 1,
+      missingSegmentCount: 1,
+      success: true,
+    });
+  });
+
   it('locally preserves a no-slot protected segment without another Provider request', async () => {
     const prompts: string[] = [];
     const records: TranslationLogRecord[] = [];
