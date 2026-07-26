@@ -820,42 +820,45 @@ export const EntryDetail = ({
     </div>
   );
 
+  const summaryTooltip = '总结';
+  const translationTooltip = '翻译';
+
   const aiToolbar = aiToolbarTarget
     ? createPortal(
       <div className="entry-detail-ai-actions" aria-label="AI reading aids">
-        <button
-          type="button"
-          className={aiViewState.summaryVisible ? 'is-active' : ''}
-          aria-label={isSummaryGenerating ? '正在生成摘要' : '生成或显示摘要'}
-          aria-controls="summary-result"
-          aria-expanded={aiViewState.summaryVisible}
-          aria-busy={isSummaryGenerating}
-          disabled={!isSummaryReady || isSummaryGenerating}
-          title={isSummaryGenerating
-            ? 'Summarizing...'
-            : isSummaryReady
-              ? 'Generate or show Summary'
-            : 'Summary is available after the article loads'}
-          onClick={() => activateSummary(true)}
+        <span
+          className="article-action-tooltip"
+          data-tooltip={summaryTooltip}
         >
-          <SummaryIcon />
-        </button>
-        <button
-          type="button"
-          className={aiViewState.translationVisible ? 'is-active' : ''}
-          aria-label={isTranslationGenerating ? '暂停翻译' : '翻译或切换双语视图'}
-          aria-pressed={aiViewState.translationVisible}
-          disabled={!isTranslationReady}
-          title={isTranslationGenerating
-            ? 'Pause Translation'
-            : isTranslationReady
-              ? 'Translate or toggle the bilingual view'
-            : 'Translation is available after the article loads'}
-          onClick={activateTranslation}
-          aria-busy={isTranslationGenerating}
+          <button
+            type="button"
+            className={aiViewState.summaryVisible ? 'is-active' : ''}
+            aria-label={isSummaryGenerating ? '正在生成摘要' : '生成或显示摘要'}
+            aria-controls="summary-result"
+            aria-expanded={aiViewState.summaryVisible}
+            aria-busy={isSummaryGenerating}
+            disabled={!isSummaryReady || isSummaryGenerating}
+            onClick={() => activateSummary(true)}
+          >
+            <SummaryIcon />
+          </button>
+        </span>
+        <span
+          className="article-action-tooltip"
+          data-tooltip={translationTooltip}
         >
-          <TranslateIcon />
-        </button>
+          <button
+            type="button"
+            className={aiViewState.translationVisible ? 'is-active' : ''}
+            aria-label={isTranslationGenerating ? '暂停翻译' : '翻译或切换双语视图'}
+            aria-pressed={aiViewState.translationVisible}
+            disabled={!isTranslationReady}
+            onClick={activateTranslation}
+            aria-busy={isTranslationGenerating}
+          >
+            <TranslateIcon />
+          </button>
+        </span>
       </div>,
       aiToolbarTarget,
     )
@@ -873,16 +876,20 @@ export const EntryDetail = ({
 
   const exportToolbar = exportToolbarTarget && !selectionMode
     ? createPortal(
-      <button
-        type="button"
-        className="type-button"
-        aria-label={exportTooltip}
-        disabled={isExportDisabled}
-        title={exportTooltip}
-        onClick={() => void handleExportClick()}
+      <span
+        className="article-action-tooltip"
+        data-tooltip={exportTooltip}
       >
-        <ExportIcon />
-      </button>,
+        <button
+          type="button"
+          className="type-button"
+          aria-label={exportTooltip}
+          disabled={isExportDisabled}
+          onClick={() => void handleExportClick()}
+        >
+          <ExportIcon />
+        </button>
+      </span>,
       exportToolbarTarget,
     )
     : null;

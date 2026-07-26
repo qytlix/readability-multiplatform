@@ -115,22 +115,25 @@ export const EntryList = ({
                 type="button"
                 className="icon-button story-list-filter"
                 aria-label={entryListCopy.filterArticles}
-                title={entryListCopy.filterArticles}
                 onClick={() => onFilterChange(nextFilter(filter))}
               >
                 <FilterIcon />
               </button>
             </span>
           )}
-          <button
-            type="button"
-            className={`icon-button story-list-select${selectionMode ? ' is-active' : ''}`}
-            aria-label={selectionMode ? '退出选择模式' : '选择文章'}
-            title={selectionMode ? '退出选择模式' : '选择文章'}
-            onClick={() => onSelectionModeChange?.(!selectionMode)}
+          <span
+            className="article-action-tooltip story-list-select-tooltip"
+            data-tooltip={selectionMode ? '退出选择模式' : '选择文章'}
           >
-            ☑
-          </button>
+            <button
+              type="button"
+              className={`icon-button story-list-select${selectionMode ? ' is-active' : ''}`}
+              aria-label={selectionMode ? '退出选择模式' : '选择文章'}
+              onClick={() => onSelectionModeChange?.(!selectionMode)}
+            >
+              ☑
+            </button>
+          </span>
         </div>
       </header>
 

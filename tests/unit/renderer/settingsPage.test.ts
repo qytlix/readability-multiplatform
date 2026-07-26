@@ -3,6 +3,8 @@
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import { AISettingsPage } from '../../../src/renderer/features/settings/AISettingsPage';
 import { DEFAULT_AI_PREFERENCES } from '../../../src/renderer/features/settings/aiPreferences';
 import type { TranslationExpert } from '../../../src/shared/contracts/translation-expert.types';
@@ -67,6 +69,62 @@ describe('full-screen settings page', () => {
       .toHaveLength(8);
     expect(container.textContent).not.toContain('Settings');
 
+    const navigationIndicator = container.querySelector<HTMLElement>(
+      '.settings-selection-indicator',
+    );
+    expect(navigationIndicator).not.toBeNull();
+    expect(navigationIndicator?.style.opacity).toBe('1');
+    expect(navigationLabels[0]).toBe('摘要');
+    expect(
+      container.querySelector<HTMLAnchorElement>(
+        '.settings-navigation-links a.is-active',
+      )?.getAttribute('href'),
+    ).toBe('#settings-summary');
+
+    const translationLink = container.querySelector<HTMLAnchorElement>(
+      '[data-settings-section="settings-translation"]',
+    );
+    await act(async () => translationLink?.click());
+    expect(translationLink?.classList.contains('is-active')).toBe(true);
+    expect(translationLink?.getAttribute('aria-current')).toBe('location');
+
+    const settingsMain = container.querySelector<HTMLElement>('.settings-page-main');
+    const translationSection = container.querySelector<HTMLElement>('#settings-translation');
+    if (!settingsMain || !translationSection) {
+      throw new Error('Settings scroll fixture did not render');
+    }
+    Object.defineProperties(settingsMain, {
+      clientHeight: { configurable: true, value: 500 },
+      scrollHeight: { configurable: true, value: 2_000 },
+      scrollTop: { configurable: true, value: 40, writable: true },
+    });
+    vi.spyOn(settingsMain, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      bottom: 500,
+      height: 500,
+      left: 0,
+      right: 800,
+      width: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(translationSection, 'getBoundingClientRect').mockReturnValue({
+      top: 620,
+      bottom: 1_020,
+      height: 400,
+      left: 0,
+      right: 800,
+      width: 800,
+      x: 0,
+      y: 620,
+      toJSON: () => ({}),
+    });
+
+    await act(async () => settingsMain.dispatchEvent(new Event('scroll')));
+    expect(translationLink?.classList.contains('is-active')).toBe(true);
+    expect(translationLink?.getAttribute('aria-current')).toBe('location');
+
     const backButton = container.querySelector<HTMLButtonElement>('.settings-back-button');
     expect(backButton?.textContent).toContain('返回阅读');
     act(() => backButton?.click());
@@ -74,6 +132,26 @@ describe('full-screen settings page', () => {
 
     act(() => root.unmount());
     container.remove();
+  });
+
+  it('uses the shared sliding indicator and horizontal hover reveal', () => {
+    const css = fs.readFileSync(
+      path.resolve(
+        __dirname,
+        '../../../src/renderer/features/reader/ReaderPage.css',
+      ),
+      'utf8',
+    );
+
+    expect(css).toMatch(
+      /\.settings-selection-indicator\s*\{[^}]*background: var\(--reader-accent\);[^}]*transform: translateY\(var\(--settings-selection-y, 0\)\);/s,
+    );
+    expect(css).toMatch(
+      /\.settings-navigation-links a::after\s*\{[^}]*background: var\(--reader-sidebar-active\);[^}]*transform: scaleX\(0\);/s,
+    );
+    expect(css).toMatch(
+      /\.settings-navigation-links a\.is-active::after\s*\{\s*transform: scaleX\(1\);/s,
+    );
   });
 
   it('renders terminology and experts as switch cards and preserves their selection behavior', async () => {
