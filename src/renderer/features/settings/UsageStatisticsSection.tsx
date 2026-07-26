@@ -10,7 +10,7 @@ import type {
 const RANGE_OPTIONS = [7, 30, 90] as const;
 const DEFAULT_RANGE_DAYS = 30;
 const MILLIS_PER_DAY = 24 * 60 * 60 * 1000;
-const numberFormatter = new Intl.NumberFormat();
+const numberFormatter = new Intl.NumberFormat('zh-CN');
 
 type UsageRangeDays = (typeof RANGE_OPTIONS)[number];
 type UsageLoadState = 'loading' | 'ready' | 'error';
@@ -79,14 +79,14 @@ export const UsageStatisticsSection = () => {
 
   return (
     <section className="settings-section" aria-labelledby="usage-statistics-title">
-      <h3 id="usage-statistics-title" className="settings-section-title">Usage Statistics</h3>
+      <h3 id="usage-statistics-title" className="settings-section-title">模型用量统计</h3>
       <div className="settings-card usage-statistics-card">
         <div className="usage-statistics-header">
           <p>
-            Provider-reported token usage for Summary and full-article Translation.
-            Daily totals use {statistics?.query.timeZone ?? timeZone}.
+            用于摘要和全文翻译的服务商实报 Token 用量。
+            按日统计使用 {statistics?.query.timeZone ?? timeZone}。
           </p>
-          <div className="usage-range-selector" aria-label="Usage statistics date range">
+          <div className="usage-range-selector" aria-label="模型用量统计日期范围">
             {RANGE_OPTIONS.map((days) => (
               <button
                 key={days}
@@ -95,20 +95,20 @@ export const UsageStatisticsSection = () => {
                 aria-pressed={rangeDays === days}
                 onClick={() => setRangeDays(days)}
               >
-                {days} days
+                {days} 天
               </button>
             ))}
           </div>
         </div>
 
         {loadState === 'loading' && (
-          <p className="usage-statistics-state" role="status">Loading usage statistics…</p>
+          <p className="usage-statistics-state" role="status">正在加载模型用量统计…</p>
         )}
 
         {loadState === 'error' && (
           <div className="usage-statistics-error" role="alert">
-            <p>Unable to load usage statistics. Try again.</p>
-            <button type="button" onClick={retry}>Retry</button>
+            <p>无法加载模型用量统计，请重试。</p>
+            <button type="button" onClick={retry}>重试</button>
           </div>
         )}
 
@@ -125,7 +125,7 @@ const UsageStatisticsContent = ({ statistics }: { statistics: UsageStatistics })
   if (totals.requestCount === 0) {
     return (
       <p className="usage-statistics-state" role="status">
-        No Provider requests were recorded for the selected period.
+        所选时间范围内没有记录服务商请求。
       </p>
     );
   }
@@ -136,38 +136,33 @@ const UsageStatisticsContent = ({ statistics }: { statistics: UsageStatistics })
 
   return (
     <div className="usage-statistics-content">
-      <div className="usage-statistics-summary" aria-label="Usage totals">
-        <UsageTokenMetric aggregate={totals} field="totalTokens" label="Provider-reported total tokens" />
-        <UsageTokenMetric aggregate={totals} field="inputTokens" label="Input tokens" />
-        <UsageTokenMetric aggregate={totals} field="outputTokens" label="Output tokens" />
+      <div className="usage-statistics-summary" aria-label="模型用量汇总">
+        <UsageTokenMetric aggregate={totals} field="totalTokens" label="服务商实报总 Token" />
+        <UsageTokenMetric aggregate={totals} field="inputTokens" label="输入 Token" />
+        <UsageTokenMetric aggregate={totals} field="outputTokens" label="输出 Token" />
         <UsageMetric
-          label="Provider requests"
+          label="服务商请求"
           value={formatNumber(totals.requestCount)}
-          detail="Each record represents one real Provider request."
+          detail="每条记录对应一次实际的服务商请求。"
         />
         <UsageMetric
-          label="Known executions"
+          label="已知执行次数"
           value={formatNumber(totals.attemptCoverage.knownAttemptCount)}
           detail={hasUnassignedRequests
-            ? `${formatNumber(totals.attemptCoverage.unassignedRequestCount)} historical ${pluralize('request', totals.attemptCoverage.unassignedRequestCount)} without an execution identity.`
-            : 'Distinct Summary or full-article Translation attempts.'}
+            ? `${formatNumber(totals.attemptCoverage.unassignedRequestCount)} 条历史请求没有执行标识。`
+            : '不同的摘要或全文翻译执行次数。'}
         />
       </div>
 
       {(hasIncompleteUsage || hasUnassignedRequests) && (
         <p className="usage-statistics-coverage-note" role="status">
-          These totals are not a complete estimate. Only token fields explicitly reported by
-          the Provider are summed; missing fields are not treated as zero.
+          这些总计并非完整估算，只累计服务商明确报告的 Token 字段，缺失字段不会按 0 处理。
           {hasIncompleteUsage && ` ${formatNumber(
             totals.tokenCoverage.partialRequests + totals.tokenCoverage.missingRequests,
-          )} ${pluralize(
-            'request', totals.tokenCoverage.partialRequests + totals.tokenCoverage.missingRequests,
-          )} reported partial or missing usage.`}
+          )} 条请求报告了部分用量或未报告用量。`}
           {hasUnassignedRequests && ` ${formatNumber(
             totals.attemptCoverage.unassignedRequestCount,
-          )} historical ${pluralize(
-            'request', totals.attemptCoverage.unassignedRequestCount,
-          )} cannot be assigned to an execution.`}
+          )} 条历史请求无法归属到某次执行。`}
         </p>
       )}
 
@@ -175,8 +170,8 @@ const UsageStatisticsContent = ({ statistics }: { statistics: UsageStatistics })
 
       <div className="usage-statistics-breakdowns">
         <UsageBreakdownTable
-          title="By day"
-          firstColumn="Date"
+          title="按日期"
+          firstColumn="日期"
           rows={statistics.byDay.map((item) => ({
             key: item.day,
             label: item.day,
@@ -184,20 +179,20 @@ const UsageStatisticsContent = ({ statistics }: { statistics: UsageStatistics })
           }))}
         />
         <UsageBreakdownTable
-          title="By feature"
-          firstColumn="Feature"
+          title="按功能"
+          firstColumn="功能"
           rows={statistics.byTaskType.map((item) => ({
             key: item.taskType,
-            label: item.taskType === 'summary' ? 'Summary' : 'Full translation',
+            label: item.taskType === 'summary' ? '摘要' : '全文翻译',
             aggregate: item,
           }))}
         />
         <UsageBreakdownTable
-          title="By Provider and model"
-          firstColumn="Provider + model"
+          title="按服务商和模型"
+          firstColumn="服务商 + 模型"
           rows={statistics.byModel.map((item) => ({
             key: `${String(item.providerProfileId)}\u0000${item.model}`,
-            label: `Provider #${String(item.providerProfileId)} · ${item.model}`,
+            label: `服务商 #${String(item.providerProfileId)} · ${item.model}`,
             aggregate: item,
           }))}
         />
@@ -220,17 +215,17 @@ const UsageTrendsCard = ({ statistics }: { statistics: UsageStatistics }) => {
     <section className="usage-trends-card" aria-labelledby="usage-trends-title">
       <div className="usage-trends-header">
         <div>
-          <h4 id="usage-trends-title">Usage Trends</h4>
-          <p>Daily buckets use {statistics.query.timeZone}.</p>
+          <h4 id="usage-trends-title">用量趋势</h4>
+          <p>按日统计使用 {statistics.query.timeZone}。</p>
         </div>
-        <div className="usage-trend-view-selector" aria-label="Usage trend metric">
+        <div className="usage-trend-view-selector" aria-label="用量趋势指标">
           <button
             type="button"
             className={view === 'tokens' ? 'is-selected' : ''}
             aria-pressed={view === 'tokens'}
             onClick={() => selectView('tokens')}
           >
-            Reported Tokens
+            实报 Token
           </button>
           <button
             type="button"
@@ -238,7 +233,7 @@ const UsageTrendsCard = ({ statistics }: { statistics: UsageStatistics }) => {
             aria-pressed={view === 'requests'}
             onClick={() => selectView('requests')}
           >
-            Requests
+            请求数
           </button>
         </div>
       </div>
@@ -292,7 +287,7 @@ const UsageTrendChart = ({
         className={`usage-trend-chart usage-trend-chart-${view}`}
         viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
         role="img"
-        aria-label={`${view === 'tokens' ? 'Provider-reported total token' : 'Provider request'} trend by day`}
+        aria-label={`按日期的${view === 'tokens' ? '服务商实报总 Token' : '服务商请求数'}趋势`}
         onMouseLeave={onDeactivatePoint}
       >
         {yTicks.map((tick) => {
@@ -333,7 +328,6 @@ const UsageTrendChart = ({
                   y={hasReportedZero ? plotBottom - 2 : y}
                   width={barWidth}
                   height={hasReportedZero ? 2 : Math.max(0, plotBottom - y)}
-                  rx={Math.min(2, barWidth / 2)}
                 />
               )}
               {view === 'tokens' && coverage === 'not-reported' && (
@@ -341,9 +335,6 @@ const UsageTrendChart = ({
                   className="usage-trend-unreported-marker"
                   d={`M ${x - 3} ${plotBottom - 6} L ${x + 3} ${plotBottom} M ${x + 3} ${plotBottom - 6} L ${x - 3} ${plotBottom}`}
                 />
-              )}
-              {view === 'requests' && (
-                <circle className="usage-trend-line-point" cx={x} cy={y} r={points.length > 45 ? 2 : 3} />
               )}
               <rect
                 className="usage-trend-hit-target"
@@ -388,9 +379,8 @@ const UsageTrendChart = ({
 
       {view === 'tokens' && (
         <p className="usage-trend-legend">
-          Bars show reported total tokens. Amber bars have partial total-token coverage;
-          crossed markers mean requests were recorded but total tokens were not reported.
-          Blank dates had no Provider requests.
+          柱状图显示实报总 Token；深绿色柱表示总 Token 覆盖不完整，交叉标记表示已有请求但未报告总 Token，
+          空白日期没有服务商请求。
         </p>
       )}
     </div>
@@ -409,16 +399,16 @@ const UsageTrendTooltip = ({
     <div className="usage-trend-tooltip" role="status">
       <strong>{point.day}</strong>
       {view === 'requests' ? (
-        <span>Requests: {formatNumber(aggregate?.requestCount ?? 0)}</span>
+        <span>请求数：{formatNumber(aggregate?.requestCount ?? 0)}</span>
       ) : aggregate ? (
         <>
-          <span>Provider-reported total tokens: {formatTrendTokenValue(aggregate, 'totalTokens')}</span>
-          <span>Input tokens: {formatTrendTokenValue(aggregate, 'inputTokens')}</span>
-          <span>Output tokens: {formatTrendTokenValue(aggregate, 'outputTokens')}</span>
-          <span>Token coverage: {formatTokenCoverage(aggregate)}</span>
+          <span>服务商实报总 Token：{formatTrendTokenValue(aggregate, 'totalTokens')}</span>
+          <span>输入 Token：{formatTrendTokenValue(aggregate, 'inputTokens')}</span>
+          <span>输出 Token：{formatTrendTokenValue(aggregate, 'outputTokens')}</span>
+          <span>Token 覆盖状态：{formatTokenCoverage(aggregate)}</span>
         </>
       ) : (
-        <span>No Provider requests were recorded.</span>
+        <span>没有记录服务商请求。</span>
       )}
     </div>
   );
@@ -435,11 +425,11 @@ const UsageTokenMetric = ({
 }) => {
   const reportedRequests = aggregate.tokenCoverage[field];
   const value = reportedRequests === 0
-    ? 'Not reported'
+    ? '未报告'
     : formatNumber(aggregate.tokenTotals[field]);
   const detail = reportedRequests === 0
-    ? 'No requests reported this token field.'
-    : `Reported by ${formatNumber(reportedRequests)} of ${formatNumber(aggregate.requestCount)} ${pluralize('request', aggregate.requestCount)}.`;
+    ? '没有请求报告此 Token 字段。'
+    : `${formatNumber(aggregate.requestCount)} 条请求中有 ${formatNumber(reportedRequests)} 条报告了此字段。`;
 
   return <UsageMetric label={label} value={value} detail={detail} />;
 };
@@ -473,14 +463,22 @@ const UsageBreakdownTable = ({
     <h4>{title}</h4>
     <div className="usage-statistics-table-wrap">
       <table>
+        <colgroup>
+          <col />
+          <col className="usage-statistics-table-numeric-column" />
+          <col className="usage-statistics-table-numeric-column" />
+          <col className="usage-statistics-table-numeric-column" />
+          <col className="usage-statistics-table-numeric-column" />
+          <col className="usage-statistics-table-numeric-column" />
+        </colgroup>
         <thead>
           <tr>
             <th scope="col">{firstColumn}</th>
-            <th scope="col">Input</th>
-            <th scope="col">Output</th>
-            <th scope="col">Total</th>
-            <th scope="col">Requests</th>
-            <th scope="col">Executions</th>
+            <th scope="col">输入</th>
+            <th scope="col">输出</th>
+            <th scope="col">总计</th>
+            <th scope="col">请求</th>
+            <th scope="col">执行</th>
           </tr>
         </thead>
         <tbody>
@@ -508,11 +506,7 @@ const UsageTokenCell = ({
   field: TokenField;
 }) => {
   const isReported = aggregate.tokenCoverage[field] > 0;
-  return (
-    <td title={isReported ? undefined : 'Not reported by any request in this group'}>
-      {isReported ? formatNumber(aggregate.tokenTotals[field]) : '—'}
-    </td>
-  );
+  return <td>{isReported ? formatNumber(aggregate.tokenTotals[field]) : '—'}</td>;
 };
 
 interface UsageTrendPoint {
@@ -572,27 +566,27 @@ function getTokenCoverageState(aggregate?: UsageAggregate): TokenCoverageState {
 
 function formatTrendTokenValue(aggregate: UsageAggregate, field: TokenField): string {
   const reportedRequests = aggregate.tokenCoverage[field];
-  if (reportedRequests === 0) return 'Not reported';
-  return `${formatNumber(aggregate.tokenTotals[field])} (reported by ${formatNumber(reportedRequests)} of ${formatNumber(aggregate.requestCount)} ${pluralize('request', aggregate.requestCount)})`;
+  if (reportedRequests === 0) return '未报告';
+  return `${formatNumber(aggregate.tokenTotals[field])}（${formatNumber(aggregate.requestCount)} 条请求中有 ${formatNumber(reportedRequests)} 条实报）`;
 }
 
 function formatTokenCoverage(aggregate: UsageAggregate): string {
   const reportedRequests = aggregate.tokenCoverage.totalTokens;
   const coverage = getTokenCoverageState(aggregate);
   if (coverage === 'complete') {
-    return `Complete (${formatNumber(reportedRequests)} of ${formatNumber(aggregate.requestCount)} ${pluralize('request', aggregate.requestCount)} reported total tokens)`;
+    return `完整（${formatNumber(aggregate.requestCount)} 条请求中有 ${formatNumber(reportedRequests)} 条报告总 Token）`;
   }
   if (coverage === 'partial') {
-    return `Partial (${formatNumber(reportedRequests)} of ${formatNumber(aggregate.requestCount)} ${pluralize('request', aggregate.requestCount)} reported total tokens)`;
+    return `部分（${formatNumber(aggregate.requestCount)} 条请求中有 ${formatNumber(reportedRequests)} 条报告总 Token）`;
   }
-  return `Not reported (0 of ${formatNumber(aggregate.requestCount)} ${pluralize('request', aggregate.requestCount)} reported total tokens)`;
+  return `未报告（${formatNumber(aggregate.requestCount)} 条请求中有 0 条报告总 Token）`;
 }
 
 function createPointAriaLabel(point: UsageTrendPoint, view: UsageTrendView): string {
   const aggregate = point.aggregate;
-  if (!aggregate) return `${point.day}: no Provider requests`;
-  if (view === 'requests') return `${point.day}: ${formatNumber(aggregate.requestCount)} ${pluralize('request', aggregate.requestCount)}`;
-  return `${point.day}: ${formatTrendTokenValue(aggregate, 'totalTokens')}; ${formatTokenCoverage(aggregate)}`;
+  if (!aggregate) return `${point.day}：没有服务商请求`;
+  if (view === 'requests') return `${point.day}：${formatNumber(aggregate.requestCount)} 个请求`;
+  return `${point.day}：${formatTrendTokenValue(aggregate, 'totalTokens')}；${formatTokenCoverage(aggregate)}`;
 }
 
 function roundChartMaximum(value: number): number {
@@ -640,8 +634,7 @@ function createAreaPath(
 }
 
 function formatAxisValue(value: number): string {
-  if (value >= 1_000_000) return `${formatRoundedAxisValue(value / 1_000_000)}M`;
-  if (value >= 1_000) return `${formatRoundedAxisValue(value / 1_000)}K`;
+  if (value >= 10_000) return `${formatRoundedAxisValue(value / 10_000)}万`;
   return formatRoundedAxisValue(value);
 }
 
@@ -651,7 +644,7 @@ function formatRoundedAxisValue(value: number): string {
 
 function formatShortDay(day: string): string {
   const [year, month, date] = day.split('-').map(Number);
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'UTC',
     month: 'short',
     day: 'numeric',
@@ -677,8 +670,4 @@ function getSystemTimeZone(): string {
 
 function formatNumber(value: number): string {
   return numberFormatter.format(value);
-}
-
-function pluralize(noun: string, count: number): string {
-  return count === 1 ? noun : `${noun}s`;
 }

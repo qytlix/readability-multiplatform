@@ -2960,18 +2960,12 @@ body.workspace-is-resizing * {
   stroke-linejoin: round;
 }
 
-.usage-trend-line-point {
-  fill: var(--reader-input);
-  stroke: var(--reader-accent);
-  stroke-width: 1.6;
-}
-
 .usage-trend-bar {
-  fill: var(--reader-accent);
+  fill: var(--reader-accent-strong);
 }
 
 .usage-trend-bar.is-partial {
-  fill: #c99a53;
+  fill: color-mix(in srgb, var(--reader-accent) 74%, var(--reader-text-muted));
 }
 
 .usage-trend-bar.is-zero {
@@ -2980,7 +2974,7 @@ body.workspace-is-resizing * {
 
 .usage-trend-unreported-marker {
   fill: none;
-  stroke: #c99a53;
+  stroke: var(--reader-accent);
   stroke-width: 1.5;
   stroke-linecap: round;
 }
@@ -3053,15 +3047,21 @@ body.workspace-is-resizing * {
   width: 100%;
   min-width: 570px;
   border-collapse: collapse;
+  table-layout: fixed;
   color: var(--reader-text-soft);
   font-size: 11px;
   text-align: right;
+}
+
+.usage-statistics-table-numeric-column {
+  width: 86px;
 }
 
 .usage-statistics-table-wrap th,
 .usage-statistics-table-wrap td {
   padding: 9px 10px;
   border-bottom: 1px solid var(--reader-line);
+  vertical-align: middle;
   white-space: nowrap;
 }
 
