@@ -4710,6 +4710,7 @@ body.workspace-is-resizing * {
   width: min(520px, 100%);
   max-height: 80vh;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .export-options-single {
@@ -4790,16 +4791,17 @@ body.workspace-is-resizing * {
   gap: 8px;
   max-height: 340px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .export-options-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
   padding: 8px 10px;
   border-radius: 6px;
   background: var(--reader-surface);
+  overflow: hidden;
 }
 
 .export-options-row:hover {
@@ -4807,8 +4809,9 @@ body.workspace-is-resizing * {
 }
 
 .export-options-row-title {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
+  max-width: 55%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4819,7 +4822,7 @@ body.workspace-is-resizing * {
 .export-options-row-fields {
   display: flex;
   flex-shrink: 0;
-  gap: 8px;
+  gap: 16px;
 }
 
 .export-options-row-fields .export-option-checkbox {
@@ -4867,9 +4870,9 @@ body.workspace-is-resizing * {
 
 .export-options-row-status {
   flex-shrink: 0;
-  width: 20px;
-  text-align: center;
-  font-size: 14px;
+  width: 18px;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .export-options-row-status.is-failed {

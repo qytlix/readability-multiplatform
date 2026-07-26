@@ -28,7 +28,7 @@ import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
 import type { SummaryOperationLogger } from './ai/services/SummaryLogging';
 import type { TranslationOperationLogger } from './ai/services/TranslationLogging';
 import type { UsageLedgerOperationLogger } from './ai/services/UsageRecorder';
-import { removeApplicationMenu } from './application-menu';
+import { registerDevToolsShortcut, removeApplicationMenu } from './application-menu';
 import { MAIN_LIFECYCLE_EVENTS } from './logging/MainLifecycleEvents';
 import { StructuredLogger, type AppInitializationPhase } from './logging/StructuredLogger';
 import { NormalShutdownCoordinator } from './logging/NormalShutdownCoordinator';
@@ -89,6 +89,7 @@ const createWindow = (): void => {
   });
 
   mainWindow = newMainWindow;
+  registerDevToolsShortcut(newMainWindow);
   installMainWindowNavigationGuards(newMainWindow.webContents, applicationUrl);
   installPageZoomInputGuard(newMainWindow.webContents);
   initializePageZoom(newMainWindow.webContents, () => {
