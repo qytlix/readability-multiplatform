@@ -38,7 +38,14 @@ export const TranslationNoticeDialog = ({
         <h2 id={titleId}>重新翻译</h2>
         <p id={descriptionId}>{message}</p>
         <div className="dialog-actions">
-          <button ref={buttonRef} type="submit" onClick={onConfirm}>确认</button>
+          <button
+            ref={buttonRef}
+            type="submit"
+            className="translation-notice-confirm"
+            onClick={onConfirm}
+          >
+            确认
+          </button>
         </div>
       </section>
     </div>
