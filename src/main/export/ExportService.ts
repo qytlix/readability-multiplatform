@@ -144,9 +144,17 @@ export class ExportService {
       result.translation = this.findTranslationContent(entryId);
     }
 
-    // Notes (P1)
+    // Notes (P1) — 同时填充 annotations 原始数据供脚注格式使用
     if (options.includeNotes) {
-      result.notes = this.findNotesContent(entryId);
+      const annotations = this.findAnnotations(entryId);
+      result.annotations = annotations;
+      // 向后兼容：保留旧格式 notes 字符串
+      if (annotations.length > 0) {
+        result.notes = annotations
+          .map((a) => a.noteText || a.selectedText)
+          .filter(Boolean)
+          .join('\n');
+      }
     }
 
     result.exportOptions = options;
@@ -228,13 +236,8 @@ export class ExportService {
     return rows.map((r) => r.translatedText ?? '').join('\n\n');
   }
 
-  private findNotesContent(entryId: number): string | undefined {
-    if (!this.annotationService) return undefined;
-    const annotations = this.annotationService.list(entryId);
-    if (annotations.length === 0) return undefined;
-    return annotations
-      .map((a) => a.noteText || a.selectedText)
-      .filter(Boolean)
-      .join('\n');
+  private findAnnotations(entryId: number): import('../../shared/contracts/annotation.types').EntryAnnotation[] {
+    if (!this.annotationService) return [];
+    return this.annotationService.list(entryId);
   }
 }
