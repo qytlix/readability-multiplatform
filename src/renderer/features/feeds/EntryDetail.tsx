@@ -64,6 +64,7 @@ interface EntryDetailProps {
   onRetryEntries: () => void;
   aiPreferences: AiPreferences;
   aiToolbarTarget: HTMLDivElement | null;
+  exportToolbarTarget?: HTMLDivElement | null;
   onAIViewStateChange: (
     entryId: number,
     change: Partial<EntryAIViewState>,
@@ -94,6 +95,7 @@ export const EntryDetail = ({
   onRetryEntries,
   aiPreferences,
   aiToolbarTarget,
+  exportToolbarTarget = null,
   onAIViewStateChange,
   onReadingProgressChange,
   onContentRefreshComplete,
@@ -766,26 +768,33 @@ export const EntryDetail = ({
         >
           <TranslateIcon />
         </button>
-        <button
-          type="button"
-          className=""
-          aria-label="导出为 Markdown"
-          disabled={status !== 'success' || !content?.markdown.trim()}
-          title={status !== 'success' || !content?.markdown.trim()
-            ? '文章尚未完成内容清洗'
-            : '导出为 Markdown'}
-          onClick={() => void handleExportClick()}
-        >
-          <ExportIcon />
-        </button>
       </div>,
       aiToolbarTarget,
+    )
+    : null;
+
+  const exportToolbar = exportToolbarTarget
+    ? createPortal(
+      <button
+        type="button"
+        className="type-button"
+        aria-label="导出为 Markdown"
+        disabled={status !== 'success' || !content?.markdown.trim()}
+        title={status !== 'success' || !content?.markdown.trim()
+          ? '文章尚未完成内容清洗'
+          : '导出为 Markdown'}
+        onClick={() => void handleExportClick()}
+      >
+        <ExportIcon />
+      </button>,
+      exportToolbarTarget,
     )
     : null;
 
   return (
     <>
       {aiToolbar}
+      {exportToolbar}
       <div className="entry-detail">
         <div
           ref={scrollContainerRef}

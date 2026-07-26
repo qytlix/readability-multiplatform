@@ -123,6 +123,7 @@ export const App = () => {
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(() =>
     loadReaderTheme(window.localStorage));
   const [articleAIToolbarTarget, setArticleAIToolbarTarget] = useState<HTMLDivElement | null>(null);
+  const [articleExportToolbarTarget, setArticleExportToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [entryAIViewStates, setEntryAIViewStates] = useState<EntryAIViewStates>({});
   const [aiPreferences, setAiPreferences] = useState<AiPreferences>(() =>
     loadAiPreferences(window.localStorage));
@@ -871,6 +872,7 @@ export const App = () => {
                     Aa
                   </button>
                 </span>
+                <div ref={setArticleExportToolbarTarget} className="article-export-slot" />
                 <div className="article-more">
                   <button
                     type="button"
@@ -948,6 +950,7 @@ export const App = () => {
                 }}
                 aiPreferences={aiPreferences}
                 aiToolbarTarget={articleAIToolbarTarget}
+                exportToolbarTarget={articleExportToolbarTarget}
                 onAIViewStateChange={handleEntryAIViewStateChange}
                 onReadingProgressChange={handleReadingProgressChange}
                 onContentRefreshComplete={handleContentRefreshComplete}

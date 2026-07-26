@@ -719,6 +719,11 @@ body.workspace-is-resizing * {
   align-items: center;
 }
 
+.article-export-slot {
+  display: flex;
+  align-items: center;
+}
+
 .type-button {
   font-family: Georgia, serif;
   font-size: 14px;
