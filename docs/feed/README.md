@@ -258,6 +258,7 @@ export type ContentSegmentType =
   | 'paragraph'
   | 'list'
   | 'blockquote'
+  | 'preformatted'
   | 'caption';
 
 export interface ContentSegment {
@@ -300,6 +301,11 @@ export interface EntryListItem {
   pipelineStatus: PipelineStatus;
 }
 ```
+
+`preformatted` 只用于以 `<pre>` 呈现、但内容以自然语言为主的文本块。带
+`<code>`、代码/高亮语言标记、MathML/KaTeX/TeX、明显程序语法、公式或化学
+方程式特征的 `<pre>` 不生成 segment，Reader 保留其原始内容且 Translation
+不会将其发送给 Provider。
 
 ---
 

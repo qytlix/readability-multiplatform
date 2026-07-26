@@ -5,7 +5,7 @@ import type {
   ContentSegmentType,
 } from '../../../shared/contracts/content.types';
 
-export const CONTENT_SEGMENTER_VERSION = 'v4';
+export const CONTENT_SEGMENTER_VERSION = 'v5';
 
 export interface ContentSegmentMetadata {
   title?: string;
@@ -31,7 +31,7 @@ export class ContentSegmenter {
     const dom = new JSDOM(`<body>${cleanedHtml}</body>`);
     const elements = Array.from(
       dom.window.document.body.querySelectorAll(
-        'h1, h2, h3, h4, h5, h6, p, li, blockquote, cite, figcaption, caption',
+        'h1, h2, h3, h4, h5, h6, p, li, blockquote, cite, pre, figcaption, caption',
       ),
     );
     const segments: ContentSegment[] = [];
@@ -61,7 +61,7 @@ export class ContentSegmenter {
       .map((segment) => [
         segment.type,
         String(segment.orderIndex),
-        normalizeHtml(segment.sourceHtml),
+        segment.sourceHtml,
         normalizeWhitespace(segment.sourceText),
       ].join('\n'))
       .join('\n---\n');
@@ -92,6 +92,9 @@ function getSourceText(element: Element, type: ContentSegmentType): string {
 }
 
 function getSourceHtml(element: Element, type: ContentSegmentType): string {
+  if (type === 'preformatted') {
+    return element.outerHTML.replace(/\r\n?/g, '\n').trim();
+  }
   const source = type === 'list'
     ? cloneWithoutNestedLists(element)
     : element;
@@ -151,11 +154,13 @@ function toSegmentType(element: Element): ContentSegmentType | undefined {
   }
   if (tagName === 'p') return 'paragraph';
   if (tagName === 'li') return 'list';
+  if (tagName === 'pre') return 'preformatted';
   if (tagName === 'figcaption' || tagName === 'caption') return 'caption';
   return undefined;
 }
 
 function shouldSkipElement(element: Element, type: ContentSegmentType): boolean {
+  if (type === 'preformatted') return !isTranslatablePreformattedBlock(element);
   if (type === 'list') return false;
   if (type === 'blockquote') {
     if (element.tagName.toLowerCase() !== 'blockquote') return false;
@@ -164,6 +169,113 @@ function shouldSkipElement(element: Element, type: ContentSegmentType): boolean 
   if (element.parentElement?.closest('li, blockquote, ul, ol')) return true;
   if (type === 'paragraph' && element.closest('figure')) return true;
   return false;
+}
+
+const NON_PROSE_DESCENDANT_SELECTOR = [
+  'code',
+  'math',
+  'mjx-container',
+  '.katex',
+  '.MathJax',
+  '[data-language]',
+].join(', ');
+
+const NON_PROSE_CLASS_OR_LANGUAGE = [
+  /\b(?:code|highlight|highlighting|source-code|code-block|syntax|prettyprint)\b/i,
+  /\b(?:language|lang)-[\w-]+\b/i,
+  /\b(?:katex|mathjax|math-display|equation|formula)\b/i,
+];
+
+const TEX_OR_MATH_NOTATION =
+  /(?:\$\$|\\(?:begin|end|frac|sqrt|sum|prod|int|lim|left|right|mathrm|mathbf)\b|[∑∏∫√∞≈≠≤≥⊂⊃∈∉])/u;
+const REACTION_ARROW = /(?:-{1,2}>|<=>|⇌|⇋|⟶|→|↔)/u;
+const CHEMICAL_FORMULA = /^(?:\d*[A-Z][a-z]?\d*){2,}(?:[+-])?$/;
+const CONCLUSIVE_CODE_LINE = [
+  /^\s*(?:#!|#include\b|<\/?[a-z][^>]*>)/i,
+  /^\s*[{[]\s*["'][^"']+["']\s*:/,
+  /^\s*[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*\([^)]*\)\s*;?\s*$/,
+  /^\s*(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=/,
+  /^\s*(?:npm|npx|node|git|curl|wget|pip|python|docker|kubectl|sudo|apt(?:-get)?|brew)\b/i,
+  /(?:=>|::|===|!==|\+\+|--|&&|\|\||\?\.)/,
+];
+const CODE_LINE_PATTERNS = [
+  /^\s*(?:const|let|var|function|class|interface|type|enum|import|export|return|if|else|for|while|switch|try|catch|async|await|def|lambda|public|private|protected|package|SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b/i,
+  /[{};]\s*$/,
+];
+
+/**
+ * Some sites use a styled pre element for prose or an entire article. Keep
+ * those blocks translatable while conservatively excluding technical content
+ * whose literal form must not be changed.
+ */
+function isTranslatablePreformattedBlock(element: Element): boolean {
+  const rawText = (element.textContent ?? '').replace(/\r\n?/g, '\n').trim();
+  if (!hasNaturalLanguageText(rawText)) return false;
+  if (element.querySelector(NON_PROSE_DESCENDANT_SELECTOR)) return false;
+
+  const markupHints = [
+    element.getAttribute('class') ?? '',
+    element.getAttribute('id') ?? '',
+    element.getAttribute('data-lang') ?? '',
+    element.getAttribute('data-language') ?? '',
+  ].join(' ');
+  if (NON_PROSE_CLASS_OR_LANGUAGE.some((pattern) => pattern.test(markupHints))) {
+    return false;
+  }
+  if (looksLikeMathOrChemistry(rawText)) return false;
+  return !looksLikeCode(rawText);
+}
+
+function hasNaturalLanguageText(value: string): boolean {
+  return (value.match(/\p{L}/gu) ?? []).length >= 4;
+}
+
+function looksLikeMathOrChemistry(value: string): boolean {
+  if (TEX_OR_MATH_NOTATION.test(value)) return true;
+
+  const compactLines = value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (REACTION_ARROW.test(value)) {
+    const formulaCount = (value.match(/\b(?:\d*[A-Z][a-z]?\d*){2,}(?:[+-])?\b/g) ?? [])
+      .length;
+    if (formulaCount >= 1 || compactLines.length <= 2) return true;
+  }
+
+  const tokens = value.match(/[A-Za-z0-9+-]+/g) ?? [];
+  if (
+    tokens.length > 0
+    && tokens.every((token) => CHEMICAL_FORMULA.test(token) || /^\d+$/.test(token))
+  ) {
+    return true;
+  }
+
+  return compactLines.length <= 3
+    && compactLines.every((line) => {
+      const hasEquationOperator = /(?:=|\^|[+\-*/×÷])/.test(line);
+      const wordCount = (line.match(/\p{L}+/gu) ?? []).length;
+      return hasEquationOperator && wordCount <= 5;
+    });
+}
+
+function looksLikeCode(value: string): boolean {
+  const lines = value
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim());
+  let signalCount = 0;
+  let codeLineCount = 0;
+
+  for (const line of lines) {
+    if (CONCLUSIVE_CODE_LINE.some((pattern) => pattern.test(line))) return true;
+    const matches = CODE_LINE_PATTERNS.filter((pattern) => pattern.test(line)).length;
+    signalCount += matches;
+    if (matches > 0) codeLineCount += 1;
+  }
+
+  return signalCount >= 2
+    || (lines.length >= 2 && codeLineCount / lines.length >= 0.5);
 }
 
 function normalizeWhitespace(value: string): string {

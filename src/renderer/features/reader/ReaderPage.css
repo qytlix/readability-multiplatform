@@ -2353,6 +2353,16 @@ body.workspace-is-resizing * {
   color: #d9e1d6;
 }
 
+.translation-bilingual-target.translation-segment-preformatted {
+  margin-top: 12px;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.translation-bilingual-target.translation-segment-preformatted > pre {
+  margin-top: 0;
+}
+
 .inline-paragraph-translation {
   margin: -11px 0 27px;
   padding: 0 0 0 18px;

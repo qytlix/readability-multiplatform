@@ -50,6 +50,19 @@ describe('parseTranslationOutput', () => {
     expect(result.translatedHtml).toBe('<li><strong>第一</strong>点。</li>');
   });
 
+  it('preserves a translated prose pre block and its line breaks', () => {
+    const result = parseTranslationOutput(
+      '<pre>First paragraph.\n\nSecond paragraph.</pre>',
+      JSON.stringify({
+        translatedHtml: '<pre>第一段。\n\n第二段。</pre>',
+        appliedTermIds: [],
+      }),
+    );
+
+    expect(result.translatedText).toBe('第一段。 第二段。');
+    expect(result.translatedHtml).toBe('<pre>第一段。\n\n第二段。</pre>');
+  });
+
   it('removes model-provided dangerous attributes while retaining source attributes', () => {
     const output = JSON.stringify({
       translatedHtml: '<p onclick="steal()"><a href="javascript:steal()">译文</a></p>',

@@ -31,6 +31,43 @@ describe('ContentSegmenter', () => {
     expect(result.segments.every((segment) => /^seg_\d+_[a-f0-9]{12}$/.test(segment.id))).toBe(true);
   });
 
+  it('segments prose-styled pre blocks while preserving their line breaks and links', () => {
+    const segmenter = new ContentSegmenter();
+    const result = segmenter.segment([
+      '<pre>',
+      'This article was adapted from a recorded conversation.',
+      '',
+      '<a href="https://example.com/video">https://example.com/video</a>',
+      '',
+      '## A prose heading',
+      '',
+      'The maintainer later focused on leading the project.',
+      '</pre>',
+    ].join('\n'));
+
+    expect(result.segments).toHaveLength(1);
+    expect(result.segments[0]).toMatchObject({
+      type: 'preformatted',
+      sourceText: expect.stringContaining('The maintainer later focused'),
+    });
+    expect(result.segments[0]?.sourceHtml).toContain('\n\n');
+    expect(result.segments[0]?.sourceHtml).toContain('<a href="https://example.com/video">');
+  });
+
+  it.each([
+    ['code element', '<pre><code>const answer = 42;</code></pre>'],
+    ['bare source code', '<pre>const answer = 42;\nconsole.log(answer);</pre>'],
+    ['single-line source code', '<pre>console.log("answer")</pre>'],
+    ['semicolon-free source code', '<pre>const answer = calculateValue()</pre>'],
+    ['shell command', '<pre>npm install example-package</pre>'],
+    ['TeX formula', '<pre>\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}</pre>'],
+    ['chemical equation', '<pre>2H2 + O2 -> 2H2O</pre>'],
+    ['MathML formula', '<pre><math><mi>E</mi><mo>=</mo><mi>m</mi><msup><mi>c</mi><mn>2</mn></msup></math></pre>'],
+  ])('does not segment a pre block containing %s', (_label, html) => {
+    const segmenter = new ContentSegmenter();
+    expect(segmenter.segment(html).segments).toHaveLength(0);
+  });
+
   it('keeps IDs and the source hash stable for equivalent whitespace', () => {
     const segmenter = new ContentSegmenter();
     const first = segmenter.segment('<p>A sentence with  spaces.</p><ol><li>One</li><li>Two</li></ol>');
