@@ -228,9 +228,6 @@ export const ExportOptionsDialog = ({
 
   if (!open) return null;
 
-  const isSingle = articles.length === 1;
-  const article = articles[0];
-
   const renderCheckbox = (
     entryId: number,
     field: keyof PerArticleOptions,
@@ -265,157 +262,129 @@ export const ExportOptionsDialog = ({
       >
         <h2 id={titleId}>📄 导出文件</h2>
 
-        {isSingle && article && (
-          <div className="export-options-single">
-            <p className="export-options-title">{article.title}</p>
-            <div className="export-options-fields">
-              {renderCheckbox(
-                article.entryId,
-                'includeSummary',
-                '包含总结',
-                article.hasSummary,
-              )}
-              {renderCheckbox(
-                article.entryId,
-                'includeTranslation',
-                '包含翻译',
-                article.hasTranslation,
-              )}
-              {renderCheckbox(
-                article.entryId,
-                'includeNotes',
-                '包含笔记',
-                article.hasNotes,
-              )}
-            </div>
-          </div>
+        {articles.length > 1 && (
+          <div className="export-options-column-toggles">
+          <button
+            type="button"
+            className="export-options-column-toggle"
+            onClick={() => toggleColumn('includeSummary')}
+            title={columnAll.includeSummary ? '取消全选总结' : '全选总结'}
+          >
+            {columnAll.includeSummary ? '☑' : '☐'} 总结
+          </button>
+          <button
+            type="button"
+            className="export-options-column-toggle"
+            onClick={() => toggleColumn('includeTranslation')}
+            title={
+              columnAll.includeTranslation ? '取消全选翻译' : '全选翻译'
+            }
+          >
+            {columnAll.includeTranslation ? '☑' : '☐'} 翻译
+          </button>
+          <button
+            type="button"
+            className="export-options-column-toggle"
+            onClick={() => toggleColumn('includeNotes')}
+            title={columnAll.includeNotes ? '取消全选笔记' : '全选笔记'}
+          >
+            {columnAll.includeNotes ? '☑' : '☐'} 笔记
+          </button>
+        </div>
         )}
 
-        {!isSingle && (
-          <>
-            <div className="export-options-column-toggles">
-              <button
-                type="button"
-                className="export-options-column-toggle"
-                onClick={() => toggleColumn('includeSummary')}
-                title={columnAll.includeSummary ? '取消全选总结' : '全选总结'}
-              >
-                {columnAll.includeSummary ? '☑' : '☐'} 总结
-              </button>
-              <button
-                type="button"
-                className="export-options-column-toggle"
-                onClick={() => toggleColumn('includeTranslation')}
-                title={
-                  columnAll.includeTranslation ? '取消全选翻译' : '全选翻译'
-                }
-              >
-                {columnAll.includeTranslation ? '☑' : '☐'} 翻译
-              </button>
-              <button
-                type="button"
-                className="export-options-column-toggle"
-                onClick={() => toggleColumn('includeNotes')}
-                title={columnAll.includeNotes ? '取消全选笔记' : '全选笔记'}
-              >
-                {columnAll.includeNotes ? '☑' : '☐'} 笔记
-              </button>
-            </div>
+        <div className="export-options-list">
+          {articles.map((a) => {
+            const effectiveStatus = getEffectiveStatus(a.entryId);
+            const isCleaning = cleaningIds.has(a.entryId);
+            const pipelineSuccess = effectiveStatus === 'success';
+            const pipelineFailed = effectiveStatus === 'failed';
 
-            <div className="export-options-list">
-              {articles.map((a) => {
-                const effectiveStatus = getEffectiveStatus(a.entryId);
-                const isCleaning = cleaningIds.has(a.entryId);
-                const pipelineSuccess = effectiveStatus === 'success';
-                const pipelineFailed = effectiveStatus === 'failed';
-
-                return (
-                  <div key={a.entryId} className="export-options-row">
-                    <span className={`export-options-row-status${
-                      pipelineFailed ? ' is-failed' : ''
-                    }${isCleaning ? ' is-cleaning' : ''}`}>
-                      {pipelineSuccess
-                        ? '✅'
-                        : pipelineFailed
-                          ? '❌'
-                          : isCleaning
-                            ? '⏳'
-                            : '⏳'}
-                    </span>
-                    <span className="export-options-row-title">{a.title}</span>
-                    {pipelineSuccess && (
-                      <div className="export-options-row-fields">
-                        {renderCheckbox(
-                          a.entryId,
-                          'includeSummary',
-                          '总结',
-                          a.hasSummary,
-                        )}
-                        {renderCheckbox(
-                          a.entryId,
-                          'includeTranslation',
-                          '翻译',
-                          a.hasTranslation,
-                        )}
-                        {renderCheckbox(
-                          a.entryId,
-                          'includeNotes',
-                          '笔记',
-                          a.hasNotes,
-                        )}
-                      </div>
+            return (
+              <div key={a.entryId} className="export-options-row">
+                <span className={`export-options-row-status${
+                  pipelineFailed ? ' is-failed' : ''
+                }${isCleaning ? ' is-cleaning' : ''}`}>
+                  {pipelineSuccess
+                    ? '✅'
+                    : pipelineFailed
+                      ? '❌'
+                      : isCleaning
+                        ? '⏳'
+                        : '⏳'}
+                </span>
+                <span className="export-options-row-title">{a.title}</span>
+                {pipelineSuccess && (
+                  <div className="export-options-row-fields">
+                    {renderCheckbox(
+                      a.entryId,
+                      'includeSummary',
+                      '总结',
+                      a.hasSummary,
                     )}
-                    {!pipelineSuccess && (
-                      <div className="export-options-row-unwashed">
-                        {pipelineFailed ? (
-                          <span className="export-options-failed-label">清洗失败</span>
-                        ) : isCleaning ? (
-                          <span className="export-options-cleaning-label">清洗中…</span>
-                        ) : (
-                          <>
-                            <span className="export-options-unwashed-label">🧹未清洗</span>
-                            <button
-                              type="button"
-                              className="export-options-clean-btn"
-                              onClick={() => void handleCleanSingle(a.entryId)}
-                            >
-                              现在清洗
-                            </button>
-                          </>
-                        )}
-                      </div>
+                    {renderCheckbox(
+                      a.entryId,
+                      'includeTranslation',
+                      '翻译',
+                      a.hasTranslation,
+                    )}
+                    {renderCheckbox(
+                      a.entryId,
+                      'includeNotes',
+                      '笔记',
+                      a.hasNotes,
                     )}
                   </div>
-                );
-              })}
-            </div>
+                )}
+                {!pipelineSuccess && (
+                  <div className="export-options-row-unwashed">
+                    {pipelineFailed ? (
+                      <span className="export-options-failed-label">清洗失败</span>
+                    ) : isCleaning ? (
+                      <span className="export-options-cleaning-label">清洗中…</span>
+                    ) : (
+                      <>
+                        <span className="export-options-unwashed-label">🧹未清洗</span>
+                        <button
+                          type="button"
+                          className="export-options-clean-btn"
+                          onClick={() => void handleCleanSingle(a.entryId)}
+                        >
+                          现在清洗
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
 
-            {(() => {
-              const unwashedCount = articles.filter(
-                (a) => getEffectiveStatus(a.entryId) !== 'success',
-              ).length;
-              const hasCleaningInProgress = cleaningIds.size > 0;
-              return unwashedCount > 0 && !hasCleaningInProgress ? (
-                <div className="export-options-clean-all">
-                  <button
-                    type="button"
-                    className="export-options-clean-all-btn"
-                    onClick={async () => {
-                      const unwashed = articles.filter(
-                        (a) => getEffectiveStatus(a.entryId) !== 'success',
-                      );
-                      for (const article of unwashed) {
-                        await handleCleanSingle(article.entryId);
-                      }
-                    }}
-                  >
-                    🧹 清洗全部未清洗（{unwashedCount}篇）
-                  </button>
-                </div>
-              ) : null;
-            })()}
-          </>
-        )}
+        {(() => {
+          const unwashedCount = articles.filter(
+            (a) => getEffectiveStatus(a.entryId) !== 'success',
+          ).length;
+          const hasCleaningInProgress = cleaningIds.size > 0;
+          return unwashedCount > 0 && !hasCleaningInProgress ? (
+            <div className="export-options-clean-all">
+              <button
+                type="button"
+                className="export-options-clean-all-btn"
+                onClick={async () => {
+                  const unwashed = articles.filter(
+                    (a) => getEffectiveStatus(a.entryId) !== 'success',
+                  );
+                  for (const article of unwashed) {
+                    await handleCleanSingle(article.entryId);
+                  }
+                }}
+              >
+                🧹 清洗全部未清洗（{unwashedCount}篇）
+              </button>
+            </div>
+          ) : null;
+        })()}
 
         <div className="dialog-actions">
           <button ref={cancelButtonRef} type="button" onClick={onCancel}>

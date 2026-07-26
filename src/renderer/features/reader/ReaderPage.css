@@ -4713,26 +4713,6 @@ body.workspace-is-resizing * {
   overflow-x: hidden;
 }
 
-.export-options-single {
-  margin-top: 18px;
-}
-
-.export-options-title {
-  margin: 0 0 14px;
-  font-size: 13px;
-  line-height: 1.4;
-  color: var(--reader-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.export-options-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
 .export-option-checkbox {
   display: inline-flex;
   align-items: center;
