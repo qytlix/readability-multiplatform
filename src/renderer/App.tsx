@@ -17,6 +17,7 @@ import { FeedList } from './features/feeds/FeedList';
 import { EntryList } from './features/feeds/EntryList';
 import { EntryDetail } from './features/feeds/EntryDetail';
 import { FeedAddDialog } from './features/feeds/FeedAddDialog';
+import { getEntryListHeading } from './features/feeds/entryListPresentation';
 import {
   getEntryAIViewState,
   updateEntryAIViewState,
@@ -674,13 +675,12 @@ export const App = () => {
 
   const hasNoFeeds = feedLoadStatus === 'success' && feeds.length === 0;
   const visibleEntries = hasNoFeeds ? [] : entries;
-  const listHeading = appliedSearchQuery
-    ? '搜索结果'
-    : entryFilter === 'unread'
-      ? '未读文章'
-      : entryFilter === 'starred'
-        ? '收藏文章'
-        : selectedFeed?.title ?? (selectedFeed ? selectedFeed.feedURL : '全部文章');
+  const selectedFeedName = selectedFeed?.title ?? selectedFeed?.feedURL ?? null;
+  const listHeading = getEntryListHeading({
+    feedName: selectedFeedName,
+    filter: entryFilter,
+    hasActiveSearch: Boolean(appliedSearchQuery),
+  });
   const handleExportRequest = useCallback(async () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
