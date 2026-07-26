@@ -911,27 +911,28 @@ export const App = () => {
                     Aa
                   </button>
                 </span>
-                <div ref={setArticleExportToolbarTarget} className="article-export-slot" />
-                {selectionMode && (
-                  <span
-                    className="article-action-tooltip"
-                    data-tooltip={selectedIds.size > 0
-                      ? `导出所选 ${selectedIds.size} 篇文章`
-                      : '请先选择文章'}
-                  >
-                    <button
-                      type="button"
-                      className="type-button"
-                      aria-label={selectedIds.size > 0
+                <div ref={setArticleExportToolbarTarget} className="article-export-slot">
+                  {selectionMode && (
+                    <span
+                      className="article-action-tooltip"
+                      data-tooltip={selectedIds.size > 0
                         ? `导出所选 ${selectedIds.size} 篇文章`
                         : '请先选择文章'}
-                      disabled={selectedIds.size === 0}
-                      onClick={() => void handleExportRequest()}
                     >
-                      <ExportIcon />
-                    </button>
-                  </span>
-                )}
+                      <button
+                        type="button"
+                        className="type-button"
+                        aria-label={selectedIds.size > 0
+                          ? `导出所选 ${selectedIds.size} 篇文章`
+                          : '请先选择文章'}
+                        disabled={selectedIds.size === 0}
+                        onClick={() => void handleExportRequest()}
+                      >
+                        <ExportIcon />
+                      </button>
+                    </span>
+                  )}
+                </div>
                 <div className="article-more">
                   <button
                     type="button"
