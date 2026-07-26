@@ -1,7 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, type PingResponse, type ShaleAPI } from '../shared/ipc';
 import type { ExportAPI } from '../shared/domain-api';
-import type { PerArticleOptions } from '../shared/contracts/export.types';
+import type {
+  PerArticleOptions,
+  TranslationLanguage,
+} from '../shared/contracts/export.types';
 import {
   FEED_IPC_CHANNELS,
   type FeedSyncProgress,
@@ -240,13 +243,21 @@ const exportAPI: ExportAPI = {
     }
     return promise;
   },
-  single: (entryId: number, options: PerArticleOptions) =>
-    ipcRenderer.invoke(EXPORT_IPC_CHANNELS.exportSingle, {
-      entryId,
-      options,
-    }),
+  single: (
+    entryId: number,
+    options: PerArticleOptions,
+    translationLanguage?: TranslationLanguage,
+  ) => ipcRenderer.invoke(EXPORT_IPC_CHANNELS.exportSingle, {
+    entryId,
+    options,
+    translationLanguage,
+  }),
   multiple: (
-    entries: Array<{ entryId: number; options: PerArticleOptions }>,
+    entries: Array<{
+      entryId: number;
+      options: PerArticleOptions;
+      translationLanguage?: TranslationLanguage;
+    }>,
   ) => ipcRenderer.invoke(EXPORT_IPC_CHANNELS.exportMultiple, { entries }),
 };
 

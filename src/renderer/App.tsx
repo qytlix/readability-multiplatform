@@ -1047,7 +1047,15 @@ export const App = () => {
           onConfirm={async (perArticleOptions) => {
             setShowExportDialog(false);
             const entries = Array.from(perArticleOptions.entries()).map(
-              ([entryId, options]) => ({ entryId, options }),
+              ([entryId, options]) => {
+                const translationLanguage = options.includeTranslation
+                  ? {
+                      sourceLanguage: aiPreferences.translationSourceLanguage,
+                      targetLanguage: aiPreferences.translationTargetLanguage,
+                    }
+                  : undefined;
+                return { entryId, options, translationLanguage };
+              },
             );
             const result = await exportMultipleEntries(entries);
             if (result.ok) {

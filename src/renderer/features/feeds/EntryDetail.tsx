@@ -467,13 +467,23 @@ export const EntryDetail = ({
       if (!entry) return;
       const options = perArticleOptions.get(entry.id);
       if (!options) return;
-      const result = await exportSingleEntry(entry.id, options);
+      const translationLanguage = options.includeTranslation
+        ? {
+            sourceLanguage: aiPreferences.translationSourceLanguage,
+            targetLanguage: aiPreferences.translationTargetLanguage,
+          }
+        : undefined;
+      const result = await exportSingleEntry(
+        entry.id,
+        options,
+        translationLanguage,
+      );
       if (result.ok) {
         const filePath = result.data.filePath;
         console.log('Export saved to:', filePath);
       }
     },
-    [entry],
+    [entry, aiPreferences],
   );
 
   const handleExportCancel = useCallback((): void => {

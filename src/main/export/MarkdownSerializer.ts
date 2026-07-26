@@ -200,7 +200,11 @@ export function serializeSingle(
 
   // Interleaved translation: inject blockquotes into the body
   if (opts.includeTranslation && article.translationSegments && article.translationSegments.length > 0) {
-    body = serializeInterleavedTranslation(body, article.translationSegments);
+    body = serializeInterleavedTranslation(
+      article.cleanedHtml,
+      body,
+      article.translationSegments,
+    );
   }
 
   parts.push(body || '*(无正文内容)*');
@@ -277,7 +281,11 @@ function serializeBody(
 
   // Interleaved translation: inject blockquotes into the body
   if (options.includeTranslation && article.translationSegments && article.translationSegments.length > 0) {
-    body = serializeInterleavedTranslation(body, article.translationSegments);
+    body = serializeInterleavedTranslation(
+      article.cleanedHtml,
+      body,
+      article.translationSegments,
+    );
   }
 
   parts.push(body || '*(无正文内容)*');
@@ -359,15 +367,30 @@ export function serializeMultiple(
 const mdConverter = new MarkdownConverter();
 
 /**
+ * Translatable block selectors — same as ContentSegmenter.
+ */
+const TRANSLATABLE_SELECTOR = [
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'p', 'li', 'blockquote', 'cite', 'figcaption', 'caption',
+].join(', ');
+
+/**
  * Build an interleaved (bilingual) body from translation segments.
  *
- * Injects each successful translation as a blockquote after the matching
- * paragraph in the markdown body. Segments are matched in document order
- * by converting each segment's sourceHtml to Markdown via Turndown, then
- * locating it in the plain body.
+ * Uses DOM-based matching for accuracy: parses cleanedHtml and walks body
+ * children in document order, matching each translatable element against
+ * translation segments by sourceText (plain text). Non-translatable content
+ * (figures, tables, code blocks) is preserved as-is.
+ *
+ * Falls back to Turndown-based text matching when cleanedHtml is unavailable.
+ *
+ * @param cleanedHtml  清洗后的 HTML（用于 DOM 匹配）。不传时使用 markdown 文本匹配作为 fallback。
+ * @param cleanedMarkdown  清洗后的 Markdown 全文（fallback 使用）
+ * @param segments  翻译 segments
  */
 export function serializeInterleavedTranslation(
-  body: string,
+  cleanedHtml: string | undefined,
+  cleanedMarkdown: string,
   segments: TranslationSegment[],
 ): string {
   const active = segments.filter(
@@ -376,61 +399,311 @@ export function serializeInterleavedTranslation(
       && s.sourceType !== 'title'
       && s.sourceType !== 'byline',
   );
-  if (active.length === 0) return body;
+  if (active.length === 0) return cleanedMarkdown;
 
+  if (cleanedHtml) {
+    return serializeByHtmlDom(cleanedHtml, active, mdConverter);
+  }
+
+  // Fallback: text matching on cleanedMarkdown
+  return serializeByTextMatching(cleanedMarkdown, active);
+}
+
+/**
+ * DOM-based serialization: walks cleanedHtml body children in order,
+ * matching each translatable element against translation segments.
+ * Handles <ul>/<ol> containers by iterating their <li> children.
+ */
+function serializeByHtmlDom(
+  cleanedHtml: string,
+  segments: TranslationSegment[],
+  converter: MarkdownConverter,
+): string {
+  const dom = new JSDOM(`<body>${cleanedHtml}</body>`);
+  const body = dom.window.document.body;
+  const result: string[] = [];
+  let segIndex = 0;
+
+  for (const child of Array.from(body.children)) {
+    const tag = child.tagName.toLowerCase();
+
+    // Handle <ul>/<ol> containers: iterate their <li> children
+    if (tag === 'ul' || tag === 'ol') {
+      const listItems = Array.from(child.children).filter(
+        (c) => c.tagName.toLowerCase() === 'li',
+      );
+      segIndex = processListContainer(
+        result, converter, listItems, segments, segIndex,
+      );
+      continue;
+    }
+
+    const segType = domElementToSegmentType(child);
+    if (!segType || shouldSkipTranslatable(child)) {
+      // Non-translatable — convert to markdown as-is
+      result.push(converter.convert(child.outerHTML).trim());
+      continue;
+    }
+
+    const childText = normalizeWhitespaceFn(child.textContent ?? '');
+    const matched = findMatchingSegment(segments, segIndex, segType, childText);
+
+    if (matched) {
+      segIndex = matched.nextIndex;
+      const originalMd = segmentToMarkdown(converter, child, segType);
+      result.push(originalMd);
+      result.push(`> ${matched.segment.translatedText!.trim()}`);
+    } else {
+      // No matching translation — output original only
+      result.push(converter.convert(child.outerHTML).trim());
+    }
+  }
+
+  return result.join('\n\n');
+}
+
+/**
+ * Process <li> children: match against 'list'-type translation segments
+ * in order, output each as markdown followed by translation blockquote.
+ * Returns the new segment index after processing all list items.
+ */
+function processListContainer(
+  result: string[],
+  converter: MarkdownConverter,
+  listItems: Element[],
+  segments: TranslationSegment[],
+  startIndex: number,
+): number {
+  let segIndex = startIndex;
+
+  for (const li of listItems) {
+    const liText = normalizeWhitespaceFn(li.textContent ?? '');
+    const matched = findMatchingSegment(segments, segIndex, 'list', liText);
+
+    if (matched) {
+      segIndex = matched.nextIndex;
+      // Convert single li wrapped in ul to preserve list formatting
+      const originalMd = converter.convert(`<ul>${li.outerHTML}</ul>`).trim();
+      result.push(originalMd);
+      result.push(`> ${matched.segment.translatedText!.trim()}`);
+    } else {
+      // No translation — output original only
+      result.push(converter.convert(`<ul>${li.outerHTML}</ul>`).trim());
+    }
+  }
+
+  return segIndex;
+}
+
+interface MatchResult {
+  segment: TranslationSegment;
+  nextIndex: number;
+}
+
+/**
+ * Find a matching translation segment starting from segIndex.
+ * Matches by sourceType and sourceText (plain text).
+ */
+function findMatchingSegment(
+  segments: TranslationSegment[],
+  startIndex: number,
+  elementType: string | undefined,
+  elementText: string,
+): MatchResult | undefined {
+  for (let i = startIndex; i < segments.length; i++) {
+    const seg = segments[i];
+    if (!seg.translatedText) continue;
+    // Skip segments whose type doesn't match or until we find a match
+    if (seg.sourceType === elementType
+      && normalizeWhitespaceFn(seg.sourceText) === elementText
+    ) {
+      // Consume this segment and all skipped ones before it
+      // (the skipped ones had no matching DOM element)
+      return { segment: seg, nextIndex: i + 1 };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Fallback: text-matching approach on cleanedMarkdown (used when cleanedHtml is unavailable).
+ */
+function serializeByTextMatching(
+  body: string,
+  segments: TranslationSegment[],
+): string {
   let result = body;
   let searchPos = 0;
 
-  for (const segment of active) {
+  for (const segment of segments) {
     const translatedText = segment.translatedText?.trim();
     if (!translatedText) continue;
 
-    // Convert segment's sourceHtml to Markdown for matching
-    const segmentMd = segmentSourceHtmlToMd(segment);
-    if (!segmentMd) continue;
+    // Use sourceText (plain text) for matching, strip any markdown from body
+    const sourceText = normalizeWhitespaceFn(segment.sourceText);
+    if (!sourceText) continue;
 
-    // Find in body, starting from where we left off
-    const idx = result.indexOf(segmentMd, searchPos);
+    // Find sourceText in the markdown body, allowing for markdown formatting
+    // by progressively relaxing the search
+    const idx = findTextInMarkdown(result, sourceText, searchPos);
     if (idx === -1) {
-      // Fallback: try from beginning (handles edge cases where insertions
-      // shifted positions unexpectedly)
-      const fallbackIdx = result.indexOf(segmentMd);
+      const fallbackIdx = findTextInMarkdown(result, sourceText, 0);
       if (fallbackIdx === -1 || fallbackIdx < searchPos - 300) continue;
       searchPos = fallbackIdx;
     } else {
       searchPos = idx;
     }
 
-    // Insert translation blockquote after the matched text
-    const insertPos = searchPos + segmentMd.length;
+    // Find end of this paragraph (next double newline or end of string)
+    let paraEnd = result.indexOf('\n\n', searchPos);
+    if (paraEnd === -1) paraEnd = result.length;
     const block = `\n\n> ${translatedText}`;
 
-    // Handle newlines after the matched text gracefully
-    const after = result.slice(insertPos);
-    if (after.startsWith('\n')) {
-      const nlMatch = after.match(/^\n+/);
-      const nlLen = nlMatch ? nlMatch[0].length : 0;
-      result = result.slice(0, insertPos + nlLen) + block + '\n' + result.slice(insertPos + nlLen);
-    } else {
-      result = result.slice(0, insertPos) + block + result.slice(insertPos);
-    }
-
-    searchPos += segmentMd.length + block.length;
+    result = result.slice(0, paraEnd) + block + result.slice(paraEnd);
+    searchPos = paraEnd + block.length;
   }
 
   return result;
 }
 
 /**
- * Convert a TranslationSegment's sourceHtml to Markdown for text matching.
- * List items are wrapped in <ul> so Turndown produces bullet syntax.
+ * Find plain text in markdown body, accounting for markdown formatting.
+ * E.g., searching for "This is bold text" will match "This is **bold** text".
  */
-function segmentSourceHtmlToMd(segment: TranslationSegment): string {
-  let html: string;
-  if (segment.sourceType === 'list') {
-    html = `<ul>${segment.sourceHtml}</ul>`;
-  } else {
-    html = segment.sourceHtml;
+function findTextInMarkdown(markdown: string, plainText: string, fromIndex: number): number {
+  if (!plainText) return -1;
+  // Try exact substring first (fast path)
+  const exactIdx = markdown.indexOf(plainText, fromIndex);
+  if (exactIdx !== -1) return exactIdx;
+
+  // Fallback: strip markdown and search
+  const stripped = markdown
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1')
+    .replace(/`(.+?)`/g, '$1');
+
+  const idx = stripped.indexOf(plainText, fromIndex);
+  if (idx === -1) return -1;
+
+  // Map back to original position: find the position in original text
+  // that corresponds to this position in stripped text
+  return mapStrippedToOriginal(markdown, idx);
+}
+
+/**
+ * Map a position in the stripped text back to the original markdown.
+ * Simple heuristic: walk both strings in parallel until we reach the target position.
+ */
+function mapStrippedToOriginal(original: string, strippedPos: number): number {
+  let oi = 0;
+  let si = 0;
+  const stripped = original
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1')
+    .replace(/`(.+?)`/g, '$1');
+
+  while (si < strippedPos && oi < original.length) {
+    if (oi >= original.length) break;
+    const oc = original[oi];
+
+    // Check if we're at a markdown sequence
+    if (original.startsWith('**', oi)) {
+      oi += 2; // skip opening **
+      // Read until closing **
+      const closeIdx = original.indexOf('**', oi);
+      if (closeIdx !== -1) {
+        const contentLen = closeIdx - oi;
+        oi = closeIdx + 2; // skip past closing **
+        si += contentLen;
+        continue;
+      }
+    }
+    if (oc === '*' && original.length > oi + 1 && original[oi + 1] !== '*') {
+      // Single * for italic — skip opening, find closing
+      oi += 1;
+      const closeIdx = original.indexOf('*', oi);
+      if (closeIdx !== -1) {
+        const contentLen = closeIdx - oi;
+        oi = closeIdx + 1;
+        si += contentLen;
+        continue;
+      }
+    }
+    if (oc === '[') {
+      // Link — skip to ] then skip (url)
+      const closeBracket = original.indexOf(']', oi);
+      if (closeBracket !== -1) {
+        const contentLen = closeBracket - oi - 1; // text inside [ ]
+        const closeParen = original.indexOf(')', closeBracket);
+        if (closeParen !== -1) {
+          oi = closeParen + 1;
+          si += contentLen;
+          continue;
+        }
+      }
+    }
+    if (oc === '`') {
+      // Inline code
+      const closeBacktick = original.indexOf('`', oi + 1);
+      if (closeBacktick !== -1) {
+        const contentLen = closeBacktick - oi - 1;
+        oi = closeBacktick + 1;
+        si += contentLen;
+        continue;
+      }
+    }
+
+    oi++;
+    si++;
   }
-  return mdConverter.convert(html).trim();
+
+  return oi;
+}
+
+/**
+ * Convert a DOM element to Markdown. Handles list items by wrapping in <ul>.
+ */
+function segmentToMarkdown(
+  converter: MarkdownConverter,
+  element: Element,
+  segType: string | undefined,
+): string {
+  if (segType === 'list') {
+    return converter.convert(`<ul>${element.outerHTML}</ul>`).trim();
+  }
+  return converter.convert(element.outerHTML).trim();
+}
+
+/**
+ * Determine the segment type from a DOM element's tag name.
+ * Mirrors ContentSegmenter.toSegmentType.
+ */
+function domElementToSegmentType(element: Element): string | undefined {
+  const tag = element.tagName.toLowerCase();
+  if (/^h[1-6]$/.test(tag)) return 'heading';
+  if (tag === 'p') return 'paragraph';
+  if (tag === 'li') return 'list';
+  if (tag === 'blockquote' || tag === 'cite') return 'blockquote';
+  if (tag === 'figcaption' || tag === 'caption') return 'caption';
+  return undefined;
+}
+
+/**
+ * Check if a translatable element should be skipped (nested inside list/blockquote).
+ * Mirrors ContentSegmenter.shouldSkipElement.
+ */
+function shouldSkipTranslatable(element: Element): boolean {
+  if (element.tagName.toLowerCase() === 'li') return false;
+  if (element.parentElement?.closest('li, blockquote, ul, ol')) return true;
+  if (element.tagName.toLowerCase() === 'p' && element.closest('figure')) return true;
+  return false;
+}
+
+/**
+ * Normalize whitespace for text comparison.
+ */
+function normalizeWhitespaceFn(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
 }
