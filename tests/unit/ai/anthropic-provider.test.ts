@@ -67,6 +67,20 @@ describe('AnthropicProvider', () => {
     expect(chunks).toEqual(['split']);
   });
 
+  it('forwards an Anthropic stop reason as a normalized completion reason', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
+      'event: message_delta\n',
+      'data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}\n\n',
+    ].join(''), { status: 200 })));
+    const onFinishReason = vi.fn();
+
+    for await (const chunk of new AnthropicProvider().stream({ ...request(), onFinishReason })) {
+      void chunk;
+    }
+
+    expect(onFinishReason).toHaveBeenCalledWith('length');
+  });
+
   it('maps overloaded stream errors to a retryable stable error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
       'event: error\n',

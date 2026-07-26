@@ -373,10 +373,10 @@ describe('article selection toggle', () => {
 
     const refreshButton =
       container.querySelector<HTMLButtonElement>('.article-refresh-button');
-    expect(refreshButton?.getAttribute('aria-label')).toBe('重新获取正文');
+    expect(refreshButton?.getAttribute('aria-label')).toBe('文章同步操作');
     expect(
       refreshButton?.closest('.article-action-tooltip')?.getAttribute('data-tooltip'),
-    ).toBe('重新获取正文');
+    ).toBe('文章同步操作');
     expect(refreshButton?.hasAttribute('title')).toBe(false);
     expect(refreshButton?.textContent?.trim()).toBe('');
     expect(container.querySelector('[aria-label="更多文章操作"]')).toBeNull();
@@ -401,6 +401,11 @@ describe('article selection toggle', () => {
     expect(exportButton?.hasAttribute('title')).toBe(false);
 
     act(() => refreshButton?.click());
+    const refreshMenuItem = Array.from(container.querySelectorAll<HTMLButtonElement>(
+      '[role="menuitem"]',
+    )).find((item) => item.textContent === '重新拉取文章');
+    expect(refreshMenuItem).not.toBeUndefined();
+    act(() => refreshMenuItem?.click());
     await flushAsyncState();
 
     expect(fetchAndClean).toHaveBeenCalledWith(entries[0].id);

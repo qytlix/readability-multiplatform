@@ -21,6 +21,7 @@ const SPANISH_SIGNAL_WORDS = new Set([
   'el', 'los', 'las', 'un', 'una', 'del', 'al', 'y', 'es', 'son', 'para',
   'con', 'en', 'por', 'que', 'no',
 ]);
+const LATIN_TARGET_LANGUAGES = ['en', 'de', 'fr', 'es'] as const;
 
 /**
  * True only when a segment contains Unicode letters that could carry
@@ -65,6 +66,56 @@ export function isLikelyAlreadyTargetLanguage(
   }
 }
 
+/**
+ * Rejects provider text that is clearly incompatible with the selected target
+ * language. This is intentionally conservative: short names and identifiers
+ * can remain in their original script, while foreign words or whole sentences
+ * from an unrelated script cannot be persisted as a successful translation.
+ */
+export function isTranslationOutputLanguageConsistent(
+  text: string,
+  targetLanguage: TranslationTargetLanguage,
+): boolean {
+  const normalized = text.normalize('NFKC').trim();
+  if (!normalized || !hasTranslatableText(normalized)) return true;
+
+  const characters = Array.from(normalized);
+  const letters = characters.filter((character) => /\p{L}/u.test(character));
+  const unexpectedLetterCount = letters.filter((character) =>
+    !isAllowedTargetScript(character, targetLanguage)).length;
+  if (unexpectedLetterCount >= 2) return false;
+
+  if (isLatinTargetLanguage(targetLanguage)) {
+    const latinLetterCount = letters.filter((character) =>
+      /\p{Script=Latin}/u.test(character)).length;
+    if (letters.length > 1 && latinLetterCount / letters.length < 0.9) return false;
+
+    const likelyLatinLanguages = LATIN_TARGET_LANGUAGES.filter((language) =>
+      isLikelyAlreadyTargetLanguage(normalized, language));
+    return likelyLatinLanguages.length === 0
+      || likelyLatinLanguages.includes(targetLanguage);
+  }
+
+  const targetScriptCount = letters.filter((character) =>
+    isPrimaryTargetScript(character, targetLanguage)).length;
+  const latinWords = normalized.match(
+    /\p{Script=Latin}+(?:['’-]\p{Script=Latin}+)*/gu,
+  ) ?? [];
+  if (latinWords.length <= 3) return true;
+  if (looksLikeProtectedLiteralOnly(normalized)) return true;
+  const latinLetterCount = letters.filter((character) =>
+    /\p{Script=Latin}/u.test(character)).length;
+  return targetScriptCount > 0 && latinLetterCount <= targetScriptCount;
+}
+
+function isLatinTargetLanguage(
+  language: TranslationTargetLanguage,
+): language is (typeof LATIN_TARGET_LANGUAGES)[number] {
+  return LATIN_TARGET_LANGUAGES.includes(
+    language as (typeof LATIN_TARGET_LANGUAGES)[number],
+  );
+}
+
 function isHttpUrl(text: string): boolean {
   try {
     const url = new URL(text);
@@ -73,6 +124,55 @@ function isHttpUrl(text: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isAllowedTargetScript(
+  character: string,
+  targetLanguage: TranslationTargetLanguage,
+): boolean {
+  if (/\p{Script=Latin}/u.test(character)) return true;
+  switch (targetLanguage) {
+    case 'zh-CN':
+    case 'zh-HK':
+      return /\p{Script=Han}/u.test(character);
+    case 'ja':
+      return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(character);
+    case 'ko':
+      return /[\p{Script=Hangul}\p{Script=Han}]/u.test(character);
+    case 'en':
+    case 'de':
+    case 'fr':
+    case 'es':
+      return false;
+  }
+}
+
+function isPrimaryTargetScript(
+  character: string,
+  targetLanguage: Exclude<TranslationTargetLanguage, 'en' | 'de' | 'fr' | 'es'>,
+): boolean {
+  switch (targetLanguage) {
+    case 'zh-CN':
+    case 'zh-HK':
+      return /\p{Script=Han}/u.test(character);
+    case 'ja':
+      return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(character);
+    case 'ko':
+      return /\p{Script=Hangul}/u.test(character);
+  }
+}
+
+function looksLikeProtectedLiteralOnly(text: string): boolean {
+  if (isHttpUrl(text)) return true;
+  const tokens = text.split(/\s+/u);
+  if (!tokens.every((token) =>
+    /^[\p{L}\p{N}._:/@+&#%{}[\]-]+$/u.test(token))) {
+    return false;
+  }
+  if (tokens.every((token) => /[\p{N}._:/@+&#%{}[\]-]/u.test(token))) {
+    return true;
+  }
+  return tokens.length <= 3 && tokens.every((token) => /\p{Lu}/u.test(token));
 }
 
 function isLikelySimplifiedChinese(text: string): boolean {

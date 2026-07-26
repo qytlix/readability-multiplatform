@@ -15,9 +15,10 @@ import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
 describe('TranslationStore', () => {
   let translationStore: TranslationStore;
   let providerProfileId: number;
+  let db: Database.Database;
 
   beforeEach(() => {
-    const { db } = buildTestDbWithData();
+    ({ db } = buildTestDbWithData());
     const profiles = new ProviderProfileStore(db);
     providerProfileId = profiles.saveActive({
       providerKind: 'openai',
@@ -206,5 +207,106 @@ describe('TranslationStore', () => {
         { sourceSegmentId: 'seg_1_two', status: 'pending', translatedText: undefined },
       ],
     });
+  });
+
+  it('keeps the active result through failed candidates and atomically activates a complete replacement', () => {
+    const createRun = () => translationStore.createRun({
+      entryId: 1,
+      providerProfileId,
+      sourceLanguage: 'auto',
+      targetLanguage: 'zh-CN',
+      sourceContentHash: 'replacement-hash',
+      segmenterVersion: 'v1',
+      promptVersion: 'translation-v1',
+      terminologyPackVersion: 'test-pack',
+      segments: [
+        { id: 'title', orderIndex: 0, type: 'title', sourceHtml: '<h1>Title</h1>', sourceText: 'Title' },
+        { id: 'body', orderIndex: 1, type: 'paragraph', sourceHtml: '<p>Body</p>', sourceText: 'Body' },
+      ],
+    });
+    const complete = (runId: number, marker: string) => {
+      translationStore.markSegmentSucceeded(runId, 'title', `${marker} title`, `<h1>${marker} title</h1>`, []);
+      translationStore.markSegmentSucceeded(runId, 'body', `${marker} body`, `<p>${marker} body</p>`, []);
+      return translationStore.markRunSucceeded(runId);
+    };
+
+    const original = complete(createRun().id, 'original');
+    const failedCandidate = createRun();
+    translationStore.markRunFailed(failedCandidate.id, {
+      code: 'TRANSLATION_INVALID_STRUCTURE',
+      message: 'Candidate response was invalid.',
+      retryable: true,
+    });
+
+    expect(translationStore.findActiveCompatibleResult(
+      1, 'auto', 'zh-CN', 'replacement-hash', 'v1', 'translation-v1', 'test-pack',
+    )).toMatchObject({
+      id: original.id,
+      segments: [
+        { translatedText: 'original title' },
+        { translatedText: 'original body' },
+      ],
+    });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM translation_result').get())
+      .toEqual({ count: 2 });
+
+    const replacement = complete(createRun().id, 'replacement');
+    expect(translationStore.findActiveCompatibleResult(
+      1, 'auto', 'zh-CN', 'replacement-hash', 'v1', 'translation-v1', 'test-pack',
+    )?.id).toBe(replacement.id);
+    expect(db.prepare('SELECT isActive FROM translation_result WHERE id = ?').get(original.id))
+      .toEqual({ isActive: 0 });
+    expect(db.prepare('SELECT isActive FROM translation_result WHERE id = ?').get(failedCandidate.id))
+      .toEqual({ isActive: 0 });
+  });
+
+  it('does not activate incomplete candidates or alter another target language', () => {
+    const createRun = (targetLanguage: 'zh-CN' | 'en') => translationStore.createRun({
+      entryId: 1,
+      providerProfileId,
+      sourceLanguage: 'auto',
+      targetLanguage,
+      sourceContentHash: 'language-isolation-hash',
+      segmenterVersion: 'v1',
+      promptVersion: 'translation-v1',
+      terminologyPackVersion: 'test-pack',
+      segments: [
+        { id: 'first', orderIndex: 0, type: 'paragraph', sourceHtml: '<p>First</p>', sourceText: 'First' },
+        { id: 'second', orderIndex: 1, type: 'paragraph', sourceHtml: '<p>Second</p>', sourceText: 'Second' },
+      ],
+    });
+    const complete = (runId: number, marker: string) => {
+      translationStore.markSegmentSucceeded(runId, 'first', `${marker} first`, `<p>${marker} first</p>`, []);
+      translationStore.markSegmentSucceeded(runId, 'second', `${marker} second`, `<p>${marker} second</p>`, []);
+      return translationStore.markRunSucceeded(runId);
+    };
+
+    const english = complete(createRun('en').id, 'english');
+    const originalChinese = complete(createRun('zh-CN').id, 'original');
+    const incompleteChinese = createRun('zh-CN');
+    translationStore.markSegmentSucceeded(
+      incompleteChinese.id,
+      'first',
+      'candidate first',
+      '<p>candidate first</p>',
+      [],
+    );
+
+    expect(() => translationStore.markRunSucceeded(incompleteChinese.id))
+      .toThrow('cannot be activated before every segment succeeds');
+    expect(translationStore.findActiveCompatibleResult(
+      1, 'auto', 'zh-CN', 'language-isolation-hash', 'v1', 'translation-v1', 'test-pack',
+    )?.id).toBe(originalChinese.id);
+    expect(translationStore.findActiveCompatibleResult(
+      1, 'auto', 'en', 'language-isolation-hash', 'v1', 'translation-v1', 'test-pack',
+    )?.id).toBe(english.id);
+
+    const replacement = complete(createRun('zh-CN').id, 'replacement');
+    expect(translationStore.findActiveCompatibleResult(
+      1, 'auto', 'zh-CN', 'language-isolation-hash', 'v1', 'translation-v1', 'test-pack',
+    )?.id).toBe(replacement.id);
+    expect(translationStore.findActiveCompatibleResult(
+      1, 'auto', 'en', 'language-isolation-hash', 'v1', 'translation-v1', 'test-pack',
+    )?.id).toBe(english.id);
   });
 });

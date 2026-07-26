@@ -3,6 +3,7 @@ import type {
   TextGenerationProvider,
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
+import { normalizeProviderFinishReason } from './TextGenerationProvider';
 import {
   createProviderAbortScope,
   fetchProviderResponse,
@@ -35,8 +36,9 @@ export class GeminiProvider implements TextGenerationProvider {
 
       for await (const event of readServerSentEvents(response, scope)) {
         if (!event.data || event.data === '[DONE]') continue;
-        const deltas = parseGeminiStreamEvent(event.data);
-        for (const delta of deltas) {
+        const parsedEvent = parseGeminiStreamEvent(event.data);
+        if (parsedEvent.finishReason) request.onFinishReason?.(parsedEvent.finishReason);
+        for (const delta of parsedEvent.deltas) {
           if (!receivedFirstDelta) {
             receivedFirstDelta = true;
             request.onTiming?.('first-delta');
@@ -110,7 +112,10 @@ function buildGenerateContentUrl(
   return url.toString();
 }
 
-function parseGeminiStreamEvent(payload: string): string[] {
+function parseGeminiStreamEvent(payload: string): {
+  deltas: string[];
+  finishReason?: ReturnType<typeof normalizeProviderFinishReason>;
+} {
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload);
@@ -131,11 +136,15 @@ function parseGeminiStreamEvent(payload: string): string[] {
   }
 
   const candidates = parsed.candidates;
-  if (!Array.isArray(candidates) || !isRecord(candidates[0])) return [];
+  if (!Array.isArray(candidates) || !isRecord(candidates[0])) return { deltas: [] };
+  const finishReason = normalizeProviderFinishReason(candidates[0].finishReason);
   const content = candidates[0].content;
-  if (!isRecord(content) || !Array.isArray(content.parts)) return [];
-  return content.parts.flatMap((part) =>
+  if (!isRecord(content) || !Array.isArray(content.parts)) {
+    return finishReason ? { deltas: [], finishReason } : { deltas: [] };
+  }
+  const deltas = content.parts.flatMap((part) =>
     isRecord(part) && typeof part.text === 'string' ? [part.text] : []);
+  return finishReason ? { deltas, finishReason } : { deltas };
 }
 
 function isRetryableGeminiError(error: Record<string, unknown>): boolean {
@@ -149,4 +158,3 @@ function isRetryableGeminiError(error: Record<string, unknown>): boolean {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
-

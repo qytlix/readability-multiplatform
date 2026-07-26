@@ -51,9 +51,11 @@ import {
   MenuIcon,
   MoonIcon,
   ReadIcon,
-  SyncIcon,
   SunIcon,
 } from './features/reader/ReaderIcons';
+import { ArticleSyncMenu } from './features/reader/ArticleSyncMenu';
+import { TranslationSetupNoticeDialog } from './features/translation/TranslationSetupNoticeDialog';
+import { TranslationNoticeDialog } from './features/translation/TranslationNoticeDialog';
 import {
   loadReaderTheme,
   saveReaderTheme,
@@ -130,6 +132,12 @@ export const App = () => {
     useState<Record<number, number>>({});
   const [refreshingContentEntryId, setRefreshingContentEntryId] =
     useState<number | null>(null);
+  const [retranslationRequest, setRetranslationRequest] = useState<{
+    entryId: number;
+    version: number;
+  } | null>(null);
+  const [showTranslationSetupNotice, setShowTranslationSetupNotice] = useState(false);
+  const [retranslationNotice, setRetranslationNotice] = useState<string | null>(null);
   const [markingReadEntryId, setMarkingReadEntryId] = useState<number | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -146,6 +154,7 @@ export const App = () => {
   const [entriesCursor, setEntriesCursor] = useState<EntryQuery['cursor']>();
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
   const requestSequenceRef = useRef(0);
+  const translationSetupNoticeResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const storyListPaneRef = useRef<HTMLElement>(null);
   const articlePaneRef = useRef<HTMLElement>(null);
@@ -634,6 +643,50 @@ export const App = () => {
     );
   }, []);
 
+  const requestTranslationSetupNotice = useCallback((): Promise<boolean> | boolean => {
+    if (aiPreferences.translationSetupNoticeAcknowledged) return true;
+    return new Promise((resolve) => {
+      translationSetupNoticeResolverRef.current = resolve;
+      setShowTranslationSetupNotice(true);
+    });
+  }, [aiPreferences.translationSetupNoticeAcknowledged]);
+
+  const handleTranslationSetupNoticeConfirm = useCallback(() => {
+    setAiPreferences((current) => ({
+      ...current,
+      translationSetupNoticeAcknowledged: true,
+    }));
+    setShowTranslationSetupNotice(false);
+    const resolve = translationSetupNoticeResolverRef.current;
+    translationSetupNoticeResolverRef.current = null;
+    resolve?.(true);
+  }, []);
+
+  const handleRetranslateArticle = useCallback(() => {
+    if (!selectedEntry) {
+      setReaderFeedback('当前文章尚未拉取成功');
+      return;
+    }
+    setRetranslationRequest((current) => ({
+      entryId: selectedEntry.id,
+      version: (current?.version ?? 0) + 1,
+    }));
+  }, [selectedEntry]);
+
+  const handleRetranslationRequestComplete = useCallback((
+    entryId: number,
+    result: 'started' | 'content-unavailable' | 'no-translation' | 'active' | 'failed',
+  ): void => {
+    if (selectedEntry?.id !== entryId) return;
+    if (result === 'content-unavailable') {
+      setRetranslationNotice('当前文章尚未拉取成功');
+    } else if (result === 'no-translation') {
+      setRetranslationNotice('当前文章还没有翻译');
+    } else if (result === 'active') {
+      setRetranslationNotice('当前文章的翻译任务正在进行，请使用主翻译按钮暂停或继续。');
+    }
+  }, [selectedEntry?.id]);
+
   const handleLoadMore = useCallback(() => {
     if (!hasMoreEntries || loadingEntries || !entriesCursor) return;
     void requestEntries(entriesCursor, true);
@@ -964,36 +1017,12 @@ export const App = () => {
                     </span>
                   )}
                 </div>
-                <span
-                  className="article-action-tooltip"
-                  data-tooltip={
-                    refreshingContentEntryId === selectedEntry?.id
-                      ? '正在重新获取正文'
-                      : '重新获取正文'
-                  }
-                >
-                  <button
-                    type="button"
-                    className={`article-toolbar-action article-refresh-button${
-                      refreshingContentEntryId === selectedEntry?.id
-                        ? ' is-loading'
-                        : ''
-                    }`}
-                    aria-label={
-                      refreshingContentEntryId === selectedEntry?.id
-                        ? '正在重新获取正文'
-                        : '重新获取正文'
-                    }
-                    aria-busy={refreshingContentEntryId === selectedEntry?.id}
-                    disabled={
-                      !selectedEntry?.url
-                      || refreshingContentEntryId === selectedEntry.id
-                    }
-                    onClick={handleRefreshContent}
-                  >
-                    <SyncIcon />
-                  </button>
-                </span>
+                <ArticleSyncMenu
+                  hasEntry={Boolean(selectedEntry)}
+                  isRefreshing={refreshingContentEntryId === selectedEntry?.id}
+                  onRefreshArticle={handleRefreshContent}
+                  onRetranslateArticle={handleRetranslateArticle}
+                />
                 <span
                   className="article-action-tooltip"
                   data-tooltip={
@@ -1070,6 +1099,9 @@ export const App = () => {
                 onAIViewStateChange={handleEntryAIViewStateChange}
                 onReadingProgressChange={handleReadingProgressChange}
                 onContentRefreshComplete={handleContentRefreshComplete}
+                retranslationRequest={retranslationRequest ?? undefined}
+                onRetranslationRequestComplete={handleRetranslationRequestComplete}
+                beforeTranslationStart={requestTranslationSetupNotice}
                 selectionMode={selectionMode}
                 selectedIds={selectedIds}
                 onExportRequest={handleExportRequest}
@@ -1092,6 +1124,16 @@ export const App = () => {
           onClose={() => setShowAddFeedDialog(false)}
         />
       )}
+
+      <TranslationSetupNoticeDialog
+        open={showTranslationSetupNotice}
+        onConfirm={handleTranslationSetupNoticeConfirm}
+      />
+
+      <TranslationNoticeDialog
+        message={retranslationNotice}
+        onConfirm={() => setRetranslationNotice(null)}
+      />
 
       {showExportDialog && exportArticles.length > 0 && (
         <ExportOptionsDialog

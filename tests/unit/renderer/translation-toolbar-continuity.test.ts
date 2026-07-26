@@ -60,7 +60,10 @@ describe('Translation toolbar continuity', () => {
   let translationGet: ReturnType<typeof vi.fn>;
   let translationGenerate: ReturnType<typeof vi.fn>;
 
-  const render = async (translationVisible: boolean): Promise<void> => {
+  const render = async (
+    translationVisible: boolean,
+    aiPreferences = DEFAULT_AI_PREFERENCES,
+  ): Promise<void> => {
     await act(async () => {
       root.render(createElement(EntryDetail, {
         entry,
@@ -74,7 +77,7 @@ describe('Translation toolbar continuity', () => {
         onAddFeed: vi.fn(),
         onRetryFeeds: vi.fn(),
         onRetryEntries: vi.fn(),
-        aiPreferences: DEFAULT_AI_PREFERENCES,
+        aiPreferences,
         aiToolbarTarget: toolbarTarget,
         onAIViewStateChange: vi.fn(),
         onReadingProgressChange: vi.fn().mockResolvedValue(undefined),
@@ -86,11 +89,12 @@ describe('Translation toolbar continuity', () => {
   const remount = async (
     translationState: TranslationState,
     translationVisible: boolean,
+    aiPreferences = DEFAULT_AI_PREFERENCES,
   ): Promise<void> => {
     await act(async () => root.unmount());
     root = createRoot(container);
     translationGet.mockResolvedValue({ ok: true, data: translationState });
-    await render(translationVisible);
+    await render(translationVisible, aiPreferences);
   };
 
   beforeEach(() => {
@@ -183,6 +187,71 @@ describe('Translation toolbar continuity', () => {
     expectSingleSharedToolbar();
   });
 
+  it('shows scoped replacement-run feedback and labels its pause controls', async () => {
+    const existingResult = createTranslationResult('succeeded');
+    const replacementResult: TranslationResult = {
+      ...createTranslationResult('running'),
+      id: 19,
+      segments: existingResult.segments,
+    };
+    await remount({
+      state: 'running',
+      result: replacementResult,
+      activeResult: existingResult,
+    }, true);
+
+    const runningStatus = toolbarTarget.querySelector<HTMLElement>(
+      '.translation-retranslation-status',
+    );
+    expect(runningStatus?.getAttribute('role')).toBe('status');
+    expect(runningStatus?.getAttribute('aria-live')).toBe('polite');
+    expect(runningStatus?.getAttribute('data-translation-run-id')).toBe('19');
+    expect(runningStatus?.textContent).toContain('正在重新翻译… 当前显示上一版译文');
+    expect(runningStatus?.querySelector('.mini-spinner')).not.toBeNull();
+    const pauseButton = toolbarTarget.querySelector<HTMLButtonElement>(
+      '[aria-label="暂停重新翻译"]',
+    );
+    expect(pauseButton?.hasAttribute('title')).toBe(false);
+    expect(
+      pauseButton?.closest('.article-action-tooltip')?.getAttribute('data-tooltip'),
+    ).toBe('翻译');
+
+    const pausedResult: TranslationResult = {
+      ...replacementResult,
+      status: 'failed',
+      error: {
+        code: 'TRANSLATION_PAUSED',
+        message: 'Translation was paused.',
+        retryable: true,
+      },
+    };
+    await remount({
+      state: 'paused',
+      result: pausedResult,
+      activeResult: existingResult,
+    }, true);
+    const pausedStatus = toolbarTarget.querySelector<HTMLElement>(
+      '.translation-retranslation-status',
+    );
+    expect(pausedStatus?.textContent).toContain('重新翻译已暂停 · 当前仍显示上一版译文');
+    expect(pausedStatus?.querySelector('.mini-spinner')).toBeNull();
+    const resumeButton = toolbarTarget.querySelector<HTMLButtonElement>(
+      '[aria-label="继续重新翻译"]',
+    );
+    expect(resumeButton?.hasAttribute('title')).toBe(false);
+    expect(
+      resumeButton?.closest('.article-action-tooltip')?.getAttribute('data-tooltip'),
+    ).toBe('翻译');
+
+    const otherLanguagePreferences = {
+      ...DEFAULT_AI_PREFERENCES,
+      translationTargetLanguage: 'ja' as const,
+    };
+    await remount({ state: 'idle' }, false, otherLanguagePreferences);
+    expect(toolbarTarget.querySelector('.translation-retranslation-status')).toBeNull();
+    expect(toolbarTarget.querySelector('[aria-label="暂停重新翻译"]')).toBeNull();
+  });
+
   it.each([
     ['loading', { state: 'running', result: runningResult }],
     ['success', { state: 'succeeded', result: succeededResult }],
@@ -228,7 +297,7 @@ describe('Translation toolbar continuity', () => {
       expect(button.hasAttribute('title')).toBe(false);
     });
     expect(toolbarTarget.querySelectorAll(
-      '[aria-label="翻译或切换双语视图"], [aria-label="暂停翻译"]',
+      '[aria-label="翻译或切换双语视图"], [aria-label="暂停翻译"], [aria-label="显示译文"], [aria-label="隐藏译文"]',
     )).toHaveLength(1);
   }
 

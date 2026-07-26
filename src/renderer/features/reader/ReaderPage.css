@@ -1273,6 +1273,62 @@ body.workspace-is-resizing * {
   animation: reader-spin 850ms linear infinite reverse;
 }
 
+.article-sync-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.article-sync-menu.is-open::after {
+  opacity: 0;
+  transform: translate(-50%, -3px);
+}
+
+.article-sync-menu-panel {
+  position: absolute;
+  z-index: 100;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 132px;
+  padding: 5px;
+  border: 1px solid var(--reader-line);
+  border-radius: 9px;
+  background: var(--reader-menu);
+  box-shadow: 0 12px 30px var(--reader-shadow);
+}
+
+.article-sync-menu-panel::before {
+  position: absolute;
+  top: -9px;
+  right: 0;
+  left: 0;
+  height: 9px;
+  content: '';
+}
+
+.article-sync-menu-item {
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--reader-text-soft);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 580;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.article-sync-menu-item:hover,
+.article-sync-menu-item:focus-visible {
+  outline: none;
+  color: var(--reader-text);
+  background: var(--reader-hover);
+}
+
 .article-copy-button {
   width: 36px;
   min-width: 36px;
@@ -1879,9 +1935,47 @@ body.workspace-is-resizing * {
 }
 
 .entry-detail-ai-actions {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   gap: 5px;
+}
+
+.translation-retranslation-status {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 32px));
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--reader-accent) 34%, var(--reader-line));
+  border-radius: 9px;
+  color: var(--reader-text);
+  background: color-mix(in srgb, var(--reader-floating-card) 96%, var(--reader-accent) 4%);
+  box-shadow: 0 10px 26px var(--reader-shadow);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.translation-retranslation-status.is-paused {
+  border-color: color-mix(in srgb, var(--reader-accent-strong) 42%, var(--reader-line));
+}
+
+.translation-retranslation-status.is-completed {
+  border-color: color-mix(in srgb, var(--reader-success) 42%, var(--reader-line));
+}
+
+.translation-retranslation-status.is-failed {
+  border-color: color-mix(in srgb, var(--reader-danger) 42%, var(--reader-line));
+}
+
+.translation-retranslation-status .mini-spinner {
+  flex: 0 0 auto;
 }
 
 .entry-detail-ai-actions button {
@@ -4878,6 +4972,11 @@ body.workspace-is-resizing * {
   opacity: 1;
 }
 
+.reader-page[data-theme="light"] .translation-retranslation-status .mini-spinner {
+  border-color: rgba(15, 33, 26, 0.16);
+  border-top-color: var(--reader-accent);
+}
+
 .reader-page[data-theme="light"] .article-pane {
   background:
     radial-gradient(circle at 50% 0, rgba(95, 125, 114, 0.07), transparent 34%),
@@ -5000,6 +5099,25 @@ body.workspace-is-resizing * {
   .dialog-actions button
 ) {
   color: var(--reader-text-muted);
+}
+
+/* Make the retranslation acknowledgement action easy to read in both themes. */
+.translation-notice-dialog .translation-notice-confirm {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* Keep the retranslation acknowledgement legible against its accent surface. */
+.reader-page[data-theme="light"] .translation-notice-dialog .translation-notice-confirm {
+  color: #0f211a;
+}
+
+.reader-page[data-theme="light"] :is(
+  .translation-notice-dialog,
+  .translation-setup-notice-dialog
+) .dialog-actions button[type="submit"] {
+  color: #fff;
+  font-weight: 650;
 }
 
 .reader-page[data-theme="light"] :is(

@@ -111,9 +111,10 @@ describe('Advanced Translation upgrade and restart hardening', () => {
     restarted.runMigrations();
     try {
       expect(restarted.getDb().prepare(`
-        SELECT status, errorCode FROM translation_result WHERE id = 9
+      SELECT status, isActive, errorCode FROM translation_result WHERE id = 9
       `).get()).toEqual({
         status: 'failed',
+        isActive: 0,
         errorCode: 'TRANSLATION_INTERRUPTED',
       });
       expect(restarted.getDb().prepare(`
@@ -126,6 +127,7 @@ describe('Advanced Translation upgrade and restart hardening', () => {
         { filename: '014_add_translation_context_and_experts' },
         { filename: '015_add_terminology_libraries' },
         { filename: '016_normalize_relative_entry_urls' },
+        { filename: '017_add_translation_active_result' },
         { filename: '017_normalize_entry_summaries' },
         { filename: '018_add_feed_content_html' },
       ]);

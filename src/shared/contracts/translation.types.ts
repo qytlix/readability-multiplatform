@@ -93,13 +93,19 @@ export interface TranslationResult {
   segments: TranslationSegment[];
 }
 
+type TranslationStateWithResult = {
+  result: TranslationResult;
+  /** The persisted, complete result that Reader and export may safely use. */
+  activeResult?: TranslationResult;
+};
+
 export type TranslationState =
   | { state: 'idle' }
   | { state: 'stale' }
-  | { state: 'running'; result: TranslationResult }
-  | { state: 'paused'; result: TranslationResult }
-  | { state: 'failed'; result: TranslationResult }
-  | { state: 'succeeded'; result: TranslationResult };
+  | ({ state: 'running' } & TranslationStateWithResult)
+  | ({ state: 'paused' } & TranslationStateWithResult)
+  | ({ state: 'failed' } & TranslationStateWithResult)
+  | ({ state: 'succeeded' } & TranslationStateWithResult);
 
 export interface TranslationGetRequest {
   entryId: number;
@@ -113,7 +119,10 @@ export interface TranslationGetRequest {
   useSmartContext?: boolean;
 }
 
-export type TranslationGenerateRequest = TranslationGetRequest;
+export interface TranslationGenerateRequest extends TranslationGetRequest {
+  /** Always create a candidate run instead of reusing or resuming a prior run. */
+  forceNew?: boolean;
+}
 
 export interface TranslationPrioritizeRequest extends TranslationGetRequest {
   runId: number;
@@ -128,6 +137,8 @@ export interface TranslationGenerateResponse {
   runId: number;
   reused: boolean;
   result: TranslationResult;
+  /** A complete result retained while a replacement candidate is running. */
+  activeResult?: TranslationResult;
 }
 
 export interface TranslationPauseRequest extends TranslationGetRequest {

@@ -217,11 +217,11 @@ export class ExportService {
 
   private hasTranslation(entryId: number): boolean {
     const row = this.db
-      .prepare(
-        `SELECT 1 FROM translation_result
-         WHERE entryId = ? AND status = 'succeeded'
-         LIMIT 1`,
-      )
+      .prepare(`
+        SELECT 1 FROM translation_result
+        WHERE entryId = ? AND status = 'succeeded' AND isActive = 1
+        LIMIT 1
+      `)
       .get(entryId);
     return !!row;
   }
@@ -270,8 +270,10 @@ export class ExportService {
          WHERE ts.translationResultId = (
            SELECT tr.id
            FROM translation_result tr
-           WHERE tr.entryId = ? AND tr.status = 'succeeded'
-           ORDER BY tr.updatedAt DESC, tr.id DESC
+           WHERE tr.entryId = ?
+             AND tr.status = 'succeeded'
+             AND tr.isActive = 1
+           ORDER BY tr.completedAt DESC, tr.updatedAt DESC, tr.id DESC
            LIMIT 1
          )
            AND ts.status = 'succeeded'

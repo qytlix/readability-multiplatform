@@ -17,9 +17,20 @@ writing-system normalization before persistence or inline delivery. This
 normalizes full-article HTML text nodes plus inline translations, definitions,
 contextual meanings, parts of speech, and translated examples while leaving
 source examples, pronunciation, and code-like HTML nodes unchanged. The prompt
-also explicitly forbids mixed Simplified/Traditional characters. This behavior
-uses prompt/cache version `translation-v6-chinese-script-consistency`, so
-previously cached mixed-script results are not reused.
+also explicitly forbids mixed Simplified/Traditional characters.
+
+Before a full-article provider result is persisted, Main now performs a second,
+conservative target-language validation after HTML structure validation and
+Chinese writing-system normalization. Text from protected
+`code`/`pre`/`kbd`/`samp` nodes is excluded. Product names and short
+identifier-like literals may remain in Latin script, but unrelated scripts,
+clearly untranslated sentences, and a clearly different supported Latin
+language are rejected. The affected segment receives one bounded
+single-segment compensation request; if that response is still inconsistent,
+the replacement run fails and the previous active result remains visible. The
+same validation applies to text-slot HTML recovery. This behavior uses
+prompt/cache version `translation-v8-target-language-validation`, so previously
+cached results that did not pass this boundary are not reused.
 
 ## Persistence and cache behavior
 

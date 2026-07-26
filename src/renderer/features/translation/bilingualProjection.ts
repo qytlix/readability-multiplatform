@@ -18,6 +18,12 @@ const TRANSLATABLE_BLOCK_SELECTOR = [
 
 interface ProjectionState {
   showPendingIndicators: boolean;
+  /**
+   * A replacement run can retain the previous segment HTML while its new
+   * counterpart is pending. These identities make that in-place work visible
+   * without discarding the previous translation.
+   */
+  pendingSegmentIds?: ReadonlySet<string>;
 }
 
 /**
@@ -48,13 +54,19 @@ export function projectBilingualBody(
     if (!sourceElement) continue;
     sourceElement.classList.add('translation-bilingual-source-block');
     sourceElement.dataset.segmentId = segment.sourceSegmentId;
+    const isPending = state.showPendingIndicators && (
+      segment.status === 'pending'
+      || state.pendingSegmentIds?.has(segment.sourceSegmentId) === true
+    );
     if (
       segment.status === 'succeeded'
       && segment.translatedHtml
       && segment.translatedHtml !== segment.sourceHtml
     ) {
-      insertTranslatedElement(sourceElement, createTranslatedElement(sourceElement, segment));
-    } else if (state.showPendingIndicators && segment.status === 'pending') {
+      const translatedElement = createTranslatedElement(sourceElement, segment);
+      insertTranslatedElement(sourceElement, translatedElement);
+      if (isPending) appendPendingIndicator(translatedElement);
+    } else if (isPending) {
       appendPendingIndicator(sourceElement);
     } else if (segment.status === 'failed') {
       appendUntranslatedIndicator(sourceElement);

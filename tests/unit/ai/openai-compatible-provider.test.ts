@@ -150,6 +150,21 @@ describe('OpenAICompatibleProvider', () => {
     });
   });
 
+  it('forwards a normalized Provider finish reason without exposing response content', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
+      'data: {"choices":[{"delta":{"content":"Translated"},"finish_reason":"length"}]}\n',
+      'data: [DONE]\n',
+    ].join(''), { status: 200 })));
+    const onFinishReason = vi.fn();
+    const provider = new OpenAICompatibleProvider();
+
+    for await (const chunk of provider.stream({ ...request(), onFinishReason })) void chunk;
+
+    expect(onFinishReason).toHaveBeenCalledOnce();
+    expect(onFinishReason).toHaveBeenCalledWith('length');
+    expect(JSON.stringify(onFinishReason.mock.calls)).not.toContain('Translated');
+  });
+
   it('maps authentication responses to a stable safe error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 401 })));
     const provider = new OpenAICompatibleProvider();

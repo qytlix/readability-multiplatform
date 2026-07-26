@@ -4,6 +4,7 @@ import type {
   TextGenerationProvider,
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
+import { normalizeProviderFinishReason } from './TextGenerationProvider';
 import { normalizeProviderTokenUsage } from './ProviderTokenUsage';
 import {
   createProviderAbortScope,
@@ -43,6 +44,7 @@ export class OpenAICompatibleProvider implements TextGenerationProvider {
         if (!event.data || event.data === '[DONE]') continue;
         const parsedEvent = parseOpenAIStreamEvent(event.data);
         if (parsedEvent?.usage) latestUsage = parsedEvent.usage;
+        if (parsedEvent?.finishReason) request.onFinishReason?.(parsedEvent.finishReason);
         if (!parsedEvent?.delta) continue;
         if (!receivedFirstDelta) {
           receivedFirstDelta = true;
@@ -95,7 +97,11 @@ function buildCompletionUrl(baseUrl: string): string {
 
 function parseOpenAIStreamEvent(
   payload: string,
-): { delta?: string; usage?: ProviderTokenUsage } | undefined {
+): {
+  delta?: string;
+  usage?: ProviderTokenUsage;
+  finishReason?: ReturnType<typeof normalizeProviderFinishReason>;
+} | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload);
@@ -122,11 +128,16 @@ function parseOpenAIStreamEvent(
       isRecord(firstChoice.error) && isRetryableOpenAIError(firstChoice.error),
     );
   }
+  const finishReason = normalizeProviderFinishReason(firstChoice.finish_reason);
   const delta = isRecord(firstChoice.delta) && typeof firstChoice.delta.content === 'string'
     ? firstChoice.delta.content
     : undefined;
-  return delta || usage
-    ? { ...(delta ? { delta } : {}), ...(usage ? { usage } : {}) }
+  return delta || usage || finishReason
+    ? {
+        ...(delta ? { delta } : {}),
+        ...(usage ? { usage } : {}),
+        ...(finishReason ? { finishReason } : {}),
+      }
     : undefined;
 }
 

@@ -3,22 +3,27 @@ import {
   invalidTranslationStructure,
 } from '../TranslationOutputDiagnostics';
 
-export interface TranslationBatchOutput {
-  sourceSegmentId: string;
-  translatedHtml: string;
+export const TRANSLATION_COMPENSATION_PROTOCOLS = ['text-slots'] as const;
+export type TranslationCompensationProtocol = (
+  typeof TRANSLATION_COMPENSATION_PROTOCOLS
+)[number];
+
+export interface TranslationTextSlotOutput {
+  textSlotId: string;
+  translatedText: string;
   appliedTermIds: string[];
 }
 
-/** Incrementally decodes provider Translation objects, including harmless formatting. */
-export class TranslationBatchStreamParser {
+/** Incrementally decodes the constrained NDJSON response for text-slot recovery. */
+export class TranslationTextSlotStreamParser {
   private buffer = '';
 
-  append(delta: string): TranslationBatchOutput[] {
+  append(delta: string): TranslationTextSlotOutput[] {
     this.buffer += delta;
     return this.drain(false);
   }
 
-  finish(): TranslationBatchOutput[] {
+  finish(): TranslationTextSlotOutput[] {
     try {
       return this.drain(true);
     } finally {
@@ -26,8 +31,8 @@ export class TranslationBatchStreamParser {
     }
   }
 
-  private drain(isFinal: boolean): TranslationBatchOutput[] {
-    const completed: TranslationBatchOutput[] = [];
+  private drain(isFinal: boolean): TranslationTextSlotOutput[] {
+    const completed: TranslationTextSlotOutput[] = [];
     while (this.buffer.length > 0) {
       this.buffer = this.buffer.trimStart();
       if (!this.buffer) return completed;
@@ -93,7 +98,7 @@ function findCompleteObjectEnd(value: string): number {
   return -1;
 }
 
-function parseOutputObject(value: string): TranslationBatchOutput {
+function parseOutputObject(value: string): TranslationTextSlotOutput {
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
@@ -104,28 +109,31 @@ function parseOutputObject(value: string): TranslationBatchOutput {
     throw invalidNdjson(TRANSLATION_OUTPUT_REASON_CODES.ndjsonSyntax);
   }
   const record = parsed as Record<string, unknown>;
-  if (!Object.hasOwn(record, 'sourceSegmentId') || !String(record.sourceSegmentId ?? '').trim()) {
-    throw invalidRecord(TRANSLATION_OUTPUT_REASON_CODES.segmentIdMissing);
+  if (!Object.hasOwn(record, 'textSlotId') || !String(record.textSlotId ?? '').trim()) {
+    throw invalidRecord(TRANSLATION_OUTPUT_REASON_CODES.textSlotIdMissing);
   }
-  if (typeof record.sourceSegmentId !== 'string') {
+  if (typeof record.textSlotId !== 'string') {
     throw invalidRecord(TRANSLATION_OUTPUT_REASON_CODES.invalidFieldType);
   }
-  if (!Object.hasOwn(record, 'translatedHtml') || !Object.hasOwn(record, 'appliedTermIds')) {
+  if (
+    !Object.hasOwn(record, 'translatedText')
+    || !Object.hasOwn(record, 'appliedTermIds')
+  ) {
     throw invalidRecord(TRANSLATION_OUTPUT_REASON_CODES.requiredFieldMissing);
   }
   if (
-    typeof record.translatedHtml !== 'string'
+    typeof record.translatedText !== 'string'
     || !Array.isArray(record.appliedTermIds)
     || !record.appliedTermIds.every((item) => typeof item === 'string')
   ) {
     throw invalidRecord(TRANSLATION_OUTPUT_REASON_CODES.invalidFieldType);
   }
-  if (!record.translatedHtml.trim()) {
-    throw invalidRecord(TRANSLATION_OUTPUT_REASON_CODES.translatedHtmlEmpty);
+  if (!record.translatedText.trim()) {
+    throw invalidRecord(TRANSLATION_OUTPUT_REASON_CODES.translatedTextEmpty);
   }
   return {
-    sourceSegmentId: record.sourceSegmentId,
-    translatedHtml: record.translatedHtml,
+    textSlotId: record.textSlotId,
+    translatedText: record.translatedText,
     appliedTermIds: record.appliedTermIds,
   };
 }
@@ -136,18 +144,21 @@ function invalidNdjson(reasonCode: typeof TRANSLATION_OUTPUT_REASON_CODES[
   return invalidTranslationStructure(
     reasonCode,
     'stream',
-    'The provider returned invalid Translation NDJSON.',
+    'The provider returned invalid Translation text-slot NDJSON.',
   );
 }
 
 function invalidRecord(
   reasonCode: typeof TRANSLATION_OUTPUT_REASON_CODES[
-    'segmentIdMissing' | 'requiredFieldMissing' | 'invalidFieldType' | 'translatedHtmlEmpty'
+    | 'textSlotIdMissing'
+    | 'requiredFieldMissing'
+    | 'invalidFieldType'
+    | 'translatedTextEmpty'
   ],
 ) {
   return invalidTranslationStructure(
     reasonCode,
     'record',
-    'The provider returned an invalid Translation batch object.',
+    'The provider returned an invalid Translation text-slot object.',
   );
 }

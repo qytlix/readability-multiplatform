@@ -1,5 +1,18 @@
 import { performance } from 'node:perf_hooks';
 import type { ProviderTokenUsage } from '../provider/SummaryProvider';
+import type { ProviderFinishReason } from '../provider/TextGenerationProvider';
+import {
+  TRANSLATION_COMPENSATION_PROTOCOLS,
+  type TranslationCompensationProtocol,
+} from '../provider/TranslationTextSlotCompensation';
+import {
+  TRANSLATION_HTML_VALIDATION_REASONS,
+  TRANSLATION_OUTPUT_FAILURE_PHASES,
+  TRANSLATION_OUTPUT_REASON_CODES,
+  type TranslationHtmlValidationReason,
+  type TranslationOutputFailurePhase,
+  type TranslationOutputReasonCode,
+} from '../TranslationOutputDiagnostics';
 
 export const TRANSLATION_LOG_EVENTS = {
   runStarted: 'translation.run.started',
@@ -90,16 +103,79 @@ export interface TranslationProviderRequestStartedLogContext {
   segmentCount: number;
 }
 
-export interface TranslationProviderRequestCompletedLogContext extends ProviderTokenUsage {
+/** Safe, aggregate-only response facts for a single provider request. */
+export interface TranslationProviderResponseDiagnostics {
+  failurePhase?: TranslationOutputFailurePhase;
+  reasonCode?: TranslationOutputReasonCode;
+  htmlValidationReason?: TranslationHtmlValidationReason;
+  compensationProtocol?: TranslationCompensationProtocol;
+  finishReason?: ProviderFinishReason;
+  expectedSegmentCount?: number;
+  parsedSegmentCount?: number;
+  acceptedSegmentCount?: number;
+  missingSegmentCount?: number;
+  duplicateSegmentCount?: number;
+  unexpectedSegmentCount?: number;
+  malformedRecordCount?: number;
+  emptyTranslationCount?: number;
+  expectedTextSlotCount?: number;
+  parsedTextSlotCount?: number;
+  acceptedTextSlotCount?: number;
+  missingTextSlotCount?: number;
+  duplicateTextSlotCount?: number;
+  unexpectedTextSlotCount?: number;
+  malformedTextSlotCount?: number;
+  emptyTextSlotCount?: number;
+  inputCharacters?: number;
+  outputCharacters?: number;
+  affectedSegmentIdHashes?: string[];
+}
+
+/**
+ * Flat fields that may cross the generic structured-log boundary. Keeping
+ * these separate from `responseDiagnostics` prevents the logger from ever
+ * accepting an arbitrary nested response object.
+ */
+export interface TranslationProviderResponseDiagnosticLogFields {
+  reasonCode?: TranslationOutputReasonCode;
+  validationStage?: TranslationOutputFailurePhase;
+  htmlValidationReason?: TranslationHtmlValidationReason;
+  compensationProtocol?: TranslationCompensationProtocol;
+  finishReason?: ProviderFinishReason;
+  expectedSegmentCount?: number;
+  parsedSegmentCount?: number;
+  acceptedSegmentCount?: number;
+  missingSegmentCount?: number;
+  duplicateSegmentCount?: number;
+  unexpectedSegmentCount?: number;
+  malformedRecordCount?: number;
+  emptyTranslationCount?: number;
+  expectedTextSlotCount?: number;
+  parsedTextSlotCount?: number;
+  acceptedTextSlotCount?: number;
+  missingTextSlotCount?: number;
+  duplicateTextSlotCount?: number;
+  unexpectedTextSlotCount?: number;
+  malformedTextSlotCount?: number;
+  emptyTextSlotCount?: number;
+  inputCharacters?: number;
+  outputCharacters?: number;
+  affectedSegmentIdHashes?: string[];
+}
+
+export interface TranslationProviderRequestCompletedLogContext
+  extends ProviderTokenUsage, TranslationProviderResponseDiagnosticLogFields {
   taskRunId: number;
   providerRequestId: number;
   requestKind: TranslationProviderRequestKind;
   segmentCount: number;
   durationMs: number;
   success: true;
+  responseDiagnostics?: TranslationProviderResponseDiagnostics;
 }
 
-export interface TranslationProviderRequestFailedLogContext extends ProviderTokenUsage {
+export interface TranslationProviderRequestFailedLogContext
+  extends ProviderTokenUsage, TranslationProviderResponseDiagnosticLogFields {
   taskRunId: number;
   providerRequestId: number;
   requestKind: TranslationProviderRequestKind;
@@ -107,12 +183,16 @@ export interface TranslationProviderRequestFailedLogContext extends ProviderToke
   durationMs: number;
   success: false;
   errorCode: TranslationLogErrorCode;
+  responseDiagnostics?: TranslationProviderResponseDiagnostics;
 }
 
-export interface TranslationMissingSegmentsLogContext {
+export interface TranslationMissingSegmentsLogContext
+  extends TranslationProviderResponseDiagnosticLogFields {
   taskRunId: number;
   providerRequestId: number;
+  requestKind: TranslationProviderRequestKind;
   missingSegmentCount: number;
+  responseDiagnostics?: TranslationProviderResponseDiagnostics;
 }
 
 const TRANSLATION_RUN_FAILURE_ERROR_CODES_BY_STAGE = {
@@ -307,15 +387,20 @@ export function logTranslationProviderRequestCompleted(
     || !isSafeDuration(context.durationMs)
     || context.success !== true
     || !isValidUsage(context)
+    || !isValidResponseDiagnostics(context.responseDiagnostics)
   ) {
     return;
   }
 
   try {
+    const { responseDiagnostics, ...requestContext } = context;
     logger?.info(
       TRANSLATION_LOG_EVENTS.providerRequestCompleted,
       TRANSLATION_LOG_COMPONENTS.providerRequest,
-      { ...context },
+      {
+        ...requestContext,
+        ...toProviderResponseDiagnosticLogFields(responseDiagnostics),
+      },
     );
   } catch {
     // Logging is observational and must not change Translation task behavior.
@@ -332,15 +417,20 @@ export function logTranslationProviderRequestFailed(
     || context.success !== false
     || !isTranslationLogErrorCode(context.errorCode)
     || !isValidUsage(context)
+    || !isValidResponseDiagnostics(context.responseDiagnostics)
   ) {
     return;
   }
 
   try {
+    const { responseDiagnostics, ...requestContext } = context;
     logger?.error(
       TRANSLATION_LOG_EVENTS.providerRequestFailed,
       TRANSLATION_LOG_COMPONENTS.providerRequest,
-      { ...context },
+      {
+        ...requestContext,
+        ...toProviderResponseDiagnosticLogFields(responseDiagnostics),
+      },
     );
   } catch {
     // Logging is observational and must not change Translation task behavior.
@@ -354,16 +444,22 @@ export function logTranslationMissingSegmentsDetected(
   if (
     !isSafeTaskRunId(context.taskRunId)
     || !isSafeProviderRequestId(context.providerRequestId)
+    || !TRANSLATION_PROVIDER_REQUEST_KINDS.includes(context.requestKind)
     || !isSafePositiveCount(context.missingSegmentCount)
+    || !isValidResponseDiagnostics(context.responseDiagnostics)
   ) {
     return;
   }
 
   try {
+    const { responseDiagnostics, ...requestContext } = context;
     logger?.warn(
       TRANSLATION_LOG_EVENTS.missingSegmentsDetected,
       TRANSLATION_LOG_COMPONENTS.providerRecovery,
-      { ...context },
+      {
+        ...requestContext,
+        ...toProviderResponseDiagnosticLogFields(responseDiagnostics),
+      },
     );
   } catch {
     // Logging is observational and must not change Translation task behavior.
@@ -383,6 +479,82 @@ function toRunSummaryContext(
     ...(context.inputTokens === undefined ? {} : { inputTokens: context.inputTokens }),
     ...(context.outputTokens === undefined ? {} : { outputTokens: context.outputTokens }),
     ...(context.totalTokens === undefined ? {} : { totalTokens: context.totalTokens }),
+  };
+}
+
+function toProviderResponseDiagnosticLogFields(
+  diagnostics: TranslationProviderResponseDiagnostics | undefined,
+): TranslationProviderResponseDiagnosticLogFields {
+  if (!diagnostics) return {};
+  return {
+    ...(diagnostics.reasonCode === undefined ? {} : { reasonCode: diagnostics.reasonCode }),
+    ...(diagnostics.failurePhase === undefined
+      ? {}
+      : { validationStage: diagnostics.failurePhase }),
+    ...(diagnostics.htmlValidationReason === undefined
+      ? {}
+      : { htmlValidationReason: diagnostics.htmlValidationReason }),
+    ...(diagnostics.compensationProtocol === undefined
+      ? {}
+      : { compensationProtocol: diagnostics.compensationProtocol }),
+    ...(diagnostics.finishReason === undefined ? {} : { finishReason: diagnostics.finishReason }),
+    ...(diagnostics.expectedSegmentCount === undefined
+      ? {}
+      : { expectedSegmentCount: diagnostics.expectedSegmentCount }),
+    ...(diagnostics.parsedSegmentCount === undefined
+      ? {}
+      : { parsedSegmentCount: diagnostics.parsedSegmentCount }),
+    ...(diagnostics.acceptedSegmentCount === undefined
+      ? {}
+      : { acceptedSegmentCount: diagnostics.acceptedSegmentCount }),
+    ...(diagnostics.missingSegmentCount === undefined
+      ? {}
+      : { missingSegmentCount: diagnostics.missingSegmentCount }),
+    ...(diagnostics.duplicateSegmentCount === undefined
+      ? {}
+      : { duplicateSegmentCount: diagnostics.duplicateSegmentCount }),
+    ...(diagnostics.unexpectedSegmentCount === undefined
+      ? {}
+      : { unexpectedSegmentCount: diagnostics.unexpectedSegmentCount }),
+    ...(diagnostics.malformedRecordCount === undefined
+      ? {}
+      : { malformedRecordCount: diagnostics.malformedRecordCount }),
+    ...(diagnostics.emptyTranslationCount === undefined
+      ? {}
+      : { emptyTranslationCount: diagnostics.emptyTranslationCount }),
+    ...(diagnostics.expectedTextSlotCount === undefined
+      ? {}
+      : { expectedTextSlotCount: diagnostics.expectedTextSlotCount }),
+    ...(diagnostics.parsedTextSlotCount === undefined
+      ? {}
+      : { parsedTextSlotCount: diagnostics.parsedTextSlotCount }),
+    ...(diagnostics.acceptedTextSlotCount === undefined
+      ? {}
+      : { acceptedTextSlotCount: diagnostics.acceptedTextSlotCount }),
+    ...(diagnostics.missingTextSlotCount === undefined
+      ? {}
+      : { missingTextSlotCount: diagnostics.missingTextSlotCount }),
+    ...(diagnostics.duplicateTextSlotCount === undefined
+      ? {}
+      : { duplicateTextSlotCount: diagnostics.duplicateTextSlotCount }),
+    ...(diagnostics.unexpectedTextSlotCount === undefined
+      ? {}
+      : { unexpectedTextSlotCount: diagnostics.unexpectedTextSlotCount }),
+    ...(diagnostics.malformedTextSlotCount === undefined
+      ? {}
+      : { malformedTextSlotCount: diagnostics.malformedTextSlotCount }),
+    ...(diagnostics.emptyTextSlotCount === undefined
+      ? {}
+      : { emptyTextSlotCount: diagnostics.emptyTextSlotCount }),
+    ...(diagnostics.inputCharacters === undefined
+      ? {}
+      : { inputCharacters: diagnostics.inputCharacters }),
+    ...(diagnostics.outputCharacters === undefined
+      ? {}
+      : { outputCharacters: diagnostics.outputCharacters }),
+    ...(diagnostics.affectedSegmentIdHashes === undefined
+      ? {}
+      : { affectedSegmentIdHashes: [...diagnostics.affectedSegmentIdHashes] }),
   };
 }
 
@@ -425,6 +597,93 @@ function isValidUsage(context: ProviderTokenUsage): boolean {
   return isSafeOptionalTokenCount(context.inputTokens)
     && isSafeOptionalTokenCount(context.outputTokens)
     && isSafeOptionalTokenCount(context.totalTokens);
+}
+
+function isValidResponseDiagnostics(
+  diagnostics: TranslationProviderResponseDiagnostics | undefined,
+): boolean {
+  if (!diagnostics) return true;
+  const counts = [
+    diagnostics.expectedSegmentCount,
+    diagnostics.parsedSegmentCount,
+    diagnostics.acceptedSegmentCount,
+    diagnostics.missingSegmentCount,
+    diagnostics.duplicateSegmentCount,
+    diagnostics.unexpectedSegmentCount,
+    diagnostics.malformedRecordCount,
+    diagnostics.emptyTranslationCount,
+    diagnostics.inputCharacters,
+    diagnostics.outputCharacters,
+  ];
+  if (counts.some((count) => count === undefined)) return false;
+  if (!counts.every((count) => isSafeCount(count ?? -1))) return false;
+  if (
+    diagnostics.reasonCode !== undefined
+    && !Object.values(TRANSLATION_OUTPUT_REASON_CODES).includes(diagnostics.reasonCode)
+  ) {
+    return false;
+  }
+  if (
+    diagnostics.failurePhase !== undefined
+    && !TRANSLATION_OUTPUT_FAILURE_PHASES.includes(diagnostics.failurePhase)
+  ) {
+    return false;
+  }
+  if (diagnostics.reasonCode !== undefined && diagnostics.failurePhase === undefined) return false;
+  const textSlotCounts = [
+    diagnostics.expectedTextSlotCount,
+    diagnostics.parsedTextSlotCount,
+    diagnostics.acceptedTextSlotCount,
+    diagnostics.missingTextSlotCount,
+    diagnostics.duplicateTextSlotCount,
+    diagnostics.unexpectedTextSlotCount,
+    diagnostics.malformedTextSlotCount,
+    diagnostics.emptyTextSlotCount,
+  ];
+  const hasTextSlotCounts = textSlotCounts.some((count) => count !== undefined);
+  if (
+    diagnostics.compensationProtocol !== undefined
+    && !TRANSLATION_COMPENSATION_PROTOCOLS.includes(diagnostics.compensationProtocol)
+  ) {
+    return false;
+  }
+  if (
+    diagnostics.compensationProtocol === undefined
+    ? hasTextSlotCounts
+    : textSlotCounts.some((count) => count === undefined || !isSafeCount(count))
+  ) {
+    return false;
+  }
+  if (
+    diagnostics.htmlValidationReason !== undefined
+    && !Object.values(TRANSLATION_HTML_VALIDATION_REASONS)
+      .includes(diagnostics.htmlValidationReason)
+  ) {
+    return false;
+  }
+  if (
+    diagnostics.htmlValidationReason !== undefined
+    && diagnostics.reasonCode !== TRANSLATION_OUTPUT_REASON_CODES.htmlStructureInvalid
+  ) {
+    return false;
+  }
+  if (
+    diagnostics.htmlValidationReason !== undefined
+    && diagnostics.failurePhase !== 'html-validation'
+  ) {
+    return false;
+  }
+  if (
+    diagnostics.finishReason !== undefined
+    && !['stop', 'length', 'content-filter', 'other'].includes(diagnostics.finishReason)
+  ) {
+    return false;
+  }
+  return diagnostics.affectedSegmentIdHashes === undefined
+    || (
+      diagnostics.affectedSegmentIdHashes.length <= 3
+      && diagnostics.affectedSegmentIdHashes.every((hash) => /^[a-f0-9]{16}$/.test(hash))
+    );
 }
 
 function isTranslationLogErrorCode(value: unknown): value is TranslationLogErrorCode {

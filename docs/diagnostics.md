@@ -40,6 +40,16 @@ article URLs, user text, article and cleaned content, summaries, translations,
 notes, SQLite data, full home paths, provider configuration, and raw system
 errors. Translation's console-only timing output is deliberately outside v1.
 
+For `translation.provider.request.completed`,
+`translation.provider.request.failed`, and omission records, the report may
+also contain a deliberately flat, allow-listed response summary: request kind,
+stable reason, validation stage, HTML-validation subreason when applicable,
+and a text-slot compensation protocol plus aggregate slot counts when applicable,
+an available normalized finish reason,
+segment counts, input/output character counts, and up to three 16-character
+segment-ID hashes. It never includes nested provider objects, prompts, raw
+NDJSON, chunks, source text, or translated text.
+
 ## Save behavior
 
 Main owns the native save dialog and the final write. Cancel returns a normal

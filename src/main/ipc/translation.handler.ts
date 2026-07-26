@@ -311,6 +311,7 @@ function isTranslationRequest(value: unknown): value is TranslationGetRequest & 
     && typeof request.targetLanguage === 'string'
     && (request.useTerminology === undefined || typeof request.useTerminology === 'boolean')
     && (request.useSmartContext === undefined || typeof request.useSmartContext === 'boolean')
+    && (request.forceNew === undefined || typeof request.forceNew === 'boolean')
     && (request.expertId === undefined || (
       typeof request.expertId === 'string'
       && request.expertId.length > 0
