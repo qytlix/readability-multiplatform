@@ -2739,16 +2739,8 @@ body.workspace-is-resizing * {
 .usage-statistics-header {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 18px;
-}
-
-.usage-statistics-header > p {
-  max-width: 440px;
-  margin: 0;
-  color: var(--reader-text-muted);
-  font-size: 11px;
-  line-height: 1.55;
 }
 
 .usage-range-selector {
@@ -2840,8 +2832,7 @@ body.workspace-is-resizing * {
   background: var(--reader-input);
 }
 
-.usage-statistics-metric > span,
-.usage-statistics-metric small {
+.usage-statistics-metric > span {
   color: var(--reader-text-muted);
   font-size: 10px;
   line-height: 1.35;
@@ -2883,14 +2874,6 @@ body.workspace-is-resizing * {
   color: var(--reader-text-soft);
   font-size: 13px;
   font-weight: 620;
-}
-
-.usage-trends-header p,
-.usage-trend-legend {
-  margin: 4px 0 0;
-  color: var(--reader-text-muted);
-  font-size: 10px;
-  line-height: 1.45;
 }
 
 .usage-trend-view-selector {
@@ -3014,10 +2997,6 @@ body.workspace-is-resizing * {
 .usage-trend-tooltip strong {
   color: var(--reader-text);
   font-size: 11px;
-}
-
-.usage-trend-legend {
-  margin: -1px 0 0;
 }
 
 .usage-statistics-breakdowns {
@@ -4411,11 +4390,9 @@ body.workspace-is-resizing * {
   .inline-translation-translation-row span,
   .inline-translation-examples p + p,
   .settings-toggle small,
-  .usage-statistics-header > p,
   .usage-statistics-state,
   .usage-statistics-coverage-note,
   .usage-statistics-metric > span,
-  .usage-statistics-metric small,
   .usage-statistics-table-wrap thead th,
   .settings-fields label,
   .settings-field,

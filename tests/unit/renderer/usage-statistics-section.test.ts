@@ -46,8 +46,15 @@ describe('UsageStatisticsSection', () => {
     expect(container?.textContent).toContain('未报告');
     expect(container?.textContent).toContain('3');
     expect(container?.textContent).toContain('服务商 #7 · model-alpha');
-    expect(container?.textContent).toContain('这些总计并非完整估算');
-    expect(container?.textContent).toContain('条历史请求无法归属到某次执行。');
+    expect(container?.querySelector('.usage-statistics-coverage-note')?.textContent?.trim())
+      .toBe('这些总计并非完整估算，只累计了服务商明确报告的 Token 字段');
+    expect(container?.textContent).not.toContain('每条记录对应一次实际的服务商请求');
+    expect(container?.textContent).not.toContain('不同的摘要或全文翻译执行次数');
+    expect(container?.textContent).not.toContain('条历史请求没有执行标识');
+    expect(container?.textContent).not.toContain('用于摘要和全文翻译的服务商实报 Token 用量');
+    expect(container?.textContent).not.toContain('条请求中有 2 条报告了此字段');
+    expect(container?.textContent).not.toContain('按日统计使用 Asia/Shanghai');
+    expect(container?.textContent).not.toContain('柱状图显示实报总 Token');
     expect(container?.querySelectorAll('.usage-statistics-table-numeric-column')).toHaveLength(15);
     expect(container?.querySelector('.usage-statistics-table-wrap td[title]')).toBeNull();
   });

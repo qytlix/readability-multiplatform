@@ -82,10 +82,6 @@ export const UsageStatisticsSection = () => {
       <h3 id="usage-statistics-title" className="settings-section-title">模型用量统计</h3>
       <div className="settings-card usage-statistics-card">
         <div className="usage-statistics-header">
-          <p>
-            用于摘要和全文翻译的服务商实报 Token 用量。
-            按日统计使用 {statistics?.query.timeZone ?? timeZone}。
-          </p>
           <div className="usage-range-selector" aria-label="模型用量统计日期范围">
             {RANGE_OPTIONS.map((days) => (
               <button
@@ -143,26 +139,16 @@ const UsageStatisticsContent = ({ statistics }: { statistics: UsageStatistics })
         <UsageMetric
           label="服务商请求"
           value={formatNumber(totals.requestCount)}
-          detail="每条记录对应一次实际的服务商请求。"
         />
         <UsageMetric
           label="已知执行次数"
           value={formatNumber(totals.attemptCoverage.knownAttemptCount)}
-          detail={hasUnassignedRequests
-            ? `${formatNumber(totals.attemptCoverage.unassignedRequestCount)} 条历史请求没有执行标识。`
-            : '不同的摘要或全文翻译执行次数。'}
         />
       </div>
 
       {(hasIncompleteUsage || hasUnassignedRequests) && (
         <p className="usage-statistics-coverage-note" role="status">
-          这些总计并非完整估算，只累计服务商明确报告的 Token 字段，缺失字段不会按 0 处理。
-          {hasIncompleteUsage && ` ${formatNumber(
-            totals.tokenCoverage.partialRequests + totals.tokenCoverage.missingRequests,
-          )} 条请求报告了部分用量或未报告用量。`}
-          {hasUnassignedRequests && ` ${formatNumber(
-            totals.attemptCoverage.unassignedRequestCount,
-          )} 条历史请求无法归属到某次执行。`}
+          这些总计并非完整估算，只累计了服务商明确报告的 Token 字段
         </p>
       )}
 
@@ -214,10 +200,7 @@ const UsageTrendsCard = ({ statistics }: { statistics: UsageStatistics }) => {
   return (
     <section className="usage-trends-card" aria-labelledby="usage-trends-title">
       <div className="usage-trends-header">
-        <div>
-          <h4 id="usage-trends-title">用量趋势</h4>
-          <p>按日统计使用 {statistics.query.timeZone}。</p>
-        </div>
+        <h4 id="usage-trends-title">用量趋势</h4>
         <div className="usage-trend-view-selector" aria-label="用量趋势指标">
           <button
             type="button"
@@ -376,13 +359,6 @@ const UsageTrendChart = ({
       {activePoint && (
         <UsageTrendTooltip point={activePoint} view={view} />
       )}
-
-      {view === 'tokens' && (
-        <p className="usage-trend-legend">
-          柱状图显示实报总 Token；深绿色柱表示总 Token 覆盖不完整，交叉标记表示已有请求但未报告总 Token，
-          空白日期没有服务商请求。
-        </p>
-      )}
     </div>
   );
 };
@@ -427,26 +403,20 @@ const UsageTokenMetric = ({
   const value = reportedRequests === 0
     ? '未报告'
     : formatNumber(aggregate.tokenTotals[field]);
-  const detail = reportedRequests === 0
-    ? '没有请求报告此 Token 字段。'
-    : `${formatNumber(aggregate.requestCount)} 条请求中有 ${formatNumber(reportedRequests)} 条报告了此字段。`;
 
-  return <UsageMetric label={label} value={value} detail={detail} />;
+  return <UsageMetric label={label} value={value} />;
 };
 
 const UsageMetric = ({
   label,
   value,
-  detail,
 }: {
   label: string;
   value: string;
-  detail: string;
 }) => (
   <div className="usage-statistics-metric">
     <span>{label}</span>
     <strong>{value}</strong>
-    <small>{detail}</small>
   </div>
 );
 
