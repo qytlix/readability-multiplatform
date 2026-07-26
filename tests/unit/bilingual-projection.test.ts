@@ -267,6 +267,32 @@ describe('projectBilingualBody', () => {
     expect(root.querySelector('[data-segment-id="pending"] .translation-segment-spinner')).not.toBeNull();
   });
 
+  it('keeps the previous target visible and appends its spinner while that segment is retranslated', () => {
+    const dom = new JSDOM('<p>Original paragraph.</p>');
+    const root = dom.window.document.createElement('div');
+    root.innerHTML = dom.window.document.body.innerHTML;
+    const previousSegment = segment(
+      'paragraph',
+      0,
+      'paragraph',
+      '<p>Original paragraph.</p>',
+      'Original paragraph.',
+      '<p>Previous translation.</p>',
+    );
+
+    projectBilingualBody(root, [previousSegment], {
+      showPendingIndicators: true,
+      pendingSegmentIds: new Set(['paragraph']),
+    });
+
+    const source = root.querySelector('[data-segment-id="paragraph"]');
+    const target = source?.nextElementSibling;
+    expect(target?.classList.contains('translation-bilingual-target')).toBe(true);
+    expect(target?.textContent).toContain('Previous translation.');
+    expect(target?.querySelector('.translation-segment-spinner')).not.toBeNull();
+    expect(source?.querySelector('.translation-segment-spinner')).toBeNull();
+  });
+
   it('leaves a locally skipped symbol segment in place without a duplicate target block', () => {
     const dom = new JSDOM('<p>✦ — ✦</p>');
     const root = dom.window.document.createElement('div');

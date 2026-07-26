@@ -559,6 +559,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   );
 
   const result = getDisplayedResult(translationState);
+  const pendingSegmentIds = getPendingSegmentIds(translationState);
   const readerMode: TranslationReaderMode = getRestoredTranslationReaderMode(
     translationState,
     isBilingualVisible,
@@ -675,6 +676,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         <BilingualProjection
           result={result}
           sourceHtml={sourceHtml}
+          pendingSegmentIds={pendingSegmentIds}
           onVisibleSegmentIds={prioritizeVisibleSegments}
           onContentClick={onContentClick}
         />
@@ -759,11 +761,13 @@ function isEditableTarget(target: EventTarget | null): boolean {
 function BilingualProjection({
   result,
   sourceHtml,
+  pendingSegmentIds,
   onVisibleSegmentIds,
   onContentClick,
 }: {
   result: TranslationResult;
   sourceHtml: string;
+  pendingSegmentIds: ReadonlySet<string>;
   onVisibleSegmentIds: (sourceSegmentIds: string[]) => void;
   onContentClick: (event: MouseEvent<HTMLDivElement>) => void;
 }) {
@@ -772,6 +776,7 @@ function BilingualProjection({
   bodyRoot.innerHTML = sourceHtml;
   projectBilingualBody(bodyRoot, result.segments, {
     showPendingIndicators: result.status === 'running',
+    pendingSegmentIds,
   });
   const bodyHtml = bodyRoot.innerHTML;
 
@@ -865,6 +870,14 @@ function getActiveResult(state: TranslationState): TranslationResult | undefined
     || state.state === 'paused'
     ? state.activeResult
     : undefined;
+}
+
+function getPendingSegmentIds(state: TranslationState): ReadonlySet<string> {
+  const candidate = getResult(state);
+  if (candidate?.status !== 'running') return new Set();
+  return new Set(candidate.segments
+    .filter((segment) => segment.status === 'pending')
+    .map((segment) => segment.sourceSegmentId));
 }
 
 export function getDisplayedResult(state: TranslationState): TranslationResult | undefined {
