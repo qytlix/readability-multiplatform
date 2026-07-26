@@ -70,6 +70,105 @@ describe('UsageStatisticsSection', () => {
     expect(rangeButton?.getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('switches the trends card between reported-token bars and request area trend without another query', async () => {
+    const getStatistics = vi.fn().mockResolvedValue({ ok: true, data: createStatistics() });
+    installUsageApi(getStatistics);
+    await renderSection();
+
+    const reportedTokensButton = Array.from(container?.querySelectorAll('button') ?? [])
+      .find((button) => button.textContent === 'Reported Tokens');
+    const requestsButton = Array.from(container?.querySelectorAll('button') ?? [])
+      .find((button) => button.textContent === 'Requests');
+    expect(reportedTokensButton?.getAttribute('aria-pressed')).toBe('true');
+    expect(container?.querySelector('.usage-trend-bar')).not.toBeNull();
+
+    await act(async () => {
+      requestsButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(getStatistics).toHaveBeenCalledTimes(1);
+    expect(requestsButton?.getAttribute('aria-pressed')).toBe('true');
+    expect(container?.querySelector('.usage-trend-area')).not.toBeNull();
+    expect(container?.querySelector('.usage-trend-line')).not.toBeNull();
+  });
+
+  it('fills missing dates as no requests instead of a zero-token report', async () => {
+    const statistics = createStatistics();
+    const sourceDay = statistics.byDay[0];
+    if (!sourceDay) throw new Error('Expected default usage statistics to contain a day');
+    statistics.byDay = [
+      sourceDay,
+      { ...sourceDay, day: '2026-07-26' },
+    ];
+    const getStatistics = vi.fn().mockResolvedValue({ ok: true, data: statistics });
+    installUsageApi(getStatistics);
+    await renderSection();
+
+    const missingDate = container?.querySelector<SVGRectElement>('[data-day="2026-07-25"]');
+    const partialDate = container?.querySelector<SVGRectElement>('[data-day="2026-07-24"]');
+    expect(missingDate?.getAttribute('data-coverage')).toBe('no-requests');
+    expect(partialDate?.getAttribute('data-coverage')).toBe('partial');
+
+    await act(async () => {
+      missingDate?.focus();
+      await Promise.resolve();
+    });
+
+    expect(container?.textContent).toContain('2026-07-25');
+    expect(container?.textContent).toContain('No Provider requests were recorded.');
+  });
+
+  it('shows exact available token fields and partial coverage in the token tooltip', async () => {
+    const getStatistics = vi.fn().mockResolvedValue({ ok: true, data: createStatistics() });
+    installUsageApi(getStatistics);
+    await renderSection();
+
+    const reportedDate = container?.querySelector<SVGRectElement>('[data-day="2026-07-24"]');
+    await act(async () => {
+      reportedDate?.focus();
+      await Promise.resolve();
+    });
+
+    expect(container?.textContent).toContain('Provider-reported total tokens: 12 (reported by 2 of 3 requests)');
+    expect(container?.textContent).toContain('Input tokens: 7 (reported by 2 of 3 requests)');
+    expect(container?.textContent).toContain('Output tokens: Not reported');
+    expect(container?.textContent).toContain('Token coverage: Partial (2 of 3 requests reported total tokens)');
+  });
+
+  it('marks requests with no reported total tokens differently from dates without requests', async () => {
+    const statistics = createStatistics();
+    const sourceDay = statistics.byDay[0];
+    if (!sourceDay) throw new Error('Expected default usage statistics to contain a day');
+    statistics.byDay = [{
+      ...sourceDay,
+      tokenTotals: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      tokenCoverage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        reportedRequests: 0,
+        partialRequests: 0,
+        missingRequests: sourceDay.requestCount,
+      },
+    }];
+    const getStatistics = vi.fn().mockResolvedValue({ ok: true, data: statistics });
+    installUsageApi(getStatistics);
+    await renderSection();
+
+    const unreportedDate = container?.querySelector<SVGRectElement>('[data-day="2026-07-24"]');
+    expect(unreportedDate?.getAttribute('data-coverage')).toBe('not-reported');
+    expect(container?.querySelector('.usage-trend-unreported-marker')).not.toBeNull();
+
+    await act(async () => {
+      unreportedDate?.focus();
+      await Promise.resolve();
+    });
+
+    expect(container?.textContent).toContain('Provider-reported total tokens: Not reported');
+    expect(container?.textContent).toContain('Token coverage: Not reported (0 of 3 requests reported total tokens)');
+  });
+
   it('shows an explicit empty state when no Provider requests were recorded', async () => {
     const getStatistics = vi.fn().mockResolvedValue({
       ok: true,
@@ -80,6 +179,7 @@ describe('UsageStatisticsSection', () => {
     await renderSection();
 
     expect(container?.textContent).toContain('No Provider requests were recorded for the selected period.');
+    expect(container?.textContent).not.toContain('Usage Trends');
     expect(container?.querySelector('table')).toBeNull();
   });
 
