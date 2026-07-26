@@ -30,7 +30,6 @@ function makeAnnotation(overrides: Partial<EntryAnnotation> & { selectedText: st
 function makeArticle(overrides: Partial<ExportableArticle> & { cleanedMarkdown: string }): ExportableArticle {
   return {
     entryId: 1,
-    cleanedMarkdown: overrides.cleanedMarkdown,
     ...overrides,
   };
 }
