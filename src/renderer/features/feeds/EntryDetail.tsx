@@ -43,6 +43,15 @@ import {
   calculateReadingProgress,
   getScrollTopForReadingProgress,
 } from './readingProgress';
+import { ReadingProgressBook } from './ReadingProgressBook';
+import {
+  getReadingBookTurnDirection,
+  getReadingBookTurnDuration,
+  getReadingBookTurnVariant,
+  SINGLE_PAGE_SCROLL_DISTANCE_PX,
+  type ReadingBookTurnDirection,
+  type ReadingBookTurnMotion,
+} from './readingProgressBookMotion';
 import {
   getNativeVideoHtml,
   getTrustedVideoEmbed,
@@ -82,6 +91,7 @@ interface EntryDetailProps {
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
 
 const WINDOW_TOP_REVEAL_ZONE = 60;
+const BOOK_SCROLL_GESTURE_IDLE_MS = 180;
 
 export const EntryDetail = ({
   entry,
@@ -118,6 +128,11 @@ export const EntryDetail = ({
   const [exportArticleAvail, setExportArticleAvail] = useState<ArticleAvailability | null>(null);
   const [titleTranslationTarget, setTitleTranslationTarget] = useState<HTMLDivElement | null>(null);
   const [isFloatingHeaderVisible, setIsFloatingHeaderVisible] = useState(false);
+  const [visibleReadingProgress, setVisibleReadingProgress] = useState(
+    entry?.readingProgress ?? 0,
+  );
+  const [readingBookTurn, setReadingBookTurn] =
+    useState<ReadingBookTurnMotion | null>(null);
   const prevEntryId = useRef<number | null>(null);
   const handledRefreshVersionsRef = useRef(new Map<number, number>());
   const abortRef = useRef<AbortController | null>(null);
@@ -135,6 +150,10 @@ export const EntryDetail = ({
   const isRestoringProgressRef = useRef(false);
   const hasUserScrolledSinceRestoreRef = useRef(false);
   const programmaticScrollRef = useRef<{ entryId: number; scrollTop: number } | null>(null);
+  const readingBookTurnIdRef = useRef(0);
+  const lastReadingBookSampleAtRef = useRef<number | null>(null);
+  const readingBookDirectionRef = useRef<ReadingBookTurnDirection | null>(null);
+  const readingBookDistanceRef = useRef(0);
 
   const readerDisplayState = getReaderDisplayState({
     feedLoadStatus,
@@ -311,6 +330,11 @@ export const EntryDetail = ({
     setIsSummaryGenerating(false);
     setIsTranslationGenerating(false);
     setIsTitleTranslating(false);
+    setVisibleReadingProgress(entry?.readingProgress ?? 0);
+    setReadingBookTurn(null);
+    lastReadingBookSampleAtRef.current = null;
+    readingBookDirectionRef.current = null;
+    readingBookDistanceRef.current = 0;
   }, [entry?.id]);
 
   useEffect(() => () => {
@@ -366,6 +390,11 @@ export const EntryDetail = ({
       previousScrollTopRef.current = restoredScrollTop;
       lastReportedProgressRef.current = savedReadingProgress;
       restoredEntryIdRef.current = entryId;
+      setVisibleReadingProgress(calculateReadingProgress({
+        scrollTop: restoredScrollTop,
+        scrollHeight: container.scrollHeight,
+        clientHeight: container.clientHeight,
+      }));
 
       if (releaseFrame) window.cancelAnimationFrame(releaseFrame);
       releaseFrame = window.requestAnimationFrame(releaseRestoration);
@@ -610,9 +639,11 @@ export const EntryDetail = ({
 
   const handleReaderScroll = (event: UIEvent<HTMLDivElement>): void => {
     const currentScrollTop = event.currentTarget.scrollTop;
+    const previousScrollTop = previousScrollTopRef.current;
+    const scrollDelta = currentScrollTop - previousScrollTop;
     const action = getFloatingReaderHeaderAction({
       currentScrollTop,
-      previousScrollTop: previousScrollTopRef.current,
+      previousScrollTop,
       headerHeight: flowHeaderRef.current?.offsetHeight ?? 0,
       isHeaderHovered: isFloatingHeaderHoveredRef.current,
     });
@@ -648,6 +679,47 @@ export const EntryDetail = ({
       scrollHeight: event.currentTarget.scrollHeight,
       clientHeight: event.currentTarget.clientHeight,
     });
+    setVisibleReadingProgress(readingProgress);
+
+    const turnDirection = getReadingBookTurnDirection(scrollDelta);
+    if (turnDirection) {
+      const sampleAt = event.timeStamp;
+      const previousSampleAt = lastReadingBookSampleAtRef.current;
+      const elapsedSinceSample = previousSampleAt === null
+        ? 120
+        : Math.max(1, sampleAt - previousSampleAt);
+      const directionChanged = readingBookDirectionRef.current !== null
+        && readingBookDirectionRef.current !== turnDirection;
+      const isNewGesture = previousSampleAt === null
+        || elapsedSinceSample >= BOOK_SCROLL_GESTURE_IDLE_MS
+        || directionChanged;
+
+      if (isNewGesture) {
+        readingBookDistanceRef.current = 0;
+      }
+      readingBookDistanceRef.current += Math.abs(scrollDelta);
+      lastReadingBookSampleAtRef.current = sampleAt;
+      readingBookDirectionRef.current = turnDirection;
+
+      if (
+        isNewGesture
+        || readingBookDistanceRef.current >= SINGLE_PAGE_SCROLL_DISTANCE_PX
+      ) {
+        const turnDistance = readingBookDistanceRef.current;
+        readingBookTurnIdRef.current += 1;
+        setReadingBookTurn({
+          id: readingBookTurnIdRef.current,
+          direction: turnDirection,
+          durationMs: getReadingBookTurnDuration(
+            scrollDelta,
+            elapsedSinceSample,
+          ),
+          variant: getReadingBookTurnVariant(turnDistance),
+        });
+        readingBookDistanceRef.current = 0;
+      }
+    }
+
     const lastReportedProgress = lastReportedProgressRef.current;
     if (
       lastReportedProgress !== null
@@ -956,6 +1028,10 @@ export const EntryDetail = ({
           targetLanguage={aiPreferences.translationTargetLanguage}
           useTerminology={aiPreferences.useTerminology}
           expertId={aiPreferences.translationExpertId}
+        />
+        <ReadingProgressBook
+          readingProgress={visibleReadingProgress}
+          turnMotion={readingBookTurn}
         />
       </div>
 
