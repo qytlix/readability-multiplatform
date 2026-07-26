@@ -44,19 +44,63 @@ export class ContentFetcher {
    * Tries each strategy in order; on failure proceeds to the next.
    * If all strategies fail, throws the last error encountered.
    */
-  async fetch(url: string, signal?: AbortSignal): Promise<FetchResult> {
+  async fetch(
+    url: string,
+    signal?: AbortSignal,
+    validate?: (result: FetchResult) => void | Promise<void>,
+  ): Promise<FetchResult> {
+    return this.fetchValidated(url, signal, validate);
+  }
+
+  /**
+   * Fetch until a strategy returns a response the caller can actually use.
+   * A 200 challenge/app shell is not article success, so content extraction can
+   * reject a candidate and let the next transport try.
+   */
+  private async fetchValidated(
+    url: string,
+    signal?: AbortSignal,
+    validate?: (result: FetchResult) => void | Promise<void>,
+  ): Promise<FetchResult> {
     let lastError: Error | null = null;
+    let skipEnhancedHttpTransport = false;
+    const browserFallbackAvailable = this.strategies.some(
+      (strategy) => strategy.name === 'browser' && strategy.isAvailable(),
+    );
 
     for (const strategy of this.strategies) {
       if (!strategy.isAvailable()) continue;
+      if (skipEnhancedHttpTransport && strategy.name === 'enhanced') continue;
+      let responseReceived = false;
 
       try {
-        return await strategy.fetch(url, signal);
+        const result = await strategy.fetch(url, signal);
+        responseReceived = true;
+        await validate?.(result);
+        return result;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
+        if (signal?.aborted) {
+          throw lastError;
+        }
+        if (
+          strategy.name === 'simple'
+          && browserFallbackAvailable
+          && !responseReceived
+          && isNodeFetchTransportFailure(lastError)
+        ) {
+          // Enhanced uses the same Node/Undici transport. Repeating a transport
+          // failure with different headers only delays the Chromium fallback.
+          skipEnhancedHttpTransport = true;
+        }
       }
     }
 
     throw lastError ?? new Error('All fetch strategies failed');
   }
+}
+
+function isNodeFetchTransportFailure(error: Error): boolean {
+  return error instanceof TypeError
+    && /fetch failed|network|socket|connect/i.test(error.message);
 }

@@ -127,6 +127,7 @@ describe('Advanced Translation upgrade and restart hardening', () => {
         { filename: '015_add_terminology_libraries' },
         { filename: '016_normalize_relative_entry_urls' },
         { filename: '017_normalize_entry_summaries' },
+        { filename: '018_add_feed_content_html' },
       ]);
       expect(restarted.getDb().prepare(`
         SELECT name FROM sqlite_master

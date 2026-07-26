@@ -244,6 +244,73 @@ describe('ContentFetcher', () => {
     expect((strategies[2].fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
   });
 
+  it('should continue when a 200 response fails article validation', async () => {
+    const shellResult: FetchResult = {
+      url: 'https://example.com/article',
+      statusCode: 200,
+      headers: {},
+      body: '<html><body>Access verification</body></html>',
+    };
+    const articleResult: FetchResult = {
+      ...shellResult,
+      body: htmlBody,
+    };
+    const strategies = [
+      mockStrategy('simple', shellResult),
+      mockStrategy('browser', articleResult),
+    ];
+    const validate = vi.fn((candidate: FetchResult) => {
+      if (!candidate.body.includes('<article>')) {
+        throw new Error('Readability could not extract content');
+      }
+    });
+
+    const fetcher = new ContentFetcher({ strategies });
+    const result = await fetcher.fetch(
+      'https://example.com/article',
+      undefined,
+      validate,
+    );
+
+    expect(result).toBe(articleResult);
+    expect(validate).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips redundant enhanced retries after a Node transport failure', async () => {
+    const browserResult: FetchResult = {
+      url: 'https://example.com/article',
+      statusCode: 200,
+      headers: {},
+      body: htmlBody,
+    };
+    const simple = mockStrategy('simple', new TypeError('fetch failed'));
+    const enhanced = mockStrategy('enhanced', new Error('should be skipped'));
+    const browser = mockStrategy('browser', browserResult);
+    const fetcher = new ContentFetcher({
+      strategies: [simple, enhanced, browser],
+    });
+
+    await expect(fetcher.fetch('https://example.com/article')).resolves.toBe(
+      browserResult,
+    );
+    expect(enhanced.fetch).not.toHaveBeenCalled();
+    expect(browser.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start fallback strategies after cancellation', async () => {
+    const abortError = new DOMException('aborted', 'AbortError');
+    const first = mockStrategy('simple', abortError);
+    const fallback = mockStrategy('browser', new Error('should not run'));
+    const fetcher = new ContentFetcher({ strategies: [first, fallback] });
+    const controller = new AbortController();
+    controller.abort(abortError);
+
+    await expect(
+      fetcher.fetch('https://example.com/article', controller.signal),
+    ).rejects.toThrow('aborted');
+    expect(fallback.fetch).not.toHaveBeenCalled();
+  });
+
   it('should throw last error when all strategies fail', async () => {
     const strategies = [
       mockStrategy('tier0', new Error('Error from T0')),

@@ -103,14 +103,20 @@ function createContentService(options: {
   lookup?: () => Entry | undefined;
 } = {}): {
   service: ContentService;
-  contentStore: { updatePipelineStatus: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
+  contentStore: {
+    findByEntry: ReturnType<typeof vi.fn>;
+    updatePipelineStatus: ReturnType<typeof vi.fn>;
+    upsert: ReturnType<typeof vi.fn>;
+  };
 } {
   const contentStore = {
+    findByEntry: vi.fn(() => undefined),
     updatePipelineStatus: vi.fn(() => options.updatePipelineStatus?.()),
     upsert: vi.fn((params: { pipelineStatus: string }) => options.upsert?.(params)),
   };
   const entryStore = {
     findById: vi.fn(options.lookup ?? (() => options.entry ?? TEST_ENTRY)),
+    findFeedContentHtml: vi.fn(() => undefined),
     createOrUpdate: vi.fn(),
   };
   const fetcher = {

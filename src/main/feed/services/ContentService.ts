@@ -1,5 +1,10 @@
 import { performance } from 'node:perf_hooks';
-import type { CleanedContent } from '../../../shared/contracts/content.types';
+import type {
+  CleanedContent,
+  CleanResult,
+  FetchResult,
+} from '../../../shared/contracts/content.types';
+import type { Entry } from '../../../shared/contracts/feed.types';
 import { ContentFetcher } from '../fetcher/ContentFetcher';
 import {
   CONTENT_CLEANER_VERSION,
@@ -49,8 +54,21 @@ export class ContentService {
    * Get existing cleaned content for an entry.
    */
   async getContent(entryId: number): Promise<CleanedContent | undefined> {
-    const content = this.contentStore.findByEntry(entryId);
+    let content = this.contentStore.findByEntry(entryId);
     if (!content) return undefined;
+    if (
+      content.pipelineStatus === 'failed'
+      && this.hasRenderableCachedContent(content)
+    ) {
+      // Failed refreshes created before this fix may have hidden an older,
+      // successfully sanitized body. Repair that state lazily on first read.
+      this.contentStore.updatePipelineStatus(entryId, 'success');
+      content = {
+        ...content,
+        pipelineStatus: 'success',
+        pipelineError: undefined,
+      };
+    }
 
     const markdownSource = this.contentStore.findMarkdownSource(entryId);
     if (!markdownSource) return content;
@@ -115,7 +133,14 @@ export class ContentService {
     source: NonNullable<ReturnType<ContentStore['findMarkdownSource']>>,
   ): string {
     if (source.rawHtml && source.baseUrl) {
-      return this.cleaner.clean(source.rawHtml, source.baseUrl).content;
+      try {
+        return this.cleaner.clean(source.rawHtml, source.baseUrl).content;
+      } catch {
+        // A publisher can change its page shell after a successful extraction.
+        // Keep the last sanitized Reader HTML instead of making cached content
+        // unreadable during a cleaner-version upgrade.
+        return this.cleaner.cleanStoredHtml(source.cleanedHtml);
+      }
     }
     return this.cleaner.cleanStoredHtml(source.cleanedHtml);
   }
@@ -131,9 +156,11 @@ export class ContentService {
     const startedAt = performance.now();
     let stage: ContentPipelineStage = 'lookup';
     let entry: ReturnType<EntryStore['findById']>;
+    let previousContent: CleanedContent | undefined;
 
     try {
       entry = this.entryStore.findById(entryId);
+      previousContent = this.contentStore.findByEntry(entryId);
     } catch (error) {
       this.logPipelineFailure(
         entryId,
@@ -173,74 +200,71 @@ export class ContentService {
       stage = 'persist';
       this.contentStore.updatePipelineStatus(entryId, 'fetching');
       stage = 'fetch';
-      const fetchResult = await this.fetcher.fetch(entry.url, signal);
+      let cleanResult: CleanResult | undefined;
+      const fetchResult = await this.fetcher.fetch(
+        entry.url,
+        signal,
+        (candidate) => {
+          cleanResult = this.cleaner.clean(candidate.body, candidate.url);
+        },
+      );
 
       // Phase 2: Clean
       stage = 'persist';
       this.contentStore.updatePipelineStatus(entryId, 'cleaning');
       stage = 'clean';
-      const cleanResult = this.cleaner.clean(
-        fetchResult.body,
-        fetchResult.url,
+      cleanResult ??= this.cleaner.clean(fetchResult.body, fetchResult.url);
+      return this.persistCleanedContent(
+        entry,
+        fetchResult,
+        cleanResult,
+        (nextStage) => {
+          stage = nextStage;
+        },
       );
-
-      // Phase 3: Convert to Markdown and derive Translation blocks.
-      stage = 'persist';
-      this.contentStore.updatePipelineStatus(entryId, 'converting');
-      stage = 'convert';
-      const markdown = this.markdownConverter.convert(cleanResult.content);
-      const readerTitle = entry.title ?? cleanResult.title;
-      const readerByline = entry.author ?? cleanResult.byline;
-      const segmentedContent = this.segmenter.segment(cleanResult.content, {
-        title: readerTitle,
-        byline: readerByline,
-      });
-
-      // Persist
-      stage = 'persist';
-      this.contentStore.upsert({
-        entryId,
-        html: fetchResult.body,
-        sourceUrl: fetchResult.url,
-        cleanedHtml: cleanResult.content,
-        markdown,
-        readabilityVersion: CONTENT_CLEANER_VERSION,
-        markdownVersion: MARKDOWN_CONVERTER_VERSION,
-        readabilityTitle: cleanResult.title,
-        readabilityByline: cleanResult.byline,
-        documentBaseURL: cleanResult.documentBaseURL,
-        pipelineStatus: 'success',
-        segmenterVersion: segmentedContent.segmenterVersion,
-        sourceContentHash: segmentedContent.sourceContentHash,
-        segments: segmentedContent.segments,
-      });
-
-      // Update entry contentHash
-      this.entryStore.createOrUpdate({
-        feedId: entry.feedId,
-        guid: entry.guid,
-        contentHash: segmentedContent.sourceContentHash,
-      });
-
-      return {
-        entryId,
-        sourceUrl: fetchResult.url,
-        readerTitle,
-        readerByline,
-        html: fetchResult.body,
-        cleanedHtml: cleanResult.content,
-        markdown,
-        readabilityTitle: cleanResult.title,
-        readabilityByline: cleanResult.byline,
-        pipelineStatus: 'success',
-        segmenterVersion: segmentedContent.segmenterVersion,
-        sourceContentHash: segmentedContent.sourceContentHash,
-        segments: segmentedContent.segments,
-      };
     } catch (error) {
       const failedStage = stage;
       const failedErrorCode = this.getErrorCodeForStage(failedStage);
       const message = error instanceof Error ? error.message : String(error);
+
+      if (this.hasRenderableCachedContent(previousContent)) {
+        this.contentStore.upsert({
+          entryId,
+          pipelineStatus: 'success',
+        });
+        return {
+          ...previousContent,
+          pipelineStatus: 'success',
+          pipelineError: undefined,
+        };
+      }
+
+      const fallbackHtml = this.entryStore.findFeedContentHtml(entryId)
+        ?? this.buildSummaryFallback(entry.summary);
+      if (fallbackHtml) {
+        try {
+          const fallbackResult: FetchResult = {
+            url: entry.url,
+            statusCode: 200,
+            headers: {},
+            body: fallbackHtml,
+          };
+          const fallbackCleanResult = this.cleaner.cleanFeedContent(
+            fallbackHtml,
+            entry.url,
+            entry.title ?? 'Untitled article',
+            entry.author,
+          );
+          return this.persistCleanedContent(
+            entry,
+            fallbackResult,
+            fallbackCleanResult,
+          );
+        } catch {
+          // Preserve the original page-fetch/extraction error below; it is the
+          // more actionable failure when both primary and fallback inputs fail.
+        }
+      }
 
       try {
         this.contentStore.upsert({
@@ -269,6 +293,78 @@ export class ContentService {
 
       return this.buildFailedResult(entryId, message);
     }
+  }
+
+  private persistCleanedContent(
+    entry: Entry,
+    fetchResult: FetchResult,
+    cleanResult: CleanResult,
+    onStageChange?: (stage: 'convert' | 'persist') => void,
+  ): CleanedContent {
+    onStageChange?.('persist');
+    this.contentStore.updatePipelineStatus(entry.id, 'converting');
+    onStageChange?.('convert');
+    const markdown = this.markdownConverter.convert(cleanResult.content);
+    const readerTitle = entry.title ?? cleanResult.title;
+    const readerByline = entry.author ?? cleanResult.byline;
+    const segmentedContent = this.segmenter.segment(cleanResult.content, {
+      title: readerTitle,
+      byline: readerByline,
+    });
+
+    onStageChange?.('persist');
+    this.contentStore.upsert({
+      entryId: entry.id,
+      html: fetchResult.body,
+      sourceUrl: fetchResult.url,
+      cleanedHtml: cleanResult.content,
+      markdown,
+      readabilityVersion: CONTENT_CLEANER_VERSION,
+      markdownVersion: MARKDOWN_CONVERTER_VERSION,
+      readabilityTitle: cleanResult.title,
+      readabilityByline: cleanResult.byline,
+      documentBaseURL: cleanResult.documentBaseURL,
+      pipelineStatus: 'success',
+      segmenterVersion: segmentedContent.segmenterVersion,
+      sourceContentHash: segmentedContent.sourceContentHash,
+      segments: segmentedContent.segments,
+    });
+
+    this.entryStore.createOrUpdate({
+      feedId: entry.feedId,
+      guid: entry.guid,
+      contentHash: segmentedContent.sourceContentHash,
+    });
+
+    return {
+      entryId: entry.id,
+      sourceUrl: fetchResult.url,
+      readerTitle,
+      readerByline,
+      html: fetchResult.body,
+      cleanedHtml: cleanResult.content,
+      markdown,
+      readabilityTitle: cleanResult.title,
+      readabilityByline: cleanResult.byline,
+      pipelineStatus: 'success',
+      segmenterVersion: segmentedContent.segmenterVersion,
+      sourceContentHash: segmentedContent.sourceContentHash,
+      segments: segmentedContent.segments,
+    };
+  }
+
+  private hasRenderableCachedContent(
+    content: CleanedContent | undefined,
+  ): content is CleanedContent {
+    return Boolean(
+      content
+      && content.cleanedHtml.trim().length > 0,
+    );
+  }
+
+  private buildSummaryFallback(summary: string | undefined): string | undefined {
+    if (!summary?.trim()) return undefined;
+    return `<p>${escapeHtml(summary.trim())}</p>`;
   }
 
   private buildFailedResult(
@@ -320,4 +416,17 @@ export class ContentService {
         return CONTENT_PIPELINE_ERROR_CODES.persistFailed;
     }
   }
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (character) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    })[character] ?? character,
+  );
 }

@@ -186,7 +186,10 @@ export class EnhancedFetchStrategy implements FetcherStrategy {
   constructor(options?: Partial<FetchStrategyOptions> & { maxRetries?: number }) {
     this.maxSize = options?.maxSize ?? DEFAULT_OPTIONS.maxSize;
     this.timeoutMs = options?.timeoutMs ?? DEFAULT_OPTIONS.timeoutMs;
-    this.maxRetries = options?.maxRetries ?? BROWSER_UA_POOL.length;
+    // Two retries are enough to distinguish a UA-specific rejection from a
+    // site that needs Chromium, without delaying the browser fallback by tens
+    // of seconds.
+    this.maxRetries = options?.maxRetries ?? 2;
   }
 
   isAvailable(): boolean {
@@ -200,6 +203,7 @@ export class EnhancedFetchStrategy implements FetcherStrategy {
     while (attempt <= this.maxRetries) {
       const uaIndex = attempt % BROWSER_UA_POOL.length;
       const controller = new AbortController();
+      let receivedResponse = false;
       const combinedSignal = signal
         ? combineSignals(signal, controller.signal)
         : controller.signal;
@@ -222,11 +226,14 @@ export class EnhancedFetchStrategy implements FetcherStrategy {
             Referer: origin,
           },
         });
+        receivedResponse = true;
 
         if (response.ok) {
-          // Success — read body immediately, body errors are not retryable
+          // Keep the deadline active while streaming the response body too.
+          // Clearing it after headers allowed a stalled body to hang forever.
+          const result = await this.readResponse(response);
           clearTimeout(timeout);
-          return this.readResponse(response);
+          return result;
         }
 
         if (isRetryableHttpStatus(response.status) && attempt < this.maxRetries) {
@@ -245,6 +252,12 @@ export class EnhancedFetchStrategy implements FetcherStrategy {
 
         if (error instanceof Error && error.name === 'AbortError') {
           throw error; // Don't retry aborts
+        }
+
+        // Once headers arrived, parsing/streaming/size failures are properties
+        // of this response, not transient connection setup failures.
+        if (receivedResponse) {
+          throw error;
         }
 
         // Non-retryable HTTP error (e.g. 404) — re-throw immediately

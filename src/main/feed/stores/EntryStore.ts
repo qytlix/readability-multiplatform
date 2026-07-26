@@ -18,6 +18,7 @@ interface UpsertEntryParams {
   author?: string;
   publishedAt?: string;
   summary?: string;
+  feedContentHtml?: string;
   contentHash?: string;
 }
 
@@ -58,6 +59,7 @@ export class EntryStore {
           author = COALESCE(?, author),
           publishedAt = COALESCE(?, publishedAt),
           summary = COALESCE(?, summary),
+          feedContentHtml = COALESCE(?, feedContentHtml),
           contentHash = COALESCE(?, contentHash),
           updatedAt = ?
         WHERE id = ?
@@ -71,6 +73,7 @@ export class EntryStore {
         params.author ?? null,
         params.publishedAt ?? null,
         params.summary ?? null,
+        params.feedContentHtml ?? null,
         params.contentHash ?? null,
         now,
         existingId,
@@ -81,8 +84,11 @@ export class EntryStore {
 
     // Create new entry
     const stmt = this.db.prepare(`
-      INSERT INTO entry (feedId, guid, url, title, author, publishedAt, summary, contentHash, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO entry (
+        feedId, guid, url, title, author, publishedAt, summary,
+        feedContentHtml, contentHash, createdAt, updatedAt
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -93,6 +99,7 @@ export class EntryStore {
       params.author ?? null,
       params.publishedAt ?? null,
       params.summary ?? null,
+      params.feedContentHtml ?? null,
       params.contentHash ?? null,
       now,
       now,
@@ -106,6 +113,13 @@ export class EntryStore {
       | Record<string, unknown>
       | undefined;
     return row ? normalizeEntry(row) : undefined;
+  }
+
+  findFeedContentHtml(id: number): string | undefined {
+    const row = this.db
+      .prepare('SELECT feedContentHtml FROM entry WHERE id = ?')
+      .get(id) as { feedContentHtml: string | null } | undefined;
+    return row?.feedContentHtml ?? undefined;
   }
 
   /**

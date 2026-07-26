@@ -227,6 +227,37 @@ describe('EnhancedFetchStrategy', () => {
     expect(callCount).toBeLessThanOrEqual(1); // AbortError should stop immediately
   });
 
+  it('keeps the timeout active while streaming the response body', async () => {
+    setMockFetch((_url: string, init?: { signal?: AbortSignal }) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        url: 'https://example.com/stalled-body',
+        headers: { get: () => null, entries: () => [] },
+        body: {
+          getReader: () => ({
+            read: () => new Promise((_resolve, reject) => {
+              init?.signal?.addEventListener(
+                'abort',
+                () => reject(new DOMException('aborted', 'AbortError')),
+                { once: true },
+              );
+            }),
+            cancel: vi.fn(),
+          }),
+        },
+      }));
+    const timedStrategy = new EnhancedFetchStrategy({
+      timeoutMs: 25,
+      maxRetries: 0,
+    });
+
+    await expect(
+      timedStrategy.fetch('https://example.com/stalled-body'),
+    ).rejects.toThrow('aborted');
+  });
+
   it('should always be available', () => {
     expect(strategy.isAvailable()).toBe(true);
   });
