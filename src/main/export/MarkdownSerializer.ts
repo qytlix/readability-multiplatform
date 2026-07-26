@@ -64,15 +64,17 @@ export function insertFootnoteMarkers(
 
   // 2. 检测已有脚注序号
   const existing = detectExistingFootnoteNumbers(body);
-  let nextN = existing.size > 0 ? Math.max(...existing) + 1 : 1;
+  const baseN = existing.size > 0 ? Math.max(...existing) + 1 : 1;
 
-  // 3. 从后向前处理，避免插入偏移
+  // 3. 预先按顺序分配编号（已排序的 annotation 获得连续编号）
+  const numbered = sorted.map((ann, i) => ({ annotation: ann, n: baseN + i }));
+
+  // 4. 从后向前处理，避免插入偏移
   let work = body;
   const footnotes: FootnoteDef[] = [];
 
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const ann = sorted[i];
-    const n = nextN++;
+  for (let i = numbered.length - 1; i >= 0; i--) {
+    const { annotation: ann, n } = numbered[i];
 
     const idx = findSelectedTextInMarkdown(work, ann);
 
@@ -88,7 +90,7 @@ export function insertFootnoteMarkers(
     footnotes.push({ index: n, selectedText: ann.selectedText, noteText: ann.noteText || undefined });
   }
 
-  // 4. 脚注按 index 升序排列
+  // 5. 脚注按 index 升序排列
   footnotes.sort((a, b) => a.index - b.index);
 
   return { modifiedBody: work, footnotes };
