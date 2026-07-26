@@ -55,6 +55,17 @@ interface BatchPromptSegment {
   terminologyCandidates: Array<{ id: string }>;
 }
 
+interface TextSlotPromptSlot {
+  textSlotId: string;
+  sourceText: string;
+}
+
+interface BatchProviderOutput {
+  sourceSegmentId: string;
+  translatedHtml: string;
+  appliedTermIds: string[];
+}
+
 interface TranslationLogRecord {
   event: string;
   component: string;
@@ -105,7 +116,16 @@ function parseBatchPrompt(prompt: string): BatchPromptSegment[] {
     JSON.parse(line) as BatchPromptSegment);
 }
 
-function toBatchOutput(segment: BatchPromptSegment): Record<string, unknown> {
+function parseTextSlotPrompt(prompt: string): TextSlotPromptSlot[] {
+  const serialized = prompt.match(
+    /<text-slots-ndjson>\n([\s\S]*?)\n<\/text-slots-ndjson>/,
+  )?.[1];
+  if (!serialized) throw new Error('Missing text slots in Translation compensation prompt.');
+  return serialized.split('\n').filter(Boolean).map((line) =>
+    JSON.parse(line) as TextSlotPromptSlot);
+}
+
+function toBatchOutput(segment: BatchPromptSegment): BatchProviderOutput {
   const translatedHtml = segment.sourceHtml.replace(
     />([^<]*)</g,
     (_match, text: string) => text.trim() ? '>Translated paragraph.<' : `>${text}<`,
@@ -204,6 +224,37 @@ describe('TranslationService', () => {
     expect(stream).toHaveBeenCalledTimes(1);
     expect(provider.maxActiveStreams).toBe(1);
     expect(provider.providerKinds).toEqual(['openai']);
+  });
+
+  it('creates a fresh, usage-tracked run when retranslation is explicitly requested', async () => {
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+    };
+
+    const original = service.generate(request);
+    await vi.waitFor(() => {
+      expect(service.getState(request)).toMatchObject({
+        state: 'succeeded',
+        result: { id: original.runId },
+      });
+    });
+
+    const replacement = service.generate({ ...request, forceNew: true });
+    expect(replacement.reused).toBe(false);
+    expect(replacement.runId).not.toBe(original.runId);
+    expect(replacement.activeResult?.id).toBe(original.runId);
+    await vi.waitFor(() => {
+      expect(service.getState(request)).toMatchObject({
+        state: 'succeeded',
+        result: { id: replacement.runId },
+      });
+    });
+
+    expect(provider.prompts).toHaveLength(2);
+    expect(usageStore.listByTask('translation', original.runId)).toHaveLength(1);
+    expect(usageStore.listByTask('translation', replacement.runId)).toHaveLength(1);
   });
 
   it('keeps API keys and article content out of Translation diagnostics', async () => {
@@ -397,6 +448,16 @@ describe('TranslationService', () => {
           segmentCount: 2,
           durationMs: expect.any(Number),
           success: true,
+          expectedSegmentCount: 2,
+          parsedSegmentCount: 2,
+          acceptedSegmentCount: 2,
+          missingSegmentCount: 0,
+          duplicateSegmentCount: 0,
+          unexpectedSegmentCount: 0,
+          malformedRecordCount: 0,
+          emptyTranslationCount: 0,
+          inputCharacters: expect.any(Number),
+          outputCharacters: expect.any(Number),
         },
       },
       {
@@ -419,6 +480,8 @@ describe('TranslationService', () => {
     expect(serialized).not.toContain(articleCanary);
     expect(serialized).not.toContain(apiKeyCanary);
     expect(serialized).not.toContain('sourceSegmentId');
+    expect(serialized).not.toContain('Translated paragraph.');
+    expect(serialized).not.toContain('<source-segments-ndjson>');
   });
 
   it('records concurrent batch request summaries without per-segment records', async () => {
@@ -670,6 +733,20 @@ describe('TranslationService', () => {
     expect(compensationStarts).toHaveLength(3);
     expect(compensationStarts.every((record) =>
       (record.context as { segmentCount?: unknown }).segmentCount === 1)).toBe(true);
+    const omittedBatch = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestCompleted
+      && (record.context as { requestKind?: unknown }).requestKind === 'batch'
+      && (record.context as { missingSegmentCount?: unknown }).missingSegmentCount === 1);
+    expect(omittedBatch?.context).toMatchObject({
+      reasonCode: 'expected_segment_missing',
+      validationStage: 'completion',
+      expectedSegmentCount: expect.any(Number),
+      parsedSegmentCount: expect.any(Number),
+      acceptedSegmentCount: expect.any(Number),
+      missingSegmentCount: 1,
+      duplicateSegmentCount: 0,
+      unexpectedSegmentCount: 0,
+    });
     expect(completedRun?.context).toMatchObject({
       providerRequestCount: 6,
       batchRequestCount: 3,
@@ -735,6 +812,27 @@ describe('TranslationService', () => {
     const completedRun = records.find((record) =>
       record.event === TRANSLATION_LOG_EVENTS.runCompleted);
     expect(compensationStarts).toHaveLength(2);
+    const malformedBatch = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed
+      && (record.context as { requestKind?: unknown }).requestKind === 'batch');
+    expect(malformedBatch?.context).toMatchObject({
+      errorCode: TRANSLATION_LOG_ERROR_CODES.invalidStructure,
+      reasonCode: 'ndjson_syntax_error',
+      validationStage: 'stream',
+      expectedSegmentCount: 3,
+      parsedSegmentCount: 1,
+      acceptedSegmentCount: 1,
+      missingSegmentCount: 2,
+      duplicateSegmentCount: 0,
+      unexpectedSegmentCount: 0,
+      malformedRecordCount: 1,
+      emptyTranslationCount: 0,
+      inputCharacters: expect.any(Number),
+      outputCharacters: expect.any(Number),
+      affectedSegmentIdHashes: expect.arrayContaining([
+        expect.stringMatching(/^[a-f0-9]{16}$/),
+      ]),
+    });
     expect(completedRun?.context).toMatchObject({
       providerRequestCount: 3,
       batchRequestCount: 1,
@@ -742,6 +840,611 @@ describe('TranslationService', () => {
       providerRequestSuccessCount: 2,
       providerRequestFailureCount: 1,
       missingSegmentCount: 2,
+    });
+  });
+
+  it('classifies an HTML-rejected segment and completes only its remaining compensation', async () => {
+    const outputCanary = 'RAW_HTML_REJECTION_CANARY';
+    const prompts: BatchPromptSegment[][] = [];
+    const textSlotPrompts: TextSlotPromptSlot[][] = [];
+    const records: TranslationLogRecord[] = [];
+    const htmlRejectingProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        if (providerRequest.prompt.includes('<text-slots-ndjson>')) {
+          const textSlots = parseTextSlotPrompt(providerRequest.prompt);
+          textSlotPrompts.push(textSlots);
+          for (const [index, textSlot] of textSlots.entries()) {
+            yield `${JSON.stringify({
+              textSlotId: textSlot.textSlotId,
+              translatedText: `Translated slot ${index + 1}.`,
+              appliedTermIds: [],
+            })}\n`;
+          }
+          return;
+        }
+        const segments = parseBatchPrompt(providerRequest.prompt);
+        prompts.push(segments);
+        providerRequest.onFinishReason?.('stop');
+        if (segments.length > 1) {
+          const first = segments[0];
+          const rejected = segments[1];
+          if (!first || !rejected) throw new Error('Expected a batch with two segments.');
+          yield `${JSON.stringify(toBatchOutput(first))}\n`;
+          yield `${JSON.stringify({
+            ...toBatchOutput(rejected),
+            translatedHtml: rejected.sourceHtml.replace(
+              /(<\/[A-Za-z][^>]*>)\s*$/,
+              `<em>${outputCanary}</em>$1`,
+            ),
+          })}\n`;
+          return;
+        }
+        const segment = segments[0];
+        if (!segment) throw new Error('Expected a compensation segment.');
+        yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const recoveringService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      htmlRejectingProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+    );
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
+
+    recoveringService.generate(request);
+    await vi.waitFor(() => {
+      expect(recoveringService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    const state = recoveringService.getState(request);
+    if (state.state !== 'succeeded') throw new Error('Expected a recovered Translation.');
+    expect(state.result.segments.every((segment) => segment.status === 'succeeded')).toBe(true);
+    expect(prompts.map((segments) => segments.length)).toEqual([3, 1]);
+    expect(textSlotPrompts).toHaveLength(1);
+    expect(textSlotPrompts[0]?.map((slot) => slot.textSlotId)).toEqual(['slot-0001']);
+    const initialBatchIds = new Set(prompts[0]?.map((segment) => segment.sourceSegmentId));
+    const normalCompensationIds = prompts.slice(1).map((segments) => segments[0]?.sourceSegmentId);
+    expect(new Set(normalCompensationIds).size).toBe(1);
+    expect(normalCompensationIds.every((sourceSegmentId) => initialBatchIds.has(sourceSegmentId)))
+      .toBe(true);
+
+    const rejectedBatch = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed
+      && (record.context as { requestKind?: unknown }).requestKind === 'batch');
+    const omission = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.missingSegmentsDetected
+      && (record.context as { requestKind?: unknown }).requestKind === 'batch');
+    const completedRun = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.runCompleted);
+    const textSlotCompensation = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestCompleted
+      && (record.context as { compensationProtocol?: unknown }).compensationProtocol
+        === 'text-slots');
+    const expectedHtmlDiagnostic = {
+      reasonCode: 'html_structure_invalid',
+      validationStage: 'html-validation',
+      htmlValidationReason: 'html_element_count_mismatch',
+      finishReason: 'stop',
+      expectedSegmentCount: 3,
+      parsedSegmentCount: 2,
+      acceptedSegmentCount: 1,
+      missingSegmentCount: 2,
+      duplicateSegmentCount: 0,
+      unexpectedSegmentCount: 0,
+      malformedRecordCount: 0,
+      emptyTranslationCount: 0,
+      affectedSegmentIdHashes: expect.arrayContaining([
+        expect.stringMatching(/^[a-f0-9]{16}$/),
+      ]),
+    };
+    expect(rejectedBatch?.context).toMatchObject({
+      errorCode: TRANSLATION_LOG_ERROR_CODES.invalidStructure,
+      ...expectedHtmlDiagnostic,
+    });
+    expect(omission?.context).toMatchObject(expectedHtmlDiagnostic);
+    expect(textSlotCompensation?.context).toMatchObject({
+      requestKind: 'compensation',
+      compensationProtocol: 'text-slots',
+      expectedTextSlotCount: 1,
+      parsedTextSlotCount: 1,
+      acceptedTextSlotCount: 1,
+      missingTextSlotCount: 0,
+      duplicateTextSlotCount: 0,
+      unexpectedTextSlotCount: 0,
+      malformedTextSlotCount: 0,
+      emptyTextSlotCount: 0,
+      expectedSegmentCount: 1,
+      parsedSegmentCount: 1,
+      acceptedSegmentCount: 1,
+    });
+    expect(completedRun?.context).toMatchObject({
+      providerRequestCount: 3,
+      batchRequestCount: 1,
+      compensationRequestCount: 2,
+      providerRequestSuccessCount: 2,
+      providerRequestFailureCount: 1,
+      missingSegmentCount: 2,
+    });
+    const serialized = JSON.stringify(records);
+    expect(serialized).not.toContain(outputCanary);
+    expect(serialized).not.toContain('<source-segments-ndjson>');
+  });
+
+  it('recovers a synthetic seven-slot element-loss segment with one text-slot compensation', async () => {
+    const complexSourceHtml = '<p>alpha <strong>beta</strong> three <a href="https://example.test/fixed" title="fixed">four</a> five <em>six</em> seven</p>';
+    const batchPrompts: BatchPromptSegment[][] = [];
+    const textSlotPrompts: TextSlotPromptSlot[][] = [];
+    const records: TranslationLogRecord[] = [];
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: `<p>intro.</p>${complexSourceHtml}`,
+      markdown: 'intro.\n\nsynthetic complex paragraph.',
+      pipelineStatus: 'success',
+    });
+    const recoveringProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        providerRequest.onUsage?.({ inputTokens: 11, outputTokens: 7, totalTokens: 18 });
+        providerRequest.onFinishReason?.('stop');
+        if (providerRequest.prompt.includes('<text-slots-ndjson>')) {
+          const slots = parseTextSlotPrompt(providerRequest.prompt);
+          textSlotPrompts.push(slots);
+          for (const [index, slot] of slots.entries()) {
+            yield `${JSON.stringify({
+              textSlotId: slot.textSlotId,
+              translatedText: `slot-${index + 1}`,
+              appliedTermIds: [],
+            })}\n`;
+          }
+          return;
+        }
+        const segments = parseBatchPrompt(providerRequest.prompt);
+        batchPrompts.push(segments);
+        for (const segment of segments) {
+          const output = toBatchOutput(segment);
+          if (segment.sourceHtml.includes('https://example.test/fixed')) {
+            output.translatedHtml = output.translatedHtml.replace(
+              /<strong>.*?<\/strong>/,
+              '',
+            );
+          }
+          yield `${JSON.stringify(output)}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const recoveringService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      recoveringProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+      new UsageRecorder(usageStore),
+    );
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
+
+    const started = recoveringService.generate(request);
+    await vi.waitFor(() => {
+      expect(recoveringService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    const state = recoveringService.getState(request);
+    if (state.state !== 'succeeded') throw new Error('Expected recovered Translation.');
+    const recoveredSegment = state.result.segments.find((segment) =>
+      segment.sourceHtml.includes('https://example.test/fixed'));
+    expect(recoveredSegment).toMatchObject({ status: 'succeeded' });
+    expect(recoveredSegment?.translatedHtml).toContain('<strong>slot-2</strong>');
+    expect(recoveredSegment?.translatedHtml).toContain('href="https://example.test/fixed"');
+    expect(recoveredSegment?.translatedHtml).toContain('title="fixed"');
+    expect(batchPrompts.map((segments) => segments.length)).toEqual([3]);
+    expect(textSlotPrompts).toHaveLength(1);
+    expect(textSlotPrompts[0]?.map((slot) => slot.textSlotId)).toEqual([
+      'slot-0001',
+      'slot-0002',
+      'slot-0003',
+      'slot-0004',
+      'slot-0005',
+      'slot-0006',
+      'slot-0007',
+    ]);
+
+    const completedRun = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.runCompleted);
+    const textSlotCompletion = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestCompleted
+      && (record.context as { compensationProtocol?: unknown }).compensationProtocol === 'text-slots');
+    expect(completedRun?.context).toMatchObject({
+      providerRequestCount: 2,
+      batchRequestCount: 1,
+      compensationRequestCount: 1,
+      providerRequestSuccessCount: 1,
+      providerRequestFailureCount: 1,
+      missingSegmentCount: 1,
+      inputTokens: 22,
+      outputTokens: 14,
+      totalTokens: 36,
+    });
+    expect(textSlotCompletion?.context).toMatchObject({
+      compensationProtocol: 'text-slots',
+      expectedTextSlotCount: 7,
+      parsedTextSlotCount: 7,
+      acceptedTextSlotCount: 7,
+      missingTextSlotCount: 0,
+      duplicateTextSlotCount: 0,
+      unexpectedTextSlotCount: 0,
+      malformedTextSlotCount: 0,
+      emptyTextSlotCount: 0,
+      expectedSegmentCount: 1,
+      parsedSegmentCount: 1,
+      acceptedSegmentCount: 1,
+    });
+    expect(usageStore.listByTask('translation', started.runId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ requestKind: 'batch', requestStatus: 'failed', inputTokens: 11 }),
+      expect.objectContaining({ requestKind: 'compensation', requestStatus: 'succeeded', inputTokens: 11 }),
+    ]));
+  });
+
+  it('locally preserves a no-slot protected segment without another Provider request', async () => {
+    const prompts: string[] = [];
+    const records: TranslationLogRecord[] = [];
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: '<p><code>FIXEDTOKEN</code></p>',
+      markdown: 'FIXEDTOKEN',
+      pipelineStatus: 'success',
+    });
+    const providerWithRejectedCode: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        prompts.push(providerRequest.prompt);
+        providerRequest.onUsage?.({ inputTokens: 5, outputTokens: 3, totalTokens: 8 });
+        providerRequest.onFinishReason?.('stop');
+        for (const segment of parseBatchPrompt(providerRequest.prompt)) {
+          const output = toBatchOutput(segment);
+          if (segment.sourceHtml.includes('FIXEDTOKEN')) {
+            output.translatedHtml = output.translatedHtml.replace(
+              /(<\/[A-Za-z][^>]*>)\s*$/,
+              '<em>extra</em>$1',
+            );
+          }
+          yield `${JSON.stringify(output)}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const recoveringService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      providerWithRejectedCode,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+      new UsageRecorder(usageStore),
+    );
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
+
+    const started = recoveringService.generate(request);
+    await vi.waitFor(() => {
+      expect(recoveringService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    const state = recoveringService.getState(request);
+    if (state.state !== 'succeeded') throw new Error('Expected locally recovered Translation.');
+    expect(state.result.segments.find((segment) => segment.sourceHtml.includes('FIXEDTOKEN')))
+      .toMatchObject({ translatedHtml: '<p><code>FIXEDTOKEN</code></p>' });
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).not.toContain('<text-slots-ndjson>');
+    expect(records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.runCompleted)?.context).toMatchObject({
+      providerRequestCount: 1,
+      compensationRequestCount: 0,
+    });
+    expect(usageStore.listByTask('translation', started.runId)).toHaveLength(1);
+  });
+
+  it.each([
+    ['missing', 'expected_text_slot_missing'],
+    ['duplicate', 'text_slot_id_duplicate'],
+    ['unexpected', 'text_slot_id_unexpected'],
+    ['malformed', 'ndjson_syntax_error'],
+    ['empty', 'translated_text_empty'],
+  ] as const)('rejects a %s text-slot compensation without persisting an incomplete segment', async (
+    responseKind,
+    reasonCode,
+  ) => {
+    const sourceCanary = `SYNTHETIC_TEXT_SLOT_${responseKind.toUpperCase()}`;
+    const records: TranslationLogRecord[] = [];
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: `<p>${sourceCanary}</p>`,
+      markdown: sourceCanary,
+      pipelineStatus: 'success',
+    });
+    const rejectingProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        providerRequest.onUsage?.({ inputTokens: 3, outputTokens: 2, totalTokens: 5 });
+        providerRequest.onFinishReason?.('stop');
+        if (!providerRequest.prompt.includes('<text-slots-ndjson>')) {
+          const segments = parseBatchPrompt(providerRequest.prompt);
+          for (const segment of segments) {
+            const output = toBatchOutput(segment);
+            if (segment.sourceHtml.includes(sourceCanary)) {
+              output.translatedHtml = output.translatedHtml.replace(
+                /(<\/[A-Za-z][^>]*>)\s*$/,
+                '<em>extra</em>$1',
+              );
+            }
+            yield `${JSON.stringify(output)}\n`;
+          }
+          return;
+        }
+
+        const slot = parseTextSlotPrompt(providerRequest.prompt)[0];
+        if (!slot) throw new Error('Expected one text slot.');
+        if (responseKind === 'missing') return;
+        if (responseKind === 'malformed') {
+          yield 'not-json\n';
+          return;
+        }
+        if (responseKind === 'empty') {
+          yield `${JSON.stringify({
+            textSlotId: slot.textSlotId,
+            translatedText: ' ',
+            appliedTermIds: [],
+          })}\n`;
+          return;
+        }
+        if (responseKind === 'unexpected') {
+          yield `${JSON.stringify({
+            textSlotId: 'slot-9999',
+            translatedText: 'wrong',
+            appliedTermIds: [],
+          })}\n`;
+          return;
+        }
+        yield `${JSON.stringify({
+          textSlotId: slot.textSlotId,
+          translatedText: 'first',
+          appliedTermIds: [],
+        })}\n`;
+        yield `${JSON.stringify({
+          textSlotId: slot.textSlotId,
+          translatedText: 'duplicate',
+          appliedTermIds: [],
+        })}\n`;
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const rejectingService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      rejectingProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+      new UsageRecorder(usageStore),
+    );
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
+
+    const started = rejectingService.generate(request);
+    await vi.waitFor(() => {
+      expect(rejectingService.getState(request)).toMatchObject({ state: 'failed' });
+    });
+
+    const state = rejectingService.getState(request);
+    if (state.state !== 'failed') throw new Error('Expected a failed Translation.');
+    const failedSegment = state.result.segments.find((segment) =>
+      segment.sourceHtml.includes(sourceCanary));
+    expect(failedSegment).toMatchObject({ status: 'failed' });
+    expect(failedSegment?.translatedHtml).toBeUndefined();
+    const failedCompensation = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed
+      && (record.context as { compensationProtocol?: unknown }).compensationProtocol === 'text-slots');
+    expect(failedCompensation?.context).toMatchObject({
+      requestKind: 'compensation',
+      compensationProtocol: 'text-slots',
+      reasonCode,
+      expectedTextSlotCount: 1,
+      expectedSegmentCount: 1,
+      acceptedSegmentCount: 0,
+      missingSegmentCount: 1,
+    });
+    expect(usageStore.listByTask('translation', started.runId)).toHaveLength(2);
+    expect(JSON.stringify(records)).not.toContain(sourceCanary);
+  });
+
+  it('records a Provider length truncation separately and only compensates the original missing segments', async () => {
+    const prompts: BatchPromptSegment[][] = [];
+    const records: TranslationLogRecord[] = [];
+    const truncatedProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        const segments = parseBatchPrompt(providerRequest.prompt);
+        prompts.push(segments);
+        if (segments.length > 1) {
+          providerRequest.onFinishReason?.('length');
+          yield '{"sourceSegmentId":"truncated';
+          return;
+        }
+        const segment = segments[0];
+        if (!segment) throw new Error('Expected a compensation segment.');
+        yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const recoveringService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      truncatedProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+    );
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
+
+    recoveringService.generate(request);
+    await vi.waitFor(() => {
+      expect(recoveringService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    expect(prompts.map((segments) => segments.length)).toEqual([3, 1, 1, 1]);
+    const truncatedBatch = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed
+      && (record.context as { requestKind?: unknown }).requestKind === 'batch');
+    expect(truncatedBatch?.context).toMatchObject({
+      reasonCode: 'provider_length_truncated',
+      validationStage: 'stream',
+      finishReason: 'length',
+      expectedSegmentCount: 3,
+      parsedSegmentCount: 0,
+      acceptedSegmentCount: 0,
+      missingSegmentCount: 3,
+      malformedRecordCount: 0,
+    });
+  });
+
+  it('hashes an unexpected compensation ID, does not recurse, and does not log model content', async () => {
+    const unexpectedId = 'model-returned-unexpected-segment';
+    const outputCanary = 'RAW_PROVIDER_OUTPUT_CANARY';
+    const prompts: BatchPromptSegment[][] = [];
+    const records: TranslationLogRecord[] = [];
+    const invalidCompensationProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        const segments = parseBatchPrompt(providerRequest.prompt);
+        prompts.push(segments);
+        if (segments.length > 1) {
+          for (const segment of segments.slice(0, -1)) {
+            yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+          }
+          return;
+        }
+        const segment = segments[0];
+        if (!segment) throw new Error('Expected a compensation segment.');
+        yield `${JSON.stringify({
+          ...toBatchOutput(segment),
+          sourceSegmentId: unexpectedId,
+          translatedHtml: `<p>${outputCanary}</p>`,
+        })}\n`;
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const invalidService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      invalidCompensationProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+    );
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
+
+    invalidService.generate(request);
+    await vi.waitFor(() => {
+      expect(invalidService.getState(request)).toMatchObject({ state: 'failed' });
+    });
+
+    expect(prompts.map((segments) => segments.length)).toEqual([3, 1]);
+    const failedCompensation = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed
+      && (record.context as { requestKind?: unknown }).requestKind === 'compensation');
+    expect(failedCompensation?.context).toMatchObject({
+      errorCode: TRANSLATION_LOG_ERROR_CODES.invalidStructure,
+      reasonCode: 'segment_id_unexpected',
+      validationStage: 'segment-id',
+      expectedSegmentCount: 1,
+      parsedSegmentCount: 1,
+      acceptedSegmentCount: 0,
+      missingSegmentCount: 1,
+      duplicateSegmentCount: 0,
+      unexpectedSegmentCount: 1,
+      affectedSegmentIdHashes: expect.arrayContaining([
+        expect.stringMatching(/^[a-f0-9]{16}$/),
+      ]),
+    });
+    const serialized = JSON.stringify(records);
+    expect(serialized).not.toContain(unexpectedId);
+    expect(serialized).not.toContain(outputCanary);
+    expect(serialized).not.toContain('<source-segments-ndjson>');
+  });
+
+  it('classifies a duplicate segment ID without adding compensation retries', async () => {
+    const prompts: BatchPromptSegment[][] = [];
+    const records: TranslationLogRecord[] = [];
+    const duplicateIdProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        const segments = parseBatchPrompt(providerRequest.prompt);
+        prompts.push(segments);
+        if (segments.length > 1) {
+          const first = segments[0];
+          if (!first) throw new Error('Expected a batch segment.');
+          yield `${JSON.stringify(toBatchOutput(first))}\n`;
+          yield `${JSON.stringify(toBatchOutput(first))}\n`;
+          return;
+        }
+        const segment = segments[0];
+        if (!segment) throw new Error('Expected a compensation segment.');
+        yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const recoveringService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      duplicateIdProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+    );
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
+
+    recoveringService.generate(request);
+    await vi.waitFor(() => {
+      expect(recoveringService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    expect(prompts.map((segments) => segments.length)).toEqual([3, 1, 1]);
+    const duplicateBatch = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed
+      && (record.context as { requestKind?: unknown }).requestKind === 'batch');
+    expect(duplicateBatch?.context).toMatchObject({
+      reasonCode: 'segment_id_duplicate',
+      validationStage: 'segment-id',
+      expectedSegmentCount: 3,
+      parsedSegmentCount: 2,
+      acceptedSegmentCount: 1,
+      missingSegmentCount: 2,
+      duplicateSegmentCount: 1,
+      unexpectedSegmentCount: 0,
     });
   });
 
@@ -789,8 +1492,21 @@ describe('TranslationService', () => {
       && (record.context as { requestKind?: unknown }).requestKind === 'compensation');
     const completedRun = records.find((record) =>
       record.event === TRANSLATION_LOG_EVENTS.runCompleted);
+    const emptyBatch = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed
+      && (record.context as { requestKind?: unknown }).requestKind === 'batch');
     expect(prompts.map((segments) => segments.length)).toEqual([3, 1, 1, 1]);
     expect(compensationStarts).toHaveLength(3);
+    expect(emptyBatch?.context).toMatchObject({
+      reasonCode: 'response_empty',
+      validationStage: 'stream',
+      expectedSegmentCount: 3,
+      parsedSegmentCount: 0,
+      acceptedSegmentCount: 0,
+      missingSegmentCount: 3,
+      malformedRecordCount: 0,
+      emptyTranslationCount: 1,
+    });
     expect(completedRun?.context).toMatchObject({
       providerRequestCount: 4,
       batchRequestCount: 1,
@@ -1288,6 +2004,19 @@ describe('TranslationService', () => {
           durationMs: expect.any(Number),
           success: false,
           errorCode: TRANSLATION_LOG_ERROR_CODES.providerTimeout,
+          expectedSegmentCount: 2,
+          parsedSegmentCount: 0,
+          acceptedSegmentCount: 0,
+          missingSegmentCount: 2,
+          duplicateSegmentCount: 0,
+          unexpectedSegmentCount: 0,
+          malformedRecordCount: 0,
+          emptyTranslationCount: 0,
+          inputCharacters: expect.any(Number),
+          outputCharacters: 0,
+          affectedSegmentIdHashes: expect.arrayContaining([
+            expect.stringMatching(/^[a-f0-9]{16}$/),
+          ]),
         },
       },
       {

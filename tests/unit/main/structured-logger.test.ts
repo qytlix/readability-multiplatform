@@ -310,6 +310,7 @@ describe('StructuredLogger', () => {
     logTranslationMissingSegmentsDetected(logger, {
       taskRunId: 12,
       providerRequestId: 1,
+      requestKind: 'batch',
       missingSegmentCount: 1,
     });
     logTranslationProviderRequestFailed(logger, {
@@ -349,6 +350,7 @@ describe('StructuredLogger', () => {
     expect(records[2].context).toEqual({
       taskRunId: 12,
       providerRequestId: 1,
+      requestKind: 'batch',
       missingSegmentCount: 1,
     });
     expect(records[3].context).toEqual({
@@ -360,6 +362,93 @@ describe('StructuredLogger', () => {
       success: false,
       errorCode: TRANSLATION_LOG_ERROR_CODES.providerTimeout,
     });
+  });
+
+  it('writes only the whitelisted flat Translation response diagnostics', async () => {
+    const directory = createLogDirectory();
+    const logger = createLogger(directory);
+
+    logTranslationProviderRequestFailed(logger, {
+      taskRunId: 12,
+      providerRequestId: 2,
+      requestKind: 'compensation',
+      segmentCount: 1,
+      durationMs: 3,
+      success: false,
+      errorCode: TRANSLATION_LOG_ERROR_CODES.invalidStructure,
+      responseDiagnostics: {
+        reasonCode: 'text_slot_id_duplicate',
+        failurePhase: 'record',
+        compensationProtocol: 'text-slots',
+        finishReason: 'length',
+        expectedSegmentCount: 1,
+        parsedSegmentCount: 0,
+        acceptedSegmentCount: 0,
+        missingSegmentCount: 1,
+        duplicateSegmentCount: 0,
+        unexpectedSegmentCount: 0,
+        malformedRecordCount: 1,
+        emptyTranslationCount: 0,
+        expectedTextSlotCount: 7,
+        parsedTextSlotCount: 3,
+        acceptedTextSlotCount: 2,
+        missingTextSlotCount: 5,
+        duplicateTextSlotCount: 1,
+        unexpectedTextSlotCount: 0,
+        malformedTextSlotCount: 0,
+        emptyTextSlotCount: 0,
+        inputCharacters: 101,
+        outputCharacters: 12,
+        affectedSegmentIdHashes: ['0123456789abcdef'],
+      },
+    });
+    await logger.flush();
+
+    expect(readRecords(directory)[0]?.context).toEqual({
+      taskRunId: 12,
+      providerRequestId: 2,
+      requestKind: 'compensation',
+      segmentCount: 1,
+      durationMs: 3,
+      success: false,
+      errorCode: TRANSLATION_LOG_ERROR_CODES.invalidStructure,
+      reasonCode: 'text_slot_id_duplicate',
+      validationStage: 'record',
+      compensationProtocol: 'text-slots',
+      finishReason: 'length',
+      expectedSegmentCount: 1,
+      parsedSegmentCount: 0,
+      acceptedSegmentCount: 0,
+      missingSegmentCount: 1,
+      duplicateSegmentCount: 0,
+      unexpectedSegmentCount: 0,
+      malformedRecordCount: 1,
+      emptyTranslationCount: 0,
+      expectedTextSlotCount: 7,
+      parsedTextSlotCount: 3,
+      acceptedTextSlotCount: 2,
+      missingTextSlotCount: 5,
+      duplicateTextSlotCount: 1,
+      unexpectedTextSlotCount: 0,
+      malformedTextSlotCount: 0,
+      emptyTextSlotCount: 0,
+      inputCharacters: 101,
+      outputCharacters: 12,
+      affectedSegmentIdHashes: ['0123456789abcdef'],
+    });
+  });
+
+  it('drops a non-enum HTML-validation subreason at the generic log boundary', async () => {
+    const directory = createLogDirectory();
+    const logger = createLogger(directory);
+
+    logger.error('translation.provider.request.failed', 'translation.provider.request', {
+      taskRunId: 12,
+      htmlValidationReason: 'RAW_PROVIDER_HTML_CANARY',
+    });
+    await logger.flush();
+
+    expect(readRecords(directory)[0]?.context).toEqual({ taskRunId: 12 });
   });
 
   it('writes every legal Provider event with only its safe fields', async () => {
@@ -611,6 +700,7 @@ describe('StructuredLogger', () => {
       request: { token: canary },
       response: [canary],
       nested: { value: canary },
+      affectedSegmentIdHashes: [canary],
       phase: 'external',
     } as unknown as StructuredLogContext;
 

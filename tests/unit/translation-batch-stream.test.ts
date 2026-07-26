@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TranslationBatchStreamParser } from '../../src/main/ai/provider/TranslationBatchStream';
+import { TRANSLATION_OUTPUT_REASON_CODES } from '../../src/main/ai/TranslationOutputDiagnostics';
 
 describe('TranslationBatchStreamParser', () => {
   it('withholds partial output until the complete NDJSON object arrives', () => {
@@ -26,6 +27,19 @@ describe('TranslationBatchStreamParser', () => {
     expect(first).toHaveLength(1);
     expect(second).toEqual([]);
     expect(parser.finish()).toEqual([expect.objectContaining({ sourceSegmentId: 'seg-2' })]);
+  });
+
+  it('accepts the final valid object even when the Provider omits its trailing newline', () => {
+    const parser = new TranslationBatchStreamParser();
+
+    expect(parser.append('{"sourceSegmentId":"seg-1","translatedHtml":"<p>译文</p>",'))
+      .toEqual([]);
+    expect(parser.append('"appliedTermIds":[]}')).toEqual([]);
+    expect(parser.finish()).toEqual([{
+      sourceSegmentId: 'seg-1',
+      translatedHtml: '<p>译文</p>',
+      appliedTermIds: [],
+    }]);
   });
 
   it('accepts pretty-printed objects in a json Markdown fence', () => {
@@ -65,5 +79,24 @@ describe('TranslationBatchStreamParser', () => {
     expect(() => parser.append('Here is the translation:\n')).toThrow(
       'The provider returned invalid Translation NDJSON.',
     );
+  });
+
+  it.each([
+    ['NDJSON syntax error', '{"sourceSegmentId":}', TRANSLATION_OUTPUT_REASON_CODES.ndjsonSyntax],
+    ['malformed NDJSON', '{"sourceSegmentId":', TRANSLATION_OUTPUT_REASON_CODES.streamTailIncomplete],
+    ['missing segment ID', '{"translatedHtml":"<p>译文</p>","appliedTermIds":[]}', TRANSLATION_OUTPUT_REASON_CODES.segmentIdMissing],
+    ['missing required field', '{"sourceSegmentId":"seg-1","translatedHtml":"<p>译文</p>"}', TRANSLATION_OUTPUT_REASON_CODES.requiredFieldMissing],
+    ['invalid field type', '{"sourceSegmentId":"seg-1","translatedHtml":12,"appliedTermIds":[]}', TRANSLATION_OUTPUT_REASON_CODES.invalidFieldType],
+    ['empty translation', '{"sourceSegmentId":"seg-1","translatedHtml":" ","appliedTermIds":[]}', TRANSLATION_OUTPUT_REASON_CODES.translatedHtmlEmpty],
+  ] as const)('classifies %s without retaining its content', (_name, output, reasonCode) => {
+    const parser = new TranslationBatchStreamParser();
+
+    try {
+      parser.append(output);
+      parser.finish();
+      throw new Error('Expected the invalid record to be rejected.');
+    } catch (error) {
+      expect(error).toMatchObject({ reasonCode });
+    }
   });
 });

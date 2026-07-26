@@ -3,6 +3,7 @@ import type {
   TextGenerationProvider,
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
+import { normalizeProviderFinishReason } from './TextGenerationProvider';
 import {
   createProviderAbortScope,
   fetchProviderResponse,
@@ -37,14 +38,15 @@ export class AnthropicProvider implements TextGenerationProvider {
 
       for await (const event of readServerSentEvents(response, scope)) {
         if (!event.data) continue;
-        const delta = parseAnthropicStreamEvent(event.event, event.data);
-        if (!delta) continue;
+        const parsedEvent = parseAnthropicStreamEvent(event.event, event.data);
+        if (parsedEvent?.finishReason) request.onFinishReason?.(parsedEvent.finishReason);
+        if (!parsedEvent?.delta) continue;
         if (!receivedFirstDelta) {
           receivedFirstDelta = true;
           request.onTiming?.('first-delta');
         }
         scope.recordResponseActivity();
-        yield delta;
+        yield parsedEvent.delta;
       }
     } finally {
       scope.dispose();
@@ -95,7 +97,10 @@ function buildMessagesUrl(baseUrl: string): string {
 function parseAnthropicStreamEvent(
   eventName: string | undefined,
   payload: string,
-): string | undefined {
+): {
+  delta?: string;
+  finishReason?: ReturnType<typeof normalizeProviderFinishReason>;
+} | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload);
@@ -111,9 +116,13 @@ function parseAnthropicStreamEvent(
     const error = isRecord(parsed.error) ? parsed.error : {};
     throw providerStreamError(isRetryableAnthropicError(error));
   }
+  if (type === 'message_delta' && isRecord(parsed.delta)) {
+    const finishReason = normalizeProviderFinishReason(parsed.delta.stop_reason);
+    return finishReason ? { finishReason } : undefined;
+  }
   if (type !== 'content_block_delta' || !isRecord(parsed.delta)) return undefined;
   if (parsed.delta.type !== 'text_delta') return undefined;
-  return typeof parsed.delta.text === 'string' ? parsed.delta.text : undefined;
+  return typeof parsed.delta.text === 'string' ? { delta: parsed.delta.text } : undefined;
 }
 
 function isRetryableAnthropicError(error: Record<string, unknown>): boolean {
@@ -124,4 +133,3 @@ function isRetryableAnthropicError(error: Record<string, unknown>): boolean {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
-

@@ -58,6 +58,22 @@ describe('GeminiProvider', () => {
     expect(chunks).toEqual(['split']);
   });
 
+  it('forwards a Gemini candidate finish reason without its content', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
+      'data: {"candidates":[{"finishReason":"MAX_TOKENS","content":{"parts":[{"text":"ignored"}]}}]}\n\n',
+    ].join(''), { status: 200 })));
+    const onFinishReason = vi.fn();
+    const chunks: string[] = [];
+
+    for await (const chunk of new GeminiProvider().stream({ ...request(), onFinishReason })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toEqual(['ignored']);
+    expect(onFinishReason).toHaveBeenCalledWith('length');
+    expect(JSON.stringify(onFinishReason.mock.calls)).not.toContain('ignored');
+  });
+
   it('maps in-stream quota errors to retryable stable errors', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
       'data: {"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}\n\n',

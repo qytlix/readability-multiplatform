@@ -96,6 +96,8 @@ export class TranslationStore {
         AND expertContentHash = ?
         AND smartContextEnabled = ?
         AND contextPromptVersion = ?
+      ORDER BY updatedAt DESC, id DESC
+      LIMIT 1
     `).get(
       entryId,
       sourceLanguage,
@@ -108,6 +110,72 @@ export class TranslationStore {
       expertContentHash,
       smartContextEnabled ? 1 : 0,
       contextPromptVersion,
+    ) as TranslationResultRow | undefined;
+    return row ? this.toResult(row) : undefined;
+  }
+
+  findActiveCompatibleResult(
+    entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
+    targetLanguage: TranslationTargetLanguage,
+    sourceContentHash: string,
+    segmenterVersion: string,
+    promptVersion: string,
+    terminologyPackVersion: string,
+    expertId = 'none',
+    expertContentHash = 'none',
+    smartContextEnabled = false,
+    contextPromptVersion = 'none',
+  ): TranslationResult | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM translation_result
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
+        AND sourceContentHash = ? AND segmenterVersion = ?
+        AND promptVersion = ?
+        AND terminologyPackVersion = ?
+        AND expertId = ?
+        AND expertContentHash = ?
+        AND smartContextEnabled = ?
+        AND contextPromptVersion = ?
+        AND status = 'succeeded' AND isActive = 1
+      ORDER BY completedAt DESC, id DESC
+      LIMIT 1
+    `).get(
+      entryId,
+      sourceLanguage,
+      targetLanguage,
+      sourceContentHash,
+      segmenterVersion,
+      promptVersion,
+      terminologyPackVersion,
+      expertId,
+      expertContentHash,
+      smartContextEnabled ? 1 : 0,
+      contextPromptVersion,
+    ) as TranslationResultRow | undefined;
+    return row ? this.toResult(row) : undefined;
+  }
+
+  findLatestActiveResult(
+    entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
+    targetLanguage: TranslationTargetLanguage,
+    sourceContentHash: string,
+    segmenterVersion: string,
+  ): TranslationResult | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM translation_result
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
+        AND sourceContentHash = ? AND segmenterVersion = ?
+        AND status = 'succeeded' AND isActive = 1
+      ORDER BY completedAt DESC, id DESC
+      LIMIT 1
+    `).get(
+      entryId,
+      sourceLanguage,
+      targetLanguage,
+      sourceContentHash,
+      segmenterVersion,
     ) as TranslationResultRow | undefined;
     return row ? this.toResult(row) : undefined;
   }
@@ -128,17 +196,6 @@ export class TranslationStore {
   createRun(params: CreateTranslationRunParams): TranslationResult {
     const now = new Date().toISOString();
     const persist = this.db.transaction(() => {
-      this.db.prepare(`
-        DELETE FROM translation_result
-        WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
-          AND sourceContentHash = ? AND segmenterVersion = ?
-      `).run(
-        params.entryId,
-        params.sourceLanguage,
-        params.targetLanguage,
-        params.sourceContentHash,
-        params.segmenterVersion,
-      );
       const inserted = this.db.prepare(`
         INSERT INTO translation_result
           (entryId, providerProfileId, sourceLanguage, targetLanguage, sourceContentHash,
@@ -260,12 +317,62 @@ export class TranslationStore {
 
   markRunSucceeded(runId: number): TranslationResult {
     const now = new Date().toISOString();
-    this.db.prepare(`
-      UPDATE translation_result
-      SET status = 'succeeded', errorCode = NULL, errorMessage = NULL,
-          errorRetryable = NULL, completedAt = ?, updatedAt = ?
-      WHERE id = ? AND status = 'running'
-    `).run(now, now, runId);
+    const activate = this.db.transaction(() => {
+      const run = this.db.prepare(`
+        SELECT entryId, sourceLanguage, targetLanguage, sourceContentHash,
+               segmenterVersion, promptVersion, terminologyPackVersion,
+               expertId, expertContentHash, smartContextEnabled, contextPromptVersion
+        FROM translation_result
+        WHERE id = ? AND status = 'running'
+      `).get(runId) as Pick<TranslationResultRow,
+        'entryId' | 'sourceLanguage' | 'targetLanguage' | 'sourceContentHash'
+        | 'segmenterVersion' | 'promptVersion' | 'terminologyPackVersion'
+        | 'expertId' | 'expertContentHash' | 'smartContextEnabled' | 'contextPromptVersion'
+      > | undefined;
+      if (!run) throw new Error('Translation run is not available for completion.');
+
+      const incomplete = this.db.prepare(`
+        SELECT 1 FROM translation_segment
+        WHERE translationResultId = ? AND status != 'succeeded'
+        LIMIT 1
+      `).get(runId);
+      if (incomplete) {
+        throw new Error('Translation run cannot be activated before every segment succeeds.');
+      }
+
+      this.db.prepare(`
+        UPDATE translation_result
+        SET isActive = 0
+        WHERE id != ?
+          AND entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
+          AND sourceContentHash = ? AND segmenterVersion = ?
+          AND promptVersion = ? AND terminologyPackVersion = ?
+          AND expertId = ? AND expertContentHash = ?
+          AND smartContextEnabled = ? AND contextPromptVersion = ?
+          AND isActive = 1
+      `).run(
+        runId,
+        run.entryId,
+        run.sourceLanguage,
+        run.targetLanguage,
+        run.sourceContentHash,
+        run.segmenterVersion,
+        run.promptVersion,
+        run.terminologyPackVersion,
+        run.expertId,
+        run.expertContentHash,
+        run.smartContextEnabled,
+        run.contextPromptVersion,
+      );
+      this.db.prepare(`
+        UPDATE translation_result
+        SET status = 'succeeded', isActive = 1,
+            errorCode = NULL, errorMessage = NULL,
+            errorRetryable = NULL, completedAt = ?, updatedAt = ?
+        WHERE id = ? AND status = 'running'
+      `).run(now, now, runId);
+    });
+    activate();
     const result = this.findById(runId);
     if (!result) throw new Error('Translation result disappeared after completion.');
     return result;

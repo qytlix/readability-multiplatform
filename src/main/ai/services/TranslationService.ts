@@ -36,6 +36,7 @@ import {
 import type { ProviderProfileStore } from '../stores/ProviderProfileStore';
 import type { SecretStore } from '../stores/SecretStore';
 import type {
+  ProviderFinishReason,
   ProviderTokenUsage,
   TextGenerationProvider,
 } from '../provider/TextGenerationProvider';
@@ -45,9 +46,21 @@ import {
   isLikelyAlreadyTargetLanguage,
 } from '../provider/TranslationLanguage';
 import { TranslationBatchStreamParser, type TranslationBatchOutput } from '../provider/TranslationBatchStream';
-import { buildTranslationBatchPrompt, TRANSLATION_PROMPT_VERSION } from '../provider/TranslationPrompt';
+import {
+  TRANSLATION_COMPENSATION_PROTOCOLS,
+  TranslationTextSlotStreamParser,
+  type TranslationTextSlotOutput,
+} from '../provider/TranslationTextSlotCompensation';
+import {
+  buildTranslationBatchPrompt,
+  buildTranslationTextSlotCompensationPrompt,
+  TRANSLATION_PROMPT_VERSION,
+} from '../provider/TranslationPrompt';
 import { renderExpertInstruction } from '../experts/ExpertCompiler';
-import { parseTranslationOutput } from '../provider/TranslationHtml';
+import {
+  createTranslationTextSlotPlan,
+  parseTranslationOutput,
+} from '../provider/TranslationHtml';
 import { TranslationStore } from '../stores/TranslationStore';
 import {
   EmptyTerminologyLookup,
@@ -75,8 +88,18 @@ import {
   TRANSLATION_LOG_ERROR_CODES,
   type TranslationOperationLogger,
   type TranslationProviderRequestKind,
+  type TranslationProviderResponseDiagnostics,
   type TranslationRunFailureStage,
 } from './TranslationLogging';
+import {
+  TRANSLATION_OUTPUT_REASON_CODES,
+  type TranslationOutputFailurePhase,
+  type TranslationHtmlValidationReason,
+  type TranslationOutputReasonCode,
+  getTranslationOutputDiagnostic,
+  hashTranslationSegmentId,
+  invalidTranslationStructure,
+} from '../TranslationOutputDiagnostics';
 import {
   createProviderRequestId,
   createUsageAttemptId,
@@ -126,6 +149,36 @@ interface ActiveProviderRequest {
   segmentCount: number;
   startedAt: number;
   usageRequest: UsageRequestHandle;
+  inputSegmentIds: string[];
+  htmlValidationFailedSegmentIds: Set<string>;
+  responseDiagnostics: MutableProviderResponseDiagnostics;
+}
+
+interface MutableProviderResponseDiagnostics {
+  expectedSegmentCount: number;
+  parsedSegmentCount: number;
+  acceptedSegmentCount: number;
+  missingSegmentCount: number;
+  duplicateSegmentCount: number;
+  unexpectedSegmentCount: number;
+  malformedRecordCount: number;
+  emptyTranslationCount: number;
+  inputCharacters: number;
+  outputCharacters: number;
+  affectedSegmentIdHashes: Set<string>;
+  finishReason?: ProviderFinishReason;
+  failurePhase?: TranslationOutputFailurePhase;
+  reasonCode?: TranslationOutputReasonCode;
+  htmlValidationReason?: TranslationHtmlValidationReason;
+  compensationProtocol?: 'text-slots';
+  expectedTextSlotCount?: number;
+  parsedTextSlotCount?: number;
+  acceptedTextSlotCount?: number;
+  missingTextSlotCount?: number;
+  duplicateTextSlotCount?: number;
+  unexpectedTextSlotCount?: number;
+  malformedTextSlotCount?: number;
+  emptyTextSlotCount?: number;
 }
 
 interface TranslationBatchWork {
@@ -210,7 +263,39 @@ export class TranslationService {
       smartContextEnabled,
       smartContextEnabled ? TRANSLATION_CONTEXT_PROMPT_VERSION : 'none',
     );
+    const activeCompatibleResult = this.translationStore.findActiveCompatibleResult(
+      request.entryId,
+      request.sourceLanguage,
+      request.targetLanguage,
+      source.sourceContentHash,
+      source.segmenterVersion,
+      TRANSLATION_PROMPT_VERSION,
+      terminologyPackVersion,
+      expert.id,
+      expert.contentHash,
+      smartContextEnabled,
+      smartContextEnabled ? TRANSLATION_CONTEXT_PROMPT_VERSION : 'none',
+    );
+    if (compatibleResult?.status === 'running') {
+      return toState(compatibleResult, activeCompatibleResult);
+    }
+    if (
+      compatibleResult?.status === 'failed'
+      && compatibleResult.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED
+    ) {
+      return toState(compatibleResult, activeCompatibleResult);
+    }
+    if (activeCompatibleResult) return toState(activeCompatibleResult);
     if (compatibleResult) return toState(compatibleResult);
+
+    const activeResult = this.translationStore.findLatestActiveResult(
+      request.entryId,
+      request.sourceLanguage,
+      request.targetLanguage,
+      source.sourceContentHash,
+      source.segmenterVersion,
+    );
+    if (activeResult) return toState(activeResult);
 
     return this.translationStore.findLatestResult(
       request.entryId,
@@ -249,13 +334,24 @@ export class TranslationService {
       smartContextEnabled,
       smartContextEnabled ? TRANSLATION_CONTEXT_PROMPT_VERSION : 'none',
     );
-    if (existingResult?.status === 'succeeded') {
-      return { runId: existingResult.id, reused: true, result: existingResult };
-    }
+    const activeResult = this.translationStore.findActiveCompatibleResult(
+      request.entryId,
+      request.sourceLanguage,
+      request.targetLanguage,
+      source.sourceContentHash,
+      source.segmenterVersion,
+      TRANSLATION_PROMPT_VERSION,
+      terminologyPackVersion,
+      expert.id,
+      expert.contentHash,
+      smartContextEnabled,
+      smartContextEnabled ? TRANSLATION_CONTEXT_PROMPT_VERSION : 'none',
+    );
 
     if (this.activeRun) {
       if (
-        this.activeRun.result.entryId === request.entryId
+        !request.forceNew
+        && this.activeRun.result.entryId === request.entryId
         && this.activeRun.result.sourceLanguage === request.sourceLanguage
         && this.activeRun.result.targetLanguage === request.targetLanguage
         && this.activeRun.result.sourceContentHash === source.sourceContentHash
@@ -267,7 +363,8 @@ export class TranslationService {
         return {
           runId: this.activeRun.result.id,
           reused: true,
-          result: existingResult ?? this.activeRun.result,
+          result: this.activeRun.result,
+          ...(activeResult ? { activeResult } : {}),
         };
       }
       throw new TranslationError(
@@ -275,6 +372,10 @@ export class TranslationService {
         'Another Translation is already being generated. Wait for it to finish before starting another.',
         true,
       );
+    }
+
+    if (!request.forceNew && activeResult) {
+      return { runId: activeResult.id, reused: true, result: activeResult };
     }
 
     const profile = this.profileStore.findActiveWithSecret();
@@ -287,7 +388,7 @@ export class TranslationService {
     }
 
     const apiKey = this.secretStore.read(profile.apiKeyRef);
-    const result = existingResult
+    const result = !request.forceNew && existingResult && existingResult.status !== 'succeeded'
       ? this.translationStore.resumeRun(existingResult.id, profile.id)
       : this.translationStore.createRun({
           entryId: request.entryId,
@@ -339,7 +440,12 @@ export class TranslationService {
         abortController,
       });
     }, 0);
-    return { runId: result.id, reused: false, result };
+    return {
+      runId: result.id,
+      reused: false,
+      result,
+      ...(activeResult ? { activeResult } : {}),
+    };
   }
 
   prioritize(request: TranslationPrioritizeRequest): TranslationPrioritizeResponse {
@@ -679,9 +785,13 @@ export class TranslationService {
       });
     const settledIds = new Set<string>();
     const segmentFailures: SegmentTranslationFailure[] = [];
-    let latestBatchProviderRequestId: number | undefined;
+    let latestBatchProviderRequest: ActiveProviderRequest | undefined;
 
-    const persistOutputs = (outputs: TranslationBatchOutput[]): void => {
+    const persistOutputs = (
+      outputs: TranslationBatchOutput[],
+      providerRequest: ActiveProviderRequest,
+    ): void => {
+      providerRequest.responseDiagnostics.parsedSegmentCount += outputs.length;
       outputs.forEach((output) => {
         if (
           providerConfig.abortController.signal.aborted
@@ -694,22 +804,52 @@ export class TranslationService {
           );
         }
         if (settledIds.has(output.sourceSegmentId)) {
-          throw invalidBatchOutput('The provider returned a duplicate Translation segment.');
+          recordAffectedSegmentId(
+            providerRequest.responseDiagnostics,
+            output.sourceSegmentId,
+          );
+          throw invalidBatchOutput(
+            TRANSLATION_OUTPUT_REASON_CODES.segmentIdDuplicate,
+            'segment-id',
+            'The provider returned a duplicate Translation segment.',
+          );
         }
         const input = inputs.find(({ segment }) =>
           segment.sourceSegmentId === output.sourceSegmentId);
         if (!input) {
-          throw invalidBatchOutput('The provider returned an unknown Translation segment.');
+          recordAffectedSegmentId(
+            providerRequest.responseDiagnostics,
+            output.sourceSegmentId,
+          );
+          throw invalidBatchOutput(
+            TRANSLATION_OUTPUT_REASON_CODES.segmentIdUnexpected,
+            'segment-id',
+            'The provider returned an unknown Translation segment.',
+          );
         }
-        const parsed = parseTranslationOutput(
-          input.segment.sourceHtml,
-          JSON.stringify({
-            translatedHtml: output.translatedHtml,
-            appliedTermIds: output.appliedTermIds,
-          }),
-          input.terminologyCandidates,
-          result.targetLanguage,
-        );
+        let parsed: ReturnType<typeof parseTranslationOutput>;
+        try {
+          parsed = parseTranslationOutput(
+            input.segment.sourceHtml,
+            JSON.stringify({
+              translatedHtml: output.translatedHtml,
+              appliedTermIds: output.appliedTermIds,
+            }),
+            input.terminologyCandidates,
+            result.targetLanguage,
+          );
+        } catch (error) {
+          recordAffectedSegmentId(
+            providerRequest.responseDiagnostics,
+            input.segment.sourceSegmentId,
+          );
+          if (isHtmlValidationFailure(error)) {
+            providerRequest.htmlValidationFailedSegmentIds.add(
+              input.segment.sourceSegmentId,
+            );
+          }
+          throw error;
+        }
         const completedSegment = this.translationStore.markSegmentSucceeded(
           result.id,
           input.segment.sourceSegmentId,
@@ -718,6 +858,7 @@ export class TranslationService {
           parsed.terminologyMatches,
         );
         settledIds.add(output.sourceSegmentId);
+        providerRequest.responseDiagnostics.acceptedSegmentCount += 1;
         this.emit({
           type: 'segment-completed',
           runId: result.id,
@@ -731,18 +872,19 @@ export class TranslationService {
     };
 
     const streamPrompt = async (
-      prompt: string,
+      selectedInputs: SegmentTranslationInput[],
       requestKind: TranslationProviderRequestKind,
-      segmentCount: number,
-    ): Promise<number> => {
+    ): Promise<ActiveProviderRequest> => {
+      const prompt = buildPrompt(selectedInputs);
       const parser = new TranslationBatchStreamParser();
       const providerRequest = this.startProviderRequest(
         active,
         requestKind,
-        segmentCount,
+        selectedInputs,
+        prompt.length,
         providerConfig,
       );
-      latestBatchProviderRequestId = providerRequest.providerRequestId;
+      latestBatchProviderRequest = providerRequest;
       let usage: ProviderTokenUsage | undefined;
       try {
         for await (const delta of this.provider.stream({
@@ -753,34 +895,262 @@ export class TranslationService {
           prompt,
           signal: providerConfig.abortController.signal,
           requestUsage: true,
+          onFinishReason: (finishReason) => {
+            providerRequest.responseDiagnostics.finishReason = finishReason;
+          },
           onUsage: (reportedUsage) => {
             usage = sanitizeProviderTokenUsage(reportedUsage);
           },
         })) {
+          providerRequest.responseDiagnostics.outputCharacters += delta.length;
           let completedOutputs: ReturnType<TranslationBatchStreamParser['append']>;
           try {
             completedOutputs = parser.append(delta);
-          } catch {
-            throw invalidBatchOutput('The provider returned invalid Translation NDJSON.');
+          } catch (error) {
+            const outputError = toTranslationOutputError(
+              error,
+              TRANSLATION_OUTPUT_REASON_CODES.ndjsonSyntax,
+              'stream',
+              'The provider returned invalid Translation NDJSON.',
+            );
+            throw outputError;
           }
-          persistOutputs(completedOutputs);
+          persistOutputs(completedOutputs, providerRequest);
         }
         let finalOutputs: TranslationBatchOutput[];
         try {
           finalOutputs = parser.finish();
-        } catch {
-          throw invalidBatchOutput('The provider returned invalid Translation NDJSON.');
+        } catch (error) {
+          const fallbackReason = providerRequest.responseDiagnostics.finishReason === 'length'
+            ? TRANSLATION_OUTPUT_REASON_CODES.providerLengthTruncated
+            : TRANSLATION_OUTPUT_REASON_CODES.streamTailIncomplete;
+          const outputError = fallbackReason === TRANSLATION_OUTPUT_REASON_CODES.providerLengthTruncated
+            ? invalidBatchOutput(
+                fallbackReason,
+                'stream',
+                'The provider output ended before the structured response was complete.',
+              )
+            : toTranslationOutputError(
+                error,
+                fallbackReason,
+                'stream',
+                'The provider returned invalid Translation NDJSON.',
+              );
+          throw outputError;
         }
-        persistOutputs(finalOutputs);
+        persistOutputs(finalOutputs, providerRequest);
+        recordProviderRequestCompletion(
+          providerRequest.responseDiagnostics,
+          selectedInputs,
+          settledIds,
+        );
         this.completeProviderRequest(active, providerRequest, usage);
-        return providerRequest.providerRequestId;
+        return providerRequest;
       } catch (error) {
-        this.failProviderRequest(active, providerRequest, usage, toTranslationIpcError(error));
+        recordProviderRequestMissingSegments(
+          providerRequest.responseDiagnostics,
+          selectedInputs,
+          settledIds,
+        );
+        this.failProviderRequest(active, providerRequest, usage, error);
         throw error;
       }
     };
 
-    const compensateMissingInputs = async (providerRequestId: number): Promise<void> => {
+    const persistTextSlotCompensationResult = (
+      input: SegmentTranslationInput,
+      translatedText: string,
+      translatedHtml: string,
+      appliedTermIds: ReadonlySet<string>,
+    ): void => {
+      const terminologyMatches = input.terminologyCandidates.filter((candidate) =>
+        appliedTermIds.has(`${candidate.sourceId}:${candidate.conceptId}`));
+      const completedSegment = this.translationStore.markSegmentSucceeded(
+        result.id,
+        input.segment.sourceSegmentId,
+        translatedText,
+        translatedHtml,
+        terminologyMatches,
+      );
+      settledIds.add(input.segment.sourceSegmentId);
+      this.emit({
+        type: 'segment-completed',
+        runId: result.id,
+        entryId: result.entryId,
+        sourceLanguage: result.sourceLanguage,
+        targetLanguage: result.targetLanguage,
+        sourceSegmentId: input.segment.sourceSegmentId,
+        segment: completedSegment,
+      });
+    };
+
+    const streamTextSlotCompensation = async (
+      input: SegmentTranslationInput,
+    ): Promise<ActiveProviderRequest | undefined> => {
+      const textSlotPlan = createTranslationTextSlotPlan(input.segment.sourceHtml);
+      if (!textSlotPlan.textSlots.length) {
+        const rebuilt = textSlotPlan.rebuild(new Map<string, string>(), result.targetLanguage);
+        persistTextSlotCompensationResult(
+          input,
+          rebuilt.translatedText,
+          rebuilt.translatedHtml,
+          new Set<string>(),
+        );
+        return undefined;
+      }
+
+      const prompt = buildTranslationTextSlotCompensationPrompt({
+        textSlots: [...textSlotPlan.textSlots],
+        terminologyCandidates: input.terminologyCandidates,
+        sourceLanguage: result.sourceLanguage,
+        targetLanguage: result.targetLanguage,
+        expertInstruction: providerConfig.expertInstruction,
+        translationContext: providerConfig.context,
+      });
+      const parser = new TranslationTextSlotStreamParser();
+      const providerRequest = this.startProviderRequest(
+        active,
+        'compensation',
+        [input],
+        prompt.length,
+        providerConfig,
+      );
+      const diagnostics = providerRequest.responseDiagnostics;
+      diagnostics.compensationProtocol = TRANSLATION_COMPENSATION_PROTOCOLS[0];
+      diagnostics.expectedTextSlotCount = textSlotPlan.textSlots.length;
+      diagnostics.parsedTextSlotCount = 0;
+      diagnostics.acceptedTextSlotCount = 0;
+      diagnostics.missingTextSlotCount = 0;
+      diagnostics.duplicateTextSlotCount = 0;
+      diagnostics.unexpectedTextSlotCount = 0;
+      diagnostics.malformedTextSlotCount = 0;
+      diagnostics.emptyTextSlotCount = 0;
+      const expectedSlotIds = new Set(textSlotPlan.textSlots.map((slot) => slot.textSlotId));
+      const acceptedSlotIds = new Set<string>();
+      const translatedTextBySlotId = new Map<string, string>();
+      const appliedTermIds = new Set<string>();
+      let usage: ProviderTokenUsage | undefined;
+
+      const persistSlotOutputs = (outputs: TranslationTextSlotOutput[]): void => {
+        diagnostics.parsedTextSlotCount = (diagnostics.parsedTextSlotCount ?? 0) + outputs.length;
+        outputs.forEach((output) => {
+          if (
+            providerConfig.abortController.signal.aborted
+            || this.activeRun?.result.id !== result.id
+          ) {
+            throw new TranslationError(
+              TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
+              'Translation generation was interrupted before completion.',
+              true,
+            );
+          }
+          if (acceptedSlotIds.has(output.textSlotId)) {
+            throw invalidBatchOutput(
+              TRANSLATION_OUTPUT_REASON_CODES.textSlotIdDuplicate,
+              'record',
+              'The provider returned a duplicate Translation text slot.',
+            );
+          }
+          if (!expectedSlotIds.has(output.textSlotId)) {
+            throw invalidBatchOutput(
+              TRANSLATION_OUTPUT_REASON_CODES.textSlotIdUnexpected,
+              'record',
+              'The provider returned an unknown Translation text slot.',
+            );
+          }
+          acceptedSlotIds.add(output.textSlotId);
+          translatedTextBySlotId.set(output.textSlotId, output.translatedText);
+          output.appliedTermIds.forEach((termId) => appliedTermIds.add(termId));
+          diagnostics.acceptedTextSlotCount = (diagnostics.acceptedTextSlotCount ?? 0) + 1;
+        });
+      };
+
+      try {
+        for await (const delta of this.provider.stream({
+          providerKind: providerConfig.providerKind,
+          baseUrl: providerConfig.baseUrl,
+          model: providerConfig.model,
+          apiKey: providerConfig.apiKey,
+          prompt,
+          signal: providerConfig.abortController.signal,
+          requestUsage: true,
+          onFinishReason: (finishReason) => {
+            diagnostics.finishReason = finishReason;
+          },
+          onUsage: (reportedUsage) => {
+            usage = sanitizeProviderTokenUsage(reportedUsage);
+          },
+        })) {
+          diagnostics.outputCharacters += delta.length;
+          let completedOutputs: ReturnType<TranslationTextSlotStreamParser['append']>;
+          try {
+            completedOutputs = parser.append(delta);
+          } catch (error) {
+            throw toTranslationOutputError(
+              error,
+              TRANSLATION_OUTPUT_REASON_CODES.ndjsonSyntax,
+              'stream',
+              'The provider returned invalid Translation text-slot NDJSON.',
+            );
+          }
+          persistSlotOutputs(completedOutputs);
+        }
+        let finalOutputs: TranslationTextSlotOutput[];
+        try {
+          finalOutputs = parser.finish();
+        } catch (error) {
+          const fallbackReason = diagnostics.finishReason === 'length'
+            ? TRANSLATION_OUTPUT_REASON_CODES.providerLengthTruncated
+            : TRANSLATION_OUTPUT_REASON_CODES.streamTailIncomplete;
+          throw fallbackReason === TRANSLATION_OUTPUT_REASON_CODES.providerLengthTruncated
+            ? invalidBatchOutput(
+                fallbackReason,
+                'stream',
+                'The provider output ended before the text-slot response was complete.',
+              )
+            : toTranslationOutputError(
+                error,
+                fallbackReason,
+                'stream',
+                'The provider returned invalid Translation text-slot NDJSON.',
+              );
+        }
+        persistSlotOutputs(finalOutputs);
+        if (acceptedSlotIds.size !== expectedSlotIds.size) {
+          throw invalidBatchOutput(
+            TRANSLATION_OUTPUT_REASON_CODES.expectedTextSlotMissing,
+            'completion',
+            'The provider omitted a Translation text slot.',
+          );
+        }
+        const rebuilt = textSlotPlan.rebuild(translatedTextBySlotId, result.targetLanguage);
+        persistTextSlotCompensationResult(
+          input,
+          rebuilt.translatedText,
+          rebuilt.translatedHtml,
+          appliedTermIds,
+        );
+        diagnostics.parsedSegmentCount += 1;
+        diagnostics.acceptedSegmentCount += 1;
+        this.completeProviderRequest(active, providerRequest, usage);
+        return providerRequest;
+      } catch (error) {
+        recordTextSlotMissing(
+          diagnostics,
+          expectedSlotIds,
+          acceptedSlotIds,
+        );
+        recordProviderRequestMissingSegments(
+          diagnostics,
+          [input],
+          settledIds,
+        );
+        this.failProviderRequest(active, providerRequest, usage, error);
+        throw error;
+      }
+    };
+
+    const compensateMissingInputs = async (providerRequest: ActiveProviderRequest): Promise<void> => {
       const missingInputs = inputs.filter(({ segment }) =>
         !settledIds.has(segment.sourceSegmentId));
       if (!missingInputs.length) return;
@@ -788,12 +1158,34 @@ export class TranslationService {
       active.diagnostics.missingSegmentCount += missingInputs.length;
       logTranslationMissingSegmentsDetected(this.logger, {
         taskRunId: result.id,
-        providerRequestId,
+        providerRequestId: providerRequest.providerRequestId,
+        requestKind: providerRequest.requestKind,
         missingSegmentCount: missingInputs.length,
+        responseDiagnostics: toProviderResponseDiagnostics(
+          providerRequest.responseDiagnostics,
+        ),
       });
       for (const missingInput of compensationInputs) {
         try {
-          await streamPrompt(buildPrompt([missingInput]), 'compensation', 1);
+          const compensationRequest = providerRequest.htmlValidationFailedSegmentIds.has(
+            missingInput.segment.sourceSegmentId,
+          )
+            ? await streamTextSlotCompensation(missingInput)
+            : await streamPrompt([missingInput], 'compensation');
+          if (
+            compensationRequest
+            && compensationRequest.responseDiagnostics.missingSegmentCount > 0
+          ) {
+            logTranslationMissingSegmentsDetected(this.logger, {
+              taskRunId: result.id,
+              providerRequestId: compensationRequest.providerRequestId,
+              requestKind: compensationRequest.requestKind,
+              missingSegmentCount: compensationRequest.responseDiagnostics.missingSegmentCount,
+              responseDiagnostics: toProviderResponseDiagnostics(
+                compensationRequest.responseDiagnostics,
+              ),
+            });
+          }
         } catch (error) {
           const translationError = toTranslationIpcError(error);
           if (!isSegmentOutputError(translationError.code)) throw error;
@@ -819,28 +1211,36 @@ export class TranslationService {
         }
       }
       if (compensationInputs.length !== missingInputs.length) {
-        throw invalidBatchOutput('The provider omitted too many Translation segments.');
+        throw invalidBatchOutput(
+          TRANSLATION_OUTPUT_REASON_CODES.expectedSegmentMissing,
+          'completion',
+          'The provider omitted too many Translation segments.',
+        );
       }
     };
 
-    let batchRequestId: number;
+    let batchRequest: ActiveProviderRequest;
     try {
-      batchRequestId = await streamPrompt(buildPrompt(inputs), 'batch', inputs.length);
+      batchRequest = await streamPrompt(inputs, 'batch');
     } catch (error) {
       if (
         !isSegmentOutputError(toTranslationIpcError(error).code)
-        || latestBatchProviderRequestId === undefined
+        || latestBatchProviderRequest === undefined
       ) {
         throw error;
       }
-      await compensateMissingInputs(latestBatchProviderRequestId);
+      await compensateMissingInputs(latestBatchProviderRequest);
       if (settledIds.size !== inputs.length) throw error;
       return segmentFailures;
     }
 
-    await compensateMissingInputs(batchRequestId);
+    await compensateMissingInputs(batchRequest);
     if (settledIds.size !== inputs.length) {
-      throw invalidBatchOutput('The provider omitted a Translation segment.');
+      throw invalidBatchOutput(
+        TRANSLATION_OUTPUT_REASON_CODES.expectedSegmentMissing,
+        'completion',
+        'The provider omitted a Translation segment.',
+      );
     }
     return segmentFailures;
   }
@@ -915,7 +1315,8 @@ export class TranslationService {
   private startProviderRequest(
     activeRun: ActiveTranslationRun,
     requestKind: TranslationProviderRequestKind,
-    segmentCount: number,
+    selectedInputs: SegmentTranslationInput[],
+    inputCharacters: number,
     providerConfig: { providerProfileId: number; model: string },
   ): ActiveProviderRequest {
     const providerRequestId = createProviderRequestId();
@@ -928,8 +1329,14 @@ export class TranslationService {
     const request: ActiveProviderRequest = {
       providerRequestId,
       requestKind,
-      segmentCount,
+      segmentCount: selectedInputs.length,
       startedAt: performance.now(),
+      inputSegmentIds: selectedInputs.map(({ segment }) => segment.sourceSegmentId),
+      htmlValidationFailedSegmentIds: new Set(),
+      responseDiagnostics: createProviderResponseDiagnostics(
+        selectedInputs.length,
+        inputCharacters,
+      ),
       usageRequest: this.usageRecorder.start({
         providerRequestId,
         attemptId: activeRun.attemptId,
@@ -967,6 +1374,7 @@ export class TranslationService {
       segmentCount: request.segmentCount,
       durationMs: elapsedTranslationMilliseconds(request.startedAt),
       success: true,
+      responseDiagnostics: toProviderResponseDiagnostics(request.responseDiagnostics),
       ...reportedUsage,
     });
   }
@@ -975,16 +1383,21 @@ export class TranslationService {
     activeRun: ActiveTranslationRun,
     request: ActiveProviderRequest,
     usage: ProviderTokenUsage | undefined,
-    error: { code: string },
+    error: unknown,
   ): void {
+    const ipcError = toTranslationIpcError(error);
+    recordProviderResponseFailure(
+      request.responseDiagnostics,
+      error,
+    );
     const reportedUsage = toSafeProviderTokenUsage(usage);
-    const requestStatus = error.code === TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED
+    const requestStatus = ipcError.code === TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED
       ? 'interrupted'
       : 'failed';
     if (requestStatus === 'interrupted') {
-      this.usageRecorder.interrupt(request.usageRequest, reportedUsage, error.code);
+      this.usageRecorder.interrupt(request.usageRequest, reportedUsage, ipcError.code);
     } else {
-      this.usageRecorder.fail(request.usageRequest, error.code, reportedUsage);
+      this.usageRecorder.fail(request.usageRequest, ipcError.code, reportedUsage);
     }
     activeRun.providerRequests.delete(request);
     this.recordProviderUsage(activeRun.diagnostics, reportedUsage);
@@ -996,7 +1409,8 @@ export class TranslationService {
       segmentCount: request.segmentCount,
       durationMs: elapsedTranslationMilliseconds(request.startedAt),
       success: false,
-      errorCode: toTranslationProviderRequestErrorCode(error.code),
+      errorCode: toTranslationProviderRequestErrorCode(ipcError.code),
+      responseDiagnostics: toProviderResponseDiagnostics(request.responseDiagnostics),
       ...reportedUsage,
     });
   }
@@ -1163,11 +1577,229 @@ function toSafeProviderTokenUsage(
   return sanitizeProviderTokenUsage(usage);
 }
 
-function invalidBatchOutput(message: string): TranslationError {
-  return new TranslationError(
-    TRANSLATION_ERROR_CODES.TRANSLATION_INVALID_STRUCTURE,
+function createProviderResponseDiagnostics(
+  expectedSegmentCount: number,
+  inputCharacters: number,
+): MutableProviderResponseDiagnostics {
+  return {
+    expectedSegmentCount,
+    parsedSegmentCount: 0,
+    acceptedSegmentCount: 0,
+    missingSegmentCount: 0,
+    duplicateSegmentCount: 0,
+    unexpectedSegmentCount: 0,
+    malformedRecordCount: 0,
+    emptyTranslationCount: 0,
+    inputCharacters,
+    outputCharacters: 0,
+    affectedSegmentIdHashes: new Set(),
+  };
+}
+
+function recordProviderRequestCompletion(
+  diagnostics: MutableProviderResponseDiagnostics,
+  selectedInputs: SegmentTranslationInput[],
+  settledIds: ReadonlySet<string>,
+): void {
+  recordProviderRequestMissingSegments(diagnostics, selectedInputs, settledIds);
+  if (!diagnostics.missingSegmentCount || diagnostics.reasonCode) return;
+  const reasonCode = diagnostics.finishReason === 'length'
+    ? TRANSLATION_OUTPUT_REASON_CODES.providerLengthTruncated
+    : diagnostics.parsedSegmentCount === 0
+      ? TRANSLATION_OUTPUT_REASON_CODES.responseEmpty
+      : TRANSLATION_OUTPUT_REASON_CODES.expectedSegmentMissing;
+  recordProviderResponseReason(diagnostics, reasonCode, 'completion');
+}
+
+function recordProviderRequestMissingSegments(
+  diagnostics: MutableProviderResponseDiagnostics,
+  selectedInputs: SegmentTranslationInput[],
+  settledIds: ReadonlySet<string>,
+): void {
+  const missingSegmentIds = selectedInputs
+    .map(({ segment }) => segment.sourceSegmentId)
+    .filter((sourceSegmentId) => !settledIds.has(sourceSegmentId));
+  diagnostics.missingSegmentCount = missingSegmentIds.length;
+  missingSegmentIds.forEach((sourceSegmentId) =>
+    recordAffectedSegmentId(diagnostics, sourceSegmentId));
+}
+
+function recordProviderResponseFailure(
+  diagnostics: MutableProviderResponseDiagnostics,
+  error: unknown,
+): void {
+  const outputDiagnostic = getTranslationOutputDiagnostic(error);
+  if (outputDiagnostic) {
+    recordProviderResponseReason(
+      diagnostics,
+      outputDiagnostic.reasonCode,
+      outputDiagnostic.failurePhase,
+    );
+    diagnostics.htmlValidationReason = outputDiagnostic.htmlValidationReason;
+    return;
+  }
+  const ipcError = toTranslationIpcError(error);
+  if (ipcError.code === TRANSLATION_ERROR_CODES.TRANSLATION_EMPTY_OUTPUT) {
+    recordProviderResponseReason(
+      diagnostics,
+      TRANSLATION_OUTPUT_REASON_CODES.responseEmpty,
+      'stream',
+    );
+    return;
+  }
+  if (ipcError.code === TRANSLATION_ERROR_CODES.TRANSLATION_INVALID_STRUCTURE) {
+    recordProviderResponseReason(
+      diagnostics,
+      TRANSLATION_OUTPUT_REASON_CODES.unclassified,
+      'stream',
+    );
+  }
+}
+
+function recordProviderResponseReason(
+  diagnostics: MutableProviderResponseDiagnostics,
+  reasonCode: TranslationOutputReasonCode,
+  failurePhase: TranslationOutputFailurePhase,
+): void {
+  diagnostics.reasonCode = reasonCode;
+  diagnostics.failurePhase = failurePhase;
+  const isTextSlotCompensation = diagnostics.compensationProtocol === 'text-slots';
+  switch (reasonCode) {
+    case TRANSLATION_OUTPUT_REASON_CODES.ndjsonSyntax:
+    case TRANSLATION_OUTPUT_REASON_CODES.streamTailIncomplete:
+    case TRANSLATION_OUTPUT_REASON_CODES.requiredFieldMissing:
+    case TRANSLATION_OUTPUT_REASON_CODES.invalidFieldType:
+    case TRANSLATION_OUTPUT_REASON_CODES.textSlotIdMissing:
+      if (isTextSlotCompensation) {
+        diagnostics.malformedTextSlotCount = (diagnostics.malformedTextSlotCount ?? 0) + 1;
+      } else {
+        diagnostics.malformedRecordCount += 1;
+      }
+      break;
+    case TRANSLATION_OUTPUT_REASON_CODES.translatedHtmlEmpty:
+    case TRANSLATION_OUTPUT_REASON_CODES.responseEmpty:
+      diagnostics.emptyTranslationCount += 1;
+      break;
+    case TRANSLATION_OUTPUT_REASON_CODES.translatedTextEmpty:
+      diagnostics.emptyTextSlotCount = (diagnostics.emptyTextSlotCount ?? 0) + 1;
+      break;
+    case TRANSLATION_OUTPUT_REASON_CODES.segmentIdDuplicate:
+      diagnostics.duplicateSegmentCount += 1;
+      break;
+    case TRANSLATION_OUTPUT_REASON_CODES.segmentIdUnexpected:
+      diagnostics.unexpectedSegmentCount += 1;
+      break;
+    case TRANSLATION_OUTPUT_REASON_CODES.textSlotIdDuplicate:
+      diagnostics.duplicateTextSlotCount = (diagnostics.duplicateTextSlotCount ?? 0) + 1;
+      break;
+    case TRANSLATION_OUTPUT_REASON_CODES.textSlotIdUnexpected:
+      diagnostics.unexpectedTextSlotCount = (diagnostics.unexpectedTextSlotCount ?? 0) + 1;
+      break;
+    default:
+      break;
+  }
+}
+
+function recordTextSlotMissing(
+  diagnostics: MutableProviderResponseDiagnostics,
+  expectedSlotIds: ReadonlySet<string>,
+  acceptedSlotIds: ReadonlySet<string>,
+): void {
+  diagnostics.missingTextSlotCount = [...expectedSlotIds].filter((textSlotId) =>
+    !acceptedSlotIds.has(textSlotId)).length;
+}
+
+function recordAffectedSegmentId(
+  diagnostics: MutableProviderResponseDiagnostics,
+  sourceSegmentId: string,
+): void {
+  if (diagnostics.affectedSegmentIdHashes.size >= 3) return;
+  diagnostics.affectedSegmentIdHashes.add(hashTranslationSegmentId(sourceSegmentId));
+}
+
+function toProviderResponseDiagnostics(
+  diagnostics: MutableProviderResponseDiagnostics,
+): TranslationProviderResponseDiagnostics {
+  const affectedSegmentIdHashes = [...diagnostics.affectedSegmentIdHashes];
+  return {
+    expectedSegmentCount: diagnostics.expectedSegmentCount,
+    parsedSegmentCount: diagnostics.parsedSegmentCount,
+    acceptedSegmentCount: diagnostics.acceptedSegmentCount,
+    missingSegmentCount: diagnostics.missingSegmentCount,
+    duplicateSegmentCount: diagnostics.duplicateSegmentCount,
+    unexpectedSegmentCount: diagnostics.unexpectedSegmentCount,
+    malformedRecordCount: diagnostics.malformedRecordCount,
+    emptyTranslationCount: diagnostics.emptyTranslationCount,
+    inputCharacters: diagnostics.inputCharacters,
+    outputCharacters: diagnostics.outputCharacters,
+    ...(diagnostics.finishReason === undefined
+      ? {}
+      : { finishReason: diagnostics.finishReason }),
+    ...(diagnostics.failurePhase === undefined
+      ? {}
+      : { failurePhase: diagnostics.failurePhase }),
+    ...(diagnostics.reasonCode === undefined
+      ? {}
+      : { reasonCode: diagnostics.reasonCode }),
+    ...(diagnostics.htmlValidationReason === undefined
+      ? {}
+      : { htmlValidationReason: diagnostics.htmlValidationReason }),
+    ...(diagnostics.compensationProtocol === undefined
+      ? {}
+      : { compensationProtocol: diagnostics.compensationProtocol }),
+    ...(diagnostics.expectedTextSlotCount === undefined
+      ? {}
+      : { expectedTextSlotCount: diagnostics.expectedTextSlotCount }),
+    ...(diagnostics.parsedTextSlotCount === undefined
+      ? {}
+      : { parsedTextSlotCount: diagnostics.parsedTextSlotCount }),
+    ...(diagnostics.acceptedTextSlotCount === undefined
+      ? {}
+      : { acceptedTextSlotCount: diagnostics.acceptedTextSlotCount }),
+    ...(diagnostics.missingTextSlotCount === undefined
+      ? {}
+      : { missingTextSlotCount: diagnostics.missingTextSlotCount }),
+    ...(diagnostics.duplicateTextSlotCount === undefined
+      ? {}
+      : { duplicateTextSlotCount: diagnostics.duplicateTextSlotCount }),
+    ...(diagnostics.unexpectedTextSlotCount === undefined
+      ? {}
+      : { unexpectedTextSlotCount: diagnostics.unexpectedTextSlotCount }),
+    ...(diagnostics.malformedTextSlotCount === undefined
+      ? {}
+      : { malformedTextSlotCount: diagnostics.malformedTextSlotCount }),
+    ...(diagnostics.emptyTextSlotCount === undefined
+      ? {}
+      : { emptyTextSlotCount: diagnostics.emptyTextSlotCount }),
+    ...(affectedSegmentIdHashes.length ? { affectedSegmentIdHashes } : {}),
+  };
+}
+
+function toTranslationOutputError(
+  error: unknown,
+  fallbackReasonCode: TranslationOutputReasonCode,
+  failurePhase: TranslationOutputFailurePhase,
+  message: string,
+): TranslationError {
+  if (error instanceof TranslationError) return error;
+  return invalidTranslationStructure(fallbackReasonCode, failurePhase, message);
+}
+
+function isHtmlValidationFailure(error: unknown): boolean {
+  const diagnostic = getTranslationOutputDiagnostic(error);
+  return diagnostic?.reasonCode === TRANSLATION_OUTPUT_REASON_CODES.htmlStructureInvalid
+    && diagnostic.failurePhase === 'html-validation';
+}
+
+function invalidBatchOutput(
+  reasonCode: TranslationOutputReasonCode,
+  failurePhase: TranslationOutputFailurePhase,
+  message: string,
+): TranslationError {
+  return invalidTranslationStructure(
+    reasonCode,
+    failurePhase,
     message,
-    true,
   );
 }
 
@@ -1227,12 +1859,16 @@ function validateTranslationRequest(request: TranslationGetRequest): void {
   }
 }
 
-function toState(result: TranslationResult): TranslationState {
-  if (result.status === 'running') return { state: 'running', result };
+function toState(
+  result: TranslationResult,
+  activeResult?: TranslationResult,
+): TranslationState {
+  const active = activeResult ? { activeResult } : {};
+  if (result.status === 'running') return { state: 'running', result, ...active };
   if (result.status === 'failed') {
     return result.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED
-      ? { state: 'paused', result }
-      : { state: 'failed', result };
+      ? { state: 'paused', result, ...active }
+      : { state: 'failed', result, ...active };
   }
-  return { state: 'succeeded', result };
+  return { state: 'succeeded', result, ...active };
 }

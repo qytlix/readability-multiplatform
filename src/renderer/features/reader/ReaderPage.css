@@ -1548,9 +1548,47 @@ body.workspace-is-resizing * {
 }
 
 .entry-detail-ai-actions {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   gap: 5px;
+}
+
+.translation-retranslation-status {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 32px));
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--reader-accent) 34%, var(--reader-line));
+  border-radius: 9px;
+  color: var(--reader-text);
+  background: color-mix(in srgb, var(--reader-floating-card) 96%, var(--reader-accent) 4%);
+  box-shadow: 0 10px 26px var(--reader-shadow);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.translation-retranslation-status.is-paused {
+  border-color: color-mix(in srgb, var(--reader-accent-strong) 42%, var(--reader-line));
+}
+
+.translation-retranslation-status.is-completed {
+  border-color: color-mix(in srgb, var(--reader-success) 42%, var(--reader-line));
+}
+
+.translation-retranslation-status.is-failed {
+  border-color: color-mix(in srgb, var(--reader-danger) 42%, var(--reader-line));
+}
+
+.translation-retranslation-status .mini-spinner {
+  flex: 0 0 auto;
 }
 
 .entry-detail-ai-actions button {
@@ -4416,6 +4454,11 @@ body.workspace-is-resizing * {
   background: var(--reader-panel-raised);
   box-shadow: 0 8px 24px var(--reader-shadow);
   opacity: 1;
+}
+
+.reader-page[data-theme="light"] .translation-retranslation-status .mini-spinner {
+  border-color: rgba(15, 33, 26, 0.16);
+  border-top-color: var(--reader-accent);
 }
 
 .reader-page[data-theme="light"] .article-pane {

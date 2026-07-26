@@ -202,7 +202,11 @@ export class ExportService {
 
   private hasTranslation(entryId: number): boolean {
     const row = this.db
-      .prepare('SELECT 1 FROM translation_result WHERE entryId = ? LIMIT 1')
+      .prepare(`
+        SELECT 1 FROM translation_result
+        WHERE entryId = ? AND status = 'succeeded' AND isActive = 1
+        LIMIT 1
+      `)
       .get(entryId);
     return !!row;
   }
@@ -226,9 +230,13 @@ export class ExportService {
     const rows = this.db
       .prepare(
         `SELECT ts.translatedText
-         FROM translation_result tr
-         JOIN translation_segment ts ON ts.translationResultId = tr.id
-         WHERE tr.entryId = ? AND tr.status = 'succeeded'
+         FROM translation_segment ts
+         JOIN (
+           SELECT id FROM translation_result
+           WHERE entryId = ? AND status = 'succeeded' AND isActive = 1
+           ORDER BY completedAt DESC, updatedAt DESC, id DESC
+           LIMIT 1
+         ) tr ON ts.translationResultId = tr.id
          ORDER BY ts.orderIndex ASC`,
       )
       .all(entryId) as Array<{ translatedText: string | null }>;

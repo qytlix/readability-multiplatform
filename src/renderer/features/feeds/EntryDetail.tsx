@@ -26,6 +26,7 @@ import {
 import {
   TranslationPanel,
   type TranslationPanelHandle,
+  type RetranslationStatus,
 } from '../translation/TranslationPanel';
 import type { AiPreferences } from '../settings/aiPreferences';
 import { InlineTranslationOverlay } from '../translation/InlineTranslationOverlay';
@@ -113,6 +114,7 @@ export const EntryDetail = ({
   const [showRaw, setShowRaw] = useState(false);
   const [isSummaryGenerating, setIsSummaryGenerating] = useState(false);
   const [isTranslationGenerating, setIsTranslationGenerating] = useState(false);
+  const [retranslationStatus, setRetranslationStatus] = useState<RetranslationStatus | null>(null);
   const [isTitleTranslating, setIsTitleTranslating] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportArticleAvail, setExportArticleAvail] = useState<ArticleAvailability | null>(null);
@@ -163,6 +165,9 @@ export const EntryDetail = ({
     if (!entry) return;
     onAIViewStateChange(entry.id, { translationVisible });
   }, [entry?.id, onAIViewStateChange]);
+  const handleRetranslationStatusChange = useCallback((next: RetranslationStatus | null): void => {
+    setRetranslationStatus(next);
+  }, []);
 
   const flushReadingProgress = useCallback((): void => {
     if (progressSaveTimerRef.current !== null) {
@@ -310,6 +315,7 @@ export const EntryDetail = ({
     setShowRaw(false);
     setIsSummaryGenerating(false);
     setIsTranslationGenerating(false);
+    setRetranslationStatus(null);
     setIsTitleTranslating(false);
   }, [entry?.id]);
 
@@ -696,6 +702,31 @@ export const EntryDetail = ({
     entry.title,
     content?.markdown ?? entry.summary,
   );
+  const currentRetranslationStatus = retranslationStatus
+    && retranslationStatus.entryId === entry.id
+    && retranslationStatus.sourceLanguage === aiPreferences.translationSourceLanguage
+    && retranslationStatus.targetLanguage === aiPreferences.translationTargetLanguage
+    && retranslationStatus.useTerminology === aiPreferences.useTerminology
+    && retranslationStatus.useSmartContext === aiPreferences.useSmartContext
+    && retranslationStatus.expertId === aiPreferences.translationExpertId
+    ? retranslationStatus
+    : null;
+  const translationButtonLabel = currentRetranslationStatus?.state === 'running'
+    ? '暂停重新翻译'
+    : currentRetranslationStatus?.state === 'paused'
+      ? '继续重新翻译'
+      : isTranslationGenerating
+        ? '暂停翻译'
+        : '翻译或切换双语视图';
+  const translationButtonTooltip = currentRetranslationStatus?.state === 'running'
+    ? '暂停重新翻译'
+    : currentRetranslationStatus?.state === 'paused'
+      ? '继续重新翻译'
+      : isTranslationGenerating
+        ? 'Pause Translation'
+        : isTranslationReady
+          ? 'Translate or toggle the bilingual view'
+          : 'Translation is available after the article loads';
 
   const activateSummary = (fromFloatingHeader: boolean): void => {
     summaryPanelRef.current?.activate();
@@ -771,19 +802,18 @@ export const EntryDetail = ({
         <button
           type="button"
           className={aiViewState.translationVisible ? 'is-active' : ''}
-          aria-label={isTranslationGenerating ? '暂停翻译' : '翻译或切换双语视图'}
+          aria-label={translationButtonLabel}
           aria-pressed={aiViewState.translationVisible}
           disabled={!isTranslationReady}
-          title={isTranslationGenerating
-            ? 'Pause Translation'
-            : isTranslationReady
-              ? 'Translate or toggle the bilingual view'
-            : 'Translation is available after the article loads'}
+          title={translationButtonTooltip}
           onClick={activateTranslation}
           aria-busy={isTranslationGenerating}
         >
           <TranslateIcon />
         </button>
+        {currentRetranslationStatus && (
+          <RetranslationStatusNotice status={currentRetranslationStatus} />
+        )}
       </div>,
       aiToolbarTarget,
     )
@@ -863,6 +893,7 @@ export const EntryDetail = ({
             onGeneratingChange={setIsTranslationGenerating}
             onBilingualChange={handleBilingualChange}
             onTitleTranslatingChange={setIsTitleTranslating}
+            onRetranslationStatusChange={handleRetranslationStatusChange}
           >
         <div className="entry-detail-body">
           {trustedVideoEmbed && (
@@ -968,3 +999,25 @@ export const EntryDetail = ({
     </>
   );
 };
+
+function RetranslationStatusNotice({ status }: { status: RetranslationStatus }) {
+  const message = status.state === 'running'
+    ? '正在重新翻译… 当前显示上一版译文'
+    : status.state === 'paused'
+      ? '重新翻译已暂停 · 当前仍显示上一版译文'
+      : status.state === 'completed'
+        ? '重新翻译已完成'
+        : '重新翻译失败 · 已保留上一版译文';
+  return (
+    <div
+      className={`translation-retranslation-status is-${status.state}`}
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      data-translation-run-id={status.runId}
+    >
+      {status.state === 'running' && <span className="mini-spinner" aria-hidden="true" />}
+      <span>{message}</span>
+    </div>
+  );
+}

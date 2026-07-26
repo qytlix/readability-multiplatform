@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { appendFile, mkdir, readdir, stat, unlink } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import path from 'node:path';
+import { TRANSLATION_HTML_VALIDATION_REASONS } from '../ai/TranslationOutputDiagnostics';
 
 export const STRUCTURED_LOG_SCHEMA_VERSION = 1 as const;
 export const DEFAULT_LOG_RETENTION_DAYS = 7;
@@ -11,6 +12,7 @@ export const DEFAULT_LOG_MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 const LOG_FILE_PATTERN = /^structured-(\d{4}-\d{2}-\d{2})(?:-([1-9]\d*))?\.jsonl$/;
 const MAX_IDENTIFIER_LENGTH = 96;
 const MAX_CONTEXT_STRING_LENGTH = 96;
+const MAX_AFFECTED_SEGMENT_ID_HASHES = 3;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 const FAILURE_NOTICE_PREFIX = 'Structured logger failure [';
 const SAFE_IDENTIFIERS_WITH_SENSITIVE_MARKERS = new Set([
@@ -42,12 +44,35 @@ const CONTEXT_FIELD_TYPES = {
   providerRequestSuccessCount: 'number',
   providerRequestFailureCount: 'number',
   missingSegmentCount: 'number',
+  expectedSegmentCount: 'number',
+  parsedSegmentCount: 'number',
+  acceptedSegmentCount: 'number',
+  duplicateSegmentCount: 'number',
+  unexpectedSegmentCount: 'number',
+  malformedRecordCount: 'number',
+  emptyTranslationCount: 'number',
+  expectedTextSlotCount: 'number',
+  parsedTextSlotCount: 'number',
+  acceptedTextSlotCount: 'number',
+  missingTextSlotCount: 'number',
+  duplicateTextSlotCount: 'number',
+  unexpectedTextSlotCount: 'number',
+  malformedTextSlotCount: 'number',
+  emptyTextSlotCount: 'number',
   inputTokens: 'number',
   outputTokens: 'number',
   totalTokens: 'number',
+  inputCharacters: 'number',
+  outputCharacters: 'number',
   durationMs: 'number',
   httpStatus: 'number',
   errorCode: 'string',
+  reasonCode: 'string',
+  validationStage: 'string',
+  htmlValidationReason: 'html-validation-reason',
+  compensationProtocol: 'compensation-protocol',
+  finishReason: 'string',
+  affectedSegmentIdHashes: 'hash-list',
   stage: 'string',
   requestKind: 'string',
   trigger: 'string',
@@ -94,12 +119,35 @@ export interface StructuredLogContext {
   providerRequestSuccessCount?: number;
   providerRequestFailureCount?: number;
   missingSegmentCount?: number;
+  expectedSegmentCount?: number;
+  parsedSegmentCount?: number;
+  acceptedSegmentCount?: number;
+  duplicateSegmentCount?: number;
+  unexpectedSegmentCount?: number;
+  malformedRecordCount?: number;
+  emptyTranslationCount?: number;
+  expectedTextSlotCount?: number;
+  parsedTextSlotCount?: number;
+  acceptedTextSlotCount?: number;
+  missingTextSlotCount?: number;
+  duplicateTextSlotCount?: number;
+  unexpectedTextSlotCount?: number;
+  malformedTextSlotCount?: number;
+  emptyTextSlotCount?: number;
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
+  inputCharacters?: number;
+  outputCharacters?: number;
   durationMs?: number;
   httpStatus?: number;
   errorCode?: string;
+  reasonCode?: string;
+  validationStage?: string;
+  htmlValidationReason?: string;
+  compensationProtocol?: 'text-slots';
+  finishReason?: string;
+  affectedSegmentIdHashes?: string[];
   stage?: string;
   requestKind?: string;
   trigger?: string;
@@ -546,7 +594,19 @@ function sanitizeContextValue(
   field: ContextFieldName,
   value: unknown,
   expectedType: ContextFieldType,
-): string | number | boolean | undefined {
+): string | number | boolean | string[] | undefined {
+  if (expectedType === 'hash-list') {
+    return sanitizeAffectedSegmentIdHashes(value);
+  }
+  if (expectedType === 'html-validation-reason') {
+    return typeof value === 'string'
+      && Object.values(TRANSLATION_HTML_VALIDATION_REASONS).includes(value as never)
+      ? value
+      : undefined;
+  }
+  if (expectedType === 'compensation-protocol') {
+    return value === 'text-slots' ? value : undefined;
+  }
   if (expectedType === 'boolean') {
     return typeof value === 'boolean' ? value : undefined;
   }
@@ -566,7 +626,7 @@ function sanitizeContextValue(
 function assignContextField(
   context: Partial<StructuredLogContext>,
   field: ContextFieldName,
-  value: string | number | boolean,
+  value: string | number | boolean | string[],
 ): void {
   switch (field) {
     case 'feedId':
@@ -617,6 +677,51 @@ function assignContextField(
     case 'missingSegmentCount':
       if (typeof value === 'number') context.missingSegmentCount = value;
       return;
+    case 'expectedSegmentCount':
+      if (typeof value === 'number') context.expectedSegmentCount = value;
+      return;
+    case 'parsedSegmentCount':
+      if (typeof value === 'number') context.parsedSegmentCount = value;
+      return;
+    case 'acceptedSegmentCount':
+      if (typeof value === 'number') context.acceptedSegmentCount = value;
+      return;
+    case 'duplicateSegmentCount':
+      if (typeof value === 'number') context.duplicateSegmentCount = value;
+      return;
+    case 'unexpectedSegmentCount':
+      if (typeof value === 'number') context.unexpectedSegmentCount = value;
+      return;
+    case 'malformedRecordCount':
+      if (typeof value === 'number') context.malformedRecordCount = value;
+      return;
+    case 'emptyTranslationCount':
+      if (typeof value === 'number') context.emptyTranslationCount = value;
+      return;
+    case 'expectedTextSlotCount':
+      if (typeof value === 'number') context.expectedTextSlotCount = value;
+      return;
+    case 'parsedTextSlotCount':
+      if (typeof value === 'number') context.parsedTextSlotCount = value;
+      return;
+    case 'acceptedTextSlotCount':
+      if (typeof value === 'number') context.acceptedTextSlotCount = value;
+      return;
+    case 'missingTextSlotCount':
+      if (typeof value === 'number') context.missingTextSlotCount = value;
+      return;
+    case 'duplicateTextSlotCount':
+      if (typeof value === 'number') context.duplicateTextSlotCount = value;
+      return;
+    case 'unexpectedTextSlotCount':
+      if (typeof value === 'number') context.unexpectedTextSlotCount = value;
+      return;
+    case 'malformedTextSlotCount':
+      if (typeof value === 'number') context.malformedTextSlotCount = value;
+      return;
+    case 'emptyTextSlotCount':
+      if (typeof value === 'number') context.emptyTextSlotCount = value;
+      return;
     case 'inputTokens':
       if (typeof value === 'number') context.inputTokens = value;
       return;
@@ -626,6 +731,12 @@ function assignContextField(
     case 'totalTokens':
       if (typeof value === 'number') context.totalTokens = value;
       return;
+    case 'inputCharacters':
+      if (typeof value === 'number') context.inputCharacters = value;
+      return;
+    case 'outputCharacters':
+      if (typeof value === 'number') context.outputCharacters = value;
+      return;
     case 'durationMs':
       if (typeof value === 'number') context.durationMs = value;
       return;
@@ -634,6 +745,24 @@ function assignContextField(
       return;
     case 'errorCode':
       if (typeof value === 'string') context.errorCode = value;
+      return;
+    case 'reasonCode':
+      if (typeof value === 'string') context.reasonCode = value;
+      return;
+    case 'validationStage':
+      if (typeof value === 'string') context.validationStage = value;
+      return;
+    case 'htmlValidationReason':
+      if (typeof value === 'string') context.htmlValidationReason = value;
+      return;
+    case 'compensationProtocol':
+      if (value === 'text-slots') context.compensationProtocol = value;
+      return;
+    case 'finishReason':
+      if (typeof value === 'string') context.finishReason = value;
+      return;
+    case 'affectedSegmentIdHashes':
+      if (Array.isArray(value)) context.affectedSegmentIdHashes = value;
       return;
     case 'stage':
       if (typeof value === 'string') context.stage = value;
@@ -685,6 +814,18 @@ function sanitizeIdentifier(
     return undefined;
   }
   return value;
+}
+
+function sanitizeAffectedSegmentIdHashes(value: unknown): string[] | undefined {
+  if (
+    !Array.isArray(value)
+    || value.length === 0
+    || value.length > MAX_AFFECTED_SEGMENT_ID_HASHES
+    || !value.every((hash) => typeof hash === 'string' && /^[a-f0-9]{16}$/.test(hash))
+  ) {
+    return undefined;
+  }
+  return [...value];
 }
 
 function containsSensitiveMarker(value: string): boolean {
