@@ -27,7 +27,7 @@ import {
   STRUCTURED_LOG_SCHEMA_VERSION,
 } from '../../../src/main/logging/StructuredLogger';
 import {
-  logTranslationProviderRequestCompleted,
+  logTranslationProviderRequestFailed,
   logTranslationRunCompleted,
   TRANSLATION_LOG_EVENTS,
 } from '../../../src/main/ai/services/TranslationLogging';
@@ -153,6 +153,7 @@ describe('DiagnosticExportService', () => {
     });
     logTranslationRunCompleted(logger, {
       taskRunId: 12,
+      attemptId: 'attempt-12',
       durationMs: 34,
       success: true,
       providerRequestCount: 0,
@@ -161,6 +162,7 @@ describe('DiagnosticExportService', () => {
       providerRequestSuccessCount: 0,
       providerRequestFailureCount: 0,
       missingSegmentCount: 0,
+      unresolvedMissingSegmentCount: 0,
     });
     await logger.flush();
 
@@ -172,6 +174,7 @@ describe('DiagnosticExportService', () => {
         component: 'translation.run',
         context: {
           taskRunId: 12,
+          attemptId: 'attempt-12',
           durationMs: 34,
           success: true,
           providerRequestCount: 0,
@@ -180,25 +183,28 @@ describe('DiagnosticExportService', () => {
           providerRequestSuccessCount: 0,
           providerRequestFailureCount: 0,
           missingSegmentCount: 0,
+          unresolvedMissingSegmentCount: 0,
         },
       }),
     ]);
   });
 
-  it('includes safe Translation Provider request diagnostics in the exported report', async () => {
+  it('includes safe exceptional Translation Provider diagnostics in the exported report', async () => {
     const logDirectory = createDirectory();
     const logger = new StructuredLogger({
       directory: logDirectory,
       now: () => GENERATED_AT,
       createSessionId: () => 'session-test-translation-request',
     });
-    logTranslationProviderRequestCompleted(logger, {
+    logTranslationProviderRequestFailed(logger, {
       taskRunId: 12,
+      attemptId: 'attempt-12',
       providerRequestId: 3,
       requestKind: 'compensation',
       segmentCount: 1,
       durationMs: 34,
-      success: true,
+      success: false,
+      errorCode: 'TRANSLATION_PROVIDER_TIMEOUT',
       inputTokens: 11,
       outputTokens: 7,
     });
@@ -208,15 +214,17 @@ describe('DiagnosticExportService', () => {
 
     expect(report.logs.records).toEqual([
       expect.objectContaining({
-        event: TRANSLATION_LOG_EVENTS.providerRequestCompleted,
+        event: TRANSLATION_LOG_EVENTS.providerRequestFailed,
         component: 'translation.provider.request',
         context: {
           taskRunId: 12,
+          attemptId: 'attempt-12',
           providerRequestId: 3,
           requestKind: 'compensation',
           segmentCount: 1,
           durationMs: 34,
-          success: true,
+          success: false,
+          errorCode: 'TRANSLATION_PROVIDER_TIMEOUT',
           inputTokens: 11,
           outputTokens: 7,
         },

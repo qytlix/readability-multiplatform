@@ -434,14 +434,18 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         </p>
       )}
 
-      {readerMode === 'bilingual' && hasTranslation && result
-        ? <BilingualProjection
-            result={result}
-            sourceHtml={sourceHtml}
-            onVisibleSegmentIds={prioritizeVisibleSegments}
-            onContentClick={onContentClick}
-          />
-        : children}
+      {/* The original branch owns common actions portaled into the shared Reader toolbar. */}
+      <div hidden={readerMode === 'bilingual' && hasTranslation}>
+        {children}
+      </div>
+      {readerMode === 'bilingual' && hasTranslation && result && (
+        <BilingualProjection
+          result={result}
+          sourceHtml={sourceHtml}
+          onVisibleSegmentIds={prioritizeVisibleSegments}
+          onContentClick={onContentClick}
+        />
+      )}
     </>
   );
 });

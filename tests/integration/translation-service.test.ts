@@ -375,28 +375,9 @@ describe('TranslationService', () => {
       {
         event: TRANSLATION_LOG_EVENTS.runStarted,
         component: 'translation.run',
-        context: { taskRunId: started.runId },
-      },
-      {
-        event: TRANSLATION_LOG_EVENTS.providerRequestStarted,
-        component: 'translation.provider.request',
         context: {
           taskRunId: started.runId,
-          providerRequestId: expect.any(Number),
-          requestKind: 'batch',
-          segmentCount: 2,
-        },
-      },
-      {
-        event: TRANSLATION_LOG_EVENTS.providerRequestCompleted,
-        component: 'translation.provider.request',
-        context: {
-          taskRunId: started.runId,
-          providerRequestId: expect.any(Number),
-          requestKind: 'batch',
-          segmentCount: 2,
-          durationMs: expect.any(Number),
-          success: true,
+          attemptId: expect.any(String),
         },
       },
       {
@@ -404,6 +385,7 @@ describe('TranslationService', () => {
         component: 'translation.run',
         context: {
           taskRunId: started.runId,
+          attemptId: expect.any(String),
           durationMs: expect.any(Number),
           success: true,
           providerRequestCount: 1,
@@ -412,6 +394,7 @@ describe('TranslationService', () => {
           providerRequestSuccessCount: 1,
           providerRequestFailureCount: 0,
           missingSegmentCount: 0,
+          unresolvedMissingSegmentCount: 0,
         },
       },
     ]);
@@ -421,7 +404,7 @@ describe('TranslationService', () => {
     expect(serialized).not.toContain('sourceSegmentId');
   });
 
-  it('records concurrent batch request summaries without per-segment records', async () => {
+  it('records a successful multi-batch Translation only through its run summary', async () => {
     contentStore.upsert({
       entryId: 1,
       cleanedHtml: Array.from({ length: 7 }, (_, index) =>
@@ -449,25 +432,22 @@ describe('TranslationService', () => {
       expect(loggingService.getState(request)).toMatchObject({ state: 'succeeded' });
     });
 
-    const providerStarts = records.filter((record) =>
-      record.event === TRANSLATION_LOG_EVENTS.providerRequestStarted);
-    const providerCompletions = records.filter((record) =>
-      record.event === TRANSLATION_LOG_EVENTS.providerRequestCompleted);
     const completedRun = records.find((record) =>
       record.event === TRANSLATION_LOG_EVENTS.runCompleted);
     expect(provider.maxActiveStreams).toBe(2);
-    expect(providerStarts.map((record) => record.context)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ requestKind: 'batch', segmentCount: 3 }),
-      expect.objectContaining({ requestKind: 'batch', segmentCount: 3 }),
-      expect.objectContaining({ requestKind: 'batch', segmentCount: 2 }),
-    ]));
-    const providerRequestIds = providerStarts.map((record) =>
-      (record.context as { providerRequestId: number }).providerRequestId);
-    expect(providerRequestIds.every(Number.isSafeInteger)).toBe(true);
-    expect(new Set(providerRequestIds).size).toBe(3);
-    expect(providerCompletions).toHaveLength(3);
-    expect(providerCompletions.every((record) =>
-      typeof (record.context as { durationMs?: unknown }).durationMs === 'number')).toBe(true);
+    expect(records.map((record) => record.event)).toEqual([
+      TRANSLATION_LOG_EVENTS.runStarted,
+      TRANSLATION_LOG_EVENTS.runCompleted,
+    ]);
+    const [runStarted, runCompleted] = records;
+    expect(runStarted?.context).toMatchObject({
+      taskRunId: started.runId,
+      attemptId: expect.any(String),
+    });
+    expect(runCompleted?.context).toMatchObject({
+      taskRunId: started.runId,
+      attemptId: (runStarted?.context as { attemptId?: unknown }).attemptId,
+    });
     expect(completedRun?.context).toMatchObject({
       providerRequestCount: 3,
       batchRequestCount: 3,
@@ -475,6 +455,7 @@ describe('TranslationService', () => {
       providerRequestSuccessCount: 3,
       providerRequestFailureCount: 0,
       missingSegmentCount: 0,
+      unresolvedMissingSegmentCount: 0,
     });
     const usageRecords = usageStore.listByTask('translation', started.runId);
     expect(usageRecords).toHaveLength(3);
@@ -520,14 +501,10 @@ describe('TranslationService', () => {
       expect(loggingService.getState(request)).toMatchObject({ state: 'succeeded' });
     });
 
-    const completedRequest = records.find((record) =>
-      record.event === TRANSLATION_LOG_EVENTS.providerRequestCompleted);
     const completedRun = records.find((record) =>
       record.event === TRANSLATION_LOG_EVENTS.runCompleted);
     expect(usageWasRequested).toBe(true);
-    expect(completedRequest?.context).toMatchObject({ inputTokens: 11, outputTokens: 7 });
     expect(completedRun?.context).toMatchObject({ inputTokens: 11, outputTokens: 7 });
-    expect(completedRequest?.context).not.toHaveProperty('totalTokens');
     expect(completedRun?.context).not.toHaveProperty('totalTokens');
   });
 
@@ -659,17 +636,15 @@ describe('TranslationService', () => {
     expect(new Set(recoverySourceSegmentIds)).toEqual(omittedSourceSegmentIds);
     const missingSegmentRecords = records.filter((record) =>
       record.event === TRANSLATION_LOG_EVENTS.missingSegmentsDetected);
-    const compensationStarts = records.filter((record) =>
-      record.event === TRANSLATION_LOG_EVENTS.providerRequestStarted
-      && (record.context as { requestKind?: unknown }).requestKind === 'compensation');
     const completedRun = records.find((record) =>
       record.event === TRANSLATION_LOG_EVENTS.runCompleted);
     expect(missingSegmentRecords).toHaveLength(3);
     expect(missingSegmentRecords.every((record) =>
       (record.context as { missingSegmentCount?: unknown }).missingSegmentCount === 1)).toBe(true);
-    expect(compensationStarts).toHaveLength(3);
-    expect(compensationStarts.every((record) =>
-      (record.context as { segmentCount?: unknown }).segmentCount === 1)).toBe(true);
+    const omissionAttemptIds = missingSegmentRecords.map((record) =>
+      (record.context as { attemptId?: unknown }).attemptId);
+    expect(omissionAttemptIds.every((attemptId) => typeof attemptId === 'string')).toBe(true);
+    expect(new Set(omissionAttemptIds).size).toBe(1);
     expect(completedRun?.context).toMatchObject({
       providerRequestCount: 6,
       batchRequestCount: 3,
@@ -677,6 +652,7 @@ describe('TranslationService', () => {
       providerRequestSuccessCount: 6,
       providerRequestFailureCount: 0,
       missingSegmentCount: 3,
+      unresolvedMissingSegmentCount: 0,
     });
   });
 
@@ -729,12 +705,22 @@ describe('TranslationService', () => {
     expect(compensationSegmentIds.every((sourceSegmentId) => batchSegmentIds.has(sourceSegmentId)))
       .toBe(true);
 
-    const compensationStarts = records.filter((record) =>
-      record.event === TRANSLATION_LOG_EVENTS.providerRequestStarted
-      && (record.context as { requestKind?: unknown }).requestKind === 'compensation');
+    const failedRequests = records.filter((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed);
     const completedRun = records.find((record) =>
       record.event === TRANSLATION_LOG_EVENTS.runCompleted);
-    expect(compensationStarts).toHaveLength(2);
+    expect(failedRequests).toEqual([
+      expect.objectContaining({
+        component: 'translation.provider.request',
+        context: expect.objectContaining({
+          requestKind: 'batch',
+          errorCode: TRANSLATION_LOG_ERROR_CODES.invalidStructure,
+          taskRunId: expect.any(Number),
+          attemptId: expect.any(String),
+          providerRequestId: expect.any(Number),
+        }),
+      }),
+    ]);
     expect(completedRun?.context).toMatchObject({
       providerRequestCount: 3,
       batchRequestCount: 1,
@@ -742,6 +728,7 @@ describe('TranslationService', () => {
       providerRequestSuccessCount: 2,
       providerRequestFailureCount: 1,
       missingSegmentCount: 2,
+      unresolvedMissingSegmentCount: 0,
     });
   });
 
@@ -784,13 +771,19 @@ describe('TranslationService', () => {
       expect(recoveringService.getState(request)).toMatchObject({ state: 'succeeded' });
     });
 
-    const compensationStarts = records.filter((record) =>
-      record.event === TRANSLATION_LOG_EVENTS.providerRequestStarted
-      && (record.context as { requestKind?: unknown }).requestKind === 'compensation');
+    const failedRequests = records.filter((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed);
     const completedRun = records.find((record) =>
       record.event === TRANSLATION_LOG_EVENTS.runCompleted);
     expect(prompts.map((segments) => segments.length)).toEqual([3, 1, 1, 1]);
-    expect(compensationStarts).toHaveLength(3);
+    expect(failedRequests).toEqual([
+      expect.objectContaining({
+        context: expect.objectContaining({
+          requestKind: 'batch',
+          errorCode: TRANSLATION_LOG_ERROR_CODES.emptyOutput,
+        }),
+      }),
+    ]);
     expect(completedRun?.context).toMatchObject({
       providerRequestCount: 4,
       batchRequestCount: 1,
@@ -798,6 +791,7 @@ describe('TranslationService', () => {
       providerRequestSuccessCount: 3,
       providerRequestFailureCount: 1,
       missingSegmentCount: 3,
+      unresolvedMissingSegmentCount: 0,
     });
   });
 
@@ -885,11 +879,13 @@ describe('TranslationService', () => {
       providerRequestSuccessCount: 3,
       providerRequestFailureCount: 2,
       missingSegmentCount: 2,
+      unresolvedMissingSegmentCount: 1,
     });
   });
 
   it('fails without recursively compensating when a structure-error recovery request fails', async () => {
     const prompts: BatchPromptSegment[][] = [];
+    const records: TranslationLogRecord[] = [];
     const recoveryFailureProvider: SummaryProvider = {
       async *stream(providerRequest): AsyncIterable<string> {
         const segments = parseBatchPrompt(providerRequest.prompt);
@@ -912,6 +908,11 @@ describe('TranslationService', () => {
       new TestSecretStore(),
       new TranslationStore(database),
       recoveryFailureProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
     );
     const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
 
@@ -925,6 +926,11 @@ describe('TranslationService', () => {
     expect(state.result.error).toMatchObject({ code: 'TRANSLATION_PROVIDER_TIMEOUT' });
     expect(state.result.segments.filter((segment) => segment.status !== 'succeeded')).toHaveLength(3);
     expect(prompts.map((segments) => segments.length)).toEqual([3, 1]);
+    const failedRun = records.find((record) => record.event === TRANSLATION_LOG_EVENTS.runFailed);
+    expect(failedRun?.context).toMatchObject({
+      missingSegmentCount: 3,
+      unresolvedMissingSegmentCount: 3,
+    });
   });
 
   it('persists already-target-language segments without calling the provider', async () => {
@@ -1198,14 +1204,29 @@ describe('TranslationService', () => {
 
     expect(prompts).toHaveLength(2);
     expect(prompts[1]).not.toContain(`"sourceSegmentId":"${completedId}"`);
-    const providerStarts = records.filter((record) =>
-      record.event === TRANSLATION_LOG_EVENTS.providerRequestStarted);
-    const providerRequestIds = providerStarts.map((record) =>
-      (record.context as { providerRequestId: number }).providerRequestId);
-    expect(providerStarts.every((record) =>
-      (record.context as { taskRunId: number }).taskRunId === firstRun.runId)).toBe(true);
-    expect(providerRequestIds).toHaveLength(2);
-    expect(new Set(providerRequestIds).size).toBe(2);
+    const runStarts = records.filter((record) => record.event === TRANSLATION_LOG_EVENTS.runStarted);
+    const requestFailures = records.filter((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed);
+    const failedRun = records.find((record) => record.event === TRANSLATION_LOG_EVENTS.runFailed);
+    const completedRun = records.find((record) => record.event === TRANSLATION_LOG_EVENTS.runCompleted);
+    expect(runStarts).toHaveLength(2);
+    const firstAttemptId = (runStarts[0]?.context as { attemptId?: unknown }).attemptId;
+    const resumedAttemptId = (runStarts[1]?.context as { attemptId?: unknown }).attemptId;
+    expect(firstAttemptId).toEqual(expect.any(String));
+    expect(resumedAttemptId).toEqual(expect.any(String));
+    expect(firstAttemptId).not.toBe(resumedAttemptId);
+    expect(requestFailures).toEqual([
+      expect.objectContaining({
+        context: expect.objectContaining({
+          taskRunId: firstRun.runId,
+          attemptId: firstAttemptId,
+          providerRequestId: expect.any(Number),
+          requestKind: 'batch',
+        }),
+      }),
+    ]);
+    expect(failedRun?.context).toMatchObject({ attemptId: firstAttemptId });
+    expect(completedRun?.context).toMatchObject({ attemptId: resumedAttemptId });
     const usageAttempts = new UsageStore(db).listByTask('translation', firstRun.runId);
     expect(usageAttempts).toHaveLength(2);
     expect(new Set(usageAttempts.map((event) => event.attemptId)).size).toBe(2);
@@ -1265,16 +1286,9 @@ describe('TranslationService', () => {
       {
         event: TRANSLATION_LOG_EVENTS.runStarted,
         component: 'translation.run',
-        context: { taskRunId: failedState.result.id },
-      },
-      {
-        event: TRANSLATION_LOG_EVENTS.providerRequestStarted,
-        component: 'translation.provider.request',
         context: {
           taskRunId: failedState.result.id,
-          providerRequestId: expect.any(Number),
-          requestKind: 'batch',
-          segmentCount: 2,
+          attemptId: expect.any(String),
         },
       },
       {
@@ -1282,6 +1296,7 @@ describe('TranslationService', () => {
         component: 'translation.provider.request',
         context: {
           taskRunId: failedState.result.id,
+          attemptId: expect.any(String),
           providerRequestId: expect.any(Number),
           requestKind: 'batch',
           segmentCount: 2,
@@ -1295,6 +1310,7 @@ describe('TranslationService', () => {
         component: 'translation.run',
         context: {
           taskRunId: failedState.result.id,
+          attemptId: expect.any(String),
           durationMs: expect.any(Number),
           success: false,
           stage: 'stream',
@@ -1305,6 +1321,7 @@ describe('TranslationService', () => {
           providerRequestSuccessCount: 0,
           providerRequestFailureCount: 1,
           missingSegmentCount: 0,
+          unresolvedMissingSegmentCount: 0,
         },
       },
     ]);
@@ -1495,6 +1512,61 @@ describe('TranslationService', () => {
     expect(() => pendingService.generate({ entryId: 2, sourceLanguage: 'auto', targetLanguage: 'en' }))
       .toThrow('Another Translation is already being generated');
     pendingService.abortActiveRun();
+  });
+
+  it('records cancellation as one correlated run interruption without request-level events', async () => {
+    let providerStarted = false;
+    const cancellingProvider: SummaryProvider = {
+      async *stream(request): AsyncIterable<string> {
+        providerStarted = true;
+        await new Promise<void>((resolve) => {
+          request.signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+        if (!request.signal.aborted) yield 'unreachable';
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const records: TranslationLogRecord[] = [];
+    const cancellingService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      cancellingProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+    );
+    const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
+
+    const started = cancellingService.generate(request);
+    await vi.waitFor(() => {
+      expect(providerStarted).toBe(true);
+    });
+    cancellingService.abortActiveRun();
+    await vi.waitFor(() => {
+      expect(cancellingService.getState(request)).toMatchObject({ state: 'failed' });
+    });
+
+    expect(records.map((record) => record.event)).toEqual([
+      TRANSLATION_LOG_EVENTS.runStarted,
+      TRANSLATION_LOG_EVENTS.runInterrupted,
+    ]);
+    const [runStarted, runInterrupted] = records;
+    const attemptId = (runStarted?.context as { attemptId?: unknown }).attemptId;
+    expect(runStarted?.context).toMatchObject({
+      taskRunId: started.runId,
+      attemptId: expect.any(String),
+    });
+    expect(runInterrupted?.context).toMatchObject({
+      taskRunId: started.runId,
+      attemptId,
+      success: false,
+      stage: 'interrupt',
+      errorCode: TRANSLATION_LOG_ERROR_CODES.interrupted,
+    });
   });
 
   it('pauses an active Translation and resumes only unfinished segments', async () => {
