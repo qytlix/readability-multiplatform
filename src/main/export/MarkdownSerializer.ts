@@ -182,9 +182,17 @@ export function serializeSingle(
     parts.push(metaLines.join('  \n'));
   }
 
-  // ── 正文 ──
+  // ── 正文（提前处理脚注标记）──
   parts.push('---');
-  const body = article.cleanedMarkdown.trim();
+  let body = article.cleanedMarkdown.trim();
+  let footnotes: FootnoteDef[] = [];
+
+  if (opts.includeNotes && article.annotations && article.annotations.length > 0) {
+    const result = insertFootnoteMarkers(body, article.annotations);
+    body = result.modifiedBody;
+    footnotes = result.footnotes;
+  }
+
   parts.push(body || '*(无正文内容)*');
 
   // ── AI 摘要 ──
@@ -199,8 +207,11 @@ export function serializeSingle(
     parts.push(`> **翻译：**\n>\n> ${article.translation.trim()}`);
   }
 
-  // ── 笔记 ──
-  if (opts.includeNotes && article.notes?.trim()) {
+  // ── 笔记（脚注格式优先，旧引用块格式作为 fallback）──
+  if (footnotes.length > 0) {
+    parts.push('---');
+    parts.push(serializeFootnotes(footnotes));
+  } else if (opts.includeNotes && article.notes?.trim()) {
     parts.push('---');
     const noteLines = article.notes
       .split('\n')
@@ -240,9 +251,17 @@ function serializeBody(
     parts.push(metaLines.join('  \n'));
   }
 
-  // ── 正文 ──
+  // ── 正文（提前处理脚注标记）──
   parts.push('---');
-  const body = article.cleanedMarkdown.trim();
+  let body = article.cleanedMarkdown.trim();
+  let footnotes: FootnoteDef[] = [];
+
+  if (options.includeNotes && article.annotations && article.annotations.length > 0) {
+    const result = insertFootnoteMarkers(body, article.annotations);
+    body = result.modifiedBody;
+    footnotes = result.footnotes;
+  }
+
   parts.push(body || '*(无正文内容)*');
 
   // ── AI 摘要 ──
@@ -257,8 +276,11 @@ function serializeBody(
     parts.push(`> **翻译：**\n>\n> ${article.translation.trim()}`);
   }
 
-  // ── 笔记 ──
-  if (options.includeNotes && article.notes?.trim()) {
+  // ── 笔记（脚注格式优先，旧引用块格式作为 fallback）──
+  if (footnotes.length > 0) {
+    parts.push('---');
+    parts.push(serializeFootnotes(footnotes));
+  } else if (options.includeNotes && article.notes?.trim()) {
     parts.push('---');
     const noteLines = article.notes
       .split('\n')
