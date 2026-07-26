@@ -1,7 +1,5 @@
-import type { IPCResult, ShaleError } from './feed.ipc';
 import type {
   ArticleAvailability,
-  ExportableArticle,
   PerArticleOptions,
 } from './export.types';
 

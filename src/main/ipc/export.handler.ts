@@ -2,7 +2,6 @@ import {
   app,
   dialog,
   ipcMain,
-  type BrowserWindow,
   type IpcMainInvokeEvent,
 } from 'electron';
 import path from 'node:path';
