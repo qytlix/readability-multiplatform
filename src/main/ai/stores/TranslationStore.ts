@@ -112,6 +112,20 @@ export class TranslationStore {
     return row ? this.toResult(row) : undefined;
   }
 
+  findLatestSucceededResult(
+    entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
+    targetLanguage: TranslationTargetLanguage,
+  ): TranslationResult | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM translation_result
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
+        AND status = 'succeeded'
+      ORDER BY updatedAt DESC, id DESC LIMIT 1
+    `).get(entryId, sourceLanguage, targetLanguage) as TranslationResultRow | undefined;
+    return row ? this.toResult(row) : undefined;
+  }
+
   findLatestResult(
     entryId: number,
     sourceLanguage: TranslationSourceLanguage,
