@@ -5,10 +5,7 @@ import type {
   ExportMultipleResult,
   ExportSingleResult,
 } from '../../../shared/contracts/export.ipc';
-import type {
-  PerArticleOptions,
-  TranslationLanguage,
-} from '../../../shared/contracts/export.types';
+import type { PerArticleOptions } from '../../../shared/contracts/export.types';
 
 declare global {
   interface Window {
@@ -38,26 +35,19 @@ export async function cleanSingle(
 
 /**
  * 单篇导出：传入 entryId 和选项，Main 打开保存对话框并写入文件。
- * 可选传入 translationLanguage 启用逐段穿插格式。
  */
 export async function exportSingleEntry(
   entryId: number,
   options: PerArticleOptions,
-  translationLanguage?: TranslationLanguage,
 ): Promise<IPCResult<ExportSingleResult>> {
-  return window.shaleAPI.export.single(entryId, options, translationLanguage);
+  return window.shaleAPI.export.single(entryId, options);
 }
 
 /**
  * 多篇导出：传入 entryId + options 数组，Main 打开保存对话框并写入文件。
- * 每篇文章可附带 translationLanguage 启用逐段穿插格式。
  */
 export async function exportMultipleEntries(
-  entries: Array<{
-    entryId: number;
-    options: PerArticleOptions;
-    translationLanguage?: TranslationLanguage;
-  }>,
+  entries: Array<{ entryId: number; options: PerArticleOptions }>,
 ): Promise<IPCResult<ExportMultipleResult>> {
   return window.shaleAPI.export.multiple(entries);
 }

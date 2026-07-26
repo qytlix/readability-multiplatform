@@ -19,7 +19,6 @@ import type {
 import type {
   ArticleAvailability,
   PerArticleOptions,
-  TranslationLanguage,
 } from './contracts/export.types';
 
 export interface ExportAPI {
@@ -36,14 +35,9 @@ export interface ExportAPI {
   single: (
     entryId: number,
     options: PerArticleOptions,
-    translationLanguage?: TranslationLanguage,
   ) => Promise<IPCResult<ExportSingleResult>>;
   multiple: (
-    entries: Array<{
-      entryId: number;
-      options: PerArticleOptions;
-      translationLanguage?: TranslationLanguage;
-    }>,
+    entries: Array<{ entryId: number; options: PerArticleOptions }>,
   ) => Promise<IPCResult<ExportMultipleResult>>;
 }
 
