@@ -32,6 +32,15 @@ const feed: Feed = {
   createdAt: '2026-07-24T00:00:00.000Z',
 };
 
+const secondaryFeed: Feed = {
+  id: 2,
+  title: 'Engineering Notes',
+  feedURL: 'https://example.com/engineering.xml',
+  lastSyncStatus: 'success',
+  syncIntervalMin: 30,
+  createdAt: '2026-07-24T00:00:00.000Z',
+};
+
 const entries: EntryListItem[] = [
   {
     id: 11,
@@ -63,6 +72,7 @@ const entryStats: EntryStats = {
   all: { total: 2, unread: 1, readPercentage: 50 },
   feeds: [
     { feedId: feed.id, total: 2, unread: 1, readPercentage: 50 },
+    { feedId: secondaryFeed.id, total: 0, unread: 0, readPercentage: 0 },
   ],
 };
 
@@ -100,10 +110,12 @@ describe('article selection toggle', () => {
 
       unobserve = vi.fn();
     });
-    listEntries = vi.fn(async () => ({
+    listEntries = vi.fn(async (query: { feedId?: number; isRead?: boolean } = {}) => ({
       ok: true,
       data: {
-        entries,
+        entries: query.feedId === secondaryFeed.id && query.isRead === false
+          ? []
+          : entries,
         nextCursor: undefined,
       },
     }));
@@ -114,7 +126,7 @@ describe('article selection toggle', () => {
       configurable: true,
       value: {
         feed: {
-          list: vi.fn(async () => ({ ok: true, data: [feed] })),
+          list: vi.fn(async () => ({ ok: true, data: [feed, secondaryFeed] })),
           onSyncProgress: vi.fn(() => unsubscribeSyncProgress),
         },
         entry: {
@@ -185,7 +197,7 @@ describe('article selection toggle', () => {
     expect(container.querySelector('.story-list-header h1')?.textContent).toBe(feed.title);
     expect(
       container.querySelector('.story-list-filter')?.getAttribute('aria-label'),
-    ).toContain('当前为 all');
+    ).toBe('筛选文章');
     expect(listEntries).toHaveBeenCalledTimes(listRequestCount);
 
     act(() => articleA.click());
@@ -217,11 +229,16 @@ describe('article selection toggle', () => {
       isRead: false,
       limit: 30,
     });
+    expect(container.querySelector('.story-list-header h1')?.textContent).toBe('未读文章');
 
-    const feedButton = container.querySelector<HTMLButtonElement>('.sidebar-feed');
-    expect(feedButton).not.toBeNull();
+    const feedButtons = container.querySelectorAll<HTMLButtonElement>('.sidebar-feed');
+    const feedButton = feedButtons[0];
+    const secondaryFeedButton = feedButtons[1];
+    expect(feedButton).not.toBeUndefined();
+    expect(secondaryFeedButton).not.toBeUndefined();
     act(() => feedButton?.click());
     await flushAsyncState();
+    expect(container.querySelector('.story-list-header h1')?.textContent).toBe(feed.title);
 
     act(() => listFilterButton?.click());
     await flushAsyncState();
@@ -232,6 +249,8 @@ describe('article selection toggle', () => {
       limit: 30,
     });
     expect(feedButton?.classList.contains('is-active')).toBe(true);
+    expect(container.querySelector('.story-list-header h1')?.textContent)
+      .toBe('Daily Feed · 未读文章');
     const sidebarUnreadButton = [
       ...container.querySelectorAll<HTMLButtonElement>(
         '.sidebar-navigation .sidebar-item',
@@ -248,6 +267,8 @@ describe('article selection toggle', () => {
       limit: 30,
     });
     expect(feedButton?.classList.contains('is-active')).toBe(true);
+    expect(container.querySelector('.story-list-header h1')?.textContent)
+      .toBe('Daily Feed · 收藏文章');
 
     act(() => listFilterButton?.click());
     await flushAsyncState();
@@ -256,6 +277,7 @@ describe('article selection toggle', () => {
       feedId: feed.id,
       limit: 30,
     });
+    expect(container.querySelector('.story-list-header h1')?.textContent).toBe(feed.title);
 
     act(() => sidebarUnreadButton?.click());
     await flushAsyncState();
@@ -266,6 +288,50 @@ describe('article selection toggle', () => {
     });
     expect(feedButton?.classList.contains('is-active')).toBe(false);
     expect(sidebarUnreadButton?.classList.contains('is-active')).toBe(true);
+    expect(container.querySelector('.story-list-header h1')?.textContent).toBe('未读文章');
+
+    const sidebarStarredButton = [
+      ...container.querySelectorAll<HTMLButtonElement>(
+        '.sidebar-navigation .sidebar-item',
+      ),
+    ].find((button) => button.textContent?.includes('收藏'));
+    act(() => sidebarStarredButton?.click());
+    await flushAsyncState();
+
+    expect(listEntries).toHaveBeenLastCalledWith({
+      isStarred: true,
+      limit: 30,
+    });
+    expect(container.querySelector('.story-list-header h1')?.textContent).toBe('收藏文章');
+
+    act(() => secondaryFeedButton?.click());
+    await flushAsyncState();
+
+    expect(listEntries).toHaveBeenLastCalledWith({
+      feedId: secondaryFeed.id,
+      limit: 30,
+    });
+    expect(container.querySelector('.story-list-header h1')?.textContent)
+      .toBe(secondaryFeed.title);
+
+    act(() => listFilterButton?.click());
+    await flushAsyncState();
+
+    expect(listEntries).toHaveBeenLastCalledWith({
+      feedId: secondaryFeed.id,
+      isRead: false,
+      limit: 30,
+    });
+    expect(container.querySelector('.story-list-header h1')?.textContent)
+      .toBe('Engineering Notes · 未读文章');
+    expect(container.querySelector('.story-list-state h2')?.textContent).toBe('没有未读文章');
+
+    const allArticlesButton = container.querySelector<HTMLButtonElement>('.sidebar-all');
+    act(() => allArticlesButton?.click());
+    await flushAsyncState();
+
+    expect(listEntries).toHaveBeenLastCalledWith({ limit: 30 });
+    expect(container.querySelector('.story-list-header h1')?.textContent).toBe('全部文章');
   });
 
   it('offers a manual refresh that bypasses cached article content', async () => {

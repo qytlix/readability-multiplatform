@@ -489,6 +489,11 @@ body.workspace-is-resizing * {
   justify-content: space-between;
 }
 
+.story-list-heading {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .story-list-header h1 {
   margin: 0;
   font-size: 25px;
@@ -1139,7 +1144,7 @@ body.workspace-is-resizing * {
 }
 
 .story-list-header h1 {
-  max-width: 260px;
+  max-width: min(260px, 100%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5089,8 +5094,10 @@ body.workspace-is-resizing * {
 
 .story-list-header-actions {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
+  margin-left: 12px;
 }
 
 .story-card-checkbox {

@@ -6,6 +6,7 @@ import {
 import type { EntryListItem } from '../../../shared/contracts/feed.types';
 import { FilterIcon, SearchIcon } from '../reader/ReaderIcons';
 import type { EntryFilter } from '../search/entrySearch';
+import { entryListCopy } from './entryListPresentation';
 import { getReadingProgressPercentage } from './readingProgress';
 import type { EntryLoadStatus } from './readerState';
 
@@ -101,20 +102,25 @@ export const EntryList = ({
   return (
     <div className="story-list">
       <header className="story-list-header">
-        <div>
+        <div className="story-list-heading">
           <h1 title={heading}>{heading}</h1>
         </div>
         <div className="story-list-header-actions">
           {!showsSearch && (
-            <button
-              type="button"
-              className="icon-button story-list-filter"
-              aria-label={`切换文章筛选，当前为 ${filter}`}
-              title="切换：全部 / 未读 / 收藏"
-              onClick={() => onFilterChange(nextFilter(filter))}
+            <span
+              className="article-action-tooltip story-list-filter-tooltip"
+              data-tooltip={entryListCopy.filterArticles}
             >
-              <FilterIcon />
-            </button>
+              <button
+                type="button"
+                className="icon-button story-list-filter"
+                aria-label={entryListCopy.filterArticles}
+                title={entryListCopy.filterArticles}
+                onClick={() => onFilterChange(nextFilter(filter))}
+              >
+                <FilterIcon />
+              </button>
+            </span>
           )}
           <button
             type="button"
