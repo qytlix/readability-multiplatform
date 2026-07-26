@@ -279,7 +279,7 @@ describe('Translation toolbar continuity', () => {
     expect(toolbarTarget.querySelectorAll('.annotation-toolbar')).toHaveLength(1);
     expect(toolbarTarget.querySelectorAll('.annotation-tool-button')).toHaveLength(1);
     expect(toolbarTarget.querySelectorAll(
-      '[aria-label="翻译或切换双语视图"], [aria-label="暂停翻译"]',
+      '[aria-label="翻译或切换双语视图"], [aria-label="暂停翻译"], [aria-label="显示译文"], [aria-label="隐藏译文"]',
     )).toHaveLength(1);
   }
 

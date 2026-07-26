@@ -31,6 +31,8 @@ import {
 const PAUSE_SESSION_RESTART_MESSAGE =
   'Pause controls are not active in this app session. Restart Shale and try again.';
 const NOOP_RETRANSLATION_STATUS_CHANGE = (): void => undefined;
+const NOOP_TRANSLATION_CONTROL_STATE_CHANGE = (): void => undefined;
+const ALLOW_TRANSLATION_START = (): boolean => true;
 
 interface TranslationPanelProps {
   entryId: number;
@@ -49,12 +51,35 @@ interface TranslationPanelProps {
   onGeneratingChange: (isGenerating: boolean) => void;
   onBilingualChange: (isBilingual: boolean) => void;
   onTitleTranslatingChange: (isTranslating: boolean) => void;
+  beforeTranslationStart?: () => boolean | Promise<boolean>;
+  onTranslationControlStateChange?: (state: TranslationControlState | null) => void;
   onRetranslationStatusChange?: (status: RetranslationStatus | null) => void;
 }
 
 export interface TranslationPanelHandle {
   activate: () => void;
+  requestRetranslation: () => Promise<RetranslationRequestResult>;
 }
+
+/** The exact current Translation state for the Reader's primary button. */
+export interface TranslationControlState {
+  entryId: number;
+  sourceLanguage: TranslationSourceLanguage;
+  targetLanguage: TranslationTargetLanguage;
+  useTerminology: boolean;
+  useSmartContext: boolean;
+  expertId: string;
+  state: TranslationState['state'];
+  runId?: number;
+  hasCompleteTranslation: boolean;
+}
+
+export type RetranslationRequestResult =
+  | 'started'
+  | 'content-unavailable'
+  | 'no-translation'
+  | 'active'
+  | 'failed';
 
 /**
  * Renderer-only presentation state for a replacement run. Its scope fields
@@ -91,6 +116,8 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   onGeneratingChange,
   onBilingualChange,
   onTitleTranslatingChange,
+  beforeTranslationStart = ALLOW_TRANSLATION_START,
+  onTranslationControlStateChange = NOOP_TRANSLATION_CONTROL_STATE_CHANGE,
   onRetranslationStatusChange = NOOP_RETRANSLATION_STATUS_CHANGE,
 }, ref) => {
   const [translationState, setTranslationState] = useState<TranslationState>({ state: 'idle' });
@@ -100,10 +127,8 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   const [showPauseNotice, setShowPauseNotice] = useState(false);
   const [retranslationTerminalStatus, setRetranslationTerminalStatus] =
     useState<RetranslationTerminalStatus | null>(null);
-  const [translationActionDialog, setTranslationActionDialog] = useState<
-    'choices' | 'confirm' | null
-  >(null);
   const activeRunIdRef = useRef<number | null>(null);
+  const startInFlightRef = useRef(false);
   const loadSequenceRef = useRef(0);
   const translationStateRef = useRef<TranslationState>(translationState);
   const failureTitleId = useId();
@@ -145,6 +170,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         activeRunIdRef.current = result.data.result.id;
         setIsGenerating(true);
       } else {
+        activeRunIdRef.current = null;
         setIsGenerating(false);
       }
     } catch {
@@ -238,13 +264,17 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     return unsubscribe;
   }, [entryId, loadState, onBilingualChange, sourceLanguage, targetLanguage, updateTranslationState]);
 
-  const generate = useCallback(async (forceNew = false): Promise<void> => {
+  const generate = useCallback(async (forceNew = false): Promise<boolean> => {
+    if (!isContentReady || startInFlightRef.current) return false;
+    startInFlightRef.current = true;
     setShowFeedback(false);
     setShowPauseNotice(false);
     setMessage('');
     setRetranslationTerminalStatus(null);
-    if (!getDisplayedResult(translationState)) onBilingualChange(false);
     try {
+      const allowedToStart = await beforeTranslationStart();
+      if (!allowedToStart) return false;
+      if (!getDisplayedResult(translationStateRef.current)) onBilingualChange(false);
       const result = await window.shaleAPI.translation.generate({
         entryId,
         sourceLanguage,
@@ -257,26 +287,32 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       if (!result.ok) {
         setMessage(result.error.message);
         setShowFeedback(true);
-        return;
+        return false;
       }
+      loadSequenceRef.current += 1;
       activeRunIdRef.current = result.data.runId;
       updateTranslationState(toTranslationState(result.data.result, result.data.activeResult));
       setIsGenerating(result.data.result.status === 'running');
       setShowFeedback(result.data.result.status === 'failed');
       onBilingualChange(true);
+      return result.data.result.status === 'running';
     } catch {
       setMessage('Unable to start Translation generation.');
       setShowFeedback(true);
+      return false;
+    } finally {
+      startInFlightRef.current = false;
     }
   }, [
+    beforeTranslationStart,
     entryId,
     expertId,
+    isContentReady,
     onBilingualChange,
     sourceLanguage,
     targetLanguage,
     useSmartContext,
     useTerminology,
-    translationState,
     updateTranslationState,
   ]);
 
@@ -374,30 +410,71 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     return () => window.clearTimeout(dismissTimer);
   }, [retranslationTerminalStatus]);
 
-  useEffect(() => {
-    if (!translationActionDialog) return;
-    const dismissOnEscape = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      setTranslationActionDialog(null);
-    };
-    window.addEventListener('keydown', dismissOnEscape);
-    return () => window.removeEventListener('keydown', dismissOnEscape);
-  }, [translationActionDialog]);
-
   const activate = useCallback((): void => {
-    if (translationState.state === 'succeeded') {
-      setTranslationActionDialog('choices');
-      return;
-    }
-    if (translationState.state === 'running') {
+    const currentState = translationStateRef.current;
+    if (currentState.state === 'running') {
       void pause();
       return;
     }
+    if (currentState.state !== 'paused' && hasCompleteTranslation(currentState)) {
+      onBilingualChange(!isBilingualVisible);
+      return;
+    }
     void generate();
-  }, [generate, pause, translationState.state]);
+  }, [generate, isBilingualVisible, onBilingualChange, pause]);
 
-  useImperativeHandle(ref, () => ({ activate }), [activate]);
+  const requestRetranslation = useCallback(async (): Promise<RetranslationRequestResult> => {
+    if (!isContentReady) return 'content-unavailable';
+    if (startInFlightRef.current) return 'active';
+    try {
+      const stateResult = await window.shaleAPI.translation.get({
+        entryId,
+        sourceLanguage,
+        targetLanguage,
+        useTerminology,
+        useSmartContext,
+        expertId,
+      });
+      if (!stateResult.ok) {
+        setMessage(stateResult.error.message);
+        setShowFeedback(true);
+        return 'failed';
+      }
+      const currentState = stateResult.data;
+      updateTranslationState(currentState);
+      if (currentState.state === 'running') {
+        activeRunIdRef.current = currentState.result.id;
+        setIsGenerating(true);
+        return 'active';
+      }
+      if (currentState.state === 'paused') {
+        activeRunIdRef.current = null;
+        setIsGenerating(false);
+        return 'active';
+      }
+      if (!hasCompleteTranslation(currentState)) return 'no-translation';
+      return await generate(true) ? 'started' : 'failed';
+    } catch {
+      setMessage('Unable to load the Translation state.');
+      setShowFeedback(true);
+      return 'failed';
+    }
+  }, [
+    entryId,
+    expertId,
+    generate,
+    isContentReady,
+    sourceLanguage,
+    targetLanguage,
+    updateTranslationState,
+    useSmartContext,
+    useTerminology,
+  ]);
+
+  useImperativeHandle(ref, () => ({ activate, requestRetranslation }), [
+    activate,
+    requestRetranslation,
+  ]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent): void => {
@@ -448,6 +525,38 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   ]);
 
   useEffect(() => () => onRetranslationStatusChange(null), [onRetranslationStatusChange]);
+
+  const translationControlState: TranslationControlState = {
+    entryId,
+    sourceLanguage,
+    targetLanguage,
+    useTerminology,
+    useSmartContext,
+    expertId,
+    state: translationState.state,
+    ...(getResult(translationState) ? { runId: getResult(translationState)?.id } : {}),
+    hasCompleteTranslation: hasCompleteTranslation(translationState),
+  };
+
+  useEffect(() => {
+    onTranslationControlStateChange(translationControlState);
+  }, [
+    entryId,
+    expertId,
+    onTranslationControlStateChange,
+    sourceLanguage,
+    targetLanguage,
+    translationControlState.hasCompleteTranslation,
+    translationControlState.runId,
+    translationControlState.state,
+    useSmartContext,
+    useTerminology,
+  ]);
+
+  useEffect(
+    () => () => onTranslationControlStateChange(null),
+    [onTranslationControlStateChange],
+  );
 
   const result = getDisplayedResult(translationState);
   const readerMode: TranslationReaderMode = getRestoredTranslationReaderMode(
@@ -548,21 +657,6 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       {pauseNotice && readerPageTarget
         ? createPortal(pauseNotice, readerPageTarget)
         : pauseNotice}
-      {translationActionDialog && (
-        <TranslationActionDialog
-          confirmationVisible={translationActionDialog === 'confirm'}
-          onClose={() => setTranslationActionDialog(null)}
-          onShowExisting={() => {
-            setTranslationActionDialog(null);
-            onBilingualChange(true);
-          }}
-          onRequestRetranslate={() => setTranslationActionDialog('confirm')}
-          onConfirmRetranslate={() => {
-            setTranslationActionDialog(null);
-            void generate(true);
-          }}
-        />
-      )}
       {result?.contextWarning && (
         <p className="entry-detail-ai-warning" role="status">
           {result.contextWarning.message}
@@ -655,72 +749,6 @@ function TranslationErrorPopup({
   );
 }
 
-function TranslationActionDialog({
-  confirmationVisible,
-  onClose,
-  onShowExisting,
-  onRequestRetranslate,
-  onConfirmRetranslate,
-}: {
-  confirmationVisible: boolean;
-  onClose: () => void;
-  onShowExisting: () => void;
-  onRequestRetranslate: () => void;
-  onConfirmRetranslate: () => void;
-}) {
-  const titleId = useId();
-  const descriptionId = useId();
-  const dialog = (
-    <div className="dialog-overlay" onClick={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
-      <section
-        className="dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-      >
-        <h2 id={titleId}>
-          {confirmationVisible ? '确认重新翻译？' : '这篇文章已有译文'}
-        </h2>
-        <p id={descriptionId}>
-          {confirmationVisible
-            ? '重新翻译将使用当前设置从头生成新译文，并产生新的 API 用量。现有译文会保留到新译文完整生成后才会替换。'
-            : '你可以直接显示当前有效译文，或使用当前翻译设置重新生成。'}
-        </p>
-        {confirmationVisible ? (
-          <div className="dialog-actions">
-            <button type="button" onClick={() => onRequestRetranslate()}>
-              返回
-            </button>
-            <button type="button" onClick={onClose}>
-              取消
-            </button>
-            <button type="submit" onClick={onConfirmRetranslate}>
-              确认重新翻译
-            </button>
-          </div>
-        ) : (
-          <div className="dialog-actions">
-            <button type="button" onClick={onClose}>
-              取消
-            </button>
-            <button type="button" onClick={onShowExisting}>
-              显示现有翻译
-            </button>
-            <button type="submit" onClick={onRequestRetranslate}>
-              重新翻译
-            </button>
-          </div>
-        )}
-      </section>
-    </div>
-  );
-  const pageRoot = document.querySelector<HTMLElement>('.reader-page');
-  return createPortal(dialog, pageRoot ?? document.body);
-}
-
 function isEditableTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (
     target.isContentEditable
@@ -796,7 +824,7 @@ export function getTranslatedTitleSegment(
     && Boolean(segment.translatedHtml));
 }
 
-function mergeUpdatedSegment(
+export function mergeUpdatedSegment(
   state: TranslationState,
   completedSegment: TranslationResult['segments'][number],
 ): TranslationState {
@@ -839,8 +867,37 @@ function getActiveResult(state: TranslationState): TranslationResult | undefined
     : undefined;
 }
 
-function getDisplayedResult(state: TranslationState): TranslationResult | undefined {
-  return getActiveResult(state) ?? getResult(state);
+export function getDisplayedResult(state: TranslationState): TranslationResult | undefined {
+  const candidate = getResult(state);
+  const activeResult = getActiveResult(state);
+  if (!candidate || !activeResult || candidate.id === activeResult.id) {
+    return activeResult ?? candidate;
+  }
+
+  const replacementSegments = new Map(
+    candidate.segments.map((segment) => [segment.sourceSegmentId, segment]),
+  );
+  return {
+    ...activeResult,
+    // The candidate is persisted before its event is emitted. Project every
+    // successful candidate segment over the active result, while failed and
+    // pending candidate segments keep their last known completed translation.
+    status: candidate.status,
+    error: candidate.error,
+    updatedAt: candidate.updatedAt,
+    segments: activeResult.segments.map((activeSegment) => {
+      const replacement = replacementSegments.get(activeSegment.sourceSegmentId);
+      return replacement?.status === 'succeeded' ? replacement : activeSegment;
+    }),
+  };
+}
+
+export function hasCompleteTranslation(state: TranslationState): boolean {
+  return [getResult(state), getActiveResult(state)].some((result) =>
+    result?.status === 'succeeded'
+    && result.segments.length > 0
+    && result.segments.every((segment) => segment.status === 'succeeded'),
+  );
 }
 
 function isRetranslationRun(state: TranslationState, runId?: number): boolean {

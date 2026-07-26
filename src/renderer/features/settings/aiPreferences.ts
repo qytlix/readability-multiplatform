@@ -28,6 +28,8 @@ export interface AiPreferences {
   useTerminology: boolean;
   useSmartContext: boolean;
   translationExpertId: string;
+  /** App-wide acknowledgement for the one-time full Translation settings hint. */
+  translationSetupNoticeAcknowledged: boolean;
   fullTranslationShortcut: TranslationShortcut;
   paragraphTranslationShortcut: TranslationShortcut;
   selectionTranslationShortcut: TranslationShortcut;
@@ -41,6 +43,7 @@ export const DEFAULT_AI_PREFERENCES: AiPreferences = {
   useTerminology: true,
   useSmartContext: false,
   translationExpertId: DEFAULT_TRANSLATION_EXPERT_ID,
+  translationSetupNoticeAcknowledged: false,
   fullTranslationShortcut: DEFAULT_FULL_TRANSLATION_SHORTCUT,
   paragraphTranslationShortcut: DEFAULT_PARAGRAPH_TRANSLATION_SHORTCUT,
   selectionTranslationShortcut: DEFAULT_SELECTION_TRANSLATION_SHORTCUT,
@@ -116,6 +119,8 @@ export function loadAiPreferences(storage: PreferenceStorage): AiPreferences {
         && candidate.translationExpertId.length <= 64
         ? candidate.translationExpertId
         : DEFAULT_AI_PREFERENCES.translationExpertId,
+      translationSetupNoticeAcknowledged:
+        candidate.translationSetupNoticeAcknowledged === true,
       fullTranslationShortcut,
       paragraphTranslationShortcut,
       selectionTranslationShortcut,

@@ -15,6 +15,8 @@ import type {
 } from '../../../src/shared/contracts/translation.types';
 import {
   TranslationPanel,
+  getDisplayedResult,
+  mergeUpdatedSegment,
   type TranslationPanelHandle,
 } from '../../../src/renderer/features/translation/TranslationPanel';
 
@@ -346,7 +348,7 @@ describe('TranslationPanel failure feedback', () => {
     container.remove();
   });
 
-  it('shows an explicit existing-translation choice before creating a replacement run', async () => {
+  it('toggles a complete Translation from the main control and only force-starts a replacement on request', async () => {
     reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
     const existingResult: TranslationResult = {
       ...createResult('succeeded'),
@@ -425,39 +427,42 @@ describe('TranslationPanel failure feedback', () => {
       panelRef.current?.activate();
       await Promise.resolve();
     });
-    expect(document.querySelector('.dialog')?.textContent).toContain('这篇文章已有译文');
-    expect(generate).not.toHaveBeenCalled();
-
-    await act(async () => {
-      document.querySelector<HTMLButtonElement>('.dialog button:nth-of-type(2)')?.click();
-      await Promise.resolve();
-    });
     expect(onBilingualChange).toHaveBeenCalledWith(true);
     expect(generate).not.toHaveBeenCalled();
 
     await act(async () => {
-      panelRef.current?.activate();
+      root.render(createElement(TranslationPanel, {
+        ref: panelRef,
+        entryId: existingResult.entryId,
+        isContentReady: true,
+        sourceLanguage: existingResult.sourceLanguage,
+        targetLanguage: existingResult.targetLanguage,
+        useTerminology: false,
+        useSmartContext: false,
+        expertId: existingResult.expertId,
+        shortcut: { key: 'T', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false },
+        sourceHtml: '<h2>Title</h2><p>First</p><p>Second</p><p>Third</p>',
+        titleTarget: null,
+        isBilingualVisible: true,
+        onContentClick: vi.fn(),
+        onGeneratingChange: vi.fn(),
+        onBilingualChange,
+        onTitleTranslatingChange: vi.fn(),
+        children: createElement('p', undefined, 'Original article'),
+      }));
       await Promise.resolve();
     });
-    await act(async () => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-      await Promise.resolve();
-    });
-    expect(document.querySelector('.dialog')).toBeNull();
-    expect(generate).not.toHaveBeenCalled();
 
     await act(async () => {
       panelRef.current?.activate();
       await Promise.resolve();
-      await Promise.resolve();
     });
+    expect(onBilingualChange).toHaveBeenLastCalledWith(false);
+    expect(generate).not.toHaveBeenCalled();
+
     await act(async () => {
-      document.querySelector<HTMLButtonElement>('.dialog button[type="submit"]')?.click();
-      await Promise.resolve();
-    });
-    expect(document.querySelector('.dialog')?.textContent).toContain('确认重新翻译？');
-    await act(async () => {
-      document.querySelector<HTMLButtonElement>('.dialog button[type="submit"]')?.click();
+      const outcome = await panelRef.current?.requestRetranslation();
+      expect(outcome).toBe('started');
       await Promise.resolve();
     });
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({
@@ -467,6 +472,125 @@ describe('TranslationPanel failure feedback', () => {
 
     act(() => root.unmount());
     container.remove();
+  });
+
+  it('waits for the settings acknowledgement before a new Translation starts', async () => {
+    reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    let allowStart: ((allowed: boolean) => void) | undefined;
+    const beforeTranslationStart = vi.fn(() => new Promise<boolean>((resolve) => {
+      allowStart = resolve;
+    }));
+    const runningResult = createResult('running');
+    const generate = vi.fn().mockResolvedValue({
+      ok: true,
+      data: { runId: runningResult.id, reused: false, result: runningResult },
+    });
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        translation: {
+          get: vi.fn().mockResolvedValue({ ok: true, data: { state: 'idle' } }),
+          generate,
+          prioritize: vi.fn().mockResolvedValue({ ok: true, data: { accepted: true } }),
+          onEvent: vi.fn(() => () => undefined),
+        },
+      } as unknown as typeof window.shaleAPI,
+    });
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const panelRef = createRef<TranslationPanelHandle>();
+
+    await act(async () => {
+      root.render(createElement(TranslationPanel, {
+        ref: panelRef,
+        entryId: runningResult.entryId,
+        isContentReady: true,
+        sourceLanguage: runningResult.sourceLanguage,
+        targetLanguage: runningResult.targetLanguage,
+        useTerminology: false,
+        useSmartContext: false,
+        expertId: runningResult.expertId,
+        shortcut: { key: 'T', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false },
+        sourceHtml: '<p>First</p>',
+        titleTarget: null,
+        isBilingualVisible: false,
+        onContentClick: vi.fn(),
+        onGeneratingChange: vi.fn(),
+        onBilingualChange: vi.fn(),
+        onTitleTranslatingChange: vi.fn(),
+        beforeTranslationStart,
+        children: createElement('p', undefined, 'Original article'),
+      }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      panelRef.current?.activate();
+      await Promise.resolve();
+    });
+    expect(beforeTranslationStart).toHaveBeenCalledOnce();
+    expect(generate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      allowStart?.(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(generate).toHaveBeenCalledOnce();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it('projects each persisted replacement segment over the previous Translation only after success', () => {
+    const original = succeededResult();
+    const candidate: TranslationResult = {
+      ...original,
+      id: original.id + 1,
+      status: 'running',
+      segments: original.segments.map((segment) => ({
+        ...segment,
+        status: 'pending' as const,
+        translatedHtml: undefined,
+        translatedText: undefined,
+      })),
+    };
+    const state: TranslationState = {
+      state: 'running',
+      result: candidate,
+      activeResult: original,
+    };
+    const replacement = candidate.segments[1];
+    if (!replacement) throw new Error('Expected a replacement segment.');
+    const persistedReplacement = {
+      ...replacement,
+      status: 'succeeded' as const,
+      translatedText: 'Newly translated paragraph.',
+      translatedHtml: '<p>Newly translated paragraph.</p>',
+    };
+
+    const afterSuccess = mergeUpdatedSegment(state, persistedReplacement);
+    const progressivelyDisplayed = getDisplayedResult(afterSuccess);
+    expect(progressivelyDisplayed?.segments[1]?.translatedText)
+      .toBe('Newly translated paragraph.');
+    expect(progressivelyDisplayed?.segments[2]?.translatedText)
+      .toBe(original.segments[2]?.translatedText);
+
+    const failureCandidate = candidate.segments[2];
+    if (!failureCandidate) throw new Error('Expected a second replacement segment.');
+    const failedReplacement = {
+      ...failureCandidate,
+      status: 'failed' as const,
+      error: {
+        code: 'TRANSLATION_PROVIDER_TIMEOUT',
+        message: 'The provider timed out.',
+        retryable: true,
+      },
+    };
+    const afterFailure = mergeUpdatedSegment(afterSuccess, failedReplacement);
+    expect(getDisplayedResult(afterFailure)?.segments[2]?.translatedText)
+      .toBe(original.segments[2]?.translatedText);
   });
 
   it('announces a replacement run only after its matching completed event, even when text is unchanged', async () => {

@@ -30,6 +30,7 @@ describe('AI preferences', () => {
       useTerminology: false,
       useSmartContext: false,
       translationExpertId: 'none',
+      translationSetupNoticeAcknowledged: true,
       fullTranslationShortcut: {
         key: 'K',
         ctrlKey: true,
@@ -61,6 +62,7 @@ describe('AI preferences', () => {
       useTerminology: false,
       useSmartContext: false,
       translationExpertId: 'none',
+      translationSetupNoticeAcknowledged: true,
       fullTranslationShortcut: {
         key: 'K',
         ctrlKey: true,
@@ -137,6 +139,7 @@ describe('AI preferences', () => {
       useTerminology: true,
       useSmartContext: false,
       translationExpertId: 'none',
+      translationSetupNoticeAcknowledged: true,
       fullTranslationShortcut: {
         key: 'T',
         ctrlKey: true,
@@ -163,5 +166,15 @@ describe('AI preferences', () => {
     saveAiPreferences(storage, preferences);
 
     expect(JSON.parse(storage.read() ?? '')).toEqual(preferences);
+    expect(loadAiPreferences(storage).translationSetupNoticeAcknowledged).toBe(true);
+  });
+
+  it('treats the first-translation notice as unacknowledged for existing preferences', () => {
+    const preferences = loadAiPreferences(createStorage(JSON.stringify({
+      translationTargetLanguage: 'ja',
+    })));
+
+    expect(preferences.translationTargetLanguage).toBe('ja');
+    expect(preferences.translationSetupNoticeAcknowledged).toBe(false);
   });
 });

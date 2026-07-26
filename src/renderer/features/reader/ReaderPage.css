@@ -1269,6 +1269,57 @@ body.workspace-is-resizing * {
   animation: reader-spin 850ms linear infinite reverse;
 }
 
+.article-sync-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.article-sync-menu-panel {
+  position: absolute;
+  z-index: 100;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 132px;
+  padding: 5px;
+  border: 1px solid var(--reader-line);
+  border-radius: 9px;
+  background: var(--reader-menu);
+  box-shadow: 0 12px 30px var(--reader-shadow);
+}
+
+.article-sync-menu-panel::before {
+  position: absolute;
+  top: -9px;
+  right: 0;
+  left: 0;
+  height: 9px;
+  content: '';
+}
+
+.article-sync-menu-item {
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--reader-text-soft);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 580;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.article-sync-menu-item:hover,
+.article-sync-menu-item:focus-visible {
+  outline: none;
+  color: var(--reader-text);
+  background: var(--reader-hover);
+}
+
 .article-copy-button {
   width: 36px;
   min-width: 36px;

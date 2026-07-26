@@ -26,6 +26,8 @@ import {
 import {
   TranslationPanel,
   type TranslationPanelHandle,
+  type TranslationControlState,
+  type RetranslationRequestResult,
   type RetranslationStatus,
 } from '../translation/TranslationPanel';
 import type { AiPreferences } from '../settings/aiPreferences';
@@ -75,6 +77,12 @@ interface EntryDetailProps {
     entryId: number,
     result: { ok: true } | { ok: false; message: string },
   ) => void;
+  retranslationRequest?: { entryId: number; version: number };
+  onRetranslationRequestComplete?: (
+    entryId: number,
+    result: RetranslationRequestResult,
+  ) => void;
+  beforeTranslationStart?: () => boolean | Promise<boolean>;
   selectionMode?: boolean;
   selectedIds?: Set<number>;
   onExportRequest?: () => void;
@@ -106,6 +114,9 @@ export const EntryDetail = ({
   onExportRequest,
   onReadingProgressChange,
   onContentRefreshComplete,
+  retranslationRequest,
+  onRetranslationRequestComplete,
+  beforeTranslationStart,
 }: EntryDetailProps) => {
   const [content, setContent] = useState<CleanedContent | null>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
@@ -114,6 +125,8 @@ export const EntryDetail = ({
   const [showRaw, setShowRaw] = useState(false);
   const [isSummaryGenerating, setIsSummaryGenerating] = useState(false);
   const [isTranslationGenerating, setIsTranslationGenerating] = useState(false);
+  const [translationControlState, setTranslationControlState] =
+    useState<TranslationControlState | null>(null);
   const [retranslationStatus, setRetranslationStatus] = useState<RetranslationStatus | null>(null);
   const [isTitleTranslating, setIsTitleTranslating] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -122,6 +135,7 @@ export const EntryDetail = ({
   const [isFloatingHeaderVisible, setIsFloatingHeaderVisible] = useState(false);
   const prevEntryId = useRef<number | null>(null);
   const handledRefreshVersionsRef = useRef(new Map<number, number>());
+  const handledRetranslationRequestRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const flowHeaderRef = useRef<HTMLDivElement>(null);
@@ -157,6 +171,9 @@ export const EntryDetail = ({
     [content?.cleanedHtml],
   );
   const hasArticleVideo = trustedVideoEmbed !== null || nativeVideoHtml !== null;
+  const isTranslationReady = status === 'success'
+    && !hasArticleVideo
+    && Boolean(content?.cleanedHtml.trim());
   const handleSummaryVisibleChange = useCallback((summaryVisible: boolean): void => {
     if (!entry) return;
     onAIViewStateChange(entry.id, { summaryVisible });
@@ -167,6 +184,11 @@ export const EntryDetail = ({
   }, [entry?.id, onAIViewStateChange]);
   const handleRetranslationStatusChange = useCallback((next: RetranslationStatus | null): void => {
     setRetranslationStatus(next);
+  }, []);
+  const handleTranslationControlStateChange = useCallback((
+    next: TranslationControlState | null,
+  ): void => {
+    setTranslationControlState(next);
   }, []);
 
   const flushReadingProgress = useCallback((): void => {
@@ -315,9 +337,35 @@ export const EntryDetail = ({
     setShowRaw(false);
     setIsSummaryGenerating(false);
     setIsTranslationGenerating(false);
+    setTranslationControlState(null);
     setRetranslationStatus(null);
     setIsTitleTranslating(false);
   }, [entry?.id]);
+
+  useEffect(() => {
+    if (
+      !entry
+      || !retranslationRequest
+      || retranslationRequest.entryId !== entry.id
+      || handledRetranslationRequestRef.current === retranslationRequest.version
+    ) {
+      return;
+    }
+    handledRetranslationRequestRef.current = retranslationRequest.version;
+    const requestRetranslation = async (): Promise<void> => {
+      const result = !isTranslationReady
+        ? 'content-unavailable' as const
+        : await translationPanelRef.current?.requestRetranslation()
+          ?? 'failed';
+      onRetranslationRequestComplete?.(entry.id, result);
+    };
+    void requestRetranslation();
+  }, [
+    entry?.id,
+    isTranslationReady,
+    onRetranslationRequestComplete,
+    retranslationRequest,
+  ]);
 
   useEffect(() => () => {
     flushReadingProgress();
@@ -695,9 +743,6 @@ export const EntryDetail = ({
   const isSummaryReady = status === 'success'
     && !hasArticleVideo
     && Boolean(content?.markdown.trim());
-  const isTranslationReady = status === 'success'
-    && !hasArticleVideo
-    && Boolean(content?.cleanedHtml.trim());
   const articleDateLocale = getArticleDateLocale(
     entry.title,
     content?.markdown ?? entry.summary,
@@ -711,22 +756,39 @@ export const EntryDetail = ({
     && retranslationStatus.expertId === aiPreferences.translationExpertId
     ? retranslationStatus
     : null;
+  const currentTranslationControlState = translationControlState
+    && translationControlState.entryId === entry.id
+    && translationControlState.sourceLanguage === aiPreferences.translationSourceLanguage
+    && translationControlState.targetLanguage === aiPreferences.translationTargetLanguage
+    && translationControlState.useTerminology === aiPreferences.useTerminology
+    && translationControlState.useSmartContext === aiPreferences.useSmartContext
+    && translationControlState.expertId === aiPreferences.translationExpertId
+    ? translationControlState
+    : null;
   const translationButtonLabel = currentRetranslationStatus?.state === 'running'
     ? '暂停重新翻译'
     : currentRetranslationStatus?.state === 'paused'
       ? '继续重新翻译'
-      : isTranslationGenerating
+      : currentTranslationControlState?.state === 'running'
         ? '暂停翻译'
-        : '翻译或切换双语视图';
+          : currentTranslationControlState?.state === 'paused'
+          ? '继续翻译'
+          : currentTranslationControlState?.hasCompleteTranslation
+            ? aiViewState.translationVisible ? '隐藏译文' : '显示译文'
+            : '翻译或切换双语视图';
   const translationButtonTooltip = currentRetranslationStatus?.state === 'running'
     ? '暂停重新翻译'
     : currentRetranslationStatus?.state === 'paused'
       ? '继续重新翻译'
-      : isTranslationGenerating
-        ? 'Pause Translation'
-        : isTranslationReady
-          ? 'Translate or toggle the bilingual view'
-          : 'Translation is available after the article loads';
+      : currentTranslationControlState?.state === 'running'
+        ? '暂停翻译'
+          : currentTranslationControlState?.state === 'paused'
+          ? '继续翻译'
+          : currentTranslationControlState?.hasCompleteTranslation
+            ? aiViewState.translationVisible ? '隐藏译文' : '显示译文'
+            : isTranslationReady
+              ? '翻译或切换双语视图'
+              : '文章完成加载后即可翻译';
 
   const activateSummary = (fromFloatingHeader: boolean): void => {
     summaryPanelRef.current?.activate();
@@ -893,6 +955,8 @@ export const EntryDetail = ({
             onGeneratingChange={setIsTranslationGenerating}
             onBilingualChange={handleBilingualChange}
             onTitleTranslatingChange={setIsTitleTranslating}
+            beforeTranslationStart={beforeTranslationStart}
+            onTranslationControlStateChange={handleTranslationControlStateChange}
             onRetranslationStatusChange={handleRetranslationStatusChange}
           >
         <div className="entry-detail-body">
