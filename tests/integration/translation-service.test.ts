@@ -757,6 +757,70 @@ describe('TranslationService', () => {
     });
   });
 
+  it('rejects mixed-script output and retries affected segments before persistence', async () => {
+    const prompts: BatchPromptSegment[][] = [];
+    const records: TranslationLogRecord[] = [];
+    const mixedLanguageProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        const segments = parseBatchPrompt(providerRequest.prompt);
+        prompts.push(segments);
+        for (const [index, segment] of segments.entries()) {
+          const translatedHtml = segments.length > 1 && index === 1
+            ? '<p>Deadline指出，这起诉讼在加州法律下是否वास्तव可执行。</p>'
+            : segment.sourceHtml.replace(
+                />([^<]*)</g,
+                (_match, text: string) => text.trim() ? '>有效的中文译文。<' : `>${text}<`,
+              );
+          yield `${JSON.stringify({
+            sourceSegmentId: segment.sourceSegmentId,
+            translatedHtml,
+            appliedTermIds: [],
+          })}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const recoveringService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      mixedLanguageProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+    };
+
+    recoveringService.generate(request);
+    await vi.waitFor(() => {
+      expect(recoveringService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    const state = recoveringService.getState(request);
+    if (state.state !== 'succeeded') throw new Error('Expected a recovered Translation.');
+    expect(state.result.segments.every((segment) =>
+      segment.translatedText === '有效的中文译文。')).toBe(true);
+    expect(JSON.stringify(state.result)).not.toContain('वास्तव');
+    expect(prompts.map((segments) => segments.length)).toEqual([3, 1, 1]);
+
+    const rejectedBatch = records.find((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed
+      && (record.context as { requestKind?: unknown }).requestKind === 'batch');
+    expect(rejectedBatch?.context).toMatchObject({
+      reasonCode: 'target_language_mismatch',
+      validationStage: 'language-validation',
+      acceptedSegmentCount: 1,
+      missingSegmentCount: 2,
+    });
+  });
+
   it('compensates only the remaining segments after a batch has invalid structure', async () => {
     const prompts: BatchPromptSegment[][] = [];
     const records: TranslationLogRecord[] = [];

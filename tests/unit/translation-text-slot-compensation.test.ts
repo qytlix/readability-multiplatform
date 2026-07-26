@@ -111,6 +111,15 @@ describe('Translation text-slot compensation', () => {
     }]);
   });
 
+  it('rejects mixed-language text when rebuilding a target-language segment', () => {
+    const plan = createTranslationTextSlotPlan('<p>Source sentence.</p>');
+
+    expect(() => plan.rebuild(
+      new Map([['slot-0001', '译文中混入了वास्तव其他文字。']]),
+      'zh-CN',
+    )).toThrow('selected target language');
+  });
+
   it('classifies malformed, incomplete, missing-ID, invalid-field, and empty-slot records', () => {
     expectReason(() => new TranslationTextSlotStreamParser().append('not-json\n'),
       TRANSLATION_OUTPUT_REASON_CODES.ndjsonSyntax);

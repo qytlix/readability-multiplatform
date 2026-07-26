@@ -14,7 +14,7 @@ describe('buildTranslationPrompt', () => {
       targetLanguage: 'zh-CN',
     });
 
-    expect(TRANSLATION_PROMPT_VERSION).toBe('translation-v7-contextual-naturalness');
+    expect(TRANSLATION_PROMPT_VERSION).toBe('translation-v8-target-language-validation');
     expect(prompt).toContain('Detect the source language');
     expect(prompt).toContain('Translate into Simplified Chinese.');
     expect(prompt).toContain('never mix in Traditional Chinese characters');
@@ -131,6 +131,7 @@ describe('buildTranslationPrompt', () => {
     expect(prompt).toContain('Use only the context already included in this request to disambiguate meaning.');
     expect(prompt).toContain('polysemous words, abstract verbs, relationship expressions, idioms, and metaphors');
     expect(prompt).toContain('idiomatic for the selected target language and locale');
+    expect(prompt).toContain('Do not leave ordinary source-language words untranslated.');
     expect(prompt).toContain('For title and heading segments, write concise headings natural to the selected target language and locale.');
     expect(prompt).toContain('Preserve the source facts, viewpoint, tone, style, uncertainty, and emphasis.');
     expect(prompt).toContain('Output only the final translation in the required structured response.');

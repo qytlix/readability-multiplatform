@@ -9,7 +9,7 @@ import type {
 import { TRANSLATION_LANGUAGE_LABELS } from '../../../shared/contracts/translation.types';
 import type { TranslationContext } from '../../../shared/contracts/translation-context.types';
 
-export const TRANSLATION_PROMPT_VERSION = 'translation-v7-contextual-naturalness';
+export const TRANSLATION_PROMPT_VERSION = 'translation-v8-target-language-validation';
 
 export interface TranslationBatchPromptSegment {
   sourceSegmentId: string;
@@ -51,6 +51,7 @@ const TRANSLATION_QUALITY_INSTRUCTIONS = [
   'Disambiguate polysemous words, abstract verbs, relationship expressions, idioms, and metaphors from context.',
   'Prefer the expression\'s actual communicative function over forced word-for-word correspondence.',
   'Use vocabulary, collocations, grammar, and register that are idiomatic for the selected target language and locale.',
+  'Do not leave ordinary source-language words untranslated. Preserve source-language text only when it is protected content or a proper name, brand, acronym, code, URL, or identifier.',
   'For title and heading segments, write concise headings natural to the selected target language and locale. Preserve their scope, judgment, and rhetorical effect; when a literal rendering is unnatural, a modest meaning-preserving adaptation is allowed.',
   'Before returning, silently check for wording that is roughly correct but would sound mechanically combined or unnatural to a native reader, then revise it.',
   'Preserve the source facts, viewpoint, tone, style, uncertainty, and emphasis. Do not explain, embellish, expand, omit, or soften the source.',

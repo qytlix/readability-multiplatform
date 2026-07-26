@@ -240,4 +240,30 @@ describe('parseTranslationOutput', () => {
     expect(simplified.translatedText).toBe('软体已经发布，数据保持一致。');
     expect(hongKongTraditional.translatedText).toBe('軟件已經發布，數據保持一致。');
   });
+
+  it('rejects a structurally valid translation that mixes an unrelated script', () => {
+    expect(() => parseTranslationOutput(
+      '<p>Deadline noted that this lawsuit is likely to renew debates about whether term employment agreements are actually enforceable under California law.</p>',
+      JSON.stringify({
+        translatedHtml: '<p>Deadline指出，这起诉讼很可能会重新引发关于定期雇佣协议在加州法律下是否वास्तव可执行的争论。</p>',
+        appliedTermIds: [],
+      }),
+      [],
+      'zh-CN',
+    )).toThrow('selected target language');
+  });
+
+  it('keeps protected code and ordinary Latin product names in a Chinese translation', () => {
+    const result = parseTranslationOutput(
+      '<p>Run <code>npm ci</code> before starting Shale.</p>',
+      JSON.stringify({
+        translatedHtml: '<p>启动 Shale 前请运行 <code>npm ci</code>。</p>',
+        appliedTermIds: [],
+      }),
+      [],
+      'zh-CN',
+    );
+
+    expect(result.translatedText).toBe('启动 Shale 前请运行 npm ci。');
+  });
 });

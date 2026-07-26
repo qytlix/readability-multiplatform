@@ -5,10 +5,12 @@ import type {
   TranslationTerminologyMatch,
 } from '../../../shared/contracts/translation.types';
 import { normalizeChineseTargetText } from './ChineseScript';
+import { isTranslationOutputLanguageConsistent } from './TranslationLanguage';
 import {
   emptyTranslationOutput,
   invalidTranslationHtmlStructure,
   invalidTranslationStructure,
+  invalidTranslationTargetLanguage,
   TRANSLATION_HTML_VALIDATION_REASONS,
   TRANSLATION_OUTPUT_REASON_CODES,
   type TranslationHtmlValidationReason,
@@ -73,6 +75,9 @@ export function parseTranslationOutput(
   }
   const translatedHtml = sanitizeHtml(translatedRoot.outerHTML);
   const verifiedRoot = parseSingleSafeRoot(translatedHtml);
+  if (targetLanguage) {
+    validateTargetLanguage(verifiedRoot, targetLanguage);
+  }
   const translatedText = normalizeWhitespace(verifiedRoot.textContent ?? '');
   if (!translatedText) {
     throw emptyTranslationOutput(
@@ -115,6 +120,9 @@ export function createTranslationTextSlotPlan(sourceHtml: string): TranslationTe
       if (targetLanguage) normalizeElementTextNodes(root, targetLanguage);
       const translatedHtml = sanitizeHtml(root.outerHTML);
       const verifiedRoot = parseSingleSafeRoot(translatedHtml);
+      if (targetLanguage) {
+        validateTargetLanguage(verifiedRoot, targetLanguage);
+      }
       const translatedText = normalizeWhitespace(verifiedRoot.textContent ?? '');
       if (!translatedText) {
         throw emptyTranslationOutput(
@@ -146,6 +154,28 @@ function normalizeElementTextNodes(
   textNodes.forEach((node) => {
     node.data = normalizeChineseTargetText(node.data, targetLanguage);
   });
+}
+
+function validateTargetLanguage(
+  root: Element,
+  targetLanguage: TranslationTargetLanguage,
+): void {
+  const textNodes: string[] = [];
+  const walker = htmlDocument.createTreeWalker(
+    root,
+    htmlDom.window.NodeFilter.SHOW_TEXT,
+  );
+  let current = walker.nextNode();
+  while (current) {
+    if (!current.parentElement?.closest('code, pre, kbd, samp')) {
+      textNodes.push(current.textContent ?? '');
+    }
+    current = walker.nextNode();
+  }
+  if (isTranslationOutputLanguageConsistent(textNodes.join(' '), targetLanguage)) return;
+  throw invalidTranslationTargetLanguage(
+    'The provider returned text that does not match the selected target language.',
+  );
 }
 
 function parseEnvelope(value: string): TranslationOutputEnvelope | undefined {

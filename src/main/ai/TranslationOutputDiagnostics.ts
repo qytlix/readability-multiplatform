@@ -25,6 +25,7 @@ export const TRANSLATION_OUTPUT_REASON_CODES = {
   textSlotIdUnexpected: 'text_slot_id_unexpected',
   expectedTextSlotMissing: 'expected_text_slot_missing',
   translatedTextEmpty: 'translated_text_empty',
+  targetLanguageMismatch: 'target_language_mismatch',
   htmlStructureInvalid: 'html_structure_invalid',
   providerLengthTruncated: 'provider_length_truncated',
   unclassified: 'unclassified_output_failure',
@@ -57,6 +58,7 @@ export const TRANSLATION_OUTPUT_FAILURE_PHASES = [
   'record',
   'segment-id',
   'html-validation',
+  'language-validation',
   'completion',
 ] as const;
 
@@ -119,6 +121,18 @@ export function invalidTranslationHtmlStructure(
     message,
     true,
     htmlValidationReason,
+  );
+}
+
+export function invalidTranslationTargetLanguage(
+  message: string,
+): TranslationOutputDiagnosticError {
+  return new TranslationOutputDiagnosticError(
+    TRANSLATION_OUTPUT_REASON_CODES.targetLanguageMismatch,
+    'language-validation',
+    TRANSLATION_ERROR_CODES.TRANSLATION_INVALID_STRUCTURE,
+    message,
+    true,
   );
 }
 
