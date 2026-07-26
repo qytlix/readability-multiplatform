@@ -34,6 +34,11 @@ export interface ContentSegment {
 export interface CleanedContent {
   entryId: number;
   sourceUrl: string;
+  /**
+   * Sanitized Feed content shown while the linked article is fetched.
+   * Preview HTML is transient and is never treated as final persisted content.
+   */
+  isPreview?: true;
   /** Metadata currently used by Reader, sourced from the persisted Entry. */
   readerTitle?: string;
   readerByline?: string;

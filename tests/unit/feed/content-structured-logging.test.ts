@@ -20,6 +20,7 @@ import {
   logContentPipelineFailure,
   type ContentLogContext,
   type ContentOperationLogger,
+  type ContentSuccessLogContext,
 } from '../../../src/main/feed/services/ContentLogging';
 import { ContentService } from '../../../src/main/feed/services/ContentService';
 import type { ContentStore } from '../../../src/main/feed/stores/ContentStore';
@@ -56,7 +57,7 @@ const DOCUMENT_BASE_URL_CANARY = 'DOCUMENT_BASE_URL_CANARY_MUST_NOT_BE_LOGGED';
 interface ContentLogRecord {
   event: string;
   component: string;
-  context: ContentLogContext;
+  context: ContentLogContext | ContentSuccessLogContext;
 }
 
 function createContentLoggerSpy(): {
@@ -66,6 +67,9 @@ function createContentLoggerSpy(): {
   const records: ContentLogRecord[] = [];
   return {
     logger: {
+      info: (event, component, context) => {
+        records.push({ event, component, context });
+      },
       error: (event, component, context) => {
         records.push({ event, component, context });
       },
@@ -103,14 +107,20 @@ function createContentService(options: {
   lookup?: () => Entry | undefined;
 } = {}): {
   service: ContentService;
-  contentStore: { updatePipelineStatus: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
+  contentStore: {
+    findByEntry: ReturnType<typeof vi.fn>;
+    updatePipelineStatus: ReturnType<typeof vi.fn>;
+    upsert: ReturnType<typeof vi.fn>;
+  };
 } {
   const contentStore = {
+    findByEntry: vi.fn(() => undefined),
     updatePipelineStatus: vi.fn(() => options.updatePipelineStatus?.()),
     upsert: vi.fn((params: { pipelineStatus: string }) => options.upsert?.(params)),
   };
   const entryStore = {
     findById: vi.fn(options.lookup ?? (() => options.entry ?? TEST_ENTRY)),
+    findFeedContentHtml: vi.fn(() => undefined),
     createOrUpdate: vi.fn(),
   };
   const fetcher = {
@@ -172,14 +182,29 @@ afterEach(() => {
 });
 
 describe('Content structured logging', () => {
-  it('does not log a successful Content pipeline', async () => {
+  it('logs safe stage durations for a successful Content pipeline', async () => {
     const { logger, records } = createContentLoggerSpy();
     const { service } = createContentService({ logger });
 
     const result = await service.fetchAndClean(TEST_ENTRY.id);
 
     expect(result.pipelineStatus).toBe('success');
-    expect(records).toEqual([]);
+    expect(records).toEqual([
+      {
+        event: CONTENT_LOG_EVENTS.pipelineCompleted,
+        component: CONTENT_LOG_COMPONENTS.pipeline,
+        context: expect.objectContaining({
+          entryId: TEST_ENTRY.id,
+          feedId: TEST_ENTRY.feedId,
+          success: true,
+          durationMs: expect.any(Number),
+          fetchDurationMs: expect.any(Number),
+          cleanDurationMs: expect.any(Number),
+          convertDurationMs: expect.any(Number),
+          persistDurationMs: expect.any(Number),
+        }),
+      },
+    ]);
   });
 
   it('records an Entry-not-found failure without fabricating a feed ID', async () => {

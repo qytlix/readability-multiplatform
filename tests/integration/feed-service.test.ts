@@ -226,6 +226,29 @@ describe('FeedService', () => {
       expect(feed!.lastETag).toBe('"abc123"');
       expect(feed!.lastModified).toBe('Mon, 14 Jul 2026 10:00:00 GMT');
     });
+
+    it('persists feed-provided entry HTML for Reader fallback', async () => {
+      const feedWithContent = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Linked Articles</title>
+  <link href="https://example.com/" />
+  <entry>
+    <id>linked-1</id>
+    <title>Linked article</title>
+    <link href="https://blocked.example.com/article" />
+    <content type="html">&lt;p&gt;Complete feed fallback body.&lt;/p&gt;</content>
+  </entry>
+</feed>`;
+      global.fetch = mockFetch(200, feedWithContent);
+
+      const result = await service.syncFeed(1);
+      const entry = result.entries.find((item) => item.title === 'Linked article');
+
+      expect(entry).toBeDefined();
+      expect(entryStore.findFeedContentHtml(entry!.id)).toContain(
+        'Complete feed fallback body.',
+      );
+    });
   });
 
   describe('getFeeds', () => {

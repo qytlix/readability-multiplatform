@@ -1,6 +1,7 @@
 import { performance } from 'node:perf_hooks';
 
 export const CONTENT_LOG_EVENTS = {
+  pipelineCompleted: 'content.pipeline.completed',
   pipelineFailed: 'content.pipeline.failed',
 } as const;
 
@@ -58,11 +59,65 @@ export interface ContentLogContext {
 
 /** The limited logging surface required by the Content pipeline. */
 export interface ContentOperationLogger {
+  info?(
+    event: typeof CONTENT_LOG_EVENTS.pipelineCompleted,
+    component: typeof CONTENT_LOG_COMPONENTS.pipeline,
+    context: ContentSuccessLogContext,
+  ): void;
   error(
     event: typeof CONTENT_LOG_EVENTS.pipelineFailed,
     component: typeof CONTENT_LOG_COMPONENTS.pipeline,
     context: ContentLogContext,
   ): void;
+}
+
+export interface ContentSuccessLogContext {
+  entryId: number;
+  feedId?: number;
+  durationMs: number;
+  fetchDurationMs: number;
+  cleanDurationMs: number;
+  convertDurationMs: number;
+  persistDurationMs: number;
+  attemptCount?: number;
+  strategy?: string;
+  success: true;
+}
+
+export function logContentPipelineSuccess(
+  logger: ContentOperationLogger | undefined,
+  context: ContentSuccessLogContext,
+): void {
+  if (
+    !isSafeIdentifier(context.entryId)
+    || (context.feedId !== undefined && !isSafeIdentifier(context.feedId))
+    || !isSafeDuration(context.durationMs)
+    || !isSafeDuration(context.fetchDurationMs)
+    || !isSafeDuration(context.cleanDurationMs)
+    || !isSafeDuration(context.convertDurationMs)
+    || !isSafeDuration(context.persistDurationMs)
+    || (
+      context.attemptCount !== undefined
+      && !isSafeDuration(context.attemptCount)
+    )
+    || (
+      context.strategy !== undefined
+      && !/^[a-z][a-z0-9-]*$/.test(context.strategy)
+    )
+    || context.success !== true
+  ) {
+    return;
+  }
+
+  try {
+    logger?.info?.(
+      CONTENT_LOG_EVENTS.pipelineCompleted,
+      CONTENT_LOG_COMPONENTS.pipeline,
+      context,
+    );
+  } catch {
+    // Preserve the existing Content return and persistence behavior.
+  }
 }
 
 export function elapsedContentMilliseconds(startedAt: number): number {

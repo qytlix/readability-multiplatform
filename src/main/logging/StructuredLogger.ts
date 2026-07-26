@@ -46,9 +46,15 @@ const CONTEXT_FIELD_TYPES = {
   outputTokens: 'number',
   totalTokens: 'number',
   durationMs: 'number',
+  fetchDurationMs: 'number',
+  cleanDurationMs: 'number',
+  convertDurationMs: 'number',
+  persistDurationMs: 'number',
+  attemptCount: 'number',
   httpStatus: 'number',
   errorCode: 'string',
   stage: 'string',
+  strategy: 'string',
   requestKind: 'string',
   trigger: 'string',
   outcome: 'string',
@@ -98,9 +104,15 @@ export interface StructuredLogContext {
   outputTokens?: number;
   totalTokens?: number;
   durationMs?: number;
+  fetchDurationMs?: number;
+  cleanDurationMs?: number;
+  convertDurationMs?: number;
+  persistDurationMs?: number;
+  attemptCount?: number;
   httpStatus?: number;
   errorCode?: string;
   stage?: string;
+  strategy?: string;
   requestKind?: string;
   trigger?: string;
   outcome?: string;

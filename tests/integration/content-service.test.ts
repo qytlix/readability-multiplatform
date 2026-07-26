@@ -65,12 +65,61 @@ describe('ContentService', () => {
       expect(result).toBeUndefined();
     });
 
+    it('returns a sanitized transient Feed preview before remote fetch', async () => {
+      entryStore.createOrUpdate({
+        feedId: 1,
+        guid: 'guid-1',
+        feedContentHtml: `
+          <p>Feed preview is immediately readable.</p>
+          <script>window.evil = true</script>
+        `,
+      });
+
+      const result = await contentService.getContent(entryId);
+
+      expect(result).toMatchObject({
+        entryId,
+        isPreview: true,
+        pipelineStatus: 'success',
+      });
+      expect(result?.cleanedHtml).toContain(
+        'Feed preview is immediately readable.',
+      );
+      expect(result?.cleanedHtml).not.toContain('<script');
+      expect(contentStore.findByEntry(entryId)).toBeUndefined();
+    });
+
     it('should return existing content after fetchAndClean', async () => {
       await contentService.fetchAndClean(entryId);
       const result = await contentService.getContent(entryId);
       expect(result).toBeDefined();
       expect(result!.entryId).toBe(entryId);
       expect(result!.pipelineStatus).toBe('success');
+    });
+
+    it('repairs a failed refresh when sanitized cached content still exists', async () => {
+      contentStore.upsert({
+        entryId,
+        cleanedHtml: '<p>Previously extracted article body.</p>',
+        markdown: 'Previously extracted article body.',
+        readabilityVersion: CONTENT_CLEANER_VERSION,
+        markdownVersion: MARKDOWN_CONVERTER_VERSION,
+        pipelineStatus: 'failed',
+        pipelineError: 'Readability could not extract content',
+      });
+
+      const result = await contentService.getContent(entryId);
+
+      expect(result).toMatchObject({
+        pipelineStatus: 'success',
+        pipelineError: undefined,
+      });
+      expect(result?.cleanedHtml).toContain('Previously extracted');
+      expect(
+        db.prepare(
+          'SELECT pipelineStatus, pipelineError FROM entry_content WHERE entryId = ?',
+        ).get(entryId),
+      ).toEqual({ pipelineStatus: 'success', pipelineError: null });
     });
 
     it('rebuilds stale cleaned content locally without refetching the article', async () => {
@@ -227,6 +276,53 @@ describe('ContentService', () => {
       const result = await svc.fetchAndClean(entryId);
       expect(result.pipelineStatus).toBe('failed');
       expect(result.pipelineError).toBe('Network error');
+    });
+
+    it('keeps the last known good article when a refresh fails', async () => {
+      const first = await contentService.fetchAndClean(entryId);
+      const fetcher = {
+        fetch: vi.fn().mockRejectedValue(new Error('Network error')),
+      };
+      const svc = new ContentService(
+        contentStore,
+        entryStore,
+        fetcher as unknown as ContentFetcher,
+      );
+
+      const result = await svc.fetchAndClean(entryId);
+
+      expect(result.pipelineStatus).toBe('success');
+      expect(result.cleanedHtml).toBe(first.cleanedHtml);
+      expect(contentStore.findByEntry(entryId)).toMatchObject({
+        pipelineStatus: 'success',
+        pipelineError: undefined,
+      });
+    });
+
+    it('falls back to sanitized feed entry HTML when the linked page fails', async () => {
+      entryStore.createOrUpdate({
+        feedId: 1,
+        guid: 'guid-1',
+        feedContentHtml: `
+          <p>Publisher-provided fallback body.</p>
+          <script>window.evil = true</script>
+        `,
+      });
+      const fetcher = {
+        fetch: vi.fn().mockRejectedValue(new Error('HTTP 403: Forbidden')),
+      };
+      const svc = new ContentService(
+        contentStore,
+        entryStore,
+        fetcher as unknown as ContentFetcher,
+      );
+
+      const result = await svc.fetchAndClean(entryId);
+
+      expect(result.pipelineStatus).toBe('success');
+      expect(result.cleanedHtml).toContain('Publisher-provided fallback body.');
+      expect(result.cleanedHtml).not.toContain('<script');
+      expect(contentStore.findByEntry(entryId)?.pipelineStatus).toBe('success');
     });
 
     it('should update pipeline status across phases', async () => {

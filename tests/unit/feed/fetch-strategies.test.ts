@@ -5,6 +5,7 @@ import {
   BrowserFetchStrategy,
   installBrowserFetchNavigationGuards,
 } from '../../../src/main/feed/fetcher/FetchStrategy';
+import type { FetchImplementation } from '../../../src/main/feed/fetcher/FetchStrategy';
 import type { WebContents } from 'electron';
 
 // ── Mock helpers ────────────────────────────────────────────────
@@ -134,6 +135,29 @@ describe('SimpleFetchStrategy', () => {
     expect(capturedInit.headers['User-Agent']).toBe('Shale/1.0 Feed Reader');
   });
 
+  it('uses an injected Chromium-compatible fetch implementation', async () => {
+    const responseFactory = mockOkResponse(htmlBody, {
+      charset: 'text/html; charset=utf-8',
+    });
+    const fetchImplementation = vi.fn<FetchImplementation>(
+      async (input, init) =>
+        (await responseFactory(String(input), {
+          signal: init?.signal ?? undefined,
+        })) as unknown as Response,
+    );
+    const injectedStrategy = new SimpleFetchStrategy({
+      fetchImplementation,
+    });
+    setMockFetch(vi.fn().mockRejectedValue(new Error('global fetch used')));
+
+    const result = await injectedStrategy.fetch(
+      'https://example.com/article',
+    );
+
+    expect(result.body).toBe(htmlBody);
+    expect(fetchImplementation).toHaveBeenCalledTimes(1);
+  });
+
   it('should be named "simple"', () => {
     expect(strategy.name).toBe('simple');
   });
@@ -225,6 +249,37 @@ describe('EnhancedFetchStrategy', () => {
       strategy.fetch('https://example.com/article', controller.signal),
     ).rejects.toThrow();
     expect(callCount).toBeLessThanOrEqual(1); // AbortError should stop immediately
+  });
+
+  it('keeps the timeout active while streaming the response body', async () => {
+    setMockFetch((_url: string, init?: { signal?: AbortSignal }) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        url: 'https://example.com/stalled-body',
+        headers: { get: () => null, entries: () => [] },
+        body: {
+          getReader: () => ({
+            read: () => new Promise((_resolve, reject) => {
+              init?.signal?.addEventListener(
+                'abort',
+                () => reject(new DOMException('aborted', 'AbortError')),
+                { once: true },
+              );
+            }),
+            cancel: vi.fn(),
+          }),
+        },
+      }));
+    const timedStrategy = new EnhancedFetchStrategy({
+      timeoutMs: 25,
+      maxRetries: 0,
+    });
+
+    await expect(
+      timedStrategy.fetch('https://example.com/stalled-body'),
+    ).rejects.toThrow('enhanced fetch timed out');
   });
 
   it('should always be available', () => {
