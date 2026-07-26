@@ -130,6 +130,13 @@ export const ExportOptionsDialog = ({
     return all;
   }, [articles, perArticleOptions]);
 
+  // 每列内容可用性（至少有一篇文章包含该内容）
+  const fieldAvailability = useMemo(() => ({
+    includeSummary: articles.some((a) => a.hasSummary),
+    includeTranslation: articles.some((a) => a.hasTranslation),
+    includeNotes: articles.some((a) => a.hasNotes),
+  }), [articles]);
+
   // 初始化 / articles 变化时重置
   useEffect(() => {
     if (!open) return;
@@ -260,36 +267,43 @@ export const ExportOptionsDialog = ({
         aria-labelledby={titleId}
         onKeyDown={handleDialogKeyDown}
       >
-        <h2 id={titleId}>📄 导出文件</h2>
+        <h2 id={titleId}>导出文件</h2>
 
         {articles.length > 1 && (
           <div className="export-options-column-toggles">
-          <button
-            type="button"
-            className="export-options-column-toggle"
-            onClick={() => toggleColumn('includeSummary')}
-            title={columnAll.includeSummary ? '取消全选总结' : '全选总结'}
-          >
-            {columnAll.includeSummary ? '☑' : '☐'} 总结
-          </button>
-          <button
-            type="button"
-            className="export-options-column-toggle"
-            onClick={() => toggleColumn('includeTranslation')}
-            title={
-              columnAll.includeTranslation ? '取消全选翻译' : '全选翻译'
-            }
-          >
-            {columnAll.includeTranslation ? '☑' : '☐'} 翻译
-          </button>
-          <button
-            type="button"
-            className="export-options-column-toggle"
-            onClick={() => toggleColumn('includeNotes')}
-            title={columnAll.includeNotes ? '取消全选笔记' : '全选笔记'}
-          >
-            {columnAll.includeNotes ? '☑' : '☐'} 笔记
-          </button>
+          <span className="article-action-tooltip" data-tooltip={!fieldAvailability.includeSummary ? '没有文章包含总结' : columnAll.includeSummary ? '取消全选总结' : '全选总结'}>
+            <button
+              type="button"
+              className={`export-options-column-toggle${!fieldAvailability.includeSummary ? ' is-disabled' : ''}`}
+              disabled={!fieldAvailability.includeSummary}
+              onClick={() => toggleColumn('includeSummary')}
+            >
+              <span className={`export-toggle-indicator${columnAll.includeSummary ? ' is-checked' : ''}`} />
+              总结
+            </button>
+          </span>
+          <span className="article-action-tooltip" data-tooltip={!fieldAvailability.includeTranslation ? '没有文章包含翻译' : columnAll.includeTranslation ? '取消全选翻译' : '全选翻译'}>
+            <button
+              type="button"
+              className={`export-options-column-toggle${!fieldAvailability.includeTranslation ? ' is-disabled' : ''}`}
+              disabled={!fieldAvailability.includeTranslation}
+              onClick={() => toggleColumn('includeTranslation')}
+            >
+              <span className={`export-toggle-indicator${columnAll.includeTranslation ? ' is-checked' : ''}`} />
+              翻译
+            </button>
+          </span>
+          <span className="article-action-tooltip" data-tooltip={!fieldAvailability.includeNotes ? '没有文章包含笔记' : columnAll.includeNotes ? '取消全选笔记' : '全选笔记'}>
+            <button
+              type="button"
+              className={`export-options-column-toggle${!fieldAvailability.includeNotes ? ' is-disabled' : ''}`}
+              disabled={!fieldAvailability.includeNotes}
+              onClick={() => toggleColumn('includeNotes')}
+            >
+              <span className={`export-toggle-indicator${columnAll.includeNotes ? ' is-checked' : ''}`} />
+              笔记
+            </button>
+          </span>
         </div>
         )}
 
@@ -302,17 +316,12 @@ export const ExportOptionsDialog = ({
 
             return (
               <div key={a.entryId} className="export-options-row">
-                <span className={`export-options-row-status${
-                  pipelineFailed ? ' is-failed' : ''
-                }${isCleaning ? ' is-cleaning' : ''}`}>
-                  {pipelineSuccess
-                    ? '✅'
-                    : pipelineFailed
-                      ? '❌'
-                      : isCleaning
-                        ? '⏳'
-                        : '⏳'}
-                </span>
+                <span
+                  className={`export-options-row-status${
+                    pipelineSuccess ? ' is-success' : ''
+                  }${pipelineFailed ? ' is-failed' : ''
+                  }${isCleaning ? ' is-cleaning' : ''}`}
+                />
                 <span className="export-options-row-title">{a.title}</span>
                 {pipelineSuccess && (
                   <div className="export-options-row-fields">
@@ -339,18 +348,19 @@ export const ExportOptionsDialog = ({
                 {!pipelineSuccess && (
                   <div className="export-options-row-unwashed">
                     {pipelineFailed ? (
-                      <span className="export-options-failed-label">清洗失败</span>
+                      <span className="export-options-failed-label">获取失败</span>
                     ) : isCleaning ? (
-                      <span className="export-options-cleaning-label">清洗中…</span>
+                      <span className="export-options-cleaning-label">获取中…</span>
                     ) : (
                       <>
-                        <span className="export-options-unwashed-label">🧹未清洗</span>
+                        <span className="export-options-unwashed-label" title="获取并清洗文章内容">未获取</span>
                         <button
                           type="button"
                           className="export-options-clean-btn"
+                          title="获取并清洗文章内容"
                           onClick={() => void handleCleanSingle(a.entryId)}
                         >
-                          现在清洗
+                          现在获取
                         </button>
                       </>
                     )}
@@ -371,6 +381,7 @@ export const ExportOptionsDialog = ({
               <button
                 type="button"
                 className="export-options-clean-all-btn"
+                title="获取并清洗所有未就绪文章内容"
                 onClick={async () => {
                   const unwashed = articles.filter(
                     (a) => getEffectiveStatus(a.entryId) !== 'success',
@@ -380,7 +391,7 @@ export const ExportOptionsDialog = ({
                   }
                 }}
               >
-                🧹 清洗全部未清洗（{unwashedCount}篇）
+                获取全部（{unwashedCount}篇）
               </button>
             </div>
           ) : null;

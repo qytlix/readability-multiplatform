@@ -4920,6 +4920,36 @@ body.workspace-is-resizing * {
   border-color: var(--reader-text-muted);
 }
 
+.export-options-column-toggle.is-disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+.export-toggle-indicator {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--reader-text-muted);
+  border-radius: 3px;
+  transition: all 120ms ease;
+}
+
+.export-toggle-indicator.is-checked {
+  background: var(--reader-accent-strong);
+  border-color: var(--reader-accent-strong);
+}
+
+.export-toggle-indicator.is-checked::after {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 100%;
+  mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 14 14' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 7L6 10L11 4' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 14 14' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 7L6 10L11 4' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+  background: var(--reader-surface);
+}
+
 .export-options-list {
   display: grid;
   margin-top: 12px;
@@ -5010,17 +5040,25 @@ body.workspace-is-resizing * {
 
 .export-options-row-status {
   flex-shrink: 0;
-  width: 18px;
-  font-size: 13px;
-  line-height: 1.4;
+  width: 8px;
+  height: 8px;
+  margin: 0 5px;
+  border-radius: 50%;
+  background: var(--reader-text-muted);
+}
+
+.export-options-row-status.is-success {
+  background: var(--reader-accent-strong);
 }
 
 .export-options-row-status.is-failed {
-  color: var(--reader-danger);
+  background: var(--reader-danger);
 }
 
 .export-options-row-status.is-cleaning {
-  opacity: 0.7;
+  background: var(--reader-accent-strong);
+  opacity: 0.65;
+  animation: export-status-spin 0.8s linear infinite;
 }
 
 .export-options-row-unwashed {
@@ -5087,6 +5125,12 @@ body.workspace-is-resizing * {
 .export-options-clean-all-btn:hover {
   background: var(--reader-hover);
   border-color: var(--reader-text-muted);
+}
+
+@keyframes export-status-spin {
+  0% { opacity: 0.65; }
+  50% { opacity: 0.35; }
+  100% { opacity: 0.65; }
 }
 
 @media (prefers-reduced-motion: reduce) {
