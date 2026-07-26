@@ -149,8 +149,8 @@ export class FeedParserAdapter implements IFeedParserAdapter {
 
     const feed: ParsedFeed = {
       title: (data.title as string) ?? undefined,
-      siteUrl: resolveFeedUrl(data.home_page_url, sourceUrl),
-      feedUrl: resolveFeedUrl(data.feed_url, sourceUrl) ?? sourceUrl,
+      siteUrl: (data.home_page_url as string) ?? undefined,
+      feedUrl: (data.feed_url as string) ?? sourceUrl,
       entries: [],
     };
 
@@ -159,7 +159,7 @@ export class FeedParserAdapter implements IFeedParserAdapter {
       feed.entries = items.map((item) => {
         const entry: ParsedEntry = {
           guid: (item.id as string) ?? '',
-          url: resolveFeedUrl(item.url, sourceUrl),
+          url: (item.url as string) ?? undefined,
           title: (item.title as string) ?? undefined,
           publishedAt: (item.date_published as string) ?? undefined,
           summary: (item.summary as string) ?? undefined,

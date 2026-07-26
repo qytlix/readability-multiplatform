@@ -29,7 +29,6 @@ const CONTEXT_FIELD_TYPES = {
   feedId: 'number',
   entryId: 'number',
   taskRunId: 'number',
-  attemptId: 'string',
   providerId: 'number',
   providerRequestId: 'number',
   count: 'number',
@@ -43,7 +42,6 @@ const CONTEXT_FIELD_TYPES = {
   providerRequestSuccessCount: 'number',
   providerRequestFailureCount: 'number',
   missingSegmentCount: 'number',
-  unresolvedMissingSegmentCount: 'number',
   inputTokens: 'number',
   outputTokens: 'number',
   totalTokens: 'number',
@@ -83,7 +81,6 @@ export interface StructuredLogContext {
   feedId?: number;
   entryId?: number;
   taskRunId?: number;
-  attemptId?: string;
   providerId?: number;
   providerRequestId?: number;
   count?: number;
@@ -97,7 +94,6 @@ export interface StructuredLogContext {
   providerRequestSuccessCount?: number;
   providerRequestFailureCount?: number;
   missingSegmentCount?: number;
-  unresolvedMissingSegmentCount?: number;
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
@@ -582,9 +578,6 @@ function assignContextField(
     case 'taskRunId':
       if (typeof value === 'number') context.taskRunId = value;
       return;
-    case 'attemptId':
-      if (typeof value === 'string') context.attemptId = value;
-      return;
     case 'providerId':
       if (typeof value === 'number') context.providerId = value;
       return;
@@ -623,9 +616,6 @@ function assignContextField(
       return;
     case 'missingSegmentCount':
       if (typeof value === 'number') context.missingSegmentCount = value;
-      return;
-    case 'unresolvedMissingSegmentCount':
-      if (typeof value === 'number') context.unresolvedMissingSegmentCount = value;
       return;
     case 'inputTokens':
       if (typeof value === 'number') context.inputTokens = value;

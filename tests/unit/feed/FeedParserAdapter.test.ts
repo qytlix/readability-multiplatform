@@ -238,27 +238,6 @@ describe('FeedParserAdapter', () => {
       );
     });
 
-    it('should resolve relative JSON Feed links against the feed URL', async () => {
-      const result = await adapter.parse(JSON.stringify({
-        version: 'https://jsonfeed.org/version/1.1',
-        title: 'Paradigm X',
-        home_page_url: '/',
-        feed_url: '/index.json',
-        items: [{
-          id: '/posts/good-code/',
-          url: '/posts/good-code/',
-          title: '什么是好的代码',
-        }],
-      }), 'https://soulhacker.me/feeds/main.json');
-
-      expect(result.siteUrl).toBe('https://soulhacker.me/');
-      expect(result.feedUrl).toBe('https://soulhacker.me/index.json');
-      expect(result.entries[0]).toMatchObject({
-        guid: '/posts/good-code/',
-        url: 'https://soulhacker.me/posts/good-code/',
-      });
-    });
-
     it('should throw on JSON without valid feed version', async () => {
       await expect(
         adapter.parse(

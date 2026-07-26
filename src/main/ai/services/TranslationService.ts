@@ -65,7 +65,9 @@ import {
   elapsedTranslationMilliseconds,
   logTranslationRecoveryCompleted,
   logTranslationMissingSegmentsDetected,
+  logTranslationProviderRequestCompleted,
   logTranslationProviderRequestFailed,
+  logTranslationProviderRequestStarted,
   logTranslationRunCompleted,
   logTranslationRunFailed,
   logTranslationRunInterrupted,
@@ -112,10 +114,7 @@ interface TranslationRunDiagnostics {
   compensationRequestCount: number;
   providerRequestSuccessCount: number;
   providerRequestFailureCount: number;
-  /** Segments omitted by a Provider response, for which compensation was initiated. */
   missingSegmentCount: number;
-  /** Omitted segments that did not reach a successful compensated translation. */
-  unresolvedMissingSegmentCount: number;
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
@@ -309,7 +308,7 @@ export class TranslationService {
         });
     const abortController = new AbortController();
     const startedAt = performance.now();
-    const activeRun: ActiveTranslationRun = {
+    this.activeRun = {
       result,
       attemptId: createUsageAttemptId(),
       abortController,
@@ -320,7 +319,6 @@ export class TranslationService {
       batches: [],
       providerRequests: new Set(),
     };
-    this.activeRun = activeRun;
     this.emit({
       type: 'started',
       runId: result.id,
@@ -328,10 +326,7 @@ export class TranslationService {
       sourceLanguage: result.sourceLanguage,
       targetLanguage: result.targetLanguage,
     });
-    logTranslationRunStarted(this.logger, {
-      taskRunId: result.id,
-      attemptId: activeRun.attemptId,
-    });
+    logTranslationRunStarted(this.logger, { taskRunId: result.id });
     this.executeTimer = setTimeout(() => {
       this.executeTimer = undefined;
       void this.executeRun(result, {
@@ -683,7 +678,6 @@ export class TranslationService {
         })),
       });
     const settledIds = new Set<string>();
-    const successfullyTranslatedIds = new Set<string>();
     const segmentFailures: SegmentTranslationFailure[] = [];
     let latestBatchProviderRequestId: number | undefined;
 
@@ -724,7 +718,6 @@ export class TranslationService {
           parsed.terminologyMatches,
         );
         settledIds.add(output.sourceSegmentId);
-        successfullyTranslatedIds.add(output.sourceSegmentId);
         this.emit({
           type: 'segment-completed',
           runId: result.id,
@@ -795,46 +788,38 @@ export class TranslationService {
       active.diagnostics.missingSegmentCount += missingInputs.length;
       logTranslationMissingSegmentsDetected(this.logger, {
         taskRunId: result.id,
-        attemptId: active.attemptId,
         providerRequestId,
         missingSegmentCount: missingInputs.length,
       });
-      const missingSegmentIds = new Set(missingInputs.map(({ segment }) => segment.sourceSegmentId));
-      try {
-        for (const missingInput of compensationInputs) {
-          try {
-            await streamPrompt(buildPrompt([missingInput]), 'compensation', 1);
-          } catch (error) {
-            const translationError = toTranslationIpcError(error);
-            if (!isSegmentOutputError(translationError.code)) throw error;
-            const failedSegment = this.translationStore.markSegmentFailed(
-              result.id,
-              missingInput.segment.sourceSegmentId,
-              translationError,
-            );
-            this.emit({
-              type: 'segment-failed',
-              runId: result.id,
-              entryId: result.entryId,
-              sourceLanguage: result.sourceLanguage,
-              targetLanguage: result.targetLanguage,
-              sourceSegmentId: missingInput.segment.sourceSegmentId,
-              segment: failedSegment,
-            });
-            settledIds.add(missingInput.segment.sourceSegmentId);
-            segmentFailures.push({
-              sourceSegmentId: missingInput.segment.sourceSegmentId,
-              error: translationError,
-            });
-          }
+      for (const missingInput of compensationInputs) {
+        try {
+          await streamPrompt(buildPrompt([missingInput]), 'compensation', 1);
+        } catch (error) {
+          const translationError = toTranslationIpcError(error);
+          if (!isSegmentOutputError(translationError.code)) throw error;
+          const failedSegment = this.translationStore.markSegmentFailed(
+            result.id,
+            missingInput.segment.sourceSegmentId,
+            translationError,
+          );
+          this.emit({
+            type: 'segment-failed',
+            runId: result.id,
+            entryId: result.entryId,
+            sourceLanguage: result.sourceLanguage,
+            targetLanguage: result.targetLanguage,
+            sourceSegmentId: missingInput.segment.sourceSegmentId,
+            segment: failedSegment,
+          });
+          settledIds.add(missingInput.segment.sourceSegmentId);
+          segmentFailures.push({
+            sourceSegmentId: missingInput.segment.sourceSegmentId,
+            error: translationError,
+          });
         }
-        if (compensationInputs.length !== missingInputs.length) {
-          throw invalidBatchOutput('The provider omitted too many Translation segments.');
-        }
-      } finally {
-        active.diagnostics.unresolvedMissingSegmentCount += [...missingSegmentIds].filter(
-          (sourceSegmentId) => !successfullyTranslatedIds.has(sourceSegmentId),
-        ).length;
+      }
+      if (compensationInputs.length !== missingInputs.length) {
+        throw invalidBatchOutput('The provider omitted too many Translation segments.');
       }
     };
 
@@ -956,6 +941,12 @@ export class TranslationService {
       }),
     };
     activeRun.providerRequests.add(request);
+    logTranslationProviderRequestStarted(this.logger, {
+      taskRunId: activeRun.result.id,
+      providerRequestId: request.providerRequestId,
+      requestKind: request.requestKind,
+      segmentCount: request.segmentCount,
+    });
     return request;
   }
 
@@ -969,6 +960,15 @@ export class TranslationService {
     activeRun.providerRequests.delete(request);
     this.recordProviderUsage(activeRun.diagnostics, reportedUsage);
     activeRun.diagnostics.providerRequestSuccessCount += 1;
+    logTranslationProviderRequestCompleted(this.logger, {
+      taskRunId: activeRun.result.id,
+      providerRequestId: request.providerRequestId,
+      requestKind: request.requestKind,
+      segmentCount: request.segmentCount,
+      durationMs: elapsedTranslationMilliseconds(request.startedAt),
+      success: true,
+      ...reportedUsage,
+    });
   }
 
   private failProviderRequest(
@@ -989,10 +989,8 @@ export class TranslationService {
     activeRun.providerRequests.delete(request);
     this.recordProviderUsage(activeRun.diagnostics, reportedUsage);
     activeRun.diagnostics.providerRequestFailureCount += 1;
-    if (requestStatus === 'interrupted') return;
     logTranslationProviderRequestFailed(this.logger, {
       taskRunId: activeRun.result.id,
-      attemptId: activeRun.attemptId,
       providerRequestId: request.providerRequestId,
       requestKind: request.requestKind,
       segmentCount: request.segmentCount,
@@ -1028,7 +1026,6 @@ export class TranslationService {
       providerRequestSuccessCount: diagnostics.providerRequestSuccessCount,
       providerRequestFailureCount: diagnostics.providerRequestFailureCount,
       missingSegmentCount: diagnostics.missingSegmentCount,
-      unresolvedMissingSegmentCount: diagnostics.unresolvedMissingSegmentCount,
       ...(diagnostics.inputTokens === undefined ? {} : { inputTokens: diagnostics.inputTokens }),
       ...(diagnostics.outputTokens === undefined ? {} : { outputTokens: diagnostics.outputTokens }),
       ...(diagnostics.totalTokens === undefined ? {} : { totalTokens: diagnostics.totalTokens }),
@@ -1040,7 +1037,6 @@ export class TranslationService {
     activeRun.terminalLogRecorded = true;
     logTranslationRunCompleted(this.logger, {
       taskRunId: activeRun.result.id,
-      attemptId: activeRun.attemptId,
       durationMs: elapsedTranslationMilliseconds(activeRun.startedAt),
       success: true,
       ...this.getRunDiagnosticSummary(activeRun),
@@ -1056,7 +1052,6 @@ export class TranslationService {
     activeRun.terminalLogRecorded = true;
     logTranslationRunFailed(this.logger, {
       taskRunId: activeRun.result.id,
-      attemptId: activeRun.attemptId,
       durationMs: elapsedTranslationMilliseconds(activeRun.startedAt),
       success: false,
       stage,
@@ -1070,7 +1065,6 @@ export class TranslationService {
     activeRun.terminalLogRecorded = true;
     logTranslationRunInterrupted(this.logger, {
       taskRunId: activeRun.result.id,
-      attemptId: activeRun.attemptId,
       durationMs: elapsedTranslationMilliseconds(activeRun.startedAt),
       success: false,
       stage: 'interrupt',
@@ -1160,7 +1154,6 @@ function createTranslationRunDiagnostics(): TranslationRunDiagnostics {
     providerRequestSuccessCount: 0,
     providerRequestFailureCount: 0,
     missingSegmentCount: 0,
-    unresolvedMissingSegmentCount: 0,
   };
 }
 

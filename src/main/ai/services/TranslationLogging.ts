@@ -7,6 +7,8 @@ export const TRANSLATION_LOG_EVENTS = {
   runFailed: 'translation.run.failed',
   runInterrupted: 'translation.run.interrupted',
   recoveryCompleted: 'translation.recovery.completed',
+  providerRequestStarted: 'translation.provider.request.started',
+  providerRequestCompleted: 'translation.provider.request.completed',
   providerRequestFailed: 'translation.provider.request.failed',
   missingSegmentsDetected: 'translation.provider.omission.detected',
 } as const;
@@ -42,8 +44,6 @@ export type TranslationLogErrorCode = (
 
 export interface TranslationRunStartedLogContext {
   taskRunId: number;
-  /** Opaque identifier shared by every Provider request in this execution. */
-  attemptId: string;
 }
 
 /** Aggregate counts for a Translation run; no segment identity or content is included. */
@@ -53,22 +53,17 @@ export interface TranslationRunDiagnosticSummary extends ProviderTokenUsage {
   compensationRequestCount: number;
   providerRequestSuccessCount: number;
   providerRequestFailureCount: number;
-  /** Provider omissions detected and sent through compensation. */
   missingSegmentCount: number;
-  /** Provider omissions that did not complete successfully after compensation. */
-  unresolvedMissingSegmentCount: number;
 }
 
 export interface TranslationRunCompletedLogContext extends TranslationRunDiagnosticSummary {
   taskRunId: number;
-  attemptId: string;
   durationMs: number;
   success: true;
 }
 
 export interface TranslationRunFailedLogContext extends TranslationRunDiagnosticSummary {
   taskRunId: number;
-  attemptId: string;
   durationMs: number;
   success: false;
   stage: TranslationRunFailureStage;
@@ -77,7 +72,6 @@ export interface TranslationRunFailedLogContext extends TranslationRunDiagnostic
 
 export interface TranslationRunInterruptedLogContext {
   taskRunId: number;
-  attemptId: string;
   durationMs: number;
   success: false;
   stage: 'interrupt';
@@ -89,9 +83,24 @@ export interface TranslationRecoveryCompletedLogContext {
   count: number;
 }
 
+export interface TranslationProviderRequestStartedLogContext {
+  taskRunId: number;
+  providerRequestId: number;
+  requestKind: TranslationProviderRequestKind;
+  segmentCount: number;
+}
+
+export interface TranslationProviderRequestCompletedLogContext extends ProviderTokenUsage {
+  taskRunId: number;
+  providerRequestId: number;
+  requestKind: TranslationProviderRequestKind;
+  segmentCount: number;
+  durationMs: number;
+  success: true;
+}
+
 export interface TranslationProviderRequestFailedLogContext extends ProviderTokenUsage {
   taskRunId: number;
-  attemptId: string;
   providerRequestId: number;
   requestKind: TranslationProviderRequestKind;
   segmentCount: number;
@@ -102,7 +111,6 @@ export interface TranslationProviderRequestFailedLogContext extends ProviderToke
 
 export interface TranslationMissingSegmentsLogContext {
   taskRunId: number;
-  attemptId: string;
   providerRequestId: number;
   missingSegmentCount: number;
 }
@@ -126,14 +134,19 @@ export interface TranslationOperationLogger {
     event:
       | typeof TRANSLATION_LOG_EVENTS.runStarted
       | typeof TRANSLATION_LOG_EVENTS.runCompleted
-      | typeof TRANSLATION_LOG_EVENTS.recoveryCompleted,
+      | typeof TRANSLATION_LOG_EVENTS.recoveryCompleted
+      | typeof TRANSLATION_LOG_EVENTS.providerRequestStarted
+      | typeof TRANSLATION_LOG_EVENTS.providerRequestCompleted,
     component:
       | typeof TRANSLATION_LOG_COMPONENTS.run
-      | typeof TRANSLATION_LOG_COMPONENTS.recovery,
+      | typeof TRANSLATION_LOG_COMPONENTS.recovery
+      | typeof TRANSLATION_LOG_COMPONENTS.providerRequest,
     context:
       | TranslationRunStartedLogContext
       | TranslationRunCompletedLogContext
-      | TranslationRecoveryCompletedLogContext,
+      | TranslationRecoveryCompletedLogContext
+      | TranslationProviderRequestStartedLogContext
+      | TranslationProviderRequestCompletedLogContext,
   ): void;
   warn(
     event:
@@ -163,12 +176,11 @@ export function logTranslationRunStarted(
   logger: TranslationOperationLogger | undefined,
   context: TranslationRunStartedLogContext,
 ): void {
-  if (!isSafeTaskRunId(context.taskRunId) || !isSafeAttemptId(context.attemptId)) return;
+  if (!isSafeTaskRunId(context.taskRunId)) return;
 
   try {
     logger?.info(TRANSLATION_LOG_EVENTS.runStarted, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
-      attemptId: context.attemptId,
     });
   } catch {
     // Logging is observational and must not change Translation task behavior.
@@ -181,7 +193,6 @@ export function logTranslationRunCompleted(
 ): void {
   if (
     !isSafeTaskRunId(context.taskRunId)
-    || !isSafeAttemptId(context.attemptId)
     || !isSafeDuration(context.durationMs)
     || context.success !== true
     || !isValidRunSummary(context)
@@ -192,7 +203,6 @@ export function logTranslationRunCompleted(
   try {
     logger?.info(TRANSLATION_LOG_EVENTS.runCompleted, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
-      attemptId: context.attemptId,
       durationMs: context.durationMs,
       success: true,
       ...toRunSummaryContext(context),
@@ -208,7 +218,6 @@ export function logTranslationRunFailed(
 ): void {
   if (
     !isSafeTaskRunId(context.taskRunId)
-    || !isSafeAttemptId(context.attemptId)
     || !isSafeDuration(context.durationMs)
     || !isAllowedRunFailure(context.stage, context.errorCode)
     || !isValidRunSummary(context)
@@ -219,7 +228,6 @@ export function logTranslationRunFailed(
   try {
     logger?.error(TRANSLATION_LOG_EVENTS.runFailed, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
-      attemptId: context.attemptId,
       durationMs: context.durationMs,
       success: false,
       stage: context.stage,
@@ -237,7 +245,6 @@ export function logTranslationRunInterrupted(
 ): void {
   if (
     !isSafeTaskRunId(context.taskRunId)
-    || !isSafeAttemptId(context.attemptId)
     || !isSafeDuration(context.durationMs)
     || context.stage !== 'interrupt'
     || context.errorCode !== TRANSLATION_LOG_ERROR_CODES.interrupted
@@ -248,7 +255,6 @@ export function logTranslationRunInterrupted(
   try {
     logger?.warn(TRANSLATION_LOG_EVENTS.runInterrupted, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
-      attemptId: context.attemptId,
       durationMs: context.durationMs,
       success: false,
       stage: 'interrupt',
@@ -272,6 +278,47 @@ export function logTranslationRecoveryCompleted(
     });
   } catch {
     // Logging is observational and must not change Translation recovery behavior.
+  }
+}
+
+export function logTranslationProviderRequestStarted(
+  logger: TranslationOperationLogger | undefined,
+  context: TranslationProviderRequestStartedLogContext,
+): void {
+  if (!isValidProviderRequest(context)) return;
+
+  try {
+    logger?.info(
+      TRANSLATION_LOG_EVENTS.providerRequestStarted,
+      TRANSLATION_LOG_COMPONENTS.providerRequest,
+      { ...context },
+    );
+  } catch {
+    // Logging is observational and must not change Translation task behavior.
+  }
+}
+
+export function logTranslationProviderRequestCompleted(
+  logger: TranslationOperationLogger | undefined,
+  context: TranslationProviderRequestCompletedLogContext,
+): void {
+  if (
+    !isValidProviderRequest(context)
+    || !isSafeDuration(context.durationMs)
+    || context.success !== true
+    || !isValidUsage(context)
+  ) {
+    return;
+  }
+
+  try {
+    logger?.info(
+      TRANSLATION_LOG_EVENTS.providerRequestCompleted,
+      TRANSLATION_LOG_COMPONENTS.providerRequest,
+      { ...context },
+    );
+  } catch {
+    // Logging is observational and must not change Translation task behavior.
   }
 }
 
@@ -306,7 +353,6 @@ export function logTranslationMissingSegmentsDetected(
 ): void {
   if (
     !isSafeTaskRunId(context.taskRunId)
-    || !isSafeAttemptId(context.attemptId)
     || !isSafeProviderRequestId(context.providerRequestId)
     || !isSafePositiveCount(context.missingSegmentCount)
   ) {
@@ -334,7 +380,6 @@ function toRunSummaryContext(
     providerRequestSuccessCount: context.providerRequestSuccessCount,
     providerRequestFailureCount: context.providerRequestFailureCount,
     missingSegmentCount: context.missingSegmentCount,
-    unresolvedMissingSegmentCount: context.unresolvedMissingSegmentCount,
     ...(context.inputTokens === undefined ? {} : { inputTokens: context.inputTokens }),
     ...(context.outputTokens === undefined ? {} : { outputTokens: context.outputTokens }),
     ...(context.totalTokens === undefined ? {} : { totalTokens: context.totalTokens }),
@@ -361,19 +406,16 @@ function isValidRunSummary(context: TranslationRunDiagnosticSummary): boolean {
     && isSafeCount(context.providerRequestSuccessCount)
     && isSafeCount(context.providerRequestFailureCount)
     && isSafeCount(context.missingSegmentCount)
-    && isSafeCount(context.unresolvedMissingSegmentCount)
     && isValidUsage(context);
 }
 
 function isValidProviderRequest(context: {
   taskRunId: number;
-  attemptId: string;
   providerRequestId: number;
   requestKind: TranslationProviderRequestKind;
   segmentCount: number;
 }): boolean {
   return isSafeTaskRunId(context.taskRunId)
-    && isSafeAttemptId(context.attemptId)
     && isSafeProviderRequestId(context.providerRequestId)
     && TRANSLATION_PROVIDER_REQUEST_KINDS.includes(context.requestKind)
     && isSafePositiveCount(context.segmentCount);
@@ -391,12 +433,6 @@ function isTranslationLogErrorCode(value: unknown): value is TranslationLogError
 
 function isSafeTaskRunId(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0;
-}
-
-function isSafeAttemptId(value: string): boolean {
-  return value.length > 0
-    && value.length <= 96
-    && /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(value);
 }
 
 function isSafeProviderRequestId(value: number): boolean {

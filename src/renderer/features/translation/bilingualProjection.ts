@@ -11,6 +11,7 @@ const TRANSLATABLE_BLOCK_SELECTOR = [
   'li',
   'blockquote',
   'cite',
+  'pre',
   'figcaption',
   'caption',
 ].join(', ');
@@ -23,8 +24,9 @@ interface ProjectionState {
  * Projects translations onto a sanitized Reader HTML tree.
  *
  * The Reader tree remains the layout source of truth so non-translatable
- * content such as figures, standalone images, tables, and code blocks stays
- * in its original position. Only translated text blocks are inserted.
+ * content such as figures, standalone images, tables, and technical code
+ * blocks stays in its original position. Only translated text blocks are
+ * inserted.
  */
 export function projectBilingualBody(
   root: HTMLElement,
@@ -189,6 +191,7 @@ function toSegmentType(element: HTMLElement): TranslationSegment['sourceType'] |
   }
   if (normalizedTag === 'p') return 'paragraph';
   if (normalizedTag === 'li') return 'list';
+  if (normalizedTag === 'pre') return 'preformatted';
   if (normalizedTag === 'figcaption' || normalizedTag === 'caption') return 'caption';
   return undefined;
 }

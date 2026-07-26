@@ -139,6 +139,29 @@ describe('projectBilingualBody', () => {
     expect(quote?.children[3]?.textContent).toBe('Translated author');
   });
 
+  it('places a translated prose pre block in a matching framed block below the source', () => {
+    const dom = new JSDOM('<pre>Original prose.\n\nSecond paragraph.</pre>');
+    const root = dom.window.document.createElement('div');
+    root.innerHTML = dom.window.document.body.innerHTML;
+
+    projectBilingualBody(root, [segment(
+      'prose-pre',
+      0,
+      'preformatted',
+      '<pre>Original prose.\n\nSecond paragraph.</pre>',
+      'Original prose. Second paragraph.',
+      '<pre>译文正文。\n\n第二段。</pre>',
+    )], {
+      showPendingIndicators: false,
+    });
+
+    const source = root.querySelector('pre[data-segment-id="prose-pre"]');
+    const target = source?.nextElementSibling;
+    expect(source?.textContent).toContain('Original prose.');
+    expect(target?.classList.contains('translation-segment-preformatted')).toBe(true);
+    expect(target?.querySelector('pre')?.textContent).toBe('译文正文。\n\n第二段。');
+  });
+
   it('keeps pending paragraphs in place and adds only an end spinner', () => {
     const dom = new JSDOM([
       '<img src="safe.png">',

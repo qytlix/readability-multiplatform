@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -85,6 +86,8 @@ export const FeedList = ({
   const syncInFlightRef = useRef(false);
   const singleSyncInFlightRef = useRef<Set<number>>(new Set());
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sidebarContentRef = useRef<HTMLDivElement>(null);
+  const selectionIndicatorRef = useRef<HTMLSpanElement>(null);
   const unreadCountsByFeed = useMemo(
     () => new Map(entryStats.feeds.map(({ feedId, unread }) => [feedId, unread])),
     [entryStats.feeds],
@@ -212,18 +215,79 @@ export const FeedList = ({
     && selectedFilter === 'all'
     && !settingsActive
     && searchInput.trim().length === 0;
-  const activeRangeIndex = settingsActive
-    || selectedFeedId !== null
-    || searchInput.trim().length > 0
-    ? null
-    : selectedFilter === 'all'
-      ? 0
-      : selectedFilter === 'unread'
-        ? 1
-        : 2;
+
+  useLayoutEffect(() => {
+    const sidebar = sidebarContentRef.current;
+    const indicator = selectionIndicatorRef.current;
+    if (!sidebar || !indicator) return;
+
+    const activeItem = settingsActive || searchInput.trim().length > 0
+      ? null
+      : sidebar.querySelector<HTMLElement>('.sidebar-item.is-active');
+    const feedList = sidebar.querySelector<HTMLElement>('.sidebar-feed-list');
+
+    const updateIndicator = (): void => {
+      if (!activeItem) {
+        indicator.style.opacity = '0';
+        return;
+      }
+
+      const sidebarRect = sidebar.getBoundingClientRect();
+      const activeItemRect = activeItem.getBoundingClientRect();
+      const scrollingViewport = activeItem.closest<HTMLElement>('.sidebar-feed-list');
+
+      if (scrollingViewport) {
+        const viewportRect = scrollingViewport.getBoundingClientRect();
+        const hasMeasurableViewport = viewportRect.height > 0;
+        const isNotFullyVisible = activeItemRect.top < viewportRect.top
+          || activeItemRect.bottom > viewportRect.bottom;
+        if (hasMeasurableViewport && isNotFullyVisible) {
+          indicator.style.opacity = '0';
+          return;
+        }
+      }
+
+      const itemHeight = activeItemRect.height || activeItem.offsetHeight || 38;
+      const indicatorHeight = Math.min(30, itemHeight);
+      const verticalInset = (itemHeight - indicatorHeight) / 2;
+      const targetY = activeItemRect.top - sidebarRect.top + verticalInset;
+
+      indicator.style.height = `${indicatorHeight}px`;
+      indicator.style.setProperty('--sidebar-selection-y', `${targetY}px`);
+      indicator.style.opacity = '1';
+    };
+
+    updateIndicator();
+    feedList?.addEventListener('scroll', updateIndicator, { passive: true });
+    window.addEventListener('resize', updateIndicator);
+
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updateIndicator);
+    resizeObserver?.observe(sidebar);
+    if (activeItem) resizeObserver?.observe(activeItem);
+    if (feedList) resizeObserver?.observe(feedList);
+
+    return () => {
+      feedList?.removeEventListener('scroll', updateIndicator);
+      window.removeEventListener('resize', updateIndicator);
+      resizeObserver?.disconnect();
+    };
+  }, [
+    feeds,
+    searchInput,
+    selectedFeedId,
+    selectedFilter,
+    settingsActive,
+  ]);
 
   return (
-    <div className="sidebar-content">
+    <div ref={sidebarContentRef} className="sidebar-content">
+      <span
+        ref={selectionIndicatorRef}
+        className="sidebar-selection-indicator"
+        aria-hidden="true"
+      />
       <label className="sidebar-search">
         <SearchIcon />
         <input
@@ -247,16 +311,7 @@ export const FeedList = ({
         )}
       </label>
 
-      <nav
-        className={[
-          'sidebar-navigation',
-          activeRangeIndex === null
-            ? 'is-indicator-hidden'
-            : `is-indicator-at-${activeRangeIndex}`,
-        ].join(' ')}
-        aria-label="文章范围"
-      >
-        <span className="sidebar-navigation-indicator" aria-hidden="true" />
+      <nav className="sidebar-navigation" aria-label="文章范围">
         <button
           type="button"
           className={`sidebar-item sidebar-all${allSelected ? ' is-active' : ''}`}
@@ -271,7 +326,13 @@ export const FeedList = ({
         </button>
         <button
           type="button"
-          className={`sidebar-item${selectedFilter === 'unread' && !settingsActive ? ' is-active' : ''}`}
+          className={`sidebar-item${
+            selectedFeedId === null
+            && selectedFilter === 'unread'
+            && !settingsActive
+              ? ' is-active'
+              : ''
+          }`}
           onClick={() => onSelectFilter('unread')}
         >
           <InboxIcon />
@@ -280,7 +341,13 @@ export const FeedList = ({
         </button>
         <button
           type="button"
-          className={`sidebar-item${selectedFilter === 'starred' && !settingsActive ? ' is-active' : ''}`}
+          className={`sidebar-item${
+            selectedFeedId === null
+            && selectedFilter === 'starred'
+            && !settingsActive
+              ? ' is-active'
+              : ''
+          }`}
           onClick={() => onSelectFilter('starred')}
         >
           <StarIcon />

@@ -142,6 +142,7 @@ describe('article selection toggle', () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -198,6 +199,75 @@ describe('article selection toggle', () => {
     expect(listEntries).toHaveBeenCalledTimes(listRequestCount);
   });
 
+  it('cycles list filters within the selected feed while sidebar filters stay global', async () => {
+    await act(async () => {
+      root.render(createElement(App));
+      await Promise.resolve();
+    });
+    await flushAsyncState();
+
+    const listFilterButton =
+      container.querySelector<HTMLButtonElement>('.story-list-filter');
+    expect(listFilterButton).not.toBeNull();
+
+    act(() => listFilterButton?.click());
+    await flushAsyncState();
+
+    expect(listEntries).toHaveBeenLastCalledWith({
+      isRead: false,
+      limit: 30,
+    });
+
+    const feedButton = container.querySelector<HTMLButtonElement>('.sidebar-feed');
+    expect(feedButton).not.toBeNull();
+    act(() => feedButton?.click());
+    await flushAsyncState();
+
+    act(() => listFilterButton?.click());
+    await flushAsyncState();
+
+    expect(listEntries).toHaveBeenLastCalledWith({
+      feedId: feed.id,
+      isRead: false,
+      limit: 30,
+    });
+    expect(feedButton?.classList.contains('is-active')).toBe(true);
+    const sidebarUnreadButton = [
+      ...container.querySelectorAll<HTMLButtonElement>(
+        '.sidebar-navigation .sidebar-item',
+      ),
+    ].find((button) => button.textContent?.includes('未读'));
+    expect(sidebarUnreadButton?.classList.contains('is-active')).toBe(false);
+
+    act(() => listFilterButton?.click());
+    await flushAsyncState();
+
+    expect(listEntries).toHaveBeenLastCalledWith({
+      feedId: feed.id,
+      isStarred: true,
+      limit: 30,
+    });
+    expect(feedButton?.classList.contains('is-active')).toBe(true);
+
+    act(() => listFilterButton?.click());
+    await flushAsyncState();
+
+    expect(listEntries).toHaveBeenLastCalledWith({
+      feedId: feed.id,
+      limit: 30,
+    });
+
+    act(() => sidebarUnreadButton?.click());
+    await flushAsyncState();
+
+    expect(listEntries).toHaveBeenLastCalledWith({
+      isRead: false,
+      limit: 30,
+    });
+    expect(feedButton?.classList.contains('is-active')).toBe(false);
+    expect(sidebarUnreadButton?.classList.contains('is-active')).toBe(true);
+  });
+
   it('offers a manual refresh that bypasses cached article content', async () => {
     getContent.mockResolvedValue({
       ok: true,
@@ -235,13 +305,12 @@ describe('article selection toggle', () => {
     expect(getContent).toHaveBeenCalledWith(entries[0].id);
     expect(fetchAndClean).not.toHaveBeenCalled();
 
-    const moreButton =
-      container.querySelector<HTMLButtonElement>('.article-more > button');
-    act(() => moreButton?.click());
-    const refreshButton = [...container.querySelectorAll<HTMLButtonElement>(
-      '.article-more-menu button',
-    )].find((button) => button.textContent?.includes('重新获取正文'));
-    expect(refreshButton).toBeDefined();
+    const refreshButton =
+      container.querySelector<HTMLButtonElement>('.article-refresh-button');
+    expect(refreshButton?.getAttribute('aria-label')).toBe('重新获取正文');
+    expect(refreshButton?.textContent?.trim()).toBe('');
+    expect(container.querySelector('[aria-label="更多文章操作"]')).toBeNull();
+    expect(container.textContent).not.toContain('阅读设置');
 
     act(() => refreshButton?.click());
     await flushAsyncState();
@@ -249,5 +318,47 @@ describe('article selection toggle', () => {
     expect(fetchAndClean).toHaveBeenCalledWith(entries[0].id);
     expect(getContent).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain('正文已更新。');
+  });
+
+  it('turns the standalone copy-link button into a temporary success check', async () => {
+    vi.useFakeTimers();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    await act(async () => {
+      root.render(createElement(App));
+      await Promise.resolve();
+    });
+    await flushAsyncState();
+
+    act(() => container.querySelector<HTMLButtonElement>('.sidebar-feed')?.click());
+    await flushAsyncState();
+    act(() => findStoryCard(container, entries[0].title ?? '')?.click());
+    await flushAsyncState();
+
+    const copyButton =
+      container.querySelector<HTMLButtonElement>('.article-copy-button');
+    expect(copyButton?.getAttribute('aria-label')).toBe('复制原文链接');
+    expect(copyButton?.textContent?.trim()).toBe('');
+
+    await act(async () => {
+      copyButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(writeText).toHaveBeenCalledWith(entries[0].url);
+    expect(copyButton?.classList.contains('is-copied')).toBe(true);
+    expect(copyButton?.getAttribute('aria-label')).toBe('原文链接已复制');
+    expect(copyButton?.disabled).toBe(true);
+    expect(copyButton?.querySelector('.article-copy-button-success')).not.toBeNull();
+
+    act(() => vi.advanceTimersByTime(2800));
+
+    expect(copyButton?.classList.contains('is-copied')).toBe(false);
+    expect(copyButton?.getAttribute('aria-label')).toBe('复制原文链接');
+    expect(copyButton?.disabled).toBe(false);
   });
 });

@@ -15,6 +15,7 @@ export type ContentSegmentType =
   | 'paragraph'
   | 'list'
   | 'blockquote'
+  | 'preformatted'
   | 'caption';
 
 /**
