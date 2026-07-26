@@ -1541,6 +1541,60 @@ body.workspace-is-resizing * {
   user-select: none;
 }
 
+.reading-progress-jump-button {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 7px;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  background: rgba(31, 37, 32, 0.56);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
+  color: #fff;
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+
+.reading-progress-jump-button:hover {
+  border-color: rgba(255, 255, 255, 0.52);
+  background: rgba(31, 37, 32, 0.72);
+  transform: translateY(-1px);
+}
+
+.reading-progress-jump-button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.reading-progress-jump-button svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.25;
+  opacity: 1;
+}
+
+.reading-progress-jump-button.is-down svg {
+  transform: rotate(90deg);
+}
+
+.reading-progress-jump-button.is-up svg {
+  transform: rotate(-90deg);
+}
+
+.reading-progress-book-status {
+  display: grid;
+  justify-items: center;
+}
+
 .reading-progress-book-visual {
   position: relative;
   width: 100px;
