@@ -233,6 +233,7 @@ export const EntryDetail = ({
       setError('');
       setLinkError('');
       abortRef.current = new AbortController();
+      let showingPreview = false;
 
       try {
         // First check if content already exists
@@ -255,7 +256,8 @@ export const EntryDetail = ({
           if (existingContent && hasRenderableCachedContent) {
             setContent(existingContent);
             setStatus('success');
-            return;
+            if (!existingContent.isPreview) return;
+            showingPreview = true;
           }
         }
 
@@ -263,6 +265,7 @@ export const EntryDetail = ({
         const fetchResult = await window.shaleAPI.content.fetchAndClean(entry.id);
         if (!fetchResult.ok) {
           const message = fetchResult.error?.message ?? 'Failed to fetch content';
+          if (showingPreview) return;
           setStatus('error');
           setError(message);
           if (forceRefresh) {
@@ -273,6 +276,7 @@ export const EntryDetail = ({
         if (fetchResult.data.pipelineStatus !== 'success') {
           const message =
             fetchResult.data.pipelineError ?? 'Failed to extract article content';
+          if (showingPreview) return;
           setStatus('error');
           setError(message);
           if (forceRefresh) {
@@ -288,6 +292,7 @@ export const EntryDetail = ({
       } catch (err: unknown) {
         // Ignore abort errors
         if (err instanceof Error && err.name === 'AbortError') return;
+        if (showingPreview) return;
         const message =
           err instanceof Error ? err.message : 'Failed to load content';
         setStatus('error');
@@ -351,6 +356,7 @@ export const EntryDetail = ({
       || readerDisplayState !== 'article'
       || status !== 'success'
       || !content
+      || content.isPreview
       || restoredEntryIdRef.current === entry.id
     ) {
       return;
@@ -671,6 +677,7 @@ export const EntryDetail = ({
       isRestoringProgressRef.current
       || status !== 'success'
       || !content
+      || content.isPreview
     ) {
       return;
     }
@@ -755,16 +762,19 @@ export const EntryDetail = ({
   };
 
   const handleReaderScrollIntent = (): void => {
-    if (status !== 'success' || !content) return;
+    if (status !== 'success' || !content || content.isPreview) return;
     hasUserScrolledSinceRestoreRef.current = true;
     isRestoringProgressRef.current = false;
     programmaticScrollRef.current = null;
   };
 
+  const isPreview = content?.isPreview === true;
   const isSummaryReady = status === 'success'
+    && !isPreview
     && !hasArticleVideo
     && Boolean(content?.markdown.trim());
   const isTranslationReady = status === 'success'
+    && !isPreview
     && !hasArticleVideo
     && Boolean(content?.cleanedHtml.trim());
   const articleDateLocale = getArticleDateLocale(
@@ -869,11 +879,11 @@ export const EntryDetail = ({
 
   const isExportDisabled = selectionMode && selectedIds && selectedIds.size > 0
     ? false
-    : status !== 'success' || !content?.markdown.trim();
+    : status !== 'success' || isPreview || !content?.markdown.trim();
 
   const exportTooltip = selectionMode && selectedIds && selectedIds.size > 0
     ? `导出所选 ${selectedIds.size} 篇文章`
-    : status !== 'success' || !content?.markdown.trim()
+    : status !== 'success' || isPreview || !content?.markdown.trim()
       ? '文章尚未完成内容清洗'
       : '导出为 Markdown';
 
@@ -989,6 +999,11 @@ export const EntryDetail = ({
 
           {!hasArticleVideo && status === 'success' && content && (
             <div className="entry-detail-content">
+              {isPreview && (
+                <div className="entry-detail-loading" role="status">
+                  <p>正在显示订阅摘要，并在后台获取完整原文…</p>
+                </div>
+              )}
               {showRaw ? (
                 <pre className="entry-detail-markdown">{content.markdown}</pre>
               ) : (

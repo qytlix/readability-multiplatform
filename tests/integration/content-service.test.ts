@@ -65,6 +65,30 @@ describe('ContentService', () => {
       expect(result).toBeUndefined();
     });
 
+    it('returns a sanitized transient Feed preview before remote fetch', async () => {
+      entryStore.createOrUpdate({
+        feedId: 1,
+        guid: 'guid-1',
+        feedContentHtml: `
+          <p>Feed preview is immediately readable.</p>
+          <script>window.evil = true</script>
+        `,
+      });
+
+      const result = await contentService.getContent(entryId);
+
+      expect(result).toMatchObject({
+        entryId,
+        isPreview: true,
+        pipelineStatus: 'success',
+      });
+      expect(result?.cleanedHtml).toContain(
+        'Feed preview is immediately readable.',
+      );
+      expect(result?.cleanedHtml).not.toContain('<script');
+      expect(contentStore.findByEntry(entryId)).toBeUndefined();
+    });
+
     it('should return existing content after fetchAndClean', async () => {
       await contentService.fetchAndClean(entryId);
       const result = await contentService.getContent(entryId);

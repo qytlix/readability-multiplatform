@@ -6,6 +6,7 @@ import type {
 } from '../../../shared/contracts/content.types';
 import type { Entry } from '../../../shared/contracts/feed.types';
 import { ContentFetcher } from '../fetcher/ContentFetcher';
+import type { ContentFetchDiagnostics } from '../fetcher/ContentFetcher';
 import {
   CONTENT_CLEANER_VERSION,
   ContentCleaner,
@@ -19,11 +20,19 @@ import {
   CONTENT_PIPELINE_ERROR_CODES,
   elapsedContentMilliseconds,
   logContentPipelineFailure,
+  logContentPipelineSuccess,
   type ContentOperationLogger,
   type ContentPipelineErrorCode,
   type ContentPipelineStage,
 } from './ContentLogging';
 import { ContentSegmenter } from './ContentSegmenter';
+
+interface ContentPipelineTimings {
+  fetchDurationMs: number;
+  cleanDurationMs: number;
+  convertDurationMs: number;
+  persistDurationMs: number;
+}
 
 export class ContentService {
   private contentStore: ContentStore;
@@ -55,7 +64,7 @@ export class ContentService {
    */
   async getContent(entryId: number): Promise<CleanedContent | undefined> {
     let content = this.contentStore.findByEntry(entryId);
-    if (!content) return undefined;
+    if (!content) return this.buildFeedPreview(entryId);
     if (
       content.pipelineStatus === 'failed'
       && this.hasRenderableCachedContent(content)
@@ -129,6 +138,45 @@ export class ContentService {
     return content;
   }
 
+  private buildFeedPreview(entryId: number): CleanedContent | undefined {
+    const entry = this.entryStore.findById(entryId);
+    if (!entry?.url) return undefined;
+    const fallbackHtml = this.entryStore.findFeedContentHtml(entryId)
+      ?? this.buildSummaryFallback(entry.summary);
+    if (!fallbackHtml) return undefined;
+
+    try {
+      const cleanResult = this.cleaner.cleanFeedContent(
+        fallbackHtml,
+        entry.url,
+        entry.title ?? 'Untitled article',
+        entry.author,
+      );
+      const markdown = this.markdownConverter.convert(cleanResult.content);
+      const segmentedContent = this.segmenter.segment(cleanResult.content, {
+        title: entry.title ?? cleanResult.title,
+        byline: entry.author ?? cleanResult.byline,
+      });
+      return {
+        entryId,
+        sourceUrl: entry.url,
+        isPreview: true,
+        readerTitle: entry.title ?? cleanResult.title,
+        readerByline: entry.author ?? cleanResult.byline,
+        cleanedHtml: cleanResult.content,
+        markdown,
+        readabilityTitle: cleanResult.title,
+        readabilityByline: cleanResult.byline,
+        pipelineStatus: 'success',
+        segmenterVersion: segmentedContent.segmenterVersion,
+        sourceContentHash: segmentedContent.sourceContentHash,
+        segments: segmentedContent.segments,
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
   private rebuildStoredHtml(
     source: NonNullable<ReturnType<ContentStore['findMarkdownSource']>>,
   ): string {
@@ -154,9 +202,16 @@ export class ContentService {
     signal?: AbortSignal,
   ): Promise<CleanedContent> {
     const startedAt = performance.now();
+    const timings: ContentPipelineTimings = {
+      fetchDurationMs: 0,
+      cleanDurationMs: 0,
+      convertDurationMs: 0,
+      persistDurationMs: 0,
+    };
     let stage: ContentPipelineStage = 'lookup';
     let entry: ReturnType<EntryStore['findById']>;
     let previousContent: CleanedContent | undefined;
+    let fetchDiagnostics: ContentFetchDiagnostics | undefined;
 
     try {
       entry = this.entryStore.findById(entryId);
@@ -198,30 +253,70 @@ export class ContentService {
     try {
       // Phase 1: Fetch
       stage = 'persist';
+      const fetchingStatusStartedAt = performance.now();
       this.contentStore.updatePipelineStatus(entryId, 'fetching');
+      timings.persistDurationMs += elapsedContentMilliseconds(
+        fetchingStatusStartedAt,
+      );
       stage = 'fetch';
       let cleanResult: CleanResult | undefined;
-      const fetchResult = await this.fetcher.fetch(
-        entry.url,
-        signal,
-        (candidate) => {
-          cleanResult = this.cleaner.clean(candidate.body, candidate.url);
-        },
-      );
+      let fetchResult: FetchResult;
+      const fetchStartedAt = performance.now();
+      try {
+        fetchResult = await this.fetcher.fetch(
+          entry.url,
+          signal,
+          (candidate) => {
+            const cleanStartedAt = performance.now();
+            try {
+              cleanResult = this.cleaner.clean(candidate.body, candidate.url);
+            } finally {
+              timings.cleanDurationMs += elapsedContentMilliseconds(
+                cleanStartedAt,
+              );
+            }
+          },
+          (diagnostics) => {
+            fetchDiagnostics = diagnostics;
+          },
+        );
+      } finally {
+        timings.fetchDurationMs = elapsedContentMilliseconds(fetchStartedAt);
+      }
 
       // Phase 2: Clean
       stage = 'persist';
+      const cleaningStatusStartedAt = performance.now();
       this.contentStore.updatePipelineStatus(entryId, 'cleaning');
+      timings.persistDurationMs += elapsedContentMilliseconds(
+        cleaningStatusStartedAt,
+      );
       stage = 'clean';
-      cleanResult ??= this.cleaner.clean(fetchResult.body, fetchResult.url);
-      return this.persistCleanedContent(
+      if (!cleanResult) {
+        const cleanStartedAt = performance.now();
+        try {
+          cleanResult = this.cleaner.clean(fetchResult.body, fetchResult.url);
+        } finally {
+          timings.cleanDurationMs += elapsedContentMilliseconds(cleanStartedAt);
+        }
+      }
+      const result = this.persistCleanedContent(
         entry,
         fetchResult,
         cleanResult,
         (nextStage) => {
           stage = nextStage;
         },
+        timings,
       );
+      this.logPipelineSuccess(
+        entry.id,
+        entry.feedId,
+        startedAt,
+        timings,
+        fetchDiagnostics,
+      );
+      return result;
     } catch (error) {
       const failedStage = stage;
       const failedErrorCode = this.getErrorCodeForStage(failedStage);
@@ -232,6 +327,14 @@ export class ContentService {
           entryId,
           pipelineStatus: 'success',
         });
+        this.logPipelineSuccess(
+          entry.id,
+          entry.feedId,
+          startedAt,
+          timings,
+          fetchDiagnostics,
+          'cached-fallback',
+        );
         return {
           ...previousContent,
           pipelineStatus: 'success',
@@ -255,11 +358,22 @@ export class ContentService {
             entry.title ?? 'Untitled article',
             entry.author,
           );
-          return this.persistCleanedContent(
+          const result = this.persistCleanedContent(
             entry,
             fallbackResult,
             fallbackCleanResult,
+            undefined,
+            timings,
           );
+          this.logPipelineSuccess(
+            entry.id,
+            entry.feedId,
+            startedAt,
+            timings,
+            fetchDiagnostics,
+            'feed-fallback',
+          );
+          return result;
         } catch {
           // Preserve the original page-fetch/extraction error below; it is the
           // more actionable failure when both primary and fallback inputs fail.
@@ -300,10 +414,18 @@ export class ContentService {
     fetchResult: FetchResult,
     cleanResult: CleanResult,
     onStageChange?: (stage: 'convert' | 'persist') => void,
+    timings?: ContentPipelineTimings,
   ): CleanedContent {
     onStageChange?.('persist');
+    const convertingStatusStartedAt = performance.now();
     this.contentStore.updatePipelineStatus(entry.id, 'converting');
+    if (timings) {
+      timings.persistDurationMs += elapsedContentMilliseconds(
+        convertingStatusStartedAt,
+      );
+    }
     onStageChange?.('convert');
+    const convertStartedAt = performance.now();
     const markdown = this.markdownConverter.convert(cleanResult.content);
     const readerTitle = entry.title ?? cleanResult.title;
     const readerByline = entry.author ?? cleanResult.byline;
@@ -311,8 +433,12 @@ export class ContentService {
       title: readerTitle,
       byline: readerByline,
     });
+    if (timings) {
+      timings.convertDurationMs += elapsedContentMilliseconds(convertStartedAt);
+    }
 
     onStageChange?.('persist');
+    const persistStartedAt = performance.now();
     this.contentStore.upsert({
       entryId: entry.id,
       html: fetchResult.body,
@@ -335,6 +461,9 @@ export class ContentService {
       guid: entry.guid,
       contentHash: segmentedContent.sourceContentHash,
     });
+    if (timings) {
+      timings.persistDurationMs += elapsedContentMilliseconds(persistStartedAt);
+    }
 
     return {
       entryId: entry.id,
@@ -395,6 +524,27 @@ export class ContentService {
       success: false,
       stage,
       errorCode,
+    });
+  }
+
+  private logPipelineSuccess(
+    entryId: number,
+    feedId: number,
+    startedAt: number,
+    timings: ContentPipelineTimings,
+    diagnostics?: ContentFetchDiagnostics,
+    strategyOverride?: string,
+  ): void {
+    logContentPipelineSuccess(this.logger, {
+      entryId,
+      feedId,
+      durationMs: elapsedContentMilliseconds(startedAt),
+      ...timings,
+      ...(diagnostics ? { attemptCount: diagnostics.attemptCount } : {}),
+      ...(strategyOverride || diagnostics?.strategy
+        ? { strategy: strategyOverride ?? diagnostics?.strategy }
+        : {}),
+      success: true,
     });
   }
 

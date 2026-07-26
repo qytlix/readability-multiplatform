@@ -11,7 +11,11 @@ export interface FetcherStrategy {
    * Fetch a URL and return the result.
    * @throws Error if fetching fails (e.g. HTTP error, network error)
    */
-  fetch(url: string, signal?: AbortSignal): Promise<FetchResult>;
+  fetch(
+    url: string,
+    signal?: AbortSignal,
+    validate?: FetchCandidateValidator,
+  ): Promise<FetchResult>;
 
   /**
    * Check if this strategy is available in the current runtime environment.
@@ -19,6 +23,15 @@ export interface FetcherStrategy {
    */
   isAvailable(): boolean;
 }
+
+export type FetchCandidateValidator = (
+  result: FetchResult,
+) => void | Promise<void>;
+
+export type FetchImplementation = (
+  input: string,
+  init?: RequestInit,
+) => Promise<Response>;
 
 // ── Shared helpers (moved from original ContentFetcher) ─────────
 
@@ -62,12 +75,21 @@ export function combineSignals(
 export interface FetchStrategyOptions {
   maxSize: number;
   timeoutMs: number;
+  fetchImplementation?: FetchImplementation;
 }
 
 const DEFAULT_OPTIONS: FetchStrategyOptions = {
   maxSize: 10 * 1024 * 1024, // 10MB
-  timeoutMs: 30_000,          // 30s
+  timeoutMs: 10_000,          // 10s before falling back to the next transport
 };
+
+export class FetchStrategyTimeoutError extends Error {
+  override readonly name = 'TimeoutError';
+
+  constructor(strategyName: string) {
+    super(`${strategyName} fetch timed out`);
+  }
+}
 
 // ── Tier 0: SimpleFetchStrategy ────────────────────────────────
 
@@ -79,10 +101,12 @@ export class SimpleFetchStrategy implements FetcherStrategy {
   readonly name = 'simple';
   private maxSize: number;
   private timeoutMs: number;
+  private fetchImplementation?: FetchImplementation;
 
   constructor(options?: Partial<FetchStrategyOptions>) {
     this.maxSize = options?.maxSize ?? DEFAULT_OPTIONS.maxSize;
     this.timeoutMs = options?.timeoutMs ?? DEFAULT_OPTIONS.timeoutMs;
+    this.fetchImplementation = options?.fetchImplementation;
   }
 
   isAvailable(): boolean {
@@ -98,7 +122,9 @@ export class SimpleFetchStrategy implements FetcherStrategy {
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
-      const response = await fetch(url, {
+      const fetchImplementation =
+        this.fetchImplementation ?? resolveFetchImplementation();
+      const response = await fetchImplementation(url, {
         signal: combinedSignal,
         redirect: 'follow',
         headers: {
@@ -111,7 +137,7 @@ export class SimpleFetchStrategy implements FetcherStrategy {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const finalUrl = response.url;
+      const finalUrl = response.url || url;
       const contentType = response.headers.get('content-type') ?? '';
       const charset = extractCharset(contentType);
 
@@ -148,6 +174,8 @@ export class SimpleFetchStrategy implements FetcherStrategy {
         body,
         charset: charset || undefined,
       };
+    } catch (error) {
+      throw normalizeFetchError(error, signal, controller.signal, this.name);
     } finally {
       clearTimeout(timeout);
     }
@@ -182,10 +210,12 @@ export class EnhancedFetchStrategy implements FetcherStrategy {
   private maxSize: number;
   private timeoutMs: number;
   private maxRetries: number;
+  private fetchImplementation?: FetchImplementation;
 
   constructor(options?: Partial<FetchStrategyOptions> & { maxRetries?: number }) {
     this.maxSize = options?.maxSize ?? DEFAULT_OPTIONS.maxSize;
     this.timeoutMs = options?.timeoutMs ?? DEFAULT_OPTIONS.timeoutMs;
+    this.fetchImplementation = options?.fetchImplementation;
     // Two retries are enough to distinguish a UA-specific rejection from a
     // site that needs Chromium, without delaying the browser fallback by tens
     // of seconds.
@@ -211,7 +241,9 @@ export class EnhancedFetchStrategy implements FetcherStrategy {
       const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
       try {
-        const response = await fetch(url, {
+        const fetchImplementation =
+          this.fetchImplementation ?? resolveFetchImplementation();
+        const response = await fetchImplementation(url, {
           signal: combinedSignal,
           redirect: 'follow',
           headers: {
@@ -231,7 +263,7 @@ export class EnhancedFetchStrategy implements FetcherStrategy {
         if (response.ok) {
           // Keep the deadline active while streaming the response body too.
           // Clearing it after headers allowed a stalled body to hang forever.
-          const result = await this.readResponse(response);
+          const result = await this.readResponse(response, url);
           clearTimeout(timeout);
           return result;
         }
@@ -250,8 +282,11 @@ export class EnhancedFetchStrategy implements FetcherStrategy {
       } catch (error) {
         clearTimeout(timeout);
 
-        if (error instanceof Error && error.name === 'AbortError') {
-          throw error; // Don't retry aborts
+        if (signal?.aborted) {
+          throw normalizeFetchError(error, signal, controller.signal, this.name);
+        }
+        if (controller.signal.aborted) {
+          throw new FetchStrategyTimeoutError(this.name);
         }
 
         // Once headers arrived, parsing/streaming/size failures are properties
@@ -281,8 +316,11 @@ export class EnhancedFetchStrategy implements FetcherStrategy {
     throw new Error('Enhanced fetch failed after all retries');
   }
 
-  private async readResponse(response: Response): Promise<FetchResult> {
-    const finalUrl = response.url;
+  private async readResponse(
+    response: Response,
+    requestUrl: string,
+  ): Promise<FetchResult> {
+    const finalUrl = response.url || requestUrl;
     const contentType = response.headers.get('content-type') ?? '';
     const charset = extractCharset(contentType);
 
@@ -393,7 +431,11 @@ export class BrowserFetchStrategy implements FetcherStrategy {
     return typeof process !== 'undefined' && process.type === 'browser';
   }
 
-  async fetch(url: string, signal?: AbortSignal): Promise<FetchResult> {
+  async fetch(
+    url: string,
+    signal?: AbortSignal,
+    validate?: FetchCandidateValidator,
+  ): Promise<FetchResult> {
     const electronModule = electron();
     if (!electronModule || !this.isAvailable()) {
       throw new Error('BrowserFetchStrategy is not available outside Electron Main process');
@@ -411,18 +453,24 @@ export class BrowserFetchStrategy implements FetcherStrategy {
 
     try {
       // Set up timeout + abort handling
-      const html = await new Promise<string>((resolve, reject) => {
+      return await new Promise<FetchResult>((resolve, reject) => {
         let settled = false;
         let isChallengePage = false;
         let challengeDeadline = 0;
         let timer: ReturnType<typeof setTimeout>;
+        let domReadyValidation: Promise<boolean> | undefined;
+        let onAbort: (() => void) | undefined;
 
-        const done = (err: Error | null, html?: string) => {
+        const done = (err: Error | null, result?: FetchResult) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
+          if (signal && onAbort) {
+            signal.removeEventListener('abort', onAbort);
+          }
           if (err) reject(err);
-          else resolve(html!);
+          else if (result) resolve(result);
+          else reject(new Error('Browser fetch completed without a result'));
         };
 
         const resetTimer = (ms?: number) => {
@@ -435,7 +483,7 @@ export class BrowserFetchStrategy implements FetcherStrategy {
 
         // Listen for external abort signal
         if (signal) {
-          const onAbort = () => {
+          onAbort = () => {
             win.webContents.stop();
             done(new DOMException('The operation was aborted', 'AbortError'));
           };
@@ -462,8 +510,56 @@ export class BrowserFetchStrategy implements FetcherStrategy {
           }
         };
 
+        const captureCandidate = async (): Promise<FetchResult> => {
+          const [html, charset] = await Promise.all([
+            win.webContents.executeJavaScript(
+              'document.documentElement.outerHTML',
+            ) as Promise<string>,
+            win.webContents.executeJavaScript(
+              'document.characterSet',
+            ).catch(() => undefined) as Promise<string | undefined>,
+          ]);
+          return {
+            url: win.webContents.getURL(),
+            statusCode: 200,
+            headers: {},
+            body: html,
+            charset: charset || undefined,
+          };
+        };
+
+        const captureAndValidate = async (
+          failOnInvalid: boolean,
+          skipChallengeCheck = false,
+        ): Promise<boolean> => {
+          try {
+            if (!skipChallengeCheck && await checkIsChallenge()) return false;
+            const candidate = await captureCandidate();
+            await validate?.(candidate);
+            done(null, candidate);
+            return true;
+          } catch (error) {
+            if (failOnInvalid) {
+              done(error instanceof Error ? error : new Error(String(error)));
+            }
+            return false;
+          }
+        };
+
+        // Server-rendered article pages are often extractable as soon as the
+        // DOM is ready. Validate with the real cleaner before accepting the
+        // candidate so dynamic shells still wait for the full load fallback.
+        if (validate) {
+          win.webContents.on('dom-ready', () => {
+            domReadyValidation = captureAndValidate(false);
+          });
+        }
+
         // After a page finishes loading
         win.webContents.on('did-finish-load', async () => {
+          await domReadyValidation;
+          if (settled) return;
+
           // Check if this is a challenge page that needs JS execution + redirect
           const isChallenge = await checkIsChallenge();
 
@@ -477,27 +573,28 @@ export class BrowserFetchStrategy implements FetcherStrategy {
               resetTimer(Math.min(this.timeoutMs, 20_000));
 
               // Try polling: Cloudflare challenge takes ~2-5s
-              const poll = () => {
+              const poll = async () => {
                 if (settled) return;
                 if (Date.now() >= challengeDeadline) {
                   done(new Error('Cloudflare challenge did not resolve in time'));
                   return;
                 }
-                win.webContents.executeJavaScript(
-                  'document.documentElement.outerHTML',
-                ).then((currentHtml: string) => {
+                try {
+                  const currentHtml = await win.webContents.executeJavaScript(
+                    'document.documentElement.outerHTML',
+                  ) as string;
                   if (settled) return;
                   const stillChallenge =
                     currentHtml.toLowerCase().includes('just a moment') ||
                     currentHtml.includes('cf_chl');
                   if (!stillChallenge) {
-                    done(null, currentHtml);
+                    await captureAndValidate(true, true);
                   } else {
                     setTimeout(poll, 1000);
                   }
-                }).catch(() => {
+                } catch {
                   if (!settled) setTimeout(poll, 1000);
-                });
+                }
               };
               setTimeout(poll, 2000); // Start polling 2s after first detection
             }
@@ -508,27 +605,11 @@ export class BrowserFetchStrategy implements FetcherStrategy {
 
           if (isChallengePage) {
             // We were on a challenge page, and now we landed on real content.
-            // This might be a redirect, so grab the HTML.
-            try {
-              const outerHtml = await win.webContents.executeJavaScript(
-                'document.documentElement.outerHTML',
-              );
-              done(null, outerHtml);
-            } catch (jsErr) {
-              done(jsErr instanceof Error ? jsErr : new Error(String(jsErr)));
-            }
+            await captureAndValidate(true);
             return;
           }
 
-          // Normal page (no challenge detected) — resolve immediately
-          try {
-            const outerHtml = await win.webContents.executeJavaScript(
-              'document.documentElement.outerHTML',
-            );
-            done(null, outerHtml);
-          } catch (jsErr) {
-            done(jsErr instanceof Error ? jsErr : new Error(String(jsErr)));
-          }
+          await captureAndValidate(true);
         });
 
         installBrowserFetchNavigationGuards(
@@ -541,22 +622,6 @@ export class BrowserFetchStrategy implements FetcherStrategy {
         resetTimer();
         win.loadURL(url);
       });
-
-      // Detect charset
-      let charset: string | undefined;
-      try {
-        charset = await win.webContents.executeJavaScript('document.characterSet');
-      } catch {
-        charset = undefined;
-      }
-
-      return {
-        url: win.webContents.getURL(),
-        statusCode: 200, // Browser internalizes status code
-        headers: {},     // Browser internalizes headers
-        body: html,
-        charset: charset || undefined,
-      };
     } finally {
       // Always destroy the window
       if (!win.isDestroyed()) {
@@ -567,6 +632,34 @@ export class BrowserFetchStrategy implements FetcherStrategy {
 }
 
 // ── Utility ────────────────────────────────────────────────────
+
+function resolveFetchImplementation(): FetchImplementation {
+  const electronModule = electron();
+  if (
+    typeof process !== 'undefined'
+    && process.type === 'browser'
+    && electronModule?.net?.fetch
+  ) {
+    // Electron net.fetch uses Chromium's network stack and the default
+    // Session, including the user's system proxy configuration.
+    return electronModule.net.fetch.bind(
+      electronModule.net,
+    ) as FetchImplementation;
+  }
+  return globalThis.fetch.bind(globalThis);
+}
+
+function normalizeFetchError(
+  error: unknown,
+  externalSignal: AbortSignal | undefined,
+  timeoutSignal: AbortSignal,
+  strategyName: string,
+): Error {
+  if (!externalSignal?.aborted && timeoutSignal.aborted) {
+    return new FetchStrategyTimeoutError(strategyName);
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

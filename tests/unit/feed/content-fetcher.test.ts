@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ContentFetcher } from '../../../src/main/feed/fetcher/ContentFetcher';
-import type { FetcherStrategy } from '../../../src/main/feed/fetcher/FetchStrategy';
+import {
+  FetchStrategyTimeoutError,
+  type FetcherStrategy,
+} from '../../../src/main/feed/fetcher/FetchStrategy';
 import type { FetchResult } from '../../../src/shared/contracts/content.types';
 
 function setMockFetch(fn: (...args: any[]) => any): void {
@@ -174,7 +177,7 @@ describe('ContentFetcher', () => {
     const fetcher = new ContentFetcher({ timeoutMs: 50 });
     await expect(
       fetcher.fetch('https://example.com/slow'),
-    ).rejects.toThrow('aborted');
+    ).rejects.toThrow('enhanced fetch timed out');
   }, 10_000);
 
   // ── Fallback chain tests ─────────────────────────────────
@@ -295,6 +298,87 @@ describe('ContentFetcher', () => {
     );
     expect(enhanced.fetch).not.toHaveBeenCalled();
     expect(browser.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips redundant enhanced retries after an internal HTTP timeout', async () => {
+    const browserResult: FetchResult = {
+      url: 'https://example.com/article',
+      statusCode: 200,
+      headers: {},
+      body: htmlBody,
+    };
+    const simple = mockStrategy(
+      'simple',
+      new FetchStrategyTimeoutError('simple'),
+    );
+    const enhanced = mockStrategy('enhanced', new Error('should be skipped'));
+    const browser = mockStrategy('browser', browserResult);
+    const fetcher = new ContentFetcher({
+      strategies: [simple, enhanced, browser],
+    });
+
+    await expect(fetcher.fetch('https://example.com/article')).resolves.toBe(
+      browserResult,
+    );
+    expect(enhanced.fetch).not.toHaveBeenCalled();
+    expect(browser.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not validate a candidate twice when a strategy validates early', async () => {
+    const browserResult: FetchResult = {
+      url: 'https://example.com/article',
+      statusCode: 200,
+      headers: {},
+      body: htmlBody,
+    };
+    const browser: FetcherStrategy = {
+      name: 'browser',
+      isAvailable: () => true,
+      fetch: vi.fn(async (_url, _signal, validate) => {
+        await validate?.(browserResult);
+        return browserResult;
+      }),
+    };
+    const validate = vi.fn();
+    const fetcher = new ContentFetcher({ strategies: [browser] });
+
+    await expect(
+      fetcher.fetch(
+        'https://example.com/article',
+        undefined,
+        validate,
+      ),
+    ).resolves.toBe(browserResult);
+    expect(validate).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the selected strategy and attempt count', async () => {
+    const result: FetchResult = {
+      url: 'https://example.com/article',
+      statusCode: 200,
+      headers: {},
+      body: htmlBody,
+    };
+    const diagnostics = vi.fn();
+    const fetcher = new ContentFetcher({
+      strategies: [
+        mockStrategy('simple', new Error('first failed')),
+        mockStrategy('browser', result),
+      ],
+    });
+
+    await fetcher.fetch(
+      'https://example.com/article',
+      undefined,
+      undefined,
+      diagnostics,
+    );
+
+    expect(diagnostics).toHaveBeenCalledWith({
+      strategy: 'browser',
+      attemptCount: 2,
+      durationMs: expect.any(Number),
+    });
   });
 
   it('does not start fallback strategies after cancellation', async () => {
