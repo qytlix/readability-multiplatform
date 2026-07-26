@@ -793,7 +793,7 @@ export const EntryDetail = ({
       ? '文章尚未完成内容清洗'
       : '导出为 Markdown';
 
-  const exportToolbar = exportToolbarTarget
+  const exportToolbar = exportToolbarTarget && !selectionMode
     ? createPortal(
       <button
         type="button"
