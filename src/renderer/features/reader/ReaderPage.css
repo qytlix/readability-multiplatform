@@ -5933,7 +5933,7 @@ body.workspace-is-resizing * {
 .tag-floating-window {
   z-index: 200;
   width: 240px;
-  padding: 10px;
+  padding: 10px 16px;
   border: 1px solid var(--reader-line);
   border-radius: 10px;
   background: var(--reader-floating-card);
