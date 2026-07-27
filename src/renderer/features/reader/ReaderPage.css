@@ -3885,6 +3885,7 @@ body.workspace-is-resizing * {
 }
 
 .settings-fields select,
+.settings-fields input,
 .settings-import-help input:not([type="file"]),
 .provider-settings-embedded input,
 .provider-settings-embedded select,
