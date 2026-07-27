@@ -28,6 +28,9 @@ import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
 import type { SummaryOperationLogger } from './ai/services/SummaryLogging';
 import type { TranslationOperationLogger } from './ai/services/TranslationLogging';
 import type { UsageLedgerOperationLogger } from './ai/services/UsageRecorder';
+import type { MarkdownExportOperationLogger } from './export/MarkdownExportLogging';
+import type { AnnotationOperationLogger } from './annotations/AnnotationLogging';
+import type { UsageStatisticsOperationLogger } from './ai/services/UsageStatisticsLogging';
 import { removeApplicationMenu } from './application-menu';
 import { MAIN_LIFECYCLE_EVENTS } from './logging/MainLifecycleEvents';
 import { StructuredLogger, type AppInitializationPhase } from './logging/StructuredLogger';
@@ -153,7 +156,10 @@ async function initializeApplication(): Promise<void> {
     & ProviderOperationLogger
     & SummaryOperationLogger
     & TranslationOperationLogger
-    & UsageLedgerOperationLogger = lifecycleLogger ?? {
+    & UsageLedgerOperationLogger
+    & MarkdownExportOperationLogger
+    & AnnotationOperationLogger
+    & UsageStatisticsOperationLogger = lifecycleLogger ?? {
     info: () => undefined,
     warn: () => undefined,
     error: () => undefined,

@@ -1,6 +1,6 @@
 # 本地文章搜索优化
 
-> 状态：已实现  
+> 状态：已实现
 > 索引版本：Migration `019_create_entry_search_index`
 
 ## 目标

@@ -17,7 +17,7 @@ import { FeedList } from './features/feeds/FeedList';
 import { EntryList } from './features/feeds/EntryList';
 import { EntryDetail } from './features/feeds/EntryDetail';
 import { FeedAddDialog } from './features/feeds/FeedAddDialog';
-import { getEntryListHeading } from './features/feeds/entryListPresentation';
+import { getEntryListHeadingPresentation } from './features/feeds/entryListPresentation';
 import {
   getEntryAIViewState,
   updateEntryAIViewState,
@@ -793,7 +793,7 @@ export const App = () => {
   const hasNoFeeds = feedLoadStatus === 'success' && feeds.length === 0;
   const visibleEntries = hasNoFeeds ? [] : entries;
   const selectedFeedName = selectedFeed?.title ?? selectedFeed?.feedURL ?? null;
-  const listHeading = getEntryListHeading({
+  const listHeading = getEntryListHeadingPresentation({
     feedName: selectedFeedName,
     filter: entryFilter,
     hasActiveSearch: Boolean(appliedSearchQuery),

@@ -247,6 +247,7 @@ export function initializeServices(
     provider,
     terminologyLookup,
     expertService,
+    operationLogger,
   );
   const annotationService = new AnnotationService(annotationStore, entryStore);
   const tagStore = new TagStore(dbManager.getDb());

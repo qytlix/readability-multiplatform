@@ -7,6 +7,7 @@ import {
   DIAGNOSTIC_REPORT_VERSION,
   type DiagnosticLogReadIssue,
   type DiagnosticLogReadIssueCode,
+  type DiagnosticLogContext,
   type DiagnosticLogRecord,
   type DiagnosticLogs,
   type DiagnosticReportV1,
@@ -15,6 +16,7 @@ import {
 import {
   STRUCTURED_LOG_SCHEMA_VERSION,
   sanitizeStructuredLogRecord,
+  type StructuredLogContext,
 } from '../logging/StructuredLogger';
 
 export const MAX_DIAGNOSTIC_LOG_RECORDS = 1_000;
@@ -225,8 +227,49 @@ function sanitizeLogLine(line: string): DiagnosticLogRecord | undefined {
     event: record.event,
     component: record.component,
     sessionId: record.sessionId,
-    ...(record.context ? { context: { ...record.context } } : {}),
+    ...(record.context ? { context: toDiagnosticLogContext(record.context) } : {}),
   };
+}
+
+function toDiagnosticLogContext(context: StructuredLogContext): DiagnosticLogContext {
+  const {
+    previousResultAtStart,
+    previousResultOutcome,
+    stopReason,
+    contextDegraded,
+    contextWarningCode,
+    ...safeContext
+  } = context;
+  const hasSafeContextWarning = contextDegraded === true
+    && contextWarningCode === 'TRANSLATION_CONTEXT_UNAVAILABLE';
+  return {
+    ...safeContext,
+    ...(isPreviousResultAtStart(previousResultAtStart) ? { previousResultAtStart } : {}),
+    ...(isPreviousResultOutcome(previousResultOutcome) ? { previousResultOutcome } : {}),
+    ...(isStopReason(stopReason) ? { stopReason } : {}),
+    ...(hasSafeContextWarning
+      ? {
+          contextDegraded: true,
+          contextWarningCode: 'TRANSLATION_CONTEXT_UNAVAILABLE',
+        }
+      : {}),
+  };
+}
+
+function isPreviousResultAtStart(
+  value: unknown,
+): value is DiagnosticLogContext['previousResultAtStart'] {
+  return value === 'none' || value === 'retained';
+}
+
+function isPreviousResultOutcome(
+  value: unknown,
+): value is DiagnosticLogContext['previousResultOutcome'] {
+  return value === 'none' || value === 'retained' || value === 'replaced';
+}
+
+function isStopReason(value: unknown): value is DiagnosticLogContext['stopReason'] {
+  return value === 'paused' || value === 'shutdown';
 }
 
 function compareStructuredLogFiles(left: string, right: string): number {

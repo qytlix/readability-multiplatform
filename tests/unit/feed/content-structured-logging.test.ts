@@ -7,11 +7,20 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CleanResult, FetchResult } from '../../../src/shared/contracts/content.types';
+import type {
+  CleanedContent,
+  CleanResult,
+  FetchResult,
+} from '../../../src/shared/contracts/content.types';
 import type { Entry } from '../../../src/shared/contracts/feed.types';
+import { DiagnosticExportService } from '../../../src/main/diagnostics/DiagnosticExportService';
 import { StructuredLogger } from '../../../src/main/logging/StructuredLogger';
-import { ContentCleaner } from '../../../src/main/feed/fetcher/ContentCleaner';
+import {
+  ContentCleaner,
+  ContentExtractionError,
+} from '../../../src/main/feed/fetcher/ContentCleaner';
 import { ContentFetcher } from '../../../src/main/feed/fetcher/ContentFetcher';
+import { FetchResponseUnavailableError } from '../../../src/main/feed/fetcher/FetchStrategy';
 import { MarkdownConverter } from '../../../src/main/feed/fetcher/MarkdownConverter';
 import {
   CONTENT_LOG_COMPONENTS,
@@ -99,12 +108,19 @@ function createCleanResult(): CleanResult {
 function createContentService(options: {
   entry?: Entry;
   logger?: ContentOperationLogger;
-  fetch?: () => Promise<FetchResult>;
+  fetch?: (
+    url: string,
+    signal?: AbortSignal,
+    validate?: (candidate: FetchResult) => void | Promise<void>,
+  ) => Promise<FetchResult>;
   clean?: () => CleanResult;
+  cleanFeed?: () => CleanResult;
   convert?: () => string;
   upsert?: (params: { pipelineStatus: string }) => void;
   updatePipelineStatus?: () => void;
   lookup?: () => Entry | undefined;
+  cachedContent?: CleanedContent | undefined;
+  feedFallbackHtml?: string | undefined;
 } = {}): {
   service: ContentService;
   contentStore: {
@@ -114,13 +130,13 @@ function createContentService(options: {
   };
 } {
   const contentStore = {
-    findByEntry: vi.fn(() => undefined),
+    findByEntry: vi.fn(() => options.cachedContent),
     updatePipelineStatus: vi.fn(() => options.updatePipelineStatus?.()),
     upsert: vi.fn((params: { pipelineStatus: string }) => options.upsert?.(params)),
   };
   const entryStore = {
     findById: vi.fn(options.lookup ?? (() => options.entry ?? TEST_ENTRY)),
-    findFeedContentHtml: vi.fn(() => undefined),
+    findFeedContentHtml: vi.fn(() => options.feedFallbackHtml),
     createOrUpdate: vi.fn(),
   };
   const fetcher = {
@@ -128,6 +144,7 @@ function createContentService(options: {
   };
   const cleaner = {
     clean: vi.fn(options.clean ?? (() => createCleanResult())),
+    cleanFeedContent: vi.fn(options.cleanFeed ?? (() => createCleanResult())),
   };
   const markdownConverter = {
     convert: vi.fn(options.convert ?? (() => MARKDOWN_CANARY)),
@@ -332,6 +349,207 @@ describe('Content structured logging', () => {
     });
   });
 
+  it('records a final response-unavailable failure without exposing the HTTP response', async () => {
+    const { logger, records } = createContentLoggerSpy();
+    const { service } = createContentService({
+      logger,
+      fetch: async () => {
+        throw new FetchResponseUnavailableError(`HTTP 403 ${ARTICLE_URL}`);
+      },
+    });
+
+    await expect(service.fetchAndClean(TEST_ENTRY.id)).resolves.toMatchObject({
+      pipelineStatus: 'failed',
+    });
+    expectOneFailure(records, {
+      entryId: TEST_ENTRY.id,
+      feedId: TEST_ENTRY.feedId,
+      stage: 'fetch',
+      errorCode: CONTENT_PIPELINE_ERROR_CODES.responseUnavailable,
+    });
+    expect(JSON.stringify(records)).not.toContain(ARTICLE_URL);
+  });
+
+  it('records an extraction failure when every fetched candidate lacks an article', async () => {
+    const { logger, records } = createContentLoggerSpy();
+    const { service } = createContentService({
+      logger,
+      fetch: async (_url, _signal, validate) => {
+        const candidate = createFetchResult();
+        await validate?.(candidate);
+        return candidate;
+      },
+      clean: () => {
+        throw new ContentExtractionError();
+      },
+    });
+
+    await expect(service.fetchAndClean(TEST_ENTRY.id)).resolves.toMatchObject({
+      pipelineStatus: 'failed',
+    });
+    expectOneFailure(records, {
+      entryId: TEST_ENTRY.id,
+      feedId: TEST_ENTRY.feedId,
+      stage: 'extract',
+      errorCode: CONTENT_PIPELINE_ERROR_CODES.extractFailed,
+    });
+  });
+
+  it('retains the final response-unavailable diagnosis in JSONL and diagnostic export', async () => {
+    const directory = createLogDirectory();
+    const structuredLogger = new StructuredLogger({
+      directory,
+      now: () => new Date('2026-07-21T12:00:00.000Z'),
+      createSessionId: () => 'content-response-session',
+    });
+    const { service } = createContentService({
+      logger: structuredLogger,
+      fetch: async () => {
+        throw new FetchResponseUnavailableError(`HTTP 403 ${ARTICLE_URL}`);
+      },
+    });
+
+    await service.fetchAndClean(TEST_ENTRY.id);
+    await structuredLogger.flush();
+
+    const managedFile = readdirSync(directory).find((name) => name.endsWith('.jsonl'));
+    if (!managedFile) throw new Error('Expected structured logger output file');
+    const jsonlContents = readFileSync(path.join(directory, managedFile), 'utf8');
+    expect(jsonlContents).toContain(CONTENT_PIPELINE_ERROR_CODES.responseUnavailable);
+    expect(jsonlContents).not.toContain(ARTICLE_URL);
+
+    const report = await new DiagnosticExportService({
+      logDirectory: directory,
+      runtime: {
+        applicationVersion: '0.3.0-test',
+        electronVersion: '43.0.0-test',
+        nodeVersion: '24.0.0-test',
+        operatingSystem: 'linux',
+        operatingSystemRelease: 'test',
+        architecture: 'x64',
+        isPackaged: false,
+        display: { session: 'wayland', waylandDetected: true, ozonePlatform: 'wayland' },
+      },
+      now: () => new Date('2026-07-27T12:00:01.000Z'),
+      createTemporaryName: () => 'content-response-diagnostics',
+    }).buildReport();
+    expect(report.logs.records).toEqual([
+      expect.objectContaining({
+        event: CONTENT_LOG_EVENTS.pipelineFailed,
+        context: expect.objectContaining({
+          entryId: TEST_ENTRY.id,
+          feedId: TEST_ENTRY.feedId,
+          stage: 'fetch',
+          errorCode: CONTENT_PIPELINE_ERROR_CODES.responseUnavailable,
+        }),
+      }),
+    ]);
+    expect(JSON.stringify(report)).not.toContain(ARTICLE_URL);
+  });
+
+  it('does not record a final failure when cached content makes a failed refresh displayable', async () => {
+    const { logger, records } = createContentLoggerSpy();
+    const cachedContent: CleanedContent = {
+      entryId: TEST_ENTRY.id,
+      sourceUrl: ARTICLE_URL,
+      cleanedHtml: '<p>Previously readable article.</p>',
+      markdown: 'Previously readable article.',
+      pipelineStatus: 'success',
+    };
+    const { service } = createContentService({
+      logger,
+      cachedContent,
+      fetch: async () => {
+        throw new Error(PIPELINE_ERROR_CANARY);
+      },
+    });
+
+    await expect(service.fetchAndClean(TEST_ENTRY.id)).resolves.toMatchObject({
+      pipelineStatus: 'success',
+      cleanedHtml: cachedContent.cleanedHtml,
+    });
+    expect(records).toEqual([
+      expect.objectContaining({ event: CONTENT_LOG_EVENTS.pipelineCompleted }),
+    ]);
+  });
+
+  it('uses the failed Feed fallback stage when it is the final reason content cannot be displayed', async () => {
+    const { logger, records } = createContentLoggerSpy();
+    const { service } = createContentService({
+      logger,
+      feedFallbackHtml: '<p>Publisher fallback</p>',
+      fetch: async () => {
+        throw new Error(PIPELINE_ERROR_CANARY);
+      },
+      cleanFeed: () => {
+        throw new Error('FALLBACK_CLEAN_CANARY');
+      },
+    });
+
+    await expect(service.fetchAndClean(TEST_ENTRY.id)).resolves.toMatchObject({
+      pipelineStatus: 'failed',
+    });
+    expectOneFailure(records, {
+      entryId: TEST_ENTRY.id,
+      feedId: TEST_ENTRY.feedId,
+      stage: 'clean',
+      errorCode: CONTENT_PIPELINE_ERROR_CODES.cleanFailed,
+    });
+    expect(JSON.stringify(records)).not.toContain('FALLBACK_CLEAN_CANARY');
+  });
+
+  it('records a cache-read failure only when the read prevents a content result', async () => {
+    const { logger, records } = createContentLoggerSpy();
+    const cacheError = new Error('CACHE_READ_CANARY');
+    const { service, contentStore } = createContentService({ logger });
+    contentStore.findByEntry.mockImplementation(() => {
+      throw cacheError;
+    });
+
+    await expect(service.getContent(TEST_ENTRY.id)).rejects.toBe(cacheError);
+    expectOneFailure(records, {
+      entryId: TEST_ENTRY.id,
+      stage: 'cache',
+      errorCode: CONTENT_PIPELINE_ERROR_CODES.cacheReadFailed,
+    });
+    expect(JSON.stringify(records)).not.toContain('CACHE_READ_CANARY');
+  });
+
+  it('records one cache-read failure when a fetch operation cannot inspect its fallback', async () => {
+    const { logger, records } = createContentLoggerSpy();
+    const cacheError = new Error('FETCH_CACHE_READ_CANARY');
+    const { service, contentStore } = createContentService({ logger });
+    contentStore.findByEntry.mockImplementation(() => {
+      throw cacheError;
+    });
+
+    await expect(service.fetchAndClean(TEST_ENTRY.id)).rejects.toBe(cacheError);
+    expectOneFailure(records, {
+      entryId: TEST_ENTRY.id,
+      feedId: TEST_ENTRY.feedId,
+      stage: 'cache',
+      errorCode: CONTENT_PIPELINE_ERROR_CODES.cacheReadFailed,
+    });
+    expect(JSON.stringify(records)).not.toContain('FETCH_CACHE_READ_CANARY');
+  });
+
+  it('does not record a business failure for a confirmed caller abort', async () => {
+    const { logger, records } = createContentLoggerSpy();
+    const controller = new AbortController();
+    const abortError = new DOMException('The operation was aborted', 'AbortError');
+    controller.abort(abortError);
+    const { service } = createContentService({
+      logger,
+      fetch: async () => {
+        throw abortError;
+      },
+    });
+
+    await expect(service.fetchAndClean(TEST_ENTRY.id, controller.signal)).resolves
+      .toMatchObject({ pipelineStatus: 'failed' });
+    expect(records).toEqual([]);
+  });
+
   it('records a pipeline status update failure as a persist failure', async () => {
     const { logger, records } = createContentLoggerSpy();
     const { service } = createContentService({
@@ -474,6 +692,37 @@ describe('Content structured logging', () => {
     }
     expect(jsonlContents).toContain(CONTENT_LOG_EVENTS.pipelineFailed);
     expect(jsonlContents).toContain(CONTENT_PIPELINE_ERROR_CODES.convertFailed);
+
+    const report = await new DiagnosticExportService({
+      logDirectory: directory,
+      runtime: {
+        applicationVersion: '0.3.0-test',
+        electronVersion: '43.0.0-test',
+        nodeVersion: '24.0.0-test',
+        operatingSystem: 'linux',
+        operatingSystemRelease: 'test',
+        architecture: 'x64',
+        isPackaged: false,
+        display: { session: 'wayland', waylandDetected: true, ozonePlatform: 'wayland' },
+      },
+      now: () => new Date('2026-07-27T12:00:01.000Z'),
+      createTemporaryName: () => 'content-diagnostics',
+    }).buildReport();
+    expect(report.logs.records).toEqual([
+      expect.objectContaining({
+        event: CONTENT_LOG_EVENTS.pipelineFailed,
+        context: expect.objectContaining({
+          entryId: TEST_ENTRY.id,
+          feedId: TEST_ENTRY.feedId,
+          stage: 'convert',
+          errorCode: CONTENT_PIPELINE_ERROR_CODES.convertFailed,
+          durationMs: expect.any(Number),
+        }),
+      }),
+    ]);
+    for (const canary of canaries) {
+      expect(JSON.stringify(report)).not.toContain(canary);
+    }
   });
 
   it('keeps the original failed result when the injected logger throws', async () => {

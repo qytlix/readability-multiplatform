@@ -251,7 +251,7 @@ describe('article selection toggle', () => {
     });
     expect(feedButton?.classList.contains('is-active')).toBe(true);
     expect(container.querySelector('.story-list-header h1')?.textContent)
-      .toBe('Daily Feed · 未读文章');
+      .toBe('Daily Feed未读文章');
     const sidebarUnreadButton = [
       ...container.querySelectorAll<HTMLButtonElement>(
         '.sidebar-navigation .sidebar-item',
@@ -269,7 +269,7 @@ describe('article selection toggle', () => {
     });
     expect(feedButton?.classList.contains('is-active')).toBe(true);
     expect(container.querySelector('.story-list-header h1')?.textContent)
-      .toBe('Daily Feed · 收藏文章');
+      .toBe('Daily Feed收藏文章');
 
     act(() => listFilterButton?.click());
     await flushAsyncState();
@@ -324,7 +324,7 @@ describe('article selection toggle', () => {
       limit: 30,
     });
     expect(container.querySelector('.story-list-header h1')?.textContent)
-      .toBe('Engineering Notes · 未读文章');
+      .toBe('Engineering Notes未读文章');
     expect(container.querySelector('.story-list-state h2')?.textContent).toBe('没有未读文章');
 
     const allArticlesButton = container.querySelector<HTMLButtonElement>('.sidebar-all');

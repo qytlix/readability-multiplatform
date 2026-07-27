@@ -10,7 +10,9 @@ import type { ContentFetchDiagnostics } from '../fetcher/ContentFetcher';
 import {
   CONTENT_CLEANER_VERSION,
   ContentCleaner,
+  ContentExtractionError,
 } from '../fetcher/ContentCleaner';
+import { FetchResponseUnavailableError } from '../fetcher/FetchStrategy';
 import {
   MARKDOWN_CONVERTER_VERSION,
   MarkdownConverter,
@@ -32,6 +34,21 @@ interface ContentPipelineTimings {
   cleanDurationMs: number;
   convertDurationMs: number;
   persistDurationMs: number;
+}
+
+interface ContentTerminalFailure {
+  stage: ContentPipelineStage;
+  errorCode: ContentPipelineErrorCode;
+}
+
+class ContentPipelineStageError extends Error {
+  constructor(
+    readonly stage: 'clean',
+    error: unknown,
+  ) {
+    super(error instanceof Error ? error.message : 'Content cleaning failed');
+    this.name = 'ContentPipelineStageError';
+  }
 }
 
 export class ContentService {
@@ -63,79 +80,102 @@ export class ContentService {
    * Get existing cleaned content for an entry.
    */
   async getContent(entryId: number): Promise<CleanedContent | undefined> {
-    let content = this.contentStore.findByEntry(entryId);
-    if (!content) return this.buildFeedPreview(entryId);
-    if (
-      content.pipelineStatus === 'failed'
-      && this.hasRenderableCachedContent(content)
-    ) {
-      // Failed refreshes created before this fix may have hidden an older,
-      // successfully sanitized body. Repair that state lazily on first read.
-      this.contentStore.updatePipelineStatus(entryId, 'success');
-      content = {
-        ...content,
-        pipelineStatus: 'success',
-        pipelineError: undefined,
-      };
-    }
+    const startedAt = performance.now();
+    let stage: ContentPipelineStage = 'cache';
+    try {
+      let content = this.contentStore.findByEntry(entryId);
+      if (!content) {
+        stage = 'lookup';
+        return this.buildFeedPreview(entryId);
+      }
+      if (
+        content.pipelineStatus === 'failed'
+        && this.hasRenderableCachedContent(content)
+      ) {
+        // Failed refreshes created before this fix may have hidden an older,
+        // successfully sanitized body. Repair that state lazily on first read.
+        stage = 'persist';
+        this.contentStore.updatePipelineStatus(entryId, 'success');
+        content = {
+          ...content,
+          pipelineStatus: 'success',
+          pipelineError: undefined,
+        };
+      }
 
-    const markdownSource = this.contentStore.findMarkdownSource(entryId);
-    if (!markdownSource) return content;
+      stage = 'cache';
+      const markdownSource = this.contentStore.findMarkdownSource(entryId);
+      if (!markdownSource) return content;
 
-    const needsHtmlUpgrade =
-      (markdownSource.readabilityVersion ?? 0) < CONTENT_CLEANER_VERSION;
-    const cleanedHtml = needsHtmlUpgrade
-      ? this.rebuildStoredHtml(markdownSource)
-      : markdownSource.cleanedHtml;
-    const needsMarkdownUpgrade = needsHtmlUpgrade
-      || (markdownSource.markdownVersion ?? 0) < MARKDOWN_CONVERTER_VERSION;
-    const markdown = needsMarkdownUpgrade
-      ? this.markdownConverter.convert(cleanedHtml)
-      : content.markdown;
+      const needsHtmlUpgrade =
+        (markdownSource.readabilityVersion ?? 0) < CONTENT_CLEANER_VERSION;
+      stage = needsHtmlUpgrade ? 'clean' : 'cache';
+      const cleanedHtml = needsHtmlUpgrade
+        ? this.rebuildStoredHtml(markdownSource)
+        : markdownSource.cleanedHtml;
+      const needsMarkdownUpgrade = needsHtmlUpgrade
+        || (markdownSource.markdownVersion ?? 0) < MARKDOWN_CONVERTER_VERSION;
+      stage = needsMarkdownUpgrade ? 'convert' : stage;
+      const markdown = needsMarkdownUpgrade
+        ? this.markdownConverter.convert(cleanedHtml)
+        : content.markdown;
 
-    if (needsHtmlUpgrade) {
-      const segmentedContent = this.segmenter.segment(cleanedHtml, {
-        title: content.readerTitle,
-        byline: content.readerByline,
-      });
-      this.contentStore.upsert({
+      if (needsHtmlUpgrade) {
+        const segmentedContent = this.segmenter.segment(cleanedHtml, {
+          title: content.readerTitle,
+          byline: content.readerByline,
+        });
+        stage = 'persist';
+        this.contentStore.upsert({
+          entryId,
+          cleanedHtml,
+          markdown,
+          readabilityVersion: CONTENT_CLEANER_VERSION,
+          markdownVersion: MARKDOWN_CONVERTER_VERSION,
+          pipelineStatus: content.pipelineStatus,
+          pipelineError: content.pipelineError,
+          segmenterVersion: segmentedContent.segmenterVersion,
+          sourceContentHash: segmentedContent.sourceContentHash,
+          segments: segmentedContent.segments,
+        });
+        this.entryStore.updateContentHash(
+          entryId,
+          segmentedContent.sourceContentHash,
+        );
+        return {
+          ...content,
+          cleanedHtml,
+          markdown,
+          segmenterVersion: segmentedContent.segmenterVersion,
+          sourceContentHash: segmentedContent.sourceContentHash,
+          segments: segmentedContent.segments,
+        };
+      }
+
+      if (needsMarkdownUpgrade) {
+        stage = 'persist';
+        this.contentStore.upsert({
+          entryId,
+          markdown,
+          markdownVersion: MARKDOWN_CONVERTER_VERSION,
+          pipelineStatus: content.pipelineStatus,
+          pipelineError: content.pipelineError,
+        });
+        return { ...content, markdown };
+      }
+
+      return content;
+    } catch (error) {
+      const failure = this.getTerminalFailure(stage, error);
+      this.logPipelineFailure(
         entryId,
-        cleanedHtml,
-        markdown,
-        readabilityVersion: CONTENT_CLEANER_VERSION,
-        markdownVersion: MARKDOWN_CONVERTER_VERSION,
-        pipelineStatus: content.pipelineStatus,
-        pipelineError: content.pipelineError,
-        segmenterVersion: segmentedContent.segmenterVersion,
-        sourceContentHash: segmentedContent.sourceContentHash,
-        segments: segmentedContent.segments,
-      });
-      this.entryStore.updateContentHash(
-        entryId,
-        segmentedContent.sourceContentHash,
+        undefined,
+        startedAt,
+        failure.stage,
+        failure.errorCode,
       );
-      return {
-        ...content,
-        cleanedHtml,
-        markdown,
-        segmenterVersion: segmentedContent.segmenterVersion,
-        sourceContentHash: segmentedContent.sourceContentHash,
-        segments: segmentedContent.segments,
-      };
+      throw error;
     }
-
-    if (needsMarkdownUpgrade) {
-      this.contentStore.upsert({
-        entryId,
-        markdown,
-        markdownVersion: MARKDOWN_CONVERTER_VERSION,
-        pipelineStatus: content.pipelineStatus,
-        pipelineError: content.pipelineError,
-      });
-      return { ...content, markdown };
-    }
-
-    return content;
   }
 
   private buildFeedPreview(entryId: number): CleanedContent | undefined {
@@ -215,7 +255,6 @@ export class ContentService {
 
     try {
       entry = this.entryStore.findById(entryId);
-      previousContent = this.contentStore.findByEntry(entryId);
     } catch (error) {
       this.logPipelineFailure(
         entryId,
@@ -236,6 +275,20 @@ export class ContentService {
         CONTENT_PIPELINE_ERROR_CODES.entryNotFound,
       );
       return this.buildFailedResult(entryId, 'Entry not found');
+    }
+
+    stage = 'cache';
+    try {
+      previousContent = this.contentStore.findByEntry(entryId);
+    } catch (error) {
+      this.logPipelineFailure(
+        entryId,
+        entry.feedId,
+        startedAt,
+        stage,
+        CONTENT_PIPELINE_ERROR_CODES.cacheReadFailed,
+      );
+      throw error;
     }
 
     stage = 'validate';
@@ -269,7 +322,7 @@ export class ContentService {
           (candidate) => {
             const cleanStartedAt = performance.now();
             try {
-              cleanResult = this.cleaner.clean(candidate.body, candidate.url);
+              cleanResult = this.cleanArticle(candidate.body, candidate.url);
             } finally {
               timings.cleanDurationMs += elapsedContentMilliseconds(
                 cleanStartedAt,
@@ -295,7 +348,7 @@ export class ContentService {
       if (!cleanResult) {
         const cleanStartedAt = performance.now();
         try {
-          cleanResult = this.cleaner.clean(fetchResult.body, fetchResult.url);
+          cleanResult = this.cleanArticle(fetchResult.body, fetchResult.url);
         } finally {
           timings.cleanDurationMs += elapsedContentMilliseconds(cleanStartedAt);
         }
@@ -318,15 +371,26 @@ export class ContentService {
       );
       return result;
     } catch (error) {
-      const failedStage = stage;
-      const failedErrorCode = this.getErrorCodeForStage(failedStage);
+      const primaryFailure = this.getTerminalFailure(stage, error);
+      let terminalFailure = primaryFailure;
       const message = error instanceof Error ? error.message : String(error);
 
       if (this.hasRenderableCachedContent(previousContent)) {
-        this.contentStore.upsert({
-          entryId,
-          pipelineStatus: 'success',
-        });
+        try {
+          this.contentStore.upsert({
+            entryId,
+            pipelineStatus: 'success',
+          });
+        } catch (persistError) {
+          this.logPipelineFailure(
+            entryId,
+            entry.feedId,
+            startedAt,
+            'persist',
+            CONTENT_PIPELINE_ERROR_CODES.persistFailed,
+          );
+          throw persistError;
+        }
         this.logPipelineSuccess(
           entry.id,
           entry.feedId,
@@ -342,8 +406,21 @@ export class ContentService {
         };
       }
 
-      const fallbackHtml = this.entryStore.findFeedContentHtml(entryId)
-        ?? this.buildSummaryFallback(entry.summary);
+      let fallbackHtml: string | undefined;
+      try {
+        fallbackHtml = this.entryStore.findFeedContentHtml(entryId)
+          ?? this.buildSummaryFallback(entry.summary);
+      } catch (fallbackLookupError) {
+        const fallbackFailure = this.getTerminalFailure('lookup', fallbackLookupError);
+        this.logPipelineFailure(
+          entryId,
+          entry.feedId,
+          startedAt,
+          fallbackFailure.stage,
+          fallbackFailure.errorCode,
+        );
+        throw fallbackLookupError;
+      }
       if (fallbackHtml) {
         try {
           const fallbackResult: FetchResult = {
@@ -352,6 +429,7 @@ export class ContentService {
             headers: {},
             body: fallbackHtml,
           };
+          stage = 'clean';
           const fallbackCleanResult = this.cleaner.cleanFeedContent(
             fallbackHtml,
             entry.url,
@@ -362,7 +440,9 @@ export class ContentService {
             entry,
             fallbackResult,
             fallbackCleanResult,
-            undefined,
+            (nextStage) => {
+              stage = nextStage;
+            },
             timings,
           );
           this.logPipelineSuccess(
@@ -374,9 +454,8 @@ export class ContentService {
             'feed-fallback',
           );
           return result;
-        } catch {
-          // Preserve the original page-fetch/extraction error below; it is the
-          // more actionable failure when both primary and fallback inputs fail.
+        } catch (fallbackError) {
+          terminalFailure = this.getTerminalFailure(stage, fallbackError);
         }
       }
 
@@ -397,13 +476,15 @@ export class ContentService {
         throw persistError;
       }
 
-      this.logPipelineFailure(
-        entryId,
-        entry.feedId,
-        startedAt,
-        failedStage,
-        failedErrorCode,
-      );
+      if (!isExpectedAbort(error, signal) || terminalFailure !== primaryFailure) {
+        this.logPipelineFailure(
+          entryId,
+          entry.feedId,
+          startedAt,
+          terminalFailure.stage,
+          terminalFailure.errorCode,
+        );
+      }
 
       return this.buildFailedResult(entryId, message);
     }
@@ -510,6 +591,15 @@ export class ContentService {
     };
   }
 
+  private cleanArticle(html: string, baseUrl: string): CleanResult {
+    try {
+      return this.cleaner.clean(html, baseUrl);
+    } catch (error) {
+      if (error instanceof ContentExtractionError) throw error;
+      throw new ContentPipelineStageError('clean', error);
+    }
+  }
+
   private logPipelineFailure(
     entryId: number,
     feedId: number | undefined,
@@ -548,16 +638,46 @@ export class ContentService {
     });
   }
 
+  private getTerminalFailure(
+    stage: ContentPipelineStage,
+    error: unknown,
+  ): ContentTerminalFailure {
+    if (error instanceof ContentPipelineStageError) {
+      return {
+        stage: error.stage,
+        errorCode: CONTENT_PIPELINE_ERROR_CODES.cleanFailed,
+      };
+    }
+    if (error instanceof ContentExtractionError) {
+      return {
+        stage: 'extract',
+        errorCode: CONTENT_PIPELINE_ERROR_CODES.extractFailed,
+      };
+    }
+    if (stage === 'fetch' && error instanceof FetchResponseUnavailableError) {
+      return {
+        stage: 'fetch',
+        errorCode: CONTENT_PIPELINE_ERROR_CODES.responseUnavailable,
+      };
+    }
+
+    return { stage, errorCode: this.getErrorCodeForStage(stage) };
+  }
+
   private getErrorCodeForStage(
     stage: ContentPipelineStage,
   ): ContentPipelineErrorCode {
     switch (stage) {
+      case 'cache':
+        return CONTENT_PIPELINE_ERROR_CODES.cacheReadFailed;
       case 'lookup':
         return CONTENT_PIPELINE_ERROR_CODES.lookupFailed;
       case 'validate':
         return CONTENT_PIPELINE_ERROR_CODES.entryUrlMissing;
       case 'fetch':
         return CONTENT_PIPELINE_ERROR_CODES.fetchFailed;
+      case 'extract':
+        return CONTENT_PIPELINE_ERROR_CODES.extractFailed;
       case 'clean':
         return CONTENT_PIPELINE_ERROR_CODES.cleanFailed;
       case 'convert':
@@ -566,6 +686,12 @@ export class ContentService {
         return CONTENT_PIPELINE_ERROR_CODES.persistFailed;
     }
   }
+}
+
+function isExpectedAbort(error: unknown, signal: AbortSignal | undefined): boolean {
+  if (!signal?.aborted) return false;
+  if (error instanceof Error && error.name === 'AbortError') return true;
+  return signal.reason !== undefined && signal.reason === error;
 }
 
 function escapeHtml(value: string): string {

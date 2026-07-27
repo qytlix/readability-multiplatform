@@ -78,18 +78,20 @@ import {
   elapsedTranslationMilliseconds,
   logTranslationRecoveryCompleted,
   logTranslationMissingSegmentsDetected,
-  logTranslationProviderRequestCompleted,
   logTranslationProviderRequestFailed,
-  logTranslationProviderRequestStarted,
   logTranslationRunCompleted,
   logTranslationRunFailed,
   logTranslationRunInterrupted,
   logTranslationRunStarted,
   TRANSLATION_LOG_ERROR_CODES,
   type TranslationOperationLogger,
+  type TranslationContextWarningCode,
+  type TranslationLogTrigger,
+  type TranslationPreviousResultOutcome,
   type TranslationProviderRequestKind,
   type TranslationProviderResponseDiagnostics,
   type TranslationRunFailureStage,
+  type TranslationStopReason,
 } from './TranslationLogging';
 import {
   TRANSLATION_OUTPUT_REASON_CODES,
@@ -124,6 +126,10 @@ interface ActiveTranslationRun {
   abortController: AbortController;
   startedAt: number;
   terminalLogRecorded: boolean;
+  trigger: TranslationLogTrigger;
+  hadPreviousActiveResult: boolean;
+  stopReason?: TranslationStopReason;
+  contextWarningCode?: TranslationContextWarningCode;
   diagnostics: TranslationRunDiagnostics;
   sourceSegmentId?: string;
   priorityRanks: Map<string, number>;
@@ -138,6 +144,7 @@ interface TranslationRunDiagnostics {
   providerRequestSuccessCount: number;
   providerRequestFailureCount: number;
   missingSegmentCount: number;
+  unresolvedMissingSegmentCount: number;
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
@@ -309,9 +316,11 @@ export class TranslationService {
   reconcileInterruptedRuns(): void {
     const startedAt = performance.now();
     const count = this.translationStore.reconcileInterruptedRuns();
+    if (count <= 0) return;
     logTranslationRecoveryCompleted(this.logger, {
       durationMs: elapsedTranslationMilliseconds(startedAt),
       count,
+      trigger: 'startup-recovery',
     });
   }
 
@@ -387,7 +396,16 @@ export class TranslationService {
       );
     }
 
-    const result = !request.forceNew && existingResult && existingResult.status !== 'succeeded'
+    const apiKey = this.secretStore.read(profile.translationApiKeyRef);
+    const isResuming = !request.forceNew
+      && existingResult !== undefined
+      && existingResult.status !== 'succeeded';
+    const trigger: TranslationLogTrigger = request.forceNew
+      ? 'force-new'
+      : isResuming
+        ? 'resume'
+        : 'initial';
+    const result = isResuming
       ? this.translationStore.resumeRun(existingResult.id, profile.id)
       : this.translationStore.createRun({
           entryId: request.entryId,
@@ -414,6 +432,8 @@ export class TranslationService {
       abortController,
       startedAt,
       terminalLogRecorded: false,
+      trigger,
+      hadPreviousActiveResult: activeResult !== undefined,
       diagnostics: createTranslationRunDiagnostics(),
       priorityRanks: new Map(),
       batches: [],
@@ -426,14 +446,18 @@ export class TranslationService {
       sourceLanguage: result.sourceLanguage,
       targetLanguage: result.targetLanguage,
     });
-    logTranslationRunStarted(this.logger, { taskRunId: result.id });
+    logTranslationRunStarted(this.logger, {
+      taskRunId: result.id,
+      trigger,
+      previousResultAtStart: activeResult ? 'retained' : 'none',
+    });
     this.executeTimer = setTimeout(() => {
       this.executeTimer = undefined;
       void this.executeRun(result, {
         providerKind: profile.translationProviderKind,
         baseUrl: profile.translationBaseUrl,
         model: profile.translationModel,
-        apiKey: this.secretStore.read(profile.translationApiKeyRef),
+        apiKey,
         providerProfileId: profile.id,
         expert,
         abortController,
@@ -489,6 +513,7 @@ export class TranslationService {
       clearTimeout(this.executeTimer);
       this.executeTimer = undefined;
     }
+    activeRun.stopReason = 'paused';
     activeRun.abortController.abort();
     const pausedResult = this.translationStore.markRunPaused(
       activeRun.result.id,
@@ -498,7 +523,7 @@ export class TranslationService {
         true,
       )),
     );
-    this.logRunInterrupted(activeRun);
+    this.logRunInterrupted(activeRun, 'paused');
     this.activeRun = null;
     this.emit({
       type: 'paused',
@@ -523,6 +548,7 @@ export class TranslationService {
       'Translation generation was interrupted before completion.',
       true,
     ));
+    activeRun.stopReason = 'shutdown';
     activeRun.abortController.abort();
     activeRun.providerRequests.forEach((providerRequest) => {
       this.usageRecorder.interrupt(
@@ -536,7 +562,7 @@ export class TranslationService {
       error,
       activeRun.sourceSegmentId,
     );
-    this.logRunInterrupted(activeRun);
+    this.logRunInterrupted(activeRun, 'shutdown');
     this.emit({
       type: 'failed',
       runId: activeRun.result.id,
@@ -592,6 +618,13 @@ export class TranslationService {
             };
         providerConfig.context = contextOutcome.context;
         this.translationStore.setContextWarning(result.id, contextOutcome.warning);
+        const activeRun = this.activeRun;
+        if (
+          activeRun?.result.id === result.id
+          && contextOutcome.warning?.code === TRANSLATION_ERROR_CODES.TRANSLATION_CONTEXT_UNAVAILABLE
+        ) {
+          activeRun.contextWarningCode = 'TRANSLATION_CONTEXT_UNAVAILABLE';
+        }
       }
 
       const untranslatedSegments: TranslationSegment[] = [];
@@ -712,10 +745,19 @@ export class TranslationService {
       }
       const failure = toTranslationIpcError(error);
       this.translationStore.markRunFailed(result.id, failure, activeRun.sourceSegmentId);
-      if (failure.code === TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED) {
-        this.logRunInterrupted(activeRun);
+      if (
+        failure.code === TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED
+        && activeRun.stopReason
+      ) {
+        this.logRunInterrupted(activeRun, activeRun.stopReason);
       } else {
-        this.logRunFailure(activeRun, stage, failure.code);
+        this.logRunFailure(
+          activeRun,
+          stage,
+          failure.code === TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED
+            ? TRANSLATION_ERROR_CODES.TRANSLATION_UNKNOWN_ERROR
+            : failure.code,
+        );
       }
       this.emit({
         type: 'failed',
@@ -783,6 +825,7 @@ export class TranslationService {
         })),
       });
     const settledIds = new Set<string>();
+    const successfullyTranslatedIds = new Set<string>();
     const segmentFailures: SegmentTranslationFailure[] = [];
     let latestBatchProviderRequest: ActiveProviderRequest | undefined;
 
@@ -857,6 +900,7 @@ export class TranslationService {
           parsed.terminologyMatches,
         );
         settledIds.add(output.sourceSegmentId);
+        successfullyTranslatedIds.add(output.sourceSegmentId);
         providerRequest.responseDiagnostics.acceptedSegmentCount += 1;
         this.emit({
           type: 'segment-completed',
@@ -972,6 +1016,7 @@ export class TranslationService {
         terminologyMatches,
       );
       settledIds.add(input.segment.sourceSegmentId);
+      successfullyTranslatedIds.add(input.segment.sourceSegmentId);
       this.emit({
         type: 'segment-completed',
         runId: result.id,
@@ -1177,6 +1222,11 @@ export class TranslationService {
       if (!missingInputs.length) return;
       const compensationInputs = missingInputs.slice(0, MAX_COMPENSATION_REQUESTS_PER_BATCH);
       active.diagnostics.missingSegmentCount += missingInputs.length;
+      if (!compensationInputs.length || providerConfig.abortController.signal.aborted) {
+        active.diagnostics.unresolvedMissingSegmentCount += missingInputs.filter(({ segment }) =>
+          !successfullyTranslatedIds.has(segment.sourceSegmentId)).length;
+        return;
+      }
       logTranslationMissingSegmentsDetected(this.logger, {
         taskRunId: result.id,
         providerRequestId: providerRequest.providerRequestId,
@@ -1186,49 +1236,37 @@ export class TranslationService {
           providerRequest.responseDiagnostics,
         ),
       });
-      for (const missingInput of compensationInputs) {
-        try {
-          const compensationRequest = await recoverMissingInput(
-            providerRequest,
-            missingInput,
-          );
-          if (
-            compensationRequest
-            && compensationRequest.responseDiagnostics.missingSegmentCount > 0
-          ) {
-            logTranslationMissingSegmentsDetected(this.logger, {
-              taskRunId: result.id,
-              providerRequestId: compensationRequest.providerRequestId,
-              requestKind: compensationRequest.requestKind,
-              missingSegmentCount: compensationRequest.responseDiagnostics.missingSegmentCount,
-              responseDiagnostics: toProviderResponseDiagnostics(
-                compensationRequest.responseDiagnostics,
-              ),
+      try {
+        for (const missingInput of compensationInputs) {
+          try {
+            await recoverMissingInput(providerRequest, missingInput);
+          } catch (error) {
+            const translationError = toTranslationIpcError(error);
+            if (!isSegmentOutputError(translationError.code)) throw error;
+            const failedSegment = this.translationStore.markSegmentFailed(
+              result.id,
+              missingInput.segment.sourceSegmentId,
+              translationError,
+            );
+            this.emit({
+              type: 'segment-failed',
+              runId: result.id,
+              entryId: result.entryId,
+              sourceLanguage: result.sourceLanguage,
+              targetLanguage: result.targetLanguage,
+              sourceSegmentId: missingInput.segment.sourceSegmentId,
+              segment: failedSegment,
+            });
+            settledIds.add(missingInput.segment.sourceSegmentId);
+            segmentFailures.push({
+              sourceSegmentId: missingInput.segment.sourceSegmentId,
+              error: translationError,
             });
           }
-        } catch (error) {
-          const translationError = toTranslationIpcError(error);
-          if (!isSegmentOutputError(translationError.code)) throw error;
-          const failedSegment = this.translationStore.markSegmentFailed(
-            result.id,
-            missingInput.segment.sourceSegmentId,
-            translationError,
-          );
-          this.emit({
-            type: 'segment-failed',
-            runId: result.id,
-            entryId: result.entryId,
-            sourceLanguage: result.sourceLanguage,
-            targetLanguage: result.targetLanguage,
-            sourceSegmentId: missingInput.segment.sourceSegmentId,
-            segment: failedSegment,
-          });
-          settledIds.add(missingInput.segment.sourceSegmentId);
-          segmentFailures.push({
-            sourceSegmentId: missingInput.segment.sourceSegmentId,
-            error: translationError,
-          });
         }
+      } finally {
+        active.diagnostics.unresolvedMissingSegmentCount += missingInputs.filter(({ segment }) =>
+          !successfullyTranslatedIds.has(segment.sourceSegmentId)).length;
       }
       if (compensationInputs.length !== missingInputs.length) {
         throw invalidBatchOutput(
@@ -1368,12 +1406,6 @@ export class TranslationService {
       }),
     };
     activeRun.providerRequests.add(request);
-    logTranslationProviderRequestStarted(this.logger, {
-      taskRunId: activeRun.result.id,
-      providerRequestId: request.providerRequestId,
-      requestKind: request.requestKind,
-      segmentCount: request.segmentCount,
-    });
     return request;
   }
 
@@ -1387,16 +1419,6 @@ export class TranslationService {
     activeRun.providerRequests.delete(request);
     this.recordProviderUsage(activeRun.diagnostics, reportedUsage);
     activeRun.diagnostics.providerRequestSuccessCount += 1;
-    logTranslationProviderRequestCompleted(this.logger, {
-      taskRunId: activeRun.result.id,
-      providerRequestId: request.providerRequestId,
-      requestKind: request.requestKind,
-      segmentCount: request.segmentCount,
-      durationMs: elapsedTranslationMilliseconds(request.startedAt),
-      success: true,
-      responseDiagnostics: toProviderResponseDiagnostics(request.responseDiagnostics),
-      ...reportedUsage,
-    });
   }
 
   private failProviderRequest(
@@ -1422,6 +1444,7 @@ export class TranslationService {
     activeRun.providerRequests.delete(request);
     this.recordProviderUsage(activeRun.diagnostics, reportedUsage);
     activeRun.diagnostics.providerRequestFailureCount += 1;
+    if (isExpectedProviderAbort(activeRun, error, ipcError.code)) return;
     logTranslationProviderRequestFailed(this.logger, {
       taskRunId: activeRun.result.id,
       providerRequestId: request.providerRequestId,
@@ -1460,6 +1483,7 @@ export class TranslationService {
       providerRequestSuccessCount: diagnostics.providerRequestSuccessCount,
       providerRequestFailureCount: diagnostics.providerRequestFailureCount,
       missingSegmentCount: diagnostics.missingSegmentCount,
+      unresolvedMissingSegmentCount: diagnostics.unresolvedMissingSegmentCount,
       ...(diagnostics.inputTokens === undefined ? {} : { inputTokens: diagnostics.inputTokens }),
       ...(diagnostics.outputTokens === undefined ? {} : { outputTokens: diagnostics.outputTokens }),
       ...(diagnostics.totalTokens === undefined ? {} : { totalTokens: diagnostics.totalTokens }),
@@ -1473,6 +1497,9 @@ export class TranslationService {
       taskRunId: activeRun.result.id,
       durationMs: elapsedTranslationMilliseconds(activeRun.startedAt),
       success: true,
+      trigger: activeRun.trigger,
+      previousResultOutcome: this.getPreviousResultOutcome(activeRun, 'completed'),
+      ...this.getContextDegradationFields(activeRun),
       ...this.getRunDiagnosticSummary(activeRun),
     });
   }
@@ -1490,11 +1517,17 @@ export class TranslationService {
       success: false,
       stage,
       errorCode: toTranslationRunFailureErrorCode(stage, errorCode),
+      trigger: activeRun.trigger,
+      previousResultOutcome: this.getPreviousResultOutcome(activeRun, 'retained'),
+      ...this.getContextDegradationFields(activeRun),
       ...this.getRunDiagnosticSummary(activeRun),
     });
   }
 
-  private logRunInterrupted(activeRun: ActiveTranslationRun): void {
+  private logRunInterrupted(
+    activeRun: ActiveTranslationRun,
+    stopReason: TranslationStopReason,
+  ): void {
     if (activeRun.terminalLogRecorded) return;
     activeRun.terminalLogRecorded = true;
     logTranslationRunInterrupted(this.logger, {
@@ -1503,7 +1536,34 @@ export class TranslationService {
       success: false,
       stage: 'interrupt',
       errorCode: TRANSLATION_LOG_ERROR_CODES.interrupted,
+      stopReason,
+      trigger: activeRun.trigger,
+      previousResultOutcome: this.getPreviousResultOutcome(activeRun, 'retained'),
+      ...this.getContextDegradationFields(activeRun),
+      ...this.getRunDiagnosticSummary(activeRun),
     });
+  }
+
+  private getPreviousResultOutcome(
+    activeRun: ActiveTranslationRun,
+    terminalOutcome: 'completed' | 'retained',
+  ): TranslationPreviousResultOutcome {
+    if (!activeRun.hadPreviousActiveResult) return 'none';
+    return terminalOutcome === 'completed' ? 'replaced' : 'retained';
+  }
+
+  private getContextDegradationFields(
+    activeRun: ActiveTranslationRun,
+  ): Pick<
+    import('./TranslationLogging').TranslationRunCompletedLogContext,
+    'contextDegraded' | 'contextWarningCode'
+  > {
+    return activeRun.contextWarningCode === undefined
+      ? {}
+      : {
+          contextDegraded: true,
+          contextWarningCode: activeRun.contextWarningCode,
+        };
   }
 
   close(): void {
@@ -1588,6 +1648,7 @@ function createTranslationRunDiagnostics(): TranslationRunDiagnostics {
     providerRequestSuccessCount: 0,
     providerRequestFailureCount: 0,
     missingSegmentCount: 0,
+    unresolvedMissingSegmentCount: 0,
   };
 }
 
@@ -1826,6 +1887,22 @@ function invalidBatchOutput(
 function isSegmentOutputError(errorCode: string): boolean {
   return errorCode === TRANSLATION_ERROR_CODES.TRANSLATION_EMPTY_OUTPUT
     || errorCode === TRANSLATION_ERROR_CODES.TRANSLATION_INVALID_STRUCTURE;
+}
+
+function isExpectedProviderAbort(
+  activeRun: ActiveTranslationRun,
+  error: unknown,
+  errorCode: string,
+): boolean {
+  if (!activeRun.abortController.signal.aborted) return false;
+  if (errorCode === TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED) return true;
+  return isAbortError(error);
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { name?: unknown; code?: unknown };
+  return candidate.name === 'AbortError' || candidate.code === 'ABORT_ERR';
 }
 
 function toTranslationRunFailureErrorCode(

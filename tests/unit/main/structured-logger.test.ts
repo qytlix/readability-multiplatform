@@ -53,9 +53,7 @@ import {
 import {
   logTranslationRecoveryCompleted,
   logTranslationMissingSegmentsDetected,
-  logTranslationProviderRequestCompleted,
   logTranslationProviderRequestFailed,
-  logTranslationProviderRequestStarted,
   logTranslationRunCompleted,
   logTranslationRunFailed,
   logTranslationRunInterrupted,
@@ -209,9 +207,15 @@ describe('StructuredLogger', () => {
     const directory = createLogDirectory();
     const logger = createLogger(directory);
 
-    logTranslationRunStarted(logger, { taskRunId: 12 });
+    logTranslationRunStarted(logger, {
+      taskRunId: 12,
+      trigger: 'initial',
+      previousResultAtStart: 'none',
+    });
     logTranslationRunCompleted(logger, {
       taskRunId: 12,
+      trigger: 'initial',
+      previousResultOutcome: 'none',
       durationMs: 1,
       success: true,
       providerRequestCount: 1,
@@ -220,9 +224,12 @@ describe('StructuredLogger', () => {
       providerRequestSuccessCount: 1,
       providerRequestFailureCount: 0,
       missingSegmentCount: 0,
+      unresolvedMissingSegmentCount: 0,
     });
     logTranslationRunFailed(logger, {
       taskRunId: 13,
+      trigger: 'resume',
+      previousResultOutcome: 'retained',
       durationMs: 2,
       success: false,
       stage: 'stream',
@@ -233,15 +240,30 @@ describe('StructuredLogger', () => {
       providerRequestSuccessCount: 0,
       providerRequestFailureCount: 1,
       missingSegmentCount: 0,
+      unresolvedMissingSegmentCount: 0,
     });
     logTranslationRunInterrupted(logger, {
       taskRunId: 14,
+      trigger: 'force-new',
+      previousResultOutcome: 'retained',
       durationMs: 3,
       success: false,
       stage: 'interrupt',
       errorCode: TRANSLATION_LOG_ERROR_CODES.interrupted,
+      stopReason: 'paused',
+      providerRequestCount: 1,
+      batchRequestCount: 1,
+      compensationRequestCount: 0,
+      providerRequestSuccessCount: 0,
+      providerRequestFailureCount: 1,
+      missingSegmentCount: 0,
+      unresolvedMissingSegmentCount: 0,
     });
-    logTranslationRecoveryCompleted(logger, { durationMs: 4, count: 2 });
+    logTranslationRecoveryCompleted(logger, {
+      durationMs: 4,
+      count: 2,
+      trigger: 'startup-recovery',
+    });
     await logger.flush();
 
     const records = readRecords(directory);
@@ -252,17 +274,24 @@ describe('StructuredLogger', () => {
       TRANSLATION_LOG_EVENTS.runInterrupted,
       TRANSLATION_LOG_EVENTS.recoveryCompleted,
     ]);
-    expect(records[0].context).toEqual({ taskRunId: 12 });
+    expect(records[0].context).toEqual({
+      taskRunId: 12,
+      trigger: 'initial',
+      previousResultAtStart: 'none',
+    });
     expect(records[1].context).toEqual({
       taskRunId: 12,
       durationMs: 1,
       success: true,
+      trigger: 'initial',
+      previousResultOutcome: 'none',
       providerRequestCount: 1,
       batchRequestCount: 1,
       compensationRequestCount: 0,
       providerRequestSuccessCount: 1,
       providerRequestFailureCount: 0,
       missingSegmentCount: 0,
+      unresolvedMissingSegmentCount: 0,
     });
     expect(records[2].context).toEqual({
       taskRunId: 13,
@@ -270,12 +299,15 @@ describe('StructuredLogger', () => {
       success: false,
       stage: 'stream',
       errorCode: TRANSLATION_LOG_ERROR_CODES.providerTimeout,
+      trigger: 'resume',
+      previousResultOutcome: 'retained',
       providerRequestCount: 1,
       batchRequestCount: 1,
       compensationRequestCount: 0,
       providerRequestSuccessCount: 0,
       providerRequestFailureCount: 1,
       missingSegmentCount: 0,
+      unresolvedMissingSegmentCount: 0,
     });
     expect(records[3].context).toEqual({
       taskRunId: 14,
@@ -283,30 +315,28 @@ describe('StructuredLogger', () => {
       success: false,
       stage: 'interrupt',
       errorCode: TRANSLATION_LOG_ERROR_CODES.interrupted,
+      stopReason: 'paused',
+      trigger: 'force-new',
+      previousResultOutcome: 'retained',
+      providerRequestCount: 1,
+      batchRequestCount: 1,
+      compensationRequestCount: 0,
+      providerRequestSuccessCount: 0,
+      providerRequestFailureCount: 1,
+      missingSegmentCount: 0,
+      unresolvedMissingSegmentCount: 0,
     });
-    expect(records[4].context).toEqual({ durationMs: 4, count: 2 });
+    expect(records[4].context).toEqual({
+      durationMs: 4,
+      count: 2,
+      trigger: 'startup-recovery',
+    });
   });
 
-  it('writes Translation Provider requests and missing-segment aggregates without content', async () => {
+  it('writes Translation request failures and omission aggregates without content', async () => {
     const directory = createLogDirectory();
     const logger = createLogger(directory);
 
-    logTranslationProviderRequestStarted(logger, {
-      taskRunId: 12,
-      providerRequestId: 1,
-      requestKind: 'batch',
-      segmentCount: 3,
-    });
-    logTranslationProviderRequestCompleted(logger, {
-      taskRunId: 12,
-      providerRequestId: 1,
-      requestKind: 'batch',
-      segmentCount: 3,
-      durationMs: 2,
-      success: true,
-      inputTokens: 11,
-      outputTokens: 7,
-    });
     logTranslationMissingSegmentsDetected(logger, {
       taskRunId: 12,
       providerRequestId: 1,
@@ -326,8 +356,6 @@ describe('StructuredLogger', () => {
 
     const records = readRecords(directory);
     expect(records.map((record) => record.event)).toEqual([
-      TRANSLATION_LOG_EVENTS.providerRequestStarted,
-      TRANSLATION_LOG_EVENTS.providerRequestCompleted,
       TRANSLATION_LOG_EVENTS.missingSegmentsDetected,
       TRANSLATION_LOG_EVENTS.providerRequestFailed,
     ]);
@@ -335,25 +363,9 @@ describe('StructuredLogger', () => {
       taskRunId: 12,
       providerRequestId: 1,
       requestKind: 'batch',
-      segmentCount: 3,
-    });
-    expect(records[1].context).toEqual({
-      taskRunId: 12,
-      providerRequestId: 1,
-      requestKind: 'batch',
-      segmentCount: 3,
-      durationMs: 2,
-      success: true,
-      inputTokens: 11,
-      outputTokens: 7,
-    });
-    expect(records[2].context).toEqual({
-      taskRunId: 12,
-      providerRequestId: 1,
-      requestKind: 'batch',
       missingSegmentCount: 1,
     });
-    expect(records[3].context).toEqual({
+    expect(records[1].context).toEqual({
       taskRunId: 12,
       providerRequestId: 2,
       requestKind: 'compensation',

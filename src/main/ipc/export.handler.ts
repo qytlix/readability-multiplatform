@@ -21,6 +21,16 @@ import type { PerArticleOptions } from '../../shared/contracts/export.types';
 import type { ShaleError } from '../../shared/errors/feed.errors';
 import { isAuthorizedSender, type GetMainWindow } from '../ipc';
 import type { ExportService } from '../export/ExportService';
+import type { ExportImageLocalizationResult } from '../export/ExportImageLocalizer';
+import {
+  elapsedMarkdownExportMilliseconds,
+  getMarkdownExportErrorCode,
+  logMarkdownExportCompleted,
+  logMarkdownExportFailed,
+  type MarkdownExportCompletedLogContext,
+  type MarkdownExportOperationLogger,
+  type MarkdownExportStage,
+} from '../export/MarkdownExportLogging';
 import { markdownExportFilename } from '../export/safeFilename';
 import { serializeSingle, serializeMultiple } from '../export/MarkdownSerializer';
 
@@ -47,6 +57,7 @@ function failFromError(error: unknown): IPCResult<never> {
 export function registerExportIpcHandlers(
   getMainWindow: GetMainWindow,
   exportService: ExportService,
+  logger?: MarkdownExportOperationLogger,
 ): void {
   // ── 清洗状态检查 ──────────────────────────────────────
   ipcMain.handle(
@@ -133,23 +144,32 @@ export function registerExportIpcHandlers(
       if (!isAuthorizedSender(event, getMainWindow)) {
         return fail('UNAUTHORIZED', 'Unauthorized IPC sender.');
       }
+
+      const startedAt = performance.now();
+      let stage: MarkdownExportStage = 'validate';
+      let count: number | undefined;
       try {
         const { entryId, options } = request as ExportSingleRequest;
         if (!Number.isInteger(entryId) || entryId <= 0) {
+          logMarkdownExportFailure(logger, startedAt, stage, count);
           return fail(
             EXPORT_ERROR_CODES.EXPORT_ENTRY_NOT_FOUND,
             'entryId must be a positive integer',
           );
         }
         validateOptions(options);
+        count = 1;
 
         // 聚合数据
+        stage = 'prepare';
         const article = exportService.prepareArticleData(entryId, options);
 
         // 序列化
+        stage = 'serialize';
         const markdown = serializeSingle(article, options);
 
         // 打开保存对话框
+        stage = 'dialog';
         const mainWindow = getMainWindow();
         const defaultName = markdownExportFilename(
           article.title ?? 'untitled',
@@ -175,11 +195,17 @@ export function registerExportIpcHandlers(
         }
 
         // 下载远程图片并改写为相对路径，然后写入 Markdown。
+        stage = 'write';
         const imageResult = await exportService.writeMarkdownExport(
           dialogResult.filePath,
           markdown,
           [article],
         );
+        logMarkdownExportCompleted(logger, {
+          durationMs: elapsedMarkdownExportMilliseconds(startedAt),
+          count,
+          ...toImageLocalizationLogFields(imageResult),
+        });
 
         return ok({
           filePath: dialogResult.filePath,
@@ -188,6 +214,7 @@ export function registerExportIpcHandlers(
           failedImageCount: imageResult.failedImageCount,
         });
       } catch (error) {
+        logMarkdownExportFailure(logger, startedAt, stage, count);
         return failFromError(error);
       }
     },
@@ -203,10 +230,15 @@ export function registerExportIpcHandlers(
       if (!isAuthorizedSender(event, getMainWindow)) {
         return fail('UNAUTHORIZED', 'Unauthorized IPC sender.');
       }
+
+      const startedAt = performance.now();
+      let stage: MarkdownExportStage = 'validate';
+      let count: number | undefined;
       try {
         const { entries } = request as ExportMultipleRequest;
 
         if (!Array.isArray(entries) || entries.length === 0) {
+          logMarkdownExportFailure(logger, startedAt, stage, count);
           return fail(
             EXPORT_ERROR_CODES.EXPORT_ENTRY_NOT_FOUND,
             'entries must be a non-empty array',
@@ -214,6 +246,8 @@ export function registerExportIpcHandlers(
         }
 
         if (entries.length > 100) {
+          count = entries.length;
+          logMarkdownExportFailure(logger, startedAt, stage, count);
           return fail(
             EXPORT_ERROR_CODES.EXPORT_TOO_MANY_ARTICLES,
             '批量导出文章数过多（超过 100 篇）',
@@ -224,6 +258,7 @@ export function registerExportIpcHandlers(
         // 验证每个 entry
         for (const { entryId, options } of entries) {
           if (!Number.isInteger(entryId) || entryId <= 0) {
+            logMarkdownExportFailure(logger, startedAt, stage, count);
             return fail(
               EXPORT_ERROR_CODES.EXPORT_ENTRY_NOT_FOUND,
               `entryId must be a positive integer, got ${entryId}`,
@@ -231,11 +266,14 @@ export function registerExportIpcHandlers(
           }
           validateOptions(options);
         }
+        count = entries.length;
 
         // 聚合数据
+        stage = 'prepare';
         const articles = exportService.prepareMultipleArticleData(entries);
 
         // 序列化（每篇使用自己的 exportOptions）
+        stage = 'serialize';
         const markdown = serializeMultiple(articles);
 
         // 打开保存对话框
@@ -243,6 +281,7 @@ export function registerExportIpcHandlers(
           `文摘-${new Date().toISOString().slice(0, 10)}`,
           entries.map(({ options }) => options),
         );
+        stage = 'dialog';
         const mainWindow = getMainWindow();
         const dialogResult = mainWindow
           ? await dialog.showSaveDialog(mainWindow, {
@@ -264,11 +303,17 @@ export function registerExportIpcHandlers(
         }
 
         // 下载远程图片并改写为相对路径，然后写入 Markdown。
+        stage = 'write';
         const imageResult = await exportService.writeMarkdownExport(
           dialogResult.filePath,
           markdown,
           articles,
         );
+        logMarkdownExportCompleted(logger, {
+          durationMs: elapsedMarkdownExportMilliseconds(startedAt),
+          count,
+          ...toImageLocalizationLogFields(imageResult),
+        });
 
         return ok({
           filePath: dialogResult.filePath,
@@ -277,10 +322,47 @@ export function registerExportIpcHandlers(
           failedImageCount: imageResult.failedImageCount,
         });
       } catch (error) {
+        logMarkdownExportFailure(logger, startedAt, stage, count);
         return failFromError(error);
       }
     },
   );
+}
+
+function toImageLocalizationLogFields(
+  result: Pick<
+    ExportImageLocalizationResult,
+    'downloadedImageCount' | 'failedImageCount'
+  >,
+): Pick<
+  MarkdownExportCompletedLogContext,
+  'downloadedImageCount' | 'failedImageCount'
+> {
+  if (
+    !isSafeNonNegativeCount(result.downloadedImageCount)
+    || !isSafeNonNegativeCount(result.failedImageCount)
+    || (result.downloadedImageCount === 0 && result.failedImageCount === 0)
+  ) {
+    return {};
+  }
+  return {
+    downloadedImageCount: result.downloadedImageCount,
+    failedImageCount: result.failedImageCount,
+  };
+}
+
+function logMarkdownExportFailure(
+  logger: MarkdownExportOperationLogger | undefined,
+  startedAt: number,
+  stage: MarkdownExportStage,
+  count: number | undefined,
+): void {
+  logMarkdownExportFailed(logger, {
+    durationMs: elapsedMarkdownExportMilliseconds(startedAt),
+    stage,
+    errorCode: getMarkdownExportErrorCode(stage),
+    ...(count === undefined ? {} : { count }),
+  });
 }
 
 /**
@@ -300,6 +382,10 @@ function validateOptions(options: unknown): asserts options is PerArticleOptions
   if (typeof opts.includeNotes !== 'boolean') {
     throwObject({ code: 'EXPORT_INVALID_OPTIONS', message: 'includeNotes must be a boolean', retryable: false });
   }
+}
+
+function isSafeNonNegativeCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
 function throwObject(error: ShaleError): never {

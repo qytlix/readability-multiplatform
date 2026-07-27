@@ -40,8 +40,7 @@ article URLs, user text, article and cleaned content, summaries, translations,
 notes, SQLite data, full home paths, provider configuration, and raw system
 errors. Translation's console-only timing output is deliberately outside v1.
 
-For `translation.provider.request.completed`,
-`translation.provider.request.failed`, and omission records, the report may
+For `translation.provider.request.failed` and omission records, the report may
 also contain a deliberately flat, allow-listed response summary: request kind,
 stable reason, validation stage, HTML-validation subreason when applicable,
 and a text-slot compensation protocol plus aggregate slot counts when applicable,
@@ -49,6 +48,47 @@ an available normalized finish reason,
 segment counts, input/output character counts, and up to three 16-character
 segment-ID hashes. It never includes nested provider objects, prompts, raw
 NDJSON, chunks, source text, or translated text.
+
+Markdown export records are operation-level terminal records only:
+`markdown.export.completed` includes the exported article count and duration.
+When image localization actually processed remote images, it also includes only
+the aggregate downloaded and failed image counts; a partial image failure stays
+a completed export record. Exports with no localizable image omit both counts.
+`markdown.export.failed` adds a stable stage and error code. A save-dialog
+cancel produces no export log record. These records never include destination
+paths, generated names, article metadata, URLs, Markdown, annotations, or raw
+write errors.
+
+`content.pipeline.failed` is likewise one terminal record for an operation that
+cannot return displayable content. It may contain only entry/feed identifiers,
+duration, a controlled final stage, and a stable error code; it does not record
+cache data, page URLs, response bodies, cleaned content, or raw errors. Cached
+or Feed-content fallback success remains a completed Content operation, and a
+confirmed caller abort has no business-failure record.
+
+`annotation.operation.failed` is emitted only by the annotation IPC operation
+boundary after a final failed load, create, update, or delete. It includes only
+the controlled operation, final stage, stable error code, duration, failure
+flag, and entry ID when the request already identifies an article. It never
+contains annotation IDs, notes, selected text, anchors, offsets, article data,
+or raw database errors. Normal annotation actions and ordinary input or overlap
+validation produce no diagnostic record.
+
+`translation.inline.failed` is emitted only by the one-shot inline Translation
+service after a final configuration, Provider, or structured-output parse
+failure. It contains only a controlled stage, stable error code, duration, and
+`success: false`. Successful translations, overlay closure, selection changes,
+`translation:inline-cancel`, and confirmed Provider aborts produce no record.
+It never includes selected text, paragraph context, output, terminology,
+expert or model data, IDs, hashes, or raw errors.
+
+`usage.statistics.failed` is one terminal record emitted by the Usage Statistics
+IPC boundary only when a valid, read-only query cannot return a result. It
+contains only `stage: "read"`, `USAGE_STATISTICS_READ_FAILED`, duration, and
+`success: false`; it is distinct from `usage.ledger.persistence.failed`, which
+diagnoses Usage ledger writes. Successful queries and invalid requests produce
+no statistics record. Query dates, time zone, filters, Provider or model data,
+usage totals, execution identities, SQL, paths, and raw errors are excluded.
 
 ## Save behavior
 

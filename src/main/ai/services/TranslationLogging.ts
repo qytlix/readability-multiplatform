@@ -20,10 +20,9 @@ export const TRANSLATION_LOG_EVENTS = {
   runFailed: 'translation.run.failed',
   runInterrupted: 'translation.run.interrupted',
   recoveryCompleted: 'translation.recovery.completed',
-  providerRequestStarted: 'translation.provider.request.started',
-  providerRequestCompleted: 'translation.provider.request.completed',
   providerRequestFailed: 'translation.provider.request.failed',
   missingSegmentsDetected: 'translation.provider.omission.detected',
+  inlineFailed: 'translation.inline.failed',
 } as const;
 
 export const TRANSLATION_LOG_COMPONENTS = {
@@ -31,10 +30,28 @@ export const TRANSLATION_LOG_COMPONENTS = {
   recovery: 'translation.recovery',
   providerRequest: 'translation.provider.request',
   providerRecovery: 'translation.provider.recovery',
+  inline: 'translation.inline',
 } as const;
 
 export const TRANSLATION_RUN_FAILURE_STAGES = ['stream', 'persist'] as const;
+export const TRANSLATION_INLINE_FAILURE_STAGES = [
+  'configuration',
+  'provider',
+  'parse',
+] as const;
 export const TRANSLATION_PROVIDER_REQUEST_KINDS = ['batch', 'compensation'] as const;
+export const TRANSLATION_LOG_TRIGGERS = [
+  'initial',
+  'resume',
+  'force-new',
+  'startup-recovery',
+] as const;
+export const TRANSLATION_PREVIOUS_RESULT_OUTCOMES = ['none', 'retained', 'replaced'] as const;
+export const TRANSLATION_PREVIOUS_RESULT_AT_START_VALUES = ['none', 'retained'] as const;
+export const TRANSLATION_STOP_REASONS = ['paused', 'shutdown'] as const;
+export const TRANSLATION_CONTEXT_WARNING_CODES = [
+  'TRANSLATION_CONTEXT_UNAVAILABLE',
+] as const;
 
 export const TRANSLATION_LOG_ERROR_CODES = {
   emptyOutput: 'TRANSLATION_EMPTY_OUTPUT',
@@ -47,16 +64,45 @@ export const TRANSLATION_LOG_ERROR_CODES = {
   interrupted: 'TRANSLATION_INTERRUPTED',
 } as const;
 
+export const TRANSLATION_INLINE_FAILURE_ERROR_CODES = {
+  providerNotConfigured: 'TRANSLATION_PROVIDER_NOT_CONFIGURED',
+  terminologyUnavailable: 'TRANSLATION_TERMINOLOGY_UNAVAILABLE',
+  providerAuth: 'TRANSLATION_PROVIDER_AUTH',
+  providerRequestFailed: 'TRANSLATION_PROVIDER_REQUEST_FAILED',
+  providerTimeout: 'TRANSLATION_PROVIDER_TIMEOUT',
+  networkError: 'TRANSLATION_NETWORK_ERROR',
+  emptyOutput: 'TRANSLATION_EMPTY_OUTPUT',
+  invalidStructure: 'TRANSLATION_INVALID_STRUCTURE',
+  unknownError: 'TRANSLATION_UNKNOWN_ERROR',
+} as const;
+
 export type TranslationRunFailureStage = (typeof TRANSLATION_RUN_FAILURE_STAGES)[number];
+export type TranslationInlineFailureStage = (typeof TRANSLATION_INLINE_FAILURE_STAGES)[number];
 export type TranslationProviderRequestKind = (
   typeof TRANSLATION_PROVIDER_REQUEST_KINDS
+)[number];
+export type TranslationLogTrigger = (typeof TRANSLATION_LOG_TRIGGERS)[number];
+export type TranslationPreviousResultOutcome = (
+  typeof TRANSLATION_PREVIOUS_RESULT_OUTCOMES
+)[number];
+export type TranslationPreviousResultAtStart = (
+  typeof TRANSLATION_PREVIOUS_RESULT_AT_START_VALUES
+)[number];
+export type TranslationStopReason = (typeof TRANSLATION_STOP_REASONS)[number];
+export type TranslationContextWarningCode = (
+  typeof TRANSLATION_CONTEXT_WARNING_CODES
 )[number];
 export type TranslationLogErrorCode = (
   typeof TRANSLATION_LOG_ERROR_CODES
 )[keyof typeof TRANSLATION_LOG_ERROR_CODES];
+export type TranslationInlineFailureErrorCode = (
+  typeof TRANSLATION_INLINE_FAILURE_ERROR_CODES
+)[keyof typeof TRANSLATION_INLINE_FAILURE_ERROR_CODES];
 
 export interface TranslationRunStartedLogContext {
   taskRunId: number;
+  trigger: TranslationLogTrigger;
+  previousResultAtStart: TranslationPreviousResultAtStart;
 }
 
 /** Aggregate counts for a Translation run; no segment identity or content is included. */
@@ -67,40 +113,48 @@ export interface TranslationRunDiagnosticSummary extends ProviderTokenUsage {
   providerRequestSuccessCount: number;
   providerRequestFailureCount: number;
   missingSegmentCount: number;
+  unresolvedMissingSegmentCount: number;
 }
 
 export interface TranslationRunCompletedLogContext extends TranslationRunDiagnosticSummary {
   taskRunId: number;
+  trigger: TranslationLogTrigger;
+  previousResultOutcome: TranslationPreviousResultOutcome;
   durationMs: number;
   success: true;
+  contextDegraded?: true;
+  contextWarningCode?: TranslationContextWarningCode;
 }
 
 export interface TranslationRunFailedLogContext extends TranslationRunDiagnosticSummary {
   taskRunId: number;
+  trigger: TranslationLogTrigger;
+  previousResultOutcome: TranslationPreviousResultOutcome;
   durationMs: number;
   success: false;
   stage: TranslationRunFailureStage;
   errorCode: TranslationLogErrorCode;
+  contextDegraded?: true;
+  contextWarningCode?: TranslationContextWarningCode;
 }
 
-export interface TranslationRunInterruptedLogContext {
+export interface TranslationRunInterruptedLogContext extends TranslationRunDiagnosticSummary {
   taskRunId: number;
+  trigger: TranslationLogTrigger;
+  previousResultOutcome: TranslationPreviousResultOutcome;
   durationMs: number;
   success: false;
   stage: 'interrupt';
   errorCode: typeof TRANSLATION_LOG_ERROR_CODES.interrupted;
+  stopReason: TranslationStopReason;
+  contextDegraded?: true;
+  contextWarningCode?: TranslationContextWarningCode;
 }
 
 export interface TranslationRecoveryCompletedLogContext {
   durationMs: number;
   count: number;
-}
-
-export interface TranslationProviderRequestStartedLogContext {
-  taskRunId: number;
-  providerRequestId: number;
-  requestKind: TranslationProviderRequestKind;
-  segmentCount: number;
+  trigger: 'startup-recovery';
 }
 
 /** Safe, aggregate-only response facts for a single provider request. */
@@ -163,17 +217,6 @@ export interface TranslationProviderResponseDiagnosticLogFields {
   affectedSegmentIdHashes?: string[];
 }
 
-export interface TranslationProviderRequestCompletedLogContext
-  extends ProviderTokenUsage, TranslationProviderResponseDiagnosticLogFields {
-  taskRunId: number;
-  providerRequestId: number;
-  requestKind: TranslationProviderRequestKind;
-  segmentCount: number;
-  durationMs: number;
-  success: true;
-  responseDiagnostics?: TranslationProviderResponseDiagnostics;
-}
-
 export interface TranslationProviderRequestFailedLogContext
   extends ProviderTokenUsage, TranslationProviderResponseDiagnosticLogFields {
   taskRunId: number;
@@ -195,6 +238,14 @@ export interface TranslationMissingSegmentsLogContext
   responseDiagnostics?: TranslationProviderResponseDiagnostics;
 }
 
+/** Safe terminal diagnostics for an ephemeral Reader selection or paragraph translation. */
+export interface TranslationInlineFailedLogContext {
+  stage: TranslationInlineFailureStage;
+  errorCode: TranslationInlineFailureErrorCode;
+  durationMs: number;
+  success: false;
+}
+
 const TRANSLATION_RUN_FAILURE_ERROR_CODES_BY_STAGE = {
   stream: [
     TRANSLATION_LOG_ERROR_CODES.emptyOutput,
@@ -208,15 +259,36 @@ const TRANSLATION_RUN_FAILURE_ERROR_CODES_BY_STAGE = {
   persist: [TRANSLATION_LOG_ERROR_CODES.unknownError],
 } as const satisfies Record<TranslationRunFailureStage, readonly TranslationLogErrorCode[]>;
 
+const TRANSLATION_INLINE_FAILURE_ERROR_CODES_BY_STAGE = {
+  configuration: [
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.providerNotConfigured,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.terminologyUnavailable,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.unknownError,
+  ],
+  provider: [
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.providerAuth,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.providerRequestFailed,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.providerTimeout,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.networkError,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.unknownError,
+  ],
+  parse: [
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.emptyOutput,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.invalidStructure,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.unknownError,
+  ],
+} as const satisfies Record<
+  TranslationInlineFailureStage,
+  readonly TranslationInlineFailureErrorCode[]
+>;
+
 /** The limited logging surface required by Translation task lifecycle operations. */
 export interface TranslationOperationLogger {
   info(
     event:
       | typeof TRANSLATION_LOG_EVENTS.runStarted
       | typeof TRANSLATION_LOG_EVENTS.runCompleted
-      | typeof TRANSLATION_LOG_EVENTS.recoveryCompleted
-      | typeof TRANSLATION_LOG_EVENTS.providerRequestStarted
-      | typeof TRANSLATION_LOG_EVENTS.providerRequestCompleted,
+      | typeof TRANSLATION_LOG_EVENTS.recoveryCompleted,
     component:
       | typeof TRANSLATION_LOG_COMPONENTS.run
       | typeof TRANSLATION_LOG_COMPONENTS.recovery
@@ -224,9 +296,7 @@ export interface TranslationOperationLogger {
     context:
       | TranslationRunStartedLogContext
       | TranslationRunCompletedLogContext
-      | TranslationRecoveryCompletedLogContext
-      | TranslationProviderRequestStartedLogContext
-      | TranslationProviderRequestCompletedLogContext,
+      | TranslationRecoveryCompletedLogContext,
   ): void;
   warn(
     event:
@@ -240,11 +310,16 @@ export interface TranslationOperationLogger {
   error(
     event:
       | typeof TRANSLATION_LOG_EVENTS.runFailed
-      | typeof TRANSLATION_LOG_EVENTS.providerRequestFailed,
+      | typeof TRANSLATION_LOG_EVENTS.providerRequestFailed
+      | typeof TRANSLATION_LOG_EVENTS.inlineFailed,
     component:
       | typeof TRANSLATION_LOG_COMPONENTS.run
-      | typeof TRANSLATION_LOG_COMPONENTS.providerRequest,
-    context: TranslationRunFailedLogContext | TranslationProviderRequestFailedLogContext,
+      | typeof TRANSLATION_LOG_COMPONENTS.providerRequest
+      | typeof TRANSLATION_LOG_COMPONENTS.inline,
+    context:
+      | TranslationRunFailedLogContext
+      | TranslationProviderRequestFailedLogContext
+      | TranslationInlineFailedLogContext,
   ): void;
 }
 
@@ -256,11 +331,13 @@ export function logTranslationRunStarted(
   logger: TranslationOperationLogger | undefined,
   context: TranslationRunStartedLogContext,
 ): void {
-  if (!isSafeTaskRunId(context.taskRunId)) return;
+  if (!isValidRunStartedContext(context)) return;
 
   try {
     logger?.info(TRANSLATION_LOG_EVENTS.runStarted, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
+      trigger: context.trigger,
+      previousResultAtStart: context.previousResultAtStart,
     });
   } catch {
     // Logging is observational and must not change Translation task behavior.
@@ -275,6 +352,8 @@ export function logTranslationRunCompleted(
     !isSafeTaskRunId(context.taskRunId)
     || !isSafeDuration(context.durationMs)
     || context.success !== true
+    || !isValidRunLifecycle(context)
+    || !isValidContextDegradation(context)
     || !isValidRunSummary(context)
   ) {
     return;
@@ -285,6 +364,9 @@ export function logTranslationRunCompleted(
       taskRunId: context.taskRunId,
       durationMs: context.durationMs,
       success: true,
+      trigger: context.trigger,
+      previousResultOutcome: context.previousResultOutcome,
+      ...toContextDegradationFields(context),
       ...toRunSummaryContext(context),
     });
   } catch {
@@ -299,6 +381,8 @@ export function logTranslationRunFailed(
   if (
     !isSafeTaskRunId(context.taskRunId)
     || !isSafeDuration(context.durationMs)
+    || !isValidRunLifecycle(context)
+    || !isValidContextDegradation(context)
     || !isAllowedRunFailure(context.stage, context.errorCode)
     || !isValidRunSummary(context)
   ) {
@@ -312,6 +396,9 @@ export function logTranslationRunFailed(
       success: false,
       stage: context.stage,
       errorCode: context.errorCode,
+      trigger: context.trigger,
+      previousResultOutcome: context.previousResultOutcome,
+      ...toContextDegradationFields(context),
       ...toRunSummaryContext(context),
     });
   } catch {
@@ -328,6 +415,10 @@ export function logTranslationRunInterrupted(
     || !isSafeDuration(context.durationMs)
     || context.stage !== 'interrupt'
     || context.errorCode !== TRANSLATION_LOG_ERROR_CODES.interrupted
+    || !isValidRunLifecycle(context)
+    || !TRANSLATION_STOP_REASONS.includes(context.stopReason)
+    || !isValidContextDegradation(context)
+    || !isValidRunSummary(context)
   ) {
     return;
   }
@@ -339,6 +430,11 @@ export function logTranslationRunInterrupted(
       success: false,
       stage: 'interrupt',
       errorCode: TRANSLATION_LOG_ERROR_CODES.interrupted,
+      stopReason: context.stopReason,
+      trigger: context.trigger,
+      previousResultOutcome: context.previousResultOutcome,
+      ...toContextDegradationFields(context),
+      ...toRunSummaryContext(context),
     });
   } catch {
     // Logging is observational and must not change Translation task behavior.
@@ -349,61 +445,20 @@ export function logTranslationRecoveryCompleted(
   logger: TranslationOperationLogger | undefined,
   context: TranslationRecoveryCompletedLogContext,
 ): void {
-  if (!isSafeDuration(context.durationMs) || !isSafeCount(context.count)) return;
+  if (
+    !isSafeDuration(context.durationMs)
+    || !isSafePositiveCount(context.count)
+    || context.trigger !== 'startup-recovery'
+  ) return;
 
   try {
     logger?.info(TRANSLATION_LOG_EVENTS.recoveryCompleted, TRANSLATION_LOG_COMPONENTS.recovery, {
       durationMs: context.durationMs,
       count: context.count,
+      trigger: context.trigger,
     });
   } catch {
     // Logging is observational and must not change Translation recovery behavior.
-  }
-}
-
-export function logTranslationProviderRequestStarted(
-  logger: TranslationOperationLogger | undefined,
-  context: TranslationProviderRequestStartedLogContext,
-): void {
-  if (!isValidProviderRequest(context)) return;
-
-  try {
-    logger?.info(
-      TRANSLATION_LOG_EVENTS.providerRequestStarted,
-      TRANSLATION_LOG_COMPONENTS.providerRequest,
-      { ...context },
-    );
-  } catch {
-    // Logging is observational and must not change Translation task behavior.
-  }
-}
-
-export function logTranslationProviderRequestCompleted(
-  logger: TranslationOperationLogger | undefined,
-  context: TranslationProviderRequestCompletedLogContext,
-): void {
-  if (
-    !isValidProviderRequest(context)
-    || !isSafeDuration(context.durationMs)
-    || context.success !== true
-    || !isValidUsage(context)
-    || !isValidResponseDiagnostics(context.responseDiagnostics)
-  ) {
-    return;
-  }
-
-  try {
-    const { responseDiagnostics, ...requestContext } = context;
-    logger?.info(
-      TRANSLATION_LOG_EVENTS.providerRequestCompleted,
-      TRANSLATION_LOG_COMPONENTS.providerRequest,
-      {
-        ...requestContext,
-        ...toProviderResponseDiagnosticLogFields(responseDiagnostics),
-      },
-    );
-  } catch {
-    // Logging is observational and must not change Translation task behavior.
   }
 }
 
@@ -416,6 +471,7 @@ export function logTranslationProviderRequestFailed(
     || !isSafeDuration(context.durationMs)
     || context.success !== false
     || !isTranslationLogErrorCode(context.errorCode)
+    || context.errorCode === TRANSLATION_LOG_ERROR_CODES.interrupted
     || !isValidUsage(context)
     || !isValidResponseDiagnostics(context.responseDiagnostics)
   ) {
@@ -466,6 +522,34 @@ export function logTranslationMissingSegmentsDetected(
   }
 }
 
+export function logTranslationInlineFailed(
+  logger: TranslationOperationLogger | undefined,
+  context: TranslationInlineFailedLogContext,
+): void {
+  if (
+    !isSafeDuration(context.durationMs)
+    || context.success !== false
+    || !isAllowedInlineFailure(context.stage, context.errorCode)
+  ) {
+    return;
+  }
+
+  try {
+    logger?.error(
+      TRANSLATION_LOG_EVENTS.inlineFailed,
+      TRANSLATION_LOG_COMPONENTS.inline,
+      {
+        stage: context.stage,
+        errorCode: context.errorCode,
+        durationMs: context.durationMs,
+        success: false,
+      },
+    );
+  } catch {
+    // Logging is observational and must not change inline Translation behavior.
+  }
+}
+
 function toRunSummaryContext(
   context: TranslationRunDiagnosticSummary,
 ): TranslationRunDiagnosticSummary {
@@ -476,6 +560,7 @@ function toRunSummaryContext(
     providerRequestSuccessCount: context.providerRequestSuccessCount,
     providerRequestFailureCount: context.providerRequestFailureCount,
     missingSegmentCount: context.missingSegmentCount,
+    unresolvedMissingSegmentCount: context.unresolvedMissingSegmentCount,
     ...(context.inputTokens === undefined ? {} : { inputTokens: context.inputTokens }),
     ...(context.outputTokens === undefined ? {} : { outputTokens: context.outputTokens }),
     ...(context.totalTokens === undefined ? {} : { totalTokens: context.totalTokens }),
@@ -571,6 +656,19 @@ function isAllowedRunFailure(
   ].includes(errorCode as never);
 }
 
+function isAllowedInlineFailure(
+  stage: unknown,
+  errorCode: unknown,
+): stage is TranslationInlineFailureStage {
+  if (!TRANSLATION_INLINE_FAILURE_STAGES.includes(stage as TranslationInlineFailureStage)) {
+    return false;
+  }
+
+  return TRANSLATION_INLINE_FAILURE_ERROR_CODES_BY_STAGE[
+    stage as TranslationInlineFailureStage
+  ].includes(errorCode as never);
+}
+
 function isValidRunSummary(context: TranslationRunDiagnosticSummary): boolean {
   return isSafeCount(context.providerRequestCount)
     && isSafeCount(context.batchRequestCount)
@@ -578,7 +676,52 @@ function isValidRunSummary(context: TranslationRunDiagnosticSummary): boolean {
     && isSafeCount(context.providerRequestSuccessCount)
     && isSafeCount(context.providerRequestFailureCount)
     && isSafeCount(context.missingSegmentCount)
+    && isSafeCount(context.unresolvedMissingSegmentCount)
     && isValidUsage(context);
+}
+
+function isValidRunLifecycle(context: {
+  taskRunId: number;
+  trigger: TranslationLogTrigger;
+  previousResultOutcome: TranslationPreviousResultOutcome;
+}): boolean {
+  return isSafeTaskRunId(context.taskRunId)
+    && TRANSLATION_LOG_TRIGGERS.includes(context.trigger)
+    && TRANSLATION_PREVIOUS_RESULT_OUTCOMES.includes(context.previousResultOutcome);
+}
+
+function isValidRunStartedContext(context: {
+  taskRunId: number;
+  trigger: TranslationLogTrigger;
+  previousResultAtStart: TranslationPreviousResultAtStart;
+}): boolean {
+  return isSafeTaskRunId(context.taskRunId)
+    && TRANSLATION_LOG_TRIGGERS.includes(context.trigger)
+    && TRANSLATION_PREVIOUS_RESULT_AT_START_VALUES.includes(context.previousResultAtStart);
+}
+
+function isValidContextDegradation(context: {
+  contextDegraded?: true;
+  contextWarningCode?: TranslationContextWarningCode;
+}): boolean {
+  return (context.contextDegraded === undefined && context.contextWarningCode === undefined)
+    || (
+      context.contextDegraded === true
+      && context.contextWarningCode !== undefined
+      && TRANSLATION_CONTEXT_WARNING_CODES.includes(context.contextWarningCode)
+    );
+}
+
+function toContextDegradationFields(context: {
+  contextDegraded?: true;
+  contextWarningCode?: TranslationContextWarningCode;
+}): Pick<TranslationRunCompletedLogContext, 'contextDegraded' | 'contextWarningCode'> {
+  return context.contextDegraded === true && context.contextWarningCode !== undefined
+    ? {
+        contextDegraded: true,
+        contextWarningCode: context.contextWarningCode,
+      }
+    : {};
 }
 
 function isValidProviderRequest(context: {

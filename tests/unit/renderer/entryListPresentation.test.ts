@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   entryListCopy,
   getEntryListHeading,
+  getEntryListHeadingPresentation,
 } from '../../../src/renderer/features/feeds/entryListPresentation';
 
 describe('Entry list presentation', () => {
@@ -48,5 +49,29 @@ describe('Entry list presentation', () => {
       hasActiveSearch: true,
       searchAllFeeds: true,
     })).toBe(entryListCopy.searchResults);
+  });
+
+  it('keeps a feed-specific filter suffix distinct from the feed name', () => {
+    expect(getEntryListHeadingPresentation({
+      feedName: 'Daily Feed',
+      filter: 'unread',
+      hasActiveSearch: false,
+    })).toEqual({
+      text: 'Daily Feed · 未读文章',
+      feedName: 'Daily Feed',
+      filterSuffix: entryListCopy.unreadArticles,
+    });
+  });
+
+  it('does not turn a global filter heading into a secondary suffix', () => {
+    expect(getEntryListHeadingPresentation({
+      feedName: null,
+      filter: 'starred',
+      hasActiveSearch: false,
+    })).toEqual({
+      text: entryListCopy.starredArticles,
+      feedName: null,
+      filterSuffix: null,
+    });
   });
 });

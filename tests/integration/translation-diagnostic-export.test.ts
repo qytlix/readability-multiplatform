@@ -186,7 +186,7 @@ describe('Translation diagnostic export', () => {
 
       expect(prompts.map((segments) => segments.length)).toEqual([3, 1]);
       const omittedBatch = report.logs.records.find((record) =>
-        record.event === TRANSLATION_LOG_EVENTS.providerRequestCompleted
+        record.event === TRANSLATION_LOG_EVENTS.missingSegmentsDetected
         && record.context?.requestKind === 'batch');
       const malformedCompensation = report.logs.records.find((record) =>
         record.event === TRANSLATION_LOG_EVENTS.providerRequestFailed
@@ -205,8 +205,6 @@ describe('Translation diagnostic export', () => {
         unexpectedSegmentCount: 0,
         malformedRecordCount: 0,
         emptyTranslationCount: 0,
-        inputTokens: 17,
-        outputTokens: 9,
         finishReason: 'stop',
       });
       expect(malformedCompensation?.context).toMatchObject({
@@ -405,24 +403,6 @@ describe('Translation diagnostic export', () => {
         ...expectedHtmlDiagnostic,
       });
       expect(omission?.context).toMatchObject(expectedHtmlOmissionDiagnostic);
-
-      const textSlotCompensation = report.logs.records.find((record) =>
-        record.event === TRANSLATION_LOG_EVENTS.providerRequestCompleted
-        && record.context?.requestKind === 'compensation'
-        && record.context?.compensationProtocol === 'text-slots');
-      expect(textSlotCompensation?.context).toMatchObject({
-        taskRunId: started.runId,
-        requestKind: 'compensation',
-        compensationProtocol: 'text-slots',
-        expectedTextSlotCount: 1,
-        parsedTextSlotCount: 1,
-        acceptedTextSlotCount: 1,
-        missingTextSlotCount: 0,
-        duplicateTextSlotCount: 0,
-        unexpectedTextSlotCount: 0,
-        malformedTextSlotCount: 0,
-        emptyTextSlotCount: 0,
-      });
 
       const serializedReport = JSON.stringify(report);
       expect(serializedReport).not.toContain(articleCanary);

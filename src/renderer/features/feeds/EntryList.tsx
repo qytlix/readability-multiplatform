@@ -7,8 +7,11 @@ import type { EntryListItem } from '../../../shared/contracts/feed.types';
 import { FilterIcon, SearchIcon } from '../reader/ReaderIcons';
 import { tagColor } from '../tags/tagColor';
 import type { EntryFilter } from '../search/entrySearch';
+import {
+  entryListCopy,
+  type EntryListHeadingPresentation,
+} from './entryListPresentation';
 import { SearchHighlightedText } from '../search/SearchHighlightedText';
-import { entryListCopy } from './entryListPresentation';
 import { getReadingProgressPercentage } from './readingProgress';
 import type { EntryLoadStatus } from './readerState';
 
@@ -17,7 +20,7 @@ type SearchStatus = 'idle' | 'searching' | 'results' | 'no-results' | 'error';
 interface EntryListProps {
   entries: EntryListItem[];
   selectedEntryId: number | null;
-  heading: string;
+  heading: EntryListHeadingPresentation;
   loading: boolean;
   loadStatus: EntryLoadStatus;
   loadError: string;
@@ -105,7 +108,25 @@ export const EntryList = ({
     <div className="story-list">
       <header className="story-list-header">
         <div className="story-list-heading">
-          <h1 title={heading}>{heading}</h1>
+          <h1
+            title={heading.filterSuffix === null
+              ? heading.text
+              : `${heading.feedName} ${heading.filterSuffix}`}
+            aria-label={heading.filterSuffix === null
+              ? heading.text
+              : `${heading.feedName} ${heading.filterSuffix}`}
+          >
+            {heading.feedName === null ? (
+              <span className="story-list-heading-primary">{heading.text}</span>
+            ) : (
+              <>
+                <span className="story-list-heading-feed-name">{heading.feedName}</span>
+                {heading.filterSuffix !== null && (
+                  <span className="story-list-heading-filter-suffix">{heading.filterSuffix}</span>
+                )}
+              </>
+            )}
+          </h1>
         </div>
         <div className="story-list-header-actions">
           {!showsSearch && (
