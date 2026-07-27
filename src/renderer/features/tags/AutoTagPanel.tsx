@@ -271,7 +271,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger, maxCandidate
     return (
       <div className="auto-tag-panel">
         <p className="tag-floating-suggestion-label">AI标签</p>
-        <p className="auto-tag-done">AI标签已生成</p>
+        <p className="auto-tag-done">已生成</p>
         <button
           type="button"
           className="auto-tag-trigger-pill"
