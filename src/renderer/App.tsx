@@ -1156,6 +1156,7 @@ export const App = () => {
                 beforeTranslationStart={requestTranslationSetupNotice}
                 selectionMode={selectionMode}
                 selectedIds={selectedIds}
+                onTagsChanged={() => void loadEntryStats()}
                 onExportRequest={handleExportRequest}
                 onFeedback={setReaderFeedback}
               />

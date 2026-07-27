@@ -94,6 +94,7 @@ interface EntryDetailProps {
     entryId: number,
     result: RetranslationRequestResult,
   ) => void;
+  onTagsChanged?: () => void;
   beforeTranslationStart?: () => boolean | Promise<boolean>;
   selectionMode?: boolean;
   selectedIds?: Set<number>;
@@ -132,6 +133,7 @@ export const EntryDetail = ({
   retranslationRequest,
   onRetranslationRequestComplete,
   beforeTranslationStart,
+  onTagsChanged,
 }: EntryDetailProps) => {
   const [content, setContent] = useState<CleanedContent | null>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
@@ -1044,6 +1046,7 @@ export const EntryDetail = ({
           entryId={entry.id}
           anchorEl={tagBtnRef.current}
           onClose={() => setShowTagWindow(false)}
+          onTagsChanged={onTagsChanged}
         />
       )}
       <div className="entry-detail">

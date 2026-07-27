@@ -15,6 +15,8 @@ interface TagFloatingWindowProps {
   onClose: () => void;
   /** Portal container — defaults to .reader-page */
   container?: HTMLElement;
+  /** Called after any tag is added or removed (for sidebar count refresh) */
+  onTagsChanged?: () => void;
 }
 
 type LoadState = 'loading' | 'loaded' | 'error';
@@ -24,6 +26,7 @@ export const TagFloatingWindow = ({
   anchorEl,
   onClose,
   container,
+  onTagsChanged,
 }: TagFloatingWindowProps) => {
   const [tags, setTags] = useState<Tag[]>([]);
   const [availableTags, setAvailableTags] = useState<TagWithCount[]>([]);
@@ -133,10 +136,11 @@ export const TagFloatingWindow = ({
       }
       // Reload tag list and available tags
       await reloadTagData(entryId, setTags, setAvailableTags);
+      onTagsChanged?.();
     } catch {
       setOperationError('Failed to add tag.');
     }
-  }, [entryId, tags]);
+  }, [entryId, tags, onTagsChanged]);
 
   const handleAddAvailable = useCallback(async (tagName: string) => {
     setOperationError('');
@@ -150,10 +154,11 @@ export const TagFloatingWindow = ({
       }
       // Reload tag list and available tags
       await reloadTagData(entryId, setTags, setAvailableTags);
+      onTagsChanged?.();
     } catch {
       setOperationError('Failed to add tag.');
     }
-  }, [entryId]);
+  }, [entryId, onTagsChanged]);
 
   const handleRemove = useCallback(async (tagId: number) => {
     setOperationError('');
@@ -171,11 +176,12 @@ export const TagFloatingWindow = ({
         const availResult = await window.shaleAPI.tag.listAvailableForEntry(entryId);
         if (availResult.ok) setAvailableTags(availResult.data);
       }
+      onTagsChanged?.();
     } catch {
       setOperationError('Failed to remove tag.');
       await reloadTagData(entryId, setTags, setAvailableTags);
     }
-  }, [entryId]);
+  }, [entryId, onTagsChanged]);
 
   const floatingContent = (
     <div
