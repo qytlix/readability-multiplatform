@@ -66,6 +66,28 @@ export function registerTagIpcHandlers(
       ),
     ),
   );
+
+  // Simple getter — no request validation needed
+  ipcMain.handle(
+    TAG_IPC_CHANNELS.listAllWithCount,
+    (event: IpcMainInvokeEvent) => {
+      if (!isAuthorizedSender(event, getMainWindow)) {
+        return {
+          ok: false as const,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Unauthorized IPC sender.',
+            retryable: false,
+          },
+        };
+      }
+      try {
+        return { ok: true as const, data: services.tagService.listAllWithCount() };
+      } catch (error) {
+        return { ok: false as const, error: toTagIpcError(error) };
+      }
+    },
+  );
 }
 
 function handle<T>(
