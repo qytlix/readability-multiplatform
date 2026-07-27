@@ -6292,6 +6292,11 @@ body.workspace-is-resizing * {
   to { transform: rotate(360deg); }
 }
 
+.auto-tag-countdown {
+  color: var(--reader-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

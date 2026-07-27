@@ -54,10 +54,36 @@ async function fetchCandidates(entryId: number): Promise<{
   return promise;
 }
 
+const LOADING_TIMEOUT_SECONDS = 15;
+
 export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPanelProps) => {
   const [panelState, setPanelState] = useState<PanelState>({ type: 'idle' });
   const [isConfirming, setIsConfirming] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState(LOADING_TIMEOUT_SECONDS);
   const hasTriggered = useRef(false);
+  const loadingStartedAt = useRef(0);
+
+  // Countdown timer while loading
+  useEffect(() => {
+    if (panelState.type !== 'loading' && panelState.type !== 'candidates') {
+      setRemainingSeconds(LOADING_TIMEOUT_SECONDS);
+      return;
+    }
+    if (panelState.type === 'loading' && loadingStartedAt.current === 0) {
+      loadingStartedAt.current = Date.now();
+    }
+    if (panelState.type === 'candidates') {
+      loadingStartedAt.current = 0;
+      setRemainingSeconds(LOADING_TIMEOUT_SECONDS);
+      return;
+    }
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - loadingStartedAt.current) / 1000);
+      const remaining = Math.max(0, LOADING_TIMEOUT_SECONDS - elapsed);
+      setRemainingSeconds(remaining);
+    }, 500);
+    return () => clearInterval(interval);
+  }, [panelState.type]);
 
   // Auto-trigger on mount — reuses any in-flight request from a previous mount
   useEffect(() => {
@@ -169,14 +195,15 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
     );
   }
 
-  // Loading: show spinner
+  // Loading: show spinner + countdown
   if (panelState.type === 'loading') {
     return (
       <div className="auto-tag-panel">
         <p className="tag-floating-suggestion-label">AI标签</p>
         <div className="tag-floating-loading">
           <span className="auto-tag-spinner" aria-hidden="true" />
-          {' '}正在生成…
+          {' '}正在生成…{' '}
+          <span className="auto-tag-countdown">{remainingSeconds}s</span>
         </div>
       </div>
     );
