@@ -65,12 +65,13 @@ describe('full-screen settings page', () => {
       '术语库',
       'AI 专家',
       '快捷键',
+      '标签生成',
       '模型服务',
       '用量统计',
       '诊断',
     ]);
     expect(container.querySelectorAll('.settings-page-content > [id^="settings-"]'))
-      .toHaveLength(9);
+      .toHaveLength(10);
     expect(container.textContent).not.toContain('Settings');
 
     const navigationIndicator = container.querySelector<HTMLElement>(

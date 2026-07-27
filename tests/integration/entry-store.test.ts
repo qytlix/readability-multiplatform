@@ -309,6 +309,7 @@ describe('EntryStore', () => {
             readPercentage: 0,
           },
         ],
+        tagCount: 0,
       });
     });
   });
@@ -453,6 +454,195 @@ describe('EntryStore', () => {
       });
       expect(page2.entries).toHaveLength(1);
       expect(page2.nextCursor).toBeUndefined();
+    });
+  });
+  describe('tag search via tagFuzzyNames', () => {
+    let dbTagSearch: ReturnType<typeof buildTestDb>['db'];
+    let entryStoreTag: EntryStore;
+    let feedStoreTag: FeedStore;
+    let tagFeedId: number;
+
+    beforeEach(() => {
+      const testDb = buildTestDb();
+      dbTagSearch = testDb.db;
+      entryStoreTag = new EntryStore(dbTagSearch);
+      feedStoreTag = new FeedStore(dbTagSearch);
+
+      tagFeedId = feedStoreTag.create({
+        title: 'Tag Test Feed',
+        feedURL: 'https://tag-test.example/feed',
+      }).id;
+
+      // Create entries
+      const entry1 = entryStoreTag.createOrUpdate({
+        feedId: tagFeedId,
+        guid: 'tag-entry-1',
+        title: 'Article about Technology',
+      });
+      const entry2 = entryStoreTag.createOrUpdate({
+        feedId: tagFeedId,
+        guid: 'tag-entry-2',
+        title: 'Machine Learning Guide',
+      });
+      const entry3 = entryStoreTag.createOrUpdate({
+        feedId: tagFeedId,
+        guid: 'tag-entry-3',
+        title: 'News Roundup',
+      });
+      const entry4 = entryStoreTag.createOrUpdate({
+        feedId: tagFeedId,
+        guid: 'tag-entry-4',
+        title: 'Tech News',
+      });
+
+      // Create tags
+      dbTagSearch.prepare(
+        'INSERT INTO tag (id, name, color) VALUES (?, ?, ?)',
+      ).run(1, 'Technology', 'hsl(200, 55%, 72%)');
+      dbTagSearch.prepare(
+        'INSERT INTO tag (id, name, color) VALUES (?, ?, ?)',
+      ).run(2, 'Machine Learning', 'hsl(160, 55%, 72%)');
+      dbTagSearch.prepare(
+        'INSERT INTO tag (id, name, color) VALUES (?, ?, ?)',
+      ).run(3, 'News', 'hsl(40, 55%, 72%)');
+      dbTagSearch.prepare(
+        'INSERT INTO tag (id, name, color) VALUES (?, ?, ?)',
+      ).run(4, 'Tech', 'hsl(280, 55%, 72%)');
+
+      // Tag entries
+      dbTagSearch.prepare(
+        'INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)',
+      ).run(entry1.id, 1, 'manual', new Date().toISOString());  // Technology -> Article about Technology
+      dbTagSearch.prepare(
+        'INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)',
+      ).run(entry2.id, 2, 'manual', new Date().toISOString());  // Machine Learning -> Machine Learning Guide
+      dbTagSearch.prepare(
+        'INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)',
+      ).run(entry3.id, 3, 'manual', new Date().toISOString());  // News -> News Roundup
+      dbTagSearch.prepare(
+        'INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)',
+      ).run(entry4.id, 1, 'manual', new Date().toISOString());  // Technology -> Tech News
+      dbTagSearch.prepare(
+        'INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)',
+      ).run(entry4.id, 3, 'manual', new Date().toISOString());  // News -> Tech News
+      dbTagSearch.prepare(
+        'INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)',
+      ).run(entry4.id, 4, 'manual', new Date().toISOString());  // Tech -> Tech News
+    });
+
+    it('filters entries by exact tag name', () => {
+      const result = entryStoreTag.query({
+        tagNames: ['Technology'],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(2);
+      expect(result.entries.map((e) => e.title)).toEqual(
+        expect.arrayContaining(['Article about Technology', 'Tech News']),
+      );
+    });
+
+    it('filters entries by multiple exact tags (AND)', () => {
+      const result = entryStoreTag.query({
+        tagNames: ['Technology', 'News'],
+        matchAll: true,
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('Tech News');
+    });
+
+    it('filters entries by multiple exact tags (OR)', () => {
+      const result = entryStoreTag.query({
+        tagNames: ['Technology', 'Machine Learning'],
+        matchAll: false,
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(3);
+      expect(result.entries.map((e) => e.title)).toEqual(
+        expect.arrayContaining([
+          'Article about Technology',
+          'Machine Learning Guide',
+          'Tech News',
+        ]),
+      );
+    });
+
+    it('filters entries by fuzzy tag name (LIKE)', () => {
+      const result = entryStoreTag.query({
+        tagFuzzyNames: ['Tech'],
+        limit: 50,
+      });
+      // 'Tech' matches tags 'Technology' (entries 1,4) and 'Tech' (entry 4)
+      expect(result.entries).toHaveLength(2);
+      expect(result.entries.map((e) => e.title)).toEqual(
+        expect.arrayContaining([
+          'Article about Technology',
+          'Tech News',
+        ]),
+      );
+    });
+
+    it('filters entries by multiple fuzzy tags (AND)', () => {
+      const result = entryStoreTag.query({
+        tagFuzzyNames: ['Tech', 'News'],
+        matchAll: true,
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('Tech News');
+    });
+
+    it('filters entries by multiple fuzzy tags (OR)', () => {
+      const result = entryStoreTag.query({
+        tagFuzzyNames: ['Machine', 'News'],
+        matchAll: false,
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(3);
+      expect(result.entries.map((e) => e.title)).toEqual(
+        expect.arrayContaining(['Machine Learning Guide', 'News Roundup']),
+      );
+    });
+
+    it('combines exact tagNames and tagFuzzyNames', () => {
+      const result = entryStoreTag.query({
+        tagNames: ['Technology'],
+        tagFuzzyNames: ['News'],
+        matchAll: true,
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('Tech News');
+    });
+
+    it('returns entries with tags populated when tag filtering', () => {
+      const result = entryStoreTag.query({
+        tagFuzzyNames: ['Tech'],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(2);
+      for (const entry of result.entries) {
+        expect(entry.tags).toBeDefined();
+        expect(entry.tags!.length).toBeGreaterThanOrEqual(1);
+      }
+    });
+
+    it('combines tag filter with text search', () => {
+      const result = entryStoreTag.query({
+        search: 'Article',
+        tagFuzzyNames: ['Tech'],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('Article about Technology');
+    });
+
+    it('returns no entries when fuzzy tag matches nothing', () => {
+      const result = entryStoreTag.query({
+        tagFuzzyNames: ['NonExistentTag'],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(0);
     });
   });
 });

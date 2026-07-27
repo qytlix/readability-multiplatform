@@ -74,6 +74,7 @@ const entryStats: EntryStats = {
     { feedId: feed.id, total: 2, unread: 1, readPercentage: 50 },
     { feedId: secondaryFeed.id, total: 0, unread: 0, readPercentage: 0 },
   ],
+  tagCount: 0,
 };
 
 const findStoryCard = (

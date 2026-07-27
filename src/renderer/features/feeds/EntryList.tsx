@@ -5,6 +5,7 @@ import {
 } from 'react';
 import type { EntryListItem } from '../../../shared/contracts/feed.types';
 import { FilterIcon, SearchIcon } from '../reader/ReaderIcons';
+import { tagColor } from '../tags/tagColor';
 import type { EntryFilter } from '../search/entrySearch';
 import { SearchHighlightedText } from '../search/SearchHighlightedText';
 import { entryListCopy } from './entryListPresentation';
@@ -214,6 +215,22 @@ export const EntryList = ({
                       </p>
                     )
                   : entry.summary && <p>{entry.summary}</p>}
+                {entry.tags && entry.tags.length > 0 && (
+                  <div className="story-card-tags">
+                    {entry.tags.map((tag) => {
+                      const { hue } = tagColor(tag.name);
+                      return (
+                        <span
+                          key={tag.id}
+                          className="story-card-tag"
+                          style={{ '--tag-hue': hue } as React.CSSProperties}
+                        >
+                          {tag.name}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </button>
           );

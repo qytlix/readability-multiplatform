@@ -19,6 +19,7 @@ import {
   SettingsIcon,
   StarIcon,
   SyncIcon,
+  TagIcon,
   TrashIcon,
 } from '../reader/ReaderIcons';
 import type { EntryFilter } from '../search/entrySearch';
@@ -56,7 +57,10 @@ interface FeedListProps {
   loading: boolean;
   feedLoadStatus: FeedLoadStatus;
   settingsActive: boolean;
+  showTagsView: boolean;
   onOpenSettings: () => void;
+  onOpenTags: () => void;
+  hasTagFilter?: boolean;
 }
 
 export const FeedList = ({
@@ -78,7 +82,10 @@ export const FeedList = ({
   loading,
   feedLoadStatus,
   settingsActive,
+  showTagsView,
   onOpenSettings,
+  onOpenTags,
+  hasTagFilter,
 }: FeedListProps) => {
   const [editFeed, setEditFeed] = useState<Feed | null>(null);
   const [deleteFeed, setDeleteFeed] = useState<Feed | null>(null);
@@ -228,6 +235,8 @@ export const FeedList = ({
   const allSelected = selectedFeedId === null
     && selectedFilter === 'all'
     && !settingsActive
+    && !showTagsView
+    && !hasTagFilter
     && searchInput.trim().length === 0;
 
   useLayoutEffect(() => {
@@ -293,6 +302,8 @@ export const FeedList = ({
     selectedFeedId,
     selectedFilter,
     settingsActive,
+    showTagsView,
+    hasTagFilter,
   ]);
 
   return (
@@ -359,6 +370,7 @@ export const FeedList = ({
             selectedFeedId === null
             && selectedFilter === 'unread'
             && !settingsActive
+            && !showTagsView
               ? ' is-active'
               : ''
           }`}
@@ -374,6 +386,7 @@ export const FeedList = ({
             selectedFeedId === null
             && selectedFilter === 'starred'
             && !settingsActive
+            && !showTagsView
               ? ' is-active'
               : ''
           }`}
@@ -381,6 +394,15 @@ export const FeedList = ({
         >
           <StarIcon />
           <span>收藏</span>
+        </button>
+        <button
+          type="button"
+          className={`sidebar-item${(showTagsView || hasTagFilter) && !settingsActive ? ' is-active' : ''}`}
+          onClick={onOpenTags}
+        >
+          <TagIcon />
+          <span>标签</span>
+          {entryStats.tagCount > 0 && <span className="sidebar-count">{entryStats.tagCount}</span>}
         </button>
       </nav>
 

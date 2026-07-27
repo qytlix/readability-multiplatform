@@ -43,6 +43,9 @@ import {
 } from './ai/stores/TerminologyStore';
 import { AnnotationStore } from './annotations/AnnotationStore';
 import { AnnotationService } from './annotations/AnnotationService';
+import { TagStore } from './tags/TagStore';
+import { TagService } from './tags/TagService';
+import { AutoTagService } from './tags/AutoTagService';
 
 // ── Service Interfaces ──────────────────────────────────
 
@@ -78,6 +81,12 @@ export interface AnnotationServices {
   annotationService: AnnotationService;
 }
 
+export interface TagServices {
+  tagService: TagService;
+  tagStore: TagStore;
+  autoTagService: AutoTagService;
+}
+
 // ── Module-level Singletons ─────────────────────────────
 
 let dbSingleton: Database.Database | null = null;
@@ -91,6 +100,7 @@ let feedServicesSingleton: FeedServices | null = null;
 let summaryServicesSingleton: SummaryServices | null = null;
 let translationServicesSingleton: TranslationServices | null = null;
 let annotationServicesSingleton: AnnotationServices | null = null;
+let tagServicesSingleton: TagServices | null = null;
 let usageServicesSingleton: UsageServices | null = null;
 
 /** Returns the feed services singleton (null before initializeServices). */
@@ -115,6 +125,11 @@ export function getUsageServices(): UsageServices | null {
 
 export function getAnnotationServices(): AnnotationServices | null {
   return annotationServicesSingleton;
+}
+
+/** Returns the tag services singleton (null before initializeServices). */
+export function getTagServices(): TagServices | null {
+  return tagServicesSingleton;
 }
 
 /** Returns the feed sync scheduler for application lifecycle cleanup. */
@@ -234,6 +249,16 @@ export function initializeServices(
     expertService,
   );
   const annotationService = new AnnotationService(annotationStore, entryStore);
+  const tagStore = new TagStore(dbManager.getDb());
+  const tagService = new TagService(tagStore, entryStore);
+  const autoTagService = new AutoTagService(
+    contentStore,
+    tagStore,
+    providerProfileStore,
+    secretStore,
+    provider,
+    tagStore,
+  );
 
   feedServicesSingleton = {
     feedService,
@@ -254,6 +279,7 @@ export function initializeServices(
     terminologyStore,
   };
   annotationServicesSingleton = { annotationService };
+  tagServicesSingleton = { tagService, tagStore, autoTagService };
   usageServicesSingleton = { usageStatisticsService };
   return feedServicesSingleton;
 }

@@ -50,6 +50,7 @@ export class ProviderService {
       const sameCredentialScope = hasSameCredentialScope(routes.summary, routes.translation);
       const summarySuppliedKey = routes.summary.apiKey?.trim();
       const translationSuppliedKey = routes.translation.apiKey?.trim();
+      const tagSuppliedKey = routes.tag.apiKey?.trim();
       let summaryApiKeyRef = reusableKeyReference(
         existing,
         'summary',
@@ -59,6 +60,11 @@ export class ProviderService {
         existing,
         'translation',
         routes.translation,
+      );
+      let tagApiKeyRef = reusableKeyReference(
+        existing,
+        'tag',
+        routes.tag,
       );
       const secretWrites = new Map<string, string>();
 
@@ -80,6 +86,16 @@ export class ProviderService {
           translationApiKeyRef = randomUUID();
           secretWrites.set(translationApiKeyRef, translationSuppliedKey);
         }
+      }
+
+      // Tag route always has its own independent credentials.
+      // An empty tagApiKeyRef means Tag is not yet configured — the
+      // AutoTagService will detect this and guide the user to set it up.
+      if (tagSuppliedKey) {
+        tagApiKeyRef = randomUUID();
+        secretWrites.set(tagApiKeyRef, tagSuppliedKey);
+      } else if (!tagApiKeyRef) {
+        tagApiKeyRef = '';
       }
 
       if (sameCredentialScope) {
@@ -113,10 +129,16 @@ export class ProviderService {
             model: routes.translation.model,
             apiKeyRef: translationApiKeyRef,
           },
+          tag: {
+            providerKind: routes.tag.providerKind,
+            baseUrl: routes.tag.baseUrl,
+            model: routes.tag.model,
+            apiKeyRef: tagApiKeyRef,
+          },
         });
-        const retainedReferences = new Set([summaryApiKeyRef, translationApiKeyRef]);
+        const retainedReferences = new Set([summaryApiKeyRef, translationApiKeyRef, tagApiKeyRef]);
         const obsoleteReferences = existing
-          ? new Set([existing.apiKeyRef, existing.translationApiKeyRef])
+          ? new Set([existing.apiKeyRef, existing.translationApiKeyRef, existing.tagApiKeyRef])
           : new Set<string>();
         for (const reference of obsoleteReferences) {
           if (retainedReferences.has(reference)) continue;
@@ -134,12 +156,14 @@ export class ProviderService {
         stage = 'key';
         const hasSummaryApiKey = this.secretStore.has(summaryApiKeyRef);
         const hasTranslationApiKey = this.secretStore.has(translationApiKeyRef);
+        const hasTagApiKey = this.secretStore.has(tagApiKeyRef);
         const result: ProviderProfile = {
           ...profile,
           keyStorageMode: this.secretStore.getStorageMode(),
           hasApiKey: hasSummaryApiKey,
           hasSummaryApiKey,
           hasTranslationApiKey,
+          hasTagApiKey,
         };
         logProviderConfigCompleted(this.logger, {
           providerId: profile.id,
@@ -197,6 +221,12 @@ export class ProviderService {
           model: profile.translationModel,
           apiKeyRef: profile.translationApiKeyRef,
         },
+        {
+          providerKind: profile.tagProviderKind,
+          baseUrl: profile.tagBaseUrl,
+          model: profile.tagModel,
+          apiKeyRef: profile.tagApiKeyRef,
+        },
       ];
       const distinctRoutes = [...new Map(routes.map((route) => [
         [
@@ -206,7 +236,7 @@ export class ProviderService {
           route.apiKeyRef,
         ].join('\u0000'),
         route,
-      ])).values()];
+      ])).values()].filter((r) => r.apiKeyRef);
       for (const route of distinctRoutes) {
         stage = 'key';
         const apiKey = this.secretStore.read(route.apiKeyRef);
@@ -218,11 +248,15 @@ export class ProviderService {
           apiKey,
         });
       }
+      const routeCount = distinctRoutes.length;
+      const message = routeCount === 1
+        ? 'Provider connection succeeded.'
+        : routeCount === 2
+          ? 'Summary and Translation Provider connections succeeded.'
+          : 'Summary, Translation and Tag Provider connections succeeded.';
       const result: ProviderConnectionTestResult = {
         ok: true,
-        message: distinctRoutes.length === 1
-          ? 'Provider connection succeeded.'
-          : 'Summary and Translation Provider connections succeeded.',
+        message,
       };
       logProviderConnectionCompleted(this.logger, {
         providerId,
@@ -252,6 +286,9 @@ export class ProviderService {
       translationProviderKind: profile.translationProviderKind,
       translationBaseUrl: profile.translationBaseUrl,
       translationModel: profile.translationModel,
+      tagProviderKind: profile.tagProviderKind,
+      tagBaseUrl: profile.tagBaseUrl,
+      tagModel: profile.tagModel,
       isActive: profile.isActive,
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
@@ -259,6 +296,7 @@ export class ProviderService {
       hasApiKey: this.secretStore.has(profile.apiKeyRef),
       hasSummaryApiKey: this.secretStore.has(profile.apiKeyRef),
       hasTranslationApiKey: this.secretStore.has(profile.translationApiKeyRef),
+      hasTagApiKey: this.secretStore.has(profile.tagApiKeyRef),
     };
   }
 }
@@ -332,11 +370,13 @@ interface ValidatedProviderRoute {
 function validateProviderRequest(request: SaveProviderRequest): {
   summary: ValidatedProviderRoute;
   translation: ValidatedProviderRoute;
+  tag: ValidatedProviderRoute;
 } {
   if ('summary' in request) {
     return {
       summary: validateProviderRoute(request.summary, 'Summary'),
       translation: validateProviderRoute(request.translation, 'Translation'),
+      tag: validateProviderRoute(request.tag, 'Tag'),
     };
   }
 
@@ -354,12 +394,17 @@ function validateProviderRequest(request: SaveProviderRequest): {
       model: request.translationModel ?? legacyModel ?? '',
       ...(request.apiKey ? { apiKey: request.apiKey } : {}),
     }, legacyModel === undefined ? 'Translation' : undefined),
+    tag: {
+      providerKind: 'openai',
+      baseUrl: '',
+      model: 'gpt-5.4-mini',
+    },
   };
 }
 
 function validateProviderRoute(
   route: ValidatedProviderRoute,
-  taskLabel: 'Summary' | 'Translation' | undefined,
+  taskLabel: 'Summary' | 'Translation' | 'Tag' | undefined,
 ): ValidatedProviderRoute {
   if (!isProviderKind(route.providerKind)) {
     throw new SummaryError(
@@ -412,7 +457,7 @@ function validateProviderRoute(
 
 function validateTaskModel(
   value: string,
-  taskLabel: 'Summary' | 'Translation' | undefined,
+  taskLabel: 'Summary' | 'Translation' | 'Tag' | undefined,
   providerKind: ProviderKind,
 ): string {
   const model = value.trim();
@@ -450,21 +495,31 @@ function hasSameCredentialScope(
 
 function reusableKeyReference(
   existing: ReturnType<ProviderProfileStore['findActiveWithSecret']>,
-  task: 'summary' | 'translation',
+  task: 'summary' | 'translation' | 'tag',
   route: ValidatedProviderRoute,
 ): string | undefined {
   if (!existing) return undefined;
   const existingKind = task === 'summary'
     ? existing.providerKind
-    : existing.translationProviderKind;
+    : task === 'translation'
+      ? existing.translationProviderKind
+      : existing.tagProviderKind;
   const existingBaseUrl = task === 'summary'
     ? existing.baseUrl
-    : existing.translationBaseUrl;
+    : task === 'translation'
+      ? existing.translationBaseUrl
+      : existing.tagBaseUrl;
   if (
     existingKind !== route.providerKind
-    || new URL(existingBaseUrl).origin !== new URL(route.baseUrl).origin
+    || (!existingBaseUrl && route.baseUrl)
+    || (existingBaseUrl && !route.baseUrl)
+    || (existingBaseUrl && route.baseUrl && new URL(existingBaseUrl).origin !== new URL(route.baseUrl).origin)
   ) {
     return undefined;
   }
-  return task === 'summary' ? existing.apiKeyRef : existing.translationApiKeyRef;
+  return task === 'summary'
+    ? existing.apiKeyRef
+    : task === 'translation'
+      ? existing.translationApiKeyRef
+      : existing.tagApiKeyRef;
 }

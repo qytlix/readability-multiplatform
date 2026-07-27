@@ -39,6 +39,9 @@ import {
   exportMultipleEntries,
 } from './features/feeds/entryExport';
 import { ExportOptionsDialog } from './features/feeds/ExportOptionsDialog';
+import type { TagFilterState } from './features/search/entrySearch';
+import { TagListPage } from './features/tags/TagListPage';
+import './features/tags/TagListPage.css';
 import type { ArticleAvailability } from '../shared/contracts/export.types';
 import {
   ForwardIcon,
@@ -79,7 +82,7 @@ import {
 } from './features/search/entrySearch';
 import './features/reader/ReaderPage.css';
 
-type AppView = 'reader' | 'settings';
+type AppView = 'reader' | 'settings' | 'tags';
 type SearchStatus = 'idle' | 'searching' | 'results' | 'no-results' | 'error';
 
 const ENTRY_PAGE_SIZE = 30;
@@ -90,6 +93,7 @@ const EMPTY_ENTRY_STATS: EntryStats = {
     readPercentage: 0,
   },
   feeds: [],
+  tagCount: 0,
 };
 
 const toEntry = (entry: EntryListItem): Entry => ({
@@ -112,6 +116,7 @@ export const App = () => {
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [entries, setEntries] = useState<EntryListItem[]>([]);
   const [entryStats, setEntryStats] = useState<EntryStats>(EMPTY_ENTRY_STATS);
+  const [tagCount, setTagCount] = useState(0);
   const [selectedFeedId, setSelectedFeedId] = useState<number | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
@@ -128,6 +133,7 @@ export const App = () => {
   const [entryLoadError, setEntryLoadError] = useState('');
   const [showAddFeedDialog, setShowAddFeedDialog] = useState(false);
   const [activeView, setActiveView] = useState<AppView>('reader');
+  const [tagFilter, setTagFilter] = useState<TagFilterState | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isReadingFocus, setIsReadingFocus] = useState(false);
   const [largeType, setLargeType] = useState(false);
@@ -315,6 +321,17 @@ export const App = () => {
     }
   }, []);
 
+  const loadTagCount = useCallback(async () => {
+    try {
+      const result = await window.shaleAPI.tag.listAllWithCount();
+      if (result.ok) setTagCount(result.data.length);
+      return true;
+    } catch {
+      setReaderFeedback('无法读取标签数量。');
+      return false;
+    }
+  }, []);
+
   const requestEntries = useCallback(async (
     cursor: EntryQuery['cursor'],
     append: boolean,
@@ -333,6 +350,7 @@ export const App = () => {
         selectedFeedId: searchFeedId,
         filter: entryFilter,
         searchQuery: appliedSearchQuery,
+        tagFilter,
         limit: ENTRY_PAGE_SIZE,
         cursor,
       });
@@ -372,12 +390,13 @@ export const App = () => {
         setLoadingEntries(false);
       }
     }
-  }, [appliedSearchQuery, entryFilter, searchFeedId]);
+  }, [appliedSearchQuery, entryFilter, searchFeedId, tagFilter]);
 
   useEffect(() => {
     void loadFeeds();
     void loadEntryStats();
-  }, [loadEntryStats, loadFeeds]);
+    void loadTagCount();
+  }, [loadEntryStats, loadFeeds, loadTagCount]);
 
   useEffect(() => {
     saveAiPreferences(window.localStorage, aiPreferences);
@@ -708,8 +727,32 @@ export const App = () => {
     void requestEntries(entriesCursor, true);
   }, [entriesCursor, hasMoreEntries, loadingEntries, requestEntries]);
 
+  const handleSelectTag = useCallback((tagName: string) => {
+    setActiveView('reader');
+    setTagFilter({ tagNames: [tagName], matchAll: true });
+    setSelectedFeedId(null);
+    setEntryFilter('all');
+    setSearchInput('');
+    setAppliedSearchQuery('');
+    setSearchStatus('idle');
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleOpenTags = useCallback(() => {
+    setActiveView('tags');
+    setTagFilter(null);
+    setSelectedFeedId(null);
+    setEntryFilter('all');
+    setSearchInput('');
+    setAppliedSearchQuery('');
+    setSearchStatus('idle');
+    if (window.innerWidth < 900) setSidebarOpen(false);
+  }, []);
+
   const handleSelectFeed = useCallback((feedId: number | null) => {
     setActiveView('reader');
+    setTagFilter(null);
     setEntryFilter('all');
     setSearchInput('');
     setAppliedSearchQuery('');
@@ -723,6 +766,7 @@ export const App = () => {
 
   const handleSelectSidebarFilter = useCallback((filter: EntryFilter) => {
     setActiveView('reader');
+    setTagFilter(null);
     setSearchInput('');
     setAppliedSearchQuery('');
     setSearchAllFeeds(false);
@@ -736,6 +780,7 @@ export const App = () => {
 
   const handleEntryListFilter = useCallback((filter: EntryFilter) => {
     setActiveView('reader');
+    setTagFilter(null);
     setSearchInput('');
     setAppliedSearchQuery('');
     setSearchAllFeeds(false);
@@ -752,6 +797,7 @@ export const App = () => {
     feedName: selectedFeedName,
     filter: entryFilter,
     hasActiveSearch: Boolean(appliedSearchQuery),
+    tagName: tagFilter?.tagNames[0],
     searchAllFeeds,
   });
   const handleExportRequest = useCallback(async () => {
@@ -848,11 +894,14 @@ export const App = () => {
             loading={loadingFeeds}
             feedLoadStatus={feedLoadStatus}
             settingsActive={activeView === 'settings'}
+            showTagsView={activeView === 'tags'}
+            hasTagFilter={tagFilter !== null}
             onOpenSettings={() => {
               setActiveView('settings');
               setIsReadingFocus(false);
               if (window.innerWidth < 900) setSidebarOpen(false);
             }}
+            onOpenTags={handleOpenTags}
           />
         </aside>
 
@@ -860,36 +909,48 @@ export const App = () => {
           ref={storyListPaneRef}
           className="story-list-pane"
           aria-label="文章列表"
+          onClickCapture={(e) => {
+            if (activeView !== 'reader') return;
+            const tagEl = (e.target as HTMLElement).closest('.story-card-tag');
+            if (tagEl) {
+              e.stopPropagation();
+              handleSelectTag(tagEl.textContent ?? '');
+            }
+          }}
         >
-          <EntryList
-            entries={visibleEntries}
-            selectedEntryId={selectedEntryId}
-            heading={listHeading}
-            loading={loadingEntries}
-            loadStatus={entryLoadStatus}
-            loadError={entryLoadError}
-            searchQuery={normalizedInput}
-            searchStatus={effectiveSearchStatus}
-            filter={entryFilter}
-            onFilterChange={handleEntryListFilter}
-            onSelectEntry={handleSelectEntry}
-            onLoadMore={handleLoadMore}
-            hasMore={hasNoFeeds ? false : hasMoreEntries}
-            selectionMode={selectionMode}
-            selectedIds={selectedIds}
-            onSelectionModeChange={(enabled: boolean) => {
-              if (!enabled) setSelectedIds(new Set());
-              setSelectionMode(enabled);
-            }}
-            onSelectionToggle={(entryId: number) => {
-              setSelectedIds((previousIds: Set<number>) => {
-                const nextIds = new Set(previousIds);
-                if (nextIds.has(entryId)) nextIds.delete(entryId);
-                else nextIds.add(entryId);
-                return nextIds;
-              });
-            }}
-          />
+          {activeView === 'tags' ? (
+            <TagListPage onSelectTag={handleSelectTag} />
+          ) : (
+            <EntryList
+              entries={visibleEntries}
+              selectedEntryId={selectedEntryId}
+              heading={listHeading}
+              loading={loadingEntries}
+              loadStatus={entryLoadStatus}
+              loadError={entryLoadError}
+              searchQuery={normalizedInput}
+              searchStatus={effectiveSearchStatus}
+              filter={entryFilter}
+              onFilterChange={handleEntryListFilter}
+              onSelectEntry={handleSelectEntry}
+              onLoadMore={handleLoadMore}
+              hasMore={hasNoFeeds ? false : hasMoreEntries}
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              onSelectionModeChange={(enabled: boolean) => {
+                if (!enabled) setSelectedIds(new Set());
+                setSelectionMode(enabled);
+              }}
+              onSelectionToggle={(entryId: number) => {
+                setSelectedIds((previousIds: Set<number>) => {
+                  const nextIds = new Set(previousIds);
+                  if (nextIds.has(entryId)) nextIds.delete(entryId);
+                  else nextIds.add(entryId);
+                  return nextIds;
+                });
+              }}
+            />
+          )}
         </section>
 
         <PaneDivider
@@ -1128,6 +1189,10 @@ export const App = () => {
                 beforeTranslationStart={requestTranslationSetupNotice}
                 selectionMode={selectionMode}
                 selectedIds={selectedIds}
+                onTagsChanged={() => {
+                  void loadEntryStats();
+                  void requestEntries(undefined, false);
+                }}
                 onExportRequest={handleExportRequest}
                 onFeedback={setReaderFeedback}
                 pageTurnAnimationEnabled={

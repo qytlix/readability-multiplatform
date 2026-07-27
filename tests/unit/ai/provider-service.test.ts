@@ -135,6 +135,12 @@ describe('ProviderService', () => {
           model: 'deepseek-translation-model',
           apiKey: 'sk-translation-key',
         },
+        tag: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'gpt-tag-model',
+          apiKey: 'sk-tag-key',
+        },
       })).toMatchObject({
         providerKind: 'openai',
         model: 'gpt-summary-model',
@@ -142,8 +148,12 @@ describe('ProviderService', () => {
         translationProviderKind: 'deepseek',
         translationBaseUrl: 'https://api.deepseek.com',
         translationModel: 'deepseek-translation-model',
+        tagProviderKind: 'openai',
+        tagBaseUrl: 'https://api.openai.com/v1',
+        tagModel: 'gpt-tag-model',
         hasSummaryApiKey: true,
         hasTranslationApiKey: true,
+        hasTagApiKey: true,
       });
 
       await expect(service.testConnection()).resolves.toMatchObject({ ok: true });

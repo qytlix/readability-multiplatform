@@ -20,6 +20,9 @@ import {
   type TranslationShortcut,
 } from './keyboardShortcut';
 
+export type TagAgentTriggerMode = 'manual' | 'auto';
+export type TagAgentConfirmMode = 'manual' | 'auto';
+
 export interface AiPreferences {
   summaryTargetLanguage: SummaryTargetLanguage;
   summaryDetailLevel: SummaryDetailLevel;
@@ -33,6 +36,14 @@ export interface AiPreferences {
   fullTranslationShortcut: TranslationShortcut;
   paragraphTranslationShortcut: TranslationShortcut;
   selectionTranslationShortcut: TranslationShortcut;
+  /** Tag Agent: how the AI tag generation is triggered. */
+  tagAgentTriggerMode: TagAgentTriggerMode;
+  /** Tag Agent: whether AI tags are auto-confirmed or require user approval. */
+  tagAgentConfirmMode: TagAgentConfirmMode;
+  /** Tag Agent: maximum number of tag candidates per generation. */
+  tagAgentMaxCandidates: number;
+  /** Max existing-tag suggestions to show in the tag floating window. */
+  tagSuggestionMaxCount: number;
 }
 
 export const DEFAULT_AI_PREFERENCES: AiPreferences = {
@@ -47,6 +58,10 @@ export const DEFAULT_AI_PREFERENCES: AiPreferences = {
   fullTranslationShortcut: DEFAULT_FULL_TRANSLATION_SHORTCUT,
   paragraphTranslationShortcut: DEFAULT_PARAGRAPH_TRANSLATION_SHORTCUT,
   selectionTranslationShortcut: DEFAULT_SELECTION_TRANSLATION_SHORTCUT,
+  tagAgentTriggerMode: 'manual' as const,
+  tagAgentConfirmMode: 'manual' as const,
+  tagAgentMaxCandidates: 8,
+  tagSuggestionMaxCount: 10,
 };
 
 const STORAGE_KEY = 'shale.aiPreferences';
@@ -124,6 +139,20 @@ export function loadAiPreferences(storage: PreferenceStorage): AiPreferences {
       fullTranslationShortcut,
       paragraphTranslationShortcut,
       selectionTranslationShortcut,
+      tagAgentTriggerMode: candidate.tagAgentTriggerMode === 'auto' ? 'auto' : 'manual',
+      tagAgentConfirmMode: candidate.tagAgentConfirmMode === 'auto' ? 'auto' : 'manual',
+      tagAgentMaxCandidates:
+        typeof candidate.tagAgentMaxCandidates === 'number'
+        && candidate.tagAgentMaxCandidates >= 1
+        && candidate.tagAgentMaxCandidates <= 50
+          ? candidate.tagAgentMaxCandidates
+          : DEFAULT_AI_PREFERENCES.tagAgentMaxCandidates,
+      tagSuggestionMaxCount:
+        typeof candidate.tagSuggestionMaxCount === 'number'
+        && candidate.tagSuggestionMaxCount >= 1
+        && candidate.tagSuggestionMaxCount <= 50
+          ? candidate.tagSuggestionMaxCount
+          : DEFAULT_AI_PREFERENCES.tagSuggestionMaxCount,
     };
   } catch {
     return DEFAULT_AI_PREFERENCES;

@@ -83,6 +83,8 @@ export interface EntryAPI {
     isRead?: boolean;
     isStarred?: boolean;
     search?: string;
+    tagNames?: string[];
+    matchAll?: boolean;
     limit: number;
     cursor?: EntryCursor;
   }) => Promise<IPCResult<{

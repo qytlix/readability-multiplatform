@@ -10,6 +10,7 @@ import type {
   FeedEntryReadStats,
 } from '../../../shared/contracts/feed.types';
 import type { PipelineStatus } from '../../../shared/contracts/content.types';
+import type { Tag } from '../../../shared/contracts/tag.types';
 import {
   getPlainSearchText,
   normalizeSearchQuery,
@@ -142,16 +143,26 @@ export class EntryStore {
   query(options: EntryQuery): EntryQueryResult {
     validateEntryQuery(options);
     const searchTerms = parseSearchTerms(options.search ?? '');
-    return searchTerms.length > 0
+    const result = searchTerms.length > 0
       ? this.querySearch(options, searchTerms)
       : this.queryBrowse(options);
+
+    // Batch-populate tags for all returned entries
+    if (result.entries.length > 0) {
+      const entryIds = result.entries.map((e) => e.id);
+      const tagMap = this.batchTagsByEntry(entryIds);
+      for (const entry of result.entries) {
+        entry.tags = tagMap.get(entry.id) ?? [];
+      }
+    }
+
+    return result;
   }
 
   private queryBrowse(options: EntryQuery): EntryQueryResult {
     const conditions: string[] = ['e.isDeleted = 0'];
     const whereParams: unknown[] = [];
     appendScopeConditions(options, conditions, whereParams);
-
     if (options.cursor) {
       conditions.push(`(
         COALESCE(e.publishedAt, e.createdAt) < ?
@@ -397,6 +408,12 @@ export class EntryStore {
       GROUP BY feedId
       ORDER BY feedId
     `).all() as Array<{ feedId: number; total: number; unread: number | null }>;
+    const tagCountRow = this.db.prepare(`
+      SELECT COUNT(DISTINCT t.id) AS cnt
+      FROM tag t
+      INNER JOIN entry_tag et ON et.tagId = t.id
+      INNER JOIN entry e ON e.id = et.entryId AND e.isDeleted = 0
+    `).get() as { cnt: number };
 
     return {
       all: toReadStats(allRow),
@@ -404,6 +421,7 @@ export class EntryStore {
         feedId: row.feedId,
         ...toReadStats(row),
       })),
+      tagCount: tagCountRow.cnt,
     };
   }
 
@@ -437,6 +455,32 @@ export class EntryStore {
     const row = this.db.prepare(sql).get(...params) as { cnt: number };
     return row.cnt;
   }
+
+  /**
+   * Batch query tags for a set of entry IDs. Returns a Map<entryId, Tag[]>.
+   */
+  private batchTagsByEntry(entryIds: number[]): Map<number, Tag[]> {
+    if (entryIds.length === 0) return new Map();
+    const placeholders = entryIds.map(() => '?').join(', ');
+    const rows = this.db.prepare(`
+      SELECT et.entryId, t.id, t.name, t.color
+      FROM entry_tag et
+      JOIN tag t ON t.id = et.tagId
+      WHERE et.entryId IN (${placeholders})
+      ORDER BY t.name COLLATE NOCASE ASC
+    `).all(...entryIds) as Array<{ entryId: number; id: number; name: string; color: string }>;
+
+    const map = new Map<number, Tag[]>();
+    for (const row of rows) {
+      let tags = map.get(row.entryId);
+      if (!tags) {
+        tags = [];
+        map.set(row.entryId, tags);
+      }
+      tags.push({ id: row.id, name: row.name, color: row.color });
+    }
+    return map;
+  }
 }
 
 function validateEntryQuery(options: EntryQuery): void {
@@ -451,6 +495,16 @@ function validateEntryQuery(options: EntryQuery): void {
   }
   if (options.search !== undefined && options.search.length > 256) {
     throw new RangeError('Entry search query must not exceed 256 characters.');
+  }
+  if (options.tagFuzzyNames !== undefined) {
+    if (!Array.isArray(options.tagFuzzyNames) || options.tagFuzzyNames.length > 50) {
+      throw new RangeError('Entry query tagFuzzyNames must be an array of up to 50 strings.');
+    }
+    for (const name of options.tagFuzzyNames) {
+      if (typeof name !== 'string' || name.length > 100) {
+        throw new RangeError('Entry query tagFuzzyNames entries must be strings up to 100 characters.');
+      }
+    }
   }
   if (
     options.cursor
@@ -480,6 +534,72 @@ function appendScopeConditions(
   if (options.isStarred !== undefined) {
     conditions.push('e.isStarred = ?');
     params.push(options.isStarred ? 1 : 0);
+  }
+
+  // Tag filter: sub-query on entry_tag via tag name(s)
+  if (options.tagNames && options.tagNames.length > 0) {
+    const tagNames = options.tagNames.filter((n) => n.trim().length > 0);
+    if (tagNames.length > 0) {
+      const placeholders = tagNames.map(() => '?').join(', ');
+      const matchAll = options.matchAll !== false; // default AND
+      if (matchAll) {
+        conditions.push(
+          `e.id IN (
+            SELECT et.entryId FROM entry_tag et
+            JOIN tag t ON t.id = et.tagId
+            WHERE t.name IN (${placeholders})
+            GROUP BY et.entryId
+            HAVING COUNT(DISTINCT t.id) = ?
+          )`
+        );
+        params.push(...tagNames, tagNames.length);
+      } else {
+        conditions.push(
+          `e.id IN (
+            SELECT et.entryId FROM entry_tag et
+            JOIN tag t ON t.id = et.tagId
+            WHERE t.name IN (${placeholders})
+          )`
+        );
+        params.push(...tagNames);
+      }
+    }
+  }
+
+  // Tag filter: fuzzy match via LIKE on tag name(s)
+  if (options.tagFuzzyNames && options.tagFuzzyNames.length > 0) {
+    const fuzzyNames = options.tagFuzzyNames.filter((n) => n.trim().length > 0);
+    if (fuzzyNames.length > 0) {
+      const matchAll = options.matchAll !== false; // default AND
+      const esc = " ESCAPE '\\'";
+      const subConditions: string[] = fuzzyNames.map(
+        (name) => `t.name LIKE ?${esc}`
+      );
+      if (matchAll) {
+        // Each fuzzy name must match at least one tag (AND across terms)
+        for (const name of fuzzyNames) {
+          conditions.push(
+            `e.id IN (
+              SELECT et.entryId FROM entry_tag et
+              JOIN tag t ON t.id = et.tagId
+              WHERE t.name LIKE ?
+            )`
+          );
+          params.push(`%${escapeLike(name)}%`);
+        }
+      } else {
+        // Any fuzzy name can match (OR across terms)
+        const likeParams = fuzzyNames.map((name) => `%${escapeLike(name)}%`);
+        conditions.push(
+          `e.id IN (
+            SELECT et.entryId FROM entry_tag et
+            JOIN tag t ON t.id = et.tagId
+            WHERE ${subConditions.join(' OR ')}
+          )`
+        );
+        params.push(...likeParams);
+      }
+    }
   }
 }
 

@@ -49,11 +49,14 @@ const createFeedListProps = (
     feeds: [
       { feedId: 1, total: 5, unread: 3, readPercentage: 40 },
     ],
+    tagCount: 0,
   },
   loading: false,
   feedLoadStatus: 'success',
   settingsActive: false,
+  showTagsView: false,
   onOpenSettings: vi.fn(),
+  onOpenTags: vi.fn(),
   ...overrides,
 });
 
