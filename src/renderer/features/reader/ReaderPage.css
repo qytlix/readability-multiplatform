@@ -5972,6 +5972,12 @@ body.workspace-is-resizing * {
   font-size: 11px;
 }
 
+.tag-floating-warning {
+  margin: 4px 0 0;
+  color: var(--reader-accent-strong);
+  font-size: 11px;
+}
+
 .reader-page[data-theme="light"] .tag-badge {
   filter: saturate(1.3) brightness(0.85);
   color: rgba(0, 0, 0, 0.95);

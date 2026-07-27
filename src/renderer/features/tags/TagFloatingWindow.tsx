@@ -28,6 +28,7 @@ export const TagFloatingWindow = ({
   const [tags, setTags] = useState<Tag[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [operationError, setOperationError] = useState('');
+  const [duplicateWarning, setDuplicateWarning] = useState('');
   const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
   const windowRef = useRef<HTMLDivElement>(null);
 
@@ -102,6 +103,15 @@ export const TagFloatingWindow = ({
 
   const handleAdd = useCallback(async (tagName: string) => {
     setOperationError('');
+    setDuplicateWarning('');
+
+    // Check for duplicate (case-insensitive)
+    const tagNameLower = tagName.toLowerCase();
+    if (tags.some((t) => t.name.toLowerCase() === tagNameLower)) {
+      setDuplicateWarning(`标签“${tagName}”已存在。`);
+      return;
+    }
+
     try {
       // First ensure the tag exists, then link it
       const createResult = await window.shaleAPI.tag.createTag(tagName);
@@ -122,10 +132,11 @@ export const TagFloatingWindow = ({
     } catch {
       setOperationError('Failed to add tag.');
     }
-  }, [entryId]);
+  }, [entryId, tags]);
 
   const handleRemove = useCallback(async (tagId: number) => {
     setOperationError('');
+    setDuplicateWarning('');
     // Optimistic UI: remove immediately
     setTags((prev) => prev.filter((t) => t.id !== tagId));
     try {
@@ -164,6 +175,9 @@ export const TagFloatingWindow = ({
         <span className="tag-floating-title">标签</span>
       </div>
       <TagInput onAdd={handleAdd} disabled={loadState === 'loading'} />
+      {duplicateWarning && (
+        <p className="tag-floating-warning" role="alert">{duplicateWarning}</p>
+      )}
       {operationError && (
         <p className="tag-floating-error" role="alert">{operationError}</p>
       )}
