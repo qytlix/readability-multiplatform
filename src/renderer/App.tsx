@@ -895,6 +895,7 @@ export const App = () => {
             feedLoadStatus={feedLoadStatus}
             settingsActive={activeView === 'settings'}
             showTagsView={activeView === 'tags'}
+            hasTagFilter={tagFilter !== null}
             onOpenSettings={() => {
               setActiveView('settings');
               setIsReadingFocus(false);

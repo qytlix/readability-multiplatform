@@ -60,6 +60,7 @@ interface FeedListProps {
   showTagsView: boolean;
   onOpenSettings: () => void;
   onOpenTags: () => void;
+  hasTagFilter?: boolean;
 }
 
 export const FeedList = ({
@@ -84,6 +85,7 @@ export const FeedList = ({
   showTagsView,
   onOpenSettings,
   onOpenTags,
+  hasTagFilter,
 }: FeedListProps) => {
   const [editFeed, setEditFeed] = useState<Feed | null>(null);
   const [deleteFeed, setDeleteFeed] = useState<Feed | null>(null);
@@ -234,6 +236,7 @@ export const FeedList = ({
     && selectedFilter === 'all'
     && !settingsActive
     && !showTagsView
+    && !hasTagFilter
     && searchInput.trim().length === 0;
 
   useLayoutEffect(() => {
@@ -300,6 +303,7 @@ export const FeedList = ({
     selectedFilter,
     settingsActive,
     showTagsView,
+    hasTagFilter,
   ]);
 
   return (
@@ -391,7 +395,7 @@ export const FeedList = ({
         </button>
         <button
           type="button"
-          className={`sidebar-item${showTagsView && !settingsActive ? ' is-active' : ''}`}
+          className={`sidebar-item${(showTagsView || hasTagFilter) && !settingsActive ? ' is-active' : ''}`}
           onClick={onOpenTags}
         >
           <TagIcon />
