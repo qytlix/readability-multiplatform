@@ -14,21 +14,52 @@ interface EntryListHeadingInput {
   hasActiveSearch: boolean;
 }
 
+export interface EntryListHeadingPresentation {
+  text: string;
+  feedName: string | null;
+  filterSuffix: string | null;
+}
+
 const getFilterHeading = (filter: EntryFilter): string => {
   if (filter === 'unread') return entryListCopy.unreadArticles;
   if (filter === 'starred') return entryListCopy.starredArticles;
   return entryListCopy.allArticles;
 };
 
-export const getEntryListHeading = ({
+export const getEntryListHeadingPresentation = ({
   feedName,
   filter,
   hasActiveSearch,
-}: EntryListHeadingInput): string => {
-  if (hasActiveSearch) return entryListCopy.searchResults;
+}: EntryListHeadingInput): EntryListHeadingPresentation => {
+  if (hasActiveSearch) {
+    return {
+      text: entryListCopy.searchResults,
+      feedName: null,
+      filterSuffix: null,
+    };
+  }
 
   const filterHeading = getFilterHeading(filter);
-  if (feedName === null) return filterHeading;
-  if (filter === 'all') return feedName;
-  return `${feedName} · ${filterHeading}`;
+  if (feedName === null) {
+    return {
+      text: filterHeading,
+      feedName: null,
+      filterSuffix: null,
+    };
+  }
+  if (filter === 'all') {
+    return {
+      text: feedName,
+      feedName,
+      filterSuffix: null,
+    };
+  }
+  return {
+    text: `${feedName} · ${filterHeading}`,
+    feedName,
+    filterSuffix: filterHeading,
+  };
 };
+
+export const getEntryListHeading = (input: EntryListHeadingInput): string =>
+  getEntryListHeadingPresentation(input).text;
