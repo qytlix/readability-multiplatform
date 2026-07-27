@@ -7,6 +7,8 @@ interface TagBadgeProps {
 }
 
 export const TagBadge = ({ tag, onRemove }: TagBadgeProps) => {
+  const { hue } = tagColor(tag.name);
+
   const handleRemove = (e: React.MouseEvent) => {
     e.stopPropagation();
     onRemove(tag.id);
@@ -15,7 +17,7 @@ export const TagBadge = ({ tag, onRemove }: TagBadgeProps) => {
   return (
     <span
       className="tag-badge"
-      style={{ backgroundColor: tagColor(tag.name) }}
+      style={{ '--tag-hue': hue } as React.CSSProperties}
     >
       <span className="tag-badge-label">{tag.name}</span>
       <button
