@@ -13,7 +13,7 @@ interface TagFloatingWindowProps {
   entryId: number;
   anchorEl: HTMLElement | null;
   onClose: () => void;
-  /** Portal container — defaults to document.body */
+  /** Portal container — defaults to .reader-page */
   container?: HTMLElement;
 }
 
@@ -190,5 +190,9 @@ export const TagFloatingWindow = ({
     </div>
   );
 
-  return createPortal(floatingContent, container ?? document.body);
-};
+  return createPortal(floatingContent, container ?? getPageRoot());
+}
+
+function getPageRoot(): HTMLElement {
+  return document.querySelector<HTMLElement>('.reader-page') ?? document.body;
+}
