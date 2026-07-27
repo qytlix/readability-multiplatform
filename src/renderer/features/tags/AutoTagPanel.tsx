@@ -10,6 +10,7 @@ interface AutoTagPanelProps {
 }
 
 type PanelState =
+  | { type: 'checking' }
   | { type: 'idle' }
   | { type: 'loading' }
   | { type: 'candidates'; candidates: TagCandidate[]; selected: Set<string> }
@@ -21,13 +22,11 @@ const DEFAULT_MAX_CANDIDATES = 8;
 
 const LOADING_TIMEOUT_SECONDS = 60;
 
-// Track entries for which AI tags have been confirmed. Persists across
-// floating window open/close cycles within the same app session.
-const aiTagConfirmedEntries = new Set<number>();
+// Persist candidates in the current app session so re-opening the floating
+// window shows the same suggestions without re-generating.
+const sessionCandidates = new Map<number, TagCandidate[]>();
 
-// Track in-flight generation requests across remounts: when the floating window
-// is closed and re-opened while a request is still pending, we reuse the
-// existing promise instead of sending a duplicate request.
+// Track in-flight generation requests across remounts.
 const pendingRequests = new Map<
   number,
   Promise<{ ok: boolean; data?: TagCandidate[]; error?: { message: string } }>
@@ -38,7 +37,6 @@ async function fetchCandidates(entryId: number): Promise<{
   data?: TagCandidate[];
   error?: { message: string };
 }> {
-  // Check for an existing in-flight request for this entry
   const existing = pendingRequests.get(entryId);
   if (existing) return existing;
 
@@ -48,7 +46,6 @@ async function fetchCandidates(entryId: number): Promise<{
   });
   pendingRequests.set(entryId, promise);
 
-  // Clean up the pending flag once the request settles
   void promise.then(() => {
     if (pendingRequests.get(entryId) === promise) {
       pendingRequests.delete(entryId);
@@ -63,19 +60,82 @@ async function fetchCandidates(entryId: number): Promise<{
 }
 
 export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPanelProps) => {
-  const [panelState, setPanelState] = useState<PanelState>({ type: 'idle' });
+  const [panelState, setPanelState] = useState<PanelState>({ type: 'checking' });
   const [isConfirming, setIsConfirming] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(LOADING_TIMEOUT_SECONDS);
   const hasTriggered = useRef(false);
   const loadingStartedAt = useRef(0);
-  // Guard against the async fetch promise settling after the panel has already
-  // transitioned out of 'loading' (e.g. countdown → timeout).
-  const panelPhase = useRef<PanelState['type']>('idle');
+  const panelPhase = useRef<PanelState['type']>('checking');
 
-  // Sync panelPhase ref whenever panelState changes
   useEffect(() => {
     panelPhase.current = panelState.type;
   }, [panelState]);
+
+  // ── On mount: check DB status and session cache ─────────
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      // First check session cache for candidates
+      const cached = sessionCandidates.get(entryId);
+      if (cached && cached.length > 0) {
+        if (!cancelled) {
+          setPanelState({
+            type: 'candidates',
+            candidates: cached,
+            selected: new Set(cached.map((c) => c.name)),
+          });
+        }
+        return;
+      }
+
+      // Then check DB for AI-tag-generated flag
+      try {
+        const status = await window.shaleAPI.tag.autoTagCheckStatus(entryId);
+        if (!cancelled && status.ok && status.data.aiTagGenerated) {
+          setPanelState({ type: 'done' });
+          return;
+        }
+      } catch {
+        // Silently continue — will fall through to idle/auto-trigger
+      }
+
+      if (cancelled) return;
+
+      // Not done and no cached candidates — check auto-trigger
+      if (autoTrigger && !hasTriggered.current) {
+        hasTriggered.current = true;
+        setPanelState({ type: 'loading' });
+        loadingStartedAt.current = Date.now();
+        try {
+          const result = await fetchCandidates(entryId);
+          if (cancelled || panelPhase.current !== 'loading') return;
+          if (!result.ok) {
+            setPanelState({ type: 'error', message: result.error?.message ?? '生成失败。' });
+            return;
+          }
+          const candidates = result.data;
+          if (!candidates || candidates.length === 0) {
+            setPanelState({ type: 'idle' });
+            return;
+          }
+          sessionCandidates.set(entryId, candidates);
+          setPanelState({
+            type: 'candidates',
+            candidates,
+            selected: new Set(candidates.map((c) => c.name)),
+          });
+        } catch {
+          if (!cancelled && panelPhase.current === 'loading') {
+            setPanelState({ type: 'idle' });
+          }
+        }
+      } else {
+        setPanelState({ type: 'idle' });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [entryId, autoTrigger]);
 
   // Countdown timer while loading
   useEffect(() => {
@@ -101,12 +161,12 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
   // ── Core: send request and handle result ────────────────
 
   const startGeneration = useCallback(async () => {
+    // Clear session cache so fresh results replace old ones
+    sessionCandidates.delete(entryId);
     setPanelState({ type: 'loading' });
     loadingStartedAt.current = Date.now();
     try {
       const result = await fetchCandidates(entryId);
-      // If the panel has already left loading (e.g. countdown → timeout),
-      // discard the stale result.
       if (panelPhase.current !== 'loading') return;
       if (!result.ok) {
         setPanelState({ type: 'error', message: result.error?.message ?? '生成失败。' });
@@ -117,6 +177,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
         setPanelState({ type: 'error', message: '未能生成标签，请重试。' });
         return;
       }
+      sessionCandidates.set(entryId, candidates);
       setPanelState({
         type: 'candidates',
         candidates,
@@ -128,21 +189,20 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
     }
   }, [entryId]);
 
-  // Determine initial state and auto-trigger on mount
-  useEffect(() => {
-    if (aiTagConfirmedEntries.has(entryId)) {
-      setPanelState({ type: 'done' });
-      return;
-    }
-    if (!autoTrigger || hasTriggered.current) return;
-    hasTriggered.current = true;
-    void startGeneration();
-  }, [autoTrigger, entryId, startGeneration]);
-
   const generate = useCallback(() => {
-    aiTagConfirmedEntries.delete(entryId);
     void startGeneration();
   }, [startGeneration]);
+
+  const regenerate = useCallback(async () => {
+    // Clear DB flag so a fresh generation is treated as new
+    try {
+      await window.shaleAPI.tag.autoTagClearStatus(entryId);
+    } catch {
+      // Best-effort; generation will still proceed
+    }
+    sessionCandidates.delete(entryId);
+    void startGeneration();
+  }, [entryId, startGeneration]);
 
   const toggleCandidate = useCallback((name: string) => {
     setPanelState((prev) => {
@@ -169,7 +229,8 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
         setPanelState({ type: 'error', message: result.error.message });
         return;
       }
-      aiTagConfirmedEntries.add(entryId);
+      // DB flag is already set by AutoTagService.confirmTags()
+      sessionCandidates.delete(entryId);
       setPanelState({ type: 'done' });
       onTagsChanged?.();
     } catch {
@@ -179,10 +240,21 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
   }, [entryId, panelState, onTagsChanged]);
 
   const cancel = useCallback(() => {
+    // Keep candidates in session cache in case the user re-opens
     setPanelState({ type: 'idle' });
   }, []);
 
   // ── Render ──────────────────────────────────────────────
+
+  // Initial check
+  if (panelState.type === 'checking') {
+    return (
+      <div className="auto-tag-panel">
+        <p className="tag-floating-suggestion-label">AI标签</p>
+        <div className="tag-floating-loading">检查中…</div>
+      </div>
+    );
+  }
 
   // Done: show "AI标签已生成" with regenerate button
   if (panelState.type === 'done') {
@@ -193,7 +265,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
         <button
           type="button"
           className="auto-tag-trigger-pill"
-          onClick={generate}
+          onClick={regenerate}
         >
           ✨ 重新生成
         </button>
@@ -201,7 +273,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
     );
   }
 
-  // Idle: show generate button (only reached if done check passed and not autoTrigger)
+  // Idle: show generate button
   if (panelState.type === 'idle') {
     return (
       <div className="auto-tag-panel">

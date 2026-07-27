@@ -16,6 +16,8 @@ export const TAG_IPC_CHANNELS = {
   listAvailableForEntry: 'tag:list-available-for-entry',
   autoTagGenerate:   'tag:auto-tag-generate',
   autoTagConfirm:    'tag:auto-tag-confirm',
+  autoTagCheckStatus: 'tag:auto-tag-check-status',
+  autoTagClearStatus: 'tag:auto-tag-clear-status',
 } as const;
 
 export interface TagAPI {
@@ -27,4 +29,6 @@ export interface TagAPI {
   listAvailableForEntry: (entryId: number) => Promise<IPCResult<TagWithCount[]>>;
   autoTagGenerate: (request: AutoTagGenerateRequest) => Promise<IPCResult<TagCandidate[]>>;
   autoTagConfirm: (request: AutoTagConfirmRequest) => Promise<IPCResult<Tag[]>>;
+  autoTagCheckStatus: (entryId: number) => Promise<IPCResult<{ aiTagGenerated: boolean }>>;
+  autoTagClearStatus: (entryId: number) => Promise<IPCResult<void>>;
 }

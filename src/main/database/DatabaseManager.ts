@@ -31,6 +31,7 @@ import { MIGRATION_021 } from '../migrations/021_add_translation_provider_route'
 import { MIGRATION_022 } from '../migrations/022_create_entry_tags';
 import { MIGRATION_023 } from '../migrations/023_tag_name_case_sensitive';
 import { MIGRATION_024 } from '../migrations/024_add_tag_provider_route';
+import { MIGRATION_025 } from '../migrations/025_add_entry_ai_tag_generated';
 
 interface Migration {
   id: string;
@@ -76,6 +77,7 @@ const MIGRATIONS: Migration[] = [
   { id: '022_create_entry_tags', sql: MIGRATION_022 },
   { id: '023_tag_name_case_sensitive', sql: MIGRATION_023 },
   { id: '024_add_tag_provider_route', sql: MIGRATION_024 },
+  { id: '025_add_entry_ai_tag_generated', sql: MIGRATION_025 },
 ];
 
 export class DatabaseManager {

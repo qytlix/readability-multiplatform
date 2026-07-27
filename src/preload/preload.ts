@@ -271,6 +271,10 @@ const tagAPI = {
     ipcRenderer.invoke(TAG_IPC_CHANNELS.autoTagGenerate, request),
   autoTagConfirm: (request: { entryId: number; tagNames: string[] }) =>
     ipcRenderer.invoke(TAG_IPC_CHANNELS.autoTagConfirm, request),
+  autoTagCheckStatus: (entryId: number) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.autoTagCheckStatus, { entryId }),
+  autoTagClearStatus: (entryId: number) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.autoTagClearStatus, { entryId }),
 };
 
 const shaleAPI: ShaleAPI = {

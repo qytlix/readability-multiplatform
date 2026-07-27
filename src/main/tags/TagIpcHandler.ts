@@ -16,11 +16,13 @@ import type { IPCResult } from '../../shared/contracts/feed.ipc';
 import { TAG_ERROR_CODES, TagError, toTagIpcError } from './shared/tag.errors';
 import type { AutoTagService } from './AutoTagService';
 import type { TagService } from './TagService';
+import type { TagStore } from './TagStore';
 
 type GetMainWindow = () => BrowserWindow | null;
 
 export interface TagServices {
   tagService: TagService;
+  tagStore: TagStore;
   autoTagService?: AutoTagService;
 }
 
@@ -132,6 +134,24 @@ export function registerTagIpcHandlers(
         }
         const { entryId, tagNames } = request as AutoTagConfirmRequest;
         return services.autoTagService.confirmTags(entryId, tagNames);
+      }),
+  );
+
+  ipcMain.handle(
+    TAG_IPC_CHANNELS.autoTagCheckStatus,
+    async (event: IpcMainInvokeEvent, request: unknown) =>
+      handleAsync(event, getMainWindow, isEntryIdRequest(request), async () => {
+        const { entryId } = request as EntryIdRequest;
+        return { aiTagGenerated: services.tagStore.isAiTagGenerated(entryId) };
+      }),
+  );
+
+  ipcMain.handle(
+    TAG_IPC_CHANNELS.autoTagClearStatus,
+    async (event: IpcMainInvokeEvent, request: unknown) =>
+      handleAsync(event, getMainWindow, isEntryIdRequest(request), async () => {
+        const { entryId } = request as EntryIdRequest;
+        services.tagStore.setAiTagGenerated(entryId, false);
       }),
   );
 }

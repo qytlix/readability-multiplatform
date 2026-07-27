@@ -83,6 +83,7 @@ export interface AnnotationServices {
 
 export interface TagServices {
   tagService: TagService;
+  tagStore: TagStore;
   autoTagService: AutoTagService;
 }
 
@@ -278,7 +279,7 @@ export function initializeServices(
     terminologyStore,
   };
   annotationServicesSingleton = { annotationService };
-  tagServicesSingleton = { tagService, autoTagService };
+  tagServicesSingleton = { tagService, tagStore, autoTagService };
   usageServicesSingleton = { usageStatisticsService };
   return feedServicesSingleton;
 }

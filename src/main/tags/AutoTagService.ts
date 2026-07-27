@@ -133,6 +133,7 @@ export class AutoTagService {
    * doesn't already exist.
    */
   confirmTags(entryId: number, tagNames: string[]): Tag[] {
+    this.tagStore.setAiTagGenerated(entryId, true);
     return tagNames.map((name) => {
       const tag = this.tagStore.findOrCreate(name.trim());
       this.tagStore.tagEntry(entryId, tag.id, 'auto');
