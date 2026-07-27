@@ -236,7 +236,7 @@ export class ProviderService {
           route.apiKeyRef,
         ].join('\u0000'),
         route,
-      ])).values()];
+      ])).values()].filter((r) => r.apiKeyRef);
       for (const route of distinctRoutes) {
         stage = 'key';
         const apiKey = this.secretStore.read(route.apiKeyRef);
@@ -511,7 +511,9 @@ function reusableKeyReference(
       : existing.tagBaseUrl;
   if (
     existingKind !== route.providerKind
-    || new URL(existingBaseUrl).origin !== new URL(route.baseUrl).origin
+    || (!existingBaseUrl && route.baseUrl)
+    || (existingBaseUrl && !route.baseUrl)
+    || (existingBaseUrl && route.baseUrl && new URL(existingBaseUrl).origin !== new URL(route.baseUrl).origin)
   ) {
     return undefined;
   }

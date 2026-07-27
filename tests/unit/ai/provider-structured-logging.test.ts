@@ -275,7 +275,7 @@ describe('ProviderService structured logging', () => {
     );
 
     expect(service.save(createRequest())).toMatchObject({ id: 74, hasApiKey: true });
-    expect(logs).toHaveLength(2);
+    expect(logs).toHaveLength(3);
     expect(logs[0]).toMatchObject({
       level: 'warn',
       event: PROVIDER_LOG_EVENTS.secretCleanupFailed,
@@ -286,6 +286,15 @@ describe('ProviderService structured logging', () => {
       },
     });
     expect(logs[1]).toMatchObject({
+      level: 'warn',
+      event: PROVIDER_LOG_EVENTS.secretCleanupFailed,
+      context: {
+        providerId: 74,
+        stage: 'cleanup',
+        errorCode: PROVIDER_LOG_ERROR_CODES.secretCleanupFailed,
+      },
+    });
+    expect(logs[2]).toMatchObject({
       level: 'info',
       event: PROVIDER_LOG_EVENTS.configCompleted,
       context: { providerId: 74, success: true },
@@ -303,7 +312,7 @@ describe('ProviderService structured logging', () => {
 
     await expect(successfulService.testConnection()).resolves.toEqual({
       ok: true,
-      message: 'Provider connection succeeded.',
+      message: 'Summary and Translation Provider connections succeeded.',
     });
     expect(successfulLogs).toHaveLength(1);
     expect(successfulLogs[0]).toMatchObject({
