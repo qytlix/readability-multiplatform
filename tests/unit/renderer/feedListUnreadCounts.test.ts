@@ -53,7 +53,9 @@ const createFeedListProps = (
   loading: false,
   feedLoadStatus: 'success',
   settingsActive: false,
+  showTagsView: false,
   onOpenSettings: vi.fn(),
+  onOpenTags: vi.fn(),
   ...overrides,
 });
 

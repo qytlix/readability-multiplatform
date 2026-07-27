@@ -39,6 +39,9 @@ import {
   exportMultipleEntries,
 } from './features/feeds/entryExport';
 import { ExportOptionsDialog } from './features/feeds/ExportOptionsDialog';
+import type { TagFilterState } from './features/search/entrySearch';
+import { TagListPage } from './features/tags/TagListPage';
+import './features/tags/TagListPage.css';
 import type { ArticleAvailability } from '../shared/contracts/export.types';
 import {
   ForwardIcon,
@@ -74,7 +77,7 @@ import {
 } from './features/search/entrySearch';
 import './features/reader/ReaderPage.css';
 
-type AppView = 'reader' | 'settings';
+type AppView = 'reader' | 'settings' | 'tags';
 type SearchStatus = 'idle' | 'searching' | 'results' | 'no-results' | 'error';
 
 const ENTRY_PAGE_SIZE = 30;
@@ -122,6 +125,7 @@ export const App = () => {
   const [entryLoadError, setEntryLoadError] = useState('');
   const [showAddFeedDialog, setShowAddFeedDialog] = useState(false);
   const [activeView, setActiveView] = useState<AppView>('reader');
+  const [tagFilter, setTagFilter] = useState<TagFilterState | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isReadingFocus, setIsReadingFocus] = useState(false);
   const [largeType, setLargeType] = useState(false);
@@ -322,6 +326,7 @@ export const App = () => {
         selectedFeedId,
         filter: entryFilter,
         searchQuery: appliedSearchQuery,
+        tagFilter,
         limit: ENTRY_PAGE_SIZE,
         cursor,
       });
@@ -361,7 +366,7 @@ export const App = () => {
         setLoadingEntries(false);
       }
     }
-  }, [appliedSearchQuery, entryFilter, selectedFeedId]);
+  }, [appliedSearchQuery, entryFilter, selectedFeedId, tagFilter]);
 
   useEffect(() => {
     void loadFeeds();
@@ -692,8 +697,32 @@ export const App = () => {
     void requestEntries(entriesCursor, true);
   }, [entriesCursor, hasMoreEntries, loadingEntries, requestEntries]);
 
+  const handleSelectTag = useCallback((tagName: string) => {
+    setActiveView('reader');
+    setTagFilter({ tagNames: [tagName], matchAll: true });
+    setSelectedFeedId(null);
+    setEntryFilter('all');
+    setSearchInput('');
+    setAppliedSearchQuery('');
+    setSearchStatus('idle');
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleOpenTags = useCallback(() => {
+    setActiveView('tags');
+    setTagFilter(null);
+    setSelectedFeedId(null);
+    setEntryFilter('all');
+    setSearchInput('');
+    setAppliedSearchQuery('');
+    setSearchStatus('idle');
+    if (window.innerWidth < 900) setSidebarOpen(false);
+  }, []);
+
   const handleSelectFeed = useCallback((feedId: number | null) => {
     setActiveView('reader');
+    setTagFilter(null);
     setEntryFilter('all');
     setSearchInput('');
     setAppliedSearchQuery('');
@@ -706,6 +735,7 @@ export const App = () => {
 
   const handleSelectSidebarFilter = useCallback((filter: EntryFilter) => {
     setActiveView('reader');
+    setTagFilter(null);
     setSearchInput('');
     setAppliedSearchQuery('');
     setSearchStatus('idle');
@@ -718,6 +748,7 @@ export const App = () => {
 
   const handleEntryListFilter = useCallback((filter: EntryFilter) => {
     setActiveView('reader');
+    setTagFilter(null);
     setSearchInput('');
     setAppliedSearchQuery('');
     setSearchStatus('idle');
@@ -826,11 +857,13 @@ export const App = () => {
             loading={loadingFeeds}
             feedLoadStatus={feedLoadStatus}
             settingsActive={activeView === 'settings'}
+            showTagsView={activeView === 'tags'}
             onOpenSettings={() => {
               setActiveView('settings');
               setIsReadingFocus(false);
               if (window.innerWidth < 900) setSidebarOpen(false);
             }}
+            onOpenTags={handleOpenTags}
           />
         </aside>
 
@@ -1062,7 +1095,9 @@ export const App = () => {
           </div>
 
           <div className="article-stage">
-            {activeView === 'settings' ? (
+            {activeView === 'tags' ? (
+              <TagListPage onSelectTag={handleSelectTag} />
+            ) : activeView === 'settings' ? (
               <AISettingsPage
                 preferences={aiPreferences}
                 onPreferencesChange={setAiPreferences}

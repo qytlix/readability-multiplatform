@@ -54,7 +54,9 @@ interface FeedListProps {
   loading: boolean;
   feedLoadStatus: FeedLoadStatus;
   settingsActive: boolean;
+  showTagsView: boolean;
   onOpenSettings: () => void;
+  onOpenTags: () => void;
 }
 
 export const FeedList = ({
@@ -74,7 +76,9 @@ export const FeedList = ({
   loading,
   feedLoadStatus,
   settingsActive,
+  showTagsView,
   onOpenSettings,
+  onOpenTags,
 }: FeedListProps) => {
   const [editFeed, setEditFeed] = useState<Feed | null>(null);
   const [deleteFeed, setDeleteFeed] = useState<Feed | null>(null);
@@ -214,6 +218,7 @@ export const FeedList = ({
   const allSelected = selectedFeedId === null
     && selectedFilter === 'all'
     && !settingsActive
+    && !showTagsView
     && searchInput.trim().length === 0;
 
   useLayoutEffect(() => {
@@ -221,7 +226,7 @@ export const FeedList = ({
     const indicator = selectionIndicatorRef.current;
     if (!sidebar || !indicator) return;
 
-    const activeItem = settingsActive || searchInput.trim().length > 0
+    const activeItem = settingsActive || showTagsView || searchInput.trim().length > 0
       ? null
       : sidebar.querySelector<HTMLElement>('.sidebar-item.is-active');
     const feedList = sidebar.querySelector<HTMLElement>('.sidebar-feed-list');
@@ -279,6 +284,7 @@ export const FeedList = ({
     selectedFeedId,
     selectedFilter,
     settingsActive,
+    showTagsView,
   ]);
 
   return (
@@ -352,6 +358,14 @@ export const FeedList = ({
         >
           <StarIcon />
           <span>收藏</span>
+        </button>
+        <button
+          type="button"
+          className={`sidebar-item${showTagsView && !settingsActive ? ' is-active' : ''}`}
+          onClick={onOpenTags}
+        >
+          <span className="sidebar-tag-icon" aria-hidden="true">🏷️</span>
+          <span>标签</span>
         </button>
       </nav>
 
