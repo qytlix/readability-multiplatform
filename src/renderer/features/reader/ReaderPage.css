@@ -725,6 +725,12 @@ body.workspace-is-resizing * {
   transform: translate(-50%, 0);
 }
 
+/* Hide tooltip when the associated popup/dialog is open */
+.article-action-tooltip:has(button[aria-haspopup="dialog"][aria-expanded="true"])::after {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .article-ai-actions-slot {
   display: flex;
   align-items: center;
