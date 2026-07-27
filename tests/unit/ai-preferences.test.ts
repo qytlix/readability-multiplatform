@@ -84,6 +84,9 @@ describe('AI preferences', () => {
         shiftKey: false,
         metaKey: false,
       },
+      tagAgentTriggerMode: 'manual',
+      tagAgentConfirmMode: 'manual',
+      tagAgentMaxCandidates: 8,
     });
   });
 
@@ -161,6 +164,9 @@ describe('AI preferences', () => {
         shiftKey: false,
         metaKey: false,
       },
+      tagAgentTriggerMode: 'manual' as const,
+      tagAgentConfirmMode: 'manual' as const,
+      tagAgentMaxCandidates: 8,
     };
 
     saveAiPreferences(storage, preferences);

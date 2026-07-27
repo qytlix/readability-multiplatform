@@ -41,9 +41,42 @@
 | `tagAgent.confirmMode` | `'manual' \| 'auto'` | `'manual'` | 手动：AI 返回候选列表供勾选；自动：直接落库 |
 | `tagAgent.maxCandidates` | `number` | `8` | AI 生成候选项上限 |
 
+### 标签生成 Provider 配置
+
+标签生成使用**独立的 Provider 路由**（不共享 Summary 或 Translation 的配置），在 `ai_provider_profile` 表中新增以下列（参见下方迁移）：
+
+```
+┌────────────────────────────────────────────┐
+│  标签生成 Provider      （独立于总结/翻译）   │
+│                                              │
+│  Provider 类型                               │
+│  [OpenAI          ▾]                         │
+│                                              │
+│  Provider 基础 URL                           │
+│  [https://api.openai.com/v1          ]       │
+│                                              │
+│  标签模型                                     │
+│  [gpt-5.4-mini                        ]      │
+│                                              │
+│  API Key                                     │
+│  [••••••••••••••••••••••••••        ]       │
+└──────────────────────────────────────────────┘
+```
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `tagProviderPreset` | `ProviderKind` | `'openai'` | Tag 标签生成的 Provider 类型 |
+| `tagBaseUrl` | `string` | OpenAI 默认 URL | Tag 的 Provider 基础 URL |
+| `tagModel` | `string` | `'gpt-5.4-mini'` | Tag 标签生成专用的模型 ID |
+| `tagApiKeyRef` | `string`（不透明引用） | `''` | Tag 的 API Key 引用 |
+
+UI 复用 `ProviderSettings.tsx` 的字段模式（Provider 类型 select + URL 输入 + 模型输入 + API Key 密码框），但独立为一个 **「标签生成」** 的 `<fieldset>`（与「总结」「翻译」並列）。
+
+不存在 Tag 路由时，AutoTagService 的 `generateCandidates` 应抛出一个明确的「未配置 Tag Provider」错误，指引用户前往设置页。
+
 ### 设置存储
 
-复用现有的 settings 机制（`005_create_settings` migration 已有 settings 表），通过现有 IPC 通道读写。也可将配置存为 JSON 键值对。
+Tag Agent 行为设置（triggerMode/confirmMode/maxCandidates）复用现有的 settings 机制（`005_create_settings` migration 已有 settings 表），通过现有 IPC 通道读写。Tag Provider 设置存入 `ai_provider_profile` 的新增列。
 
 ## AI 标签后端
 
@@ -75,7 +108,11 @@ class AutoTagService {
 ### generateCandidates 流程
 
 1. 从 `ContentStore` 读取 entry 的 cleaned markdown（取前 2000 字符作为摘要）
-2. 从 `ProviderProfileStore` + `SecretStore` 获取 Summary 同款 Provider 配置
+2. 从 `ProviderProfileStore.findActiveWithSecret()` 获取 **Tag 路由**的 Provider 配置：
+   - `profile.tagProviderPreset` — Tag 的 Provider 类型
+   - `profile.tagBaseUrl` — Tag 的 Provider 基础 URL
+   - `profile.tagModel` — Tag 专用的模型 ID
+   - `profile.tagApiKeyRef` → 通过 `SecretStore.read()` 获取 API Key
 3. 调用 `ProviderRegistry.generateText()`，提示词：
 
 ```
@@ -140,6 +177,48 @@ Phase 1 的浮窗增加 AI 区域：
 2. 若 confirmMode = 'auto'：直接落库，toast 提示
 3. 若 confirmMode = 'manual'：浮窗自动打开并展示候选列表
 
+## 新增 Migration
+
+新增迁移 `024_add_tag_provider_route.ts`，在 `ai_provider_profile` 表中加入独立的 Tag 路由列：
+
+```ts
+/** Migration 024: add independent Tag generation Provider route. */
+export const MIGRATION_024 = `
+ALTER TABLE ai_provider_profile
+ADD COLUMN tagProviderPreset TEXT NOT NULL DEFAULT 'openai' CHECK (
+  tagProviderPreset IN (
+    'openai',
+    'anthropic',
+    'deepseek',
+    'gemini',
+    'openrouter',
+    'custom-openai-compatible'
+  )
+);
+
+ALTER TABLE ai_provider_profile
+ADD COLUMN tagBaseUrl TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE ai_provider_profile
+ADD COLUMN tagModel TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE ai_provider_profile
+ADD COLUMN tagApiKeyRef TEXT NOT NULL DEFAULT '';
+
+UPDATE ai_provider_profile
+SET tagProviderPreset = 'openai',
+    tagBaseUrl = baseUrl,
+    tagModel = 'gpt-5.4-mini',
+    tagApiKeyRef = '';
+`;
+```
+
+初始值规则：
+- `tagProviderPreset` 默认 `'openai'`
+- `tagBaseUrl` 继承当前 Summary 路由的 `baseUrl`（用户可改）
+- `tagModel` 默认 `'gpt-5.4-mini'`
+- `tagApiKeyRef` 留空（用户必须手动填写 Tag 专用的 API Key）
+
 ## 新增 IPC
 
 ```ts
@@ -149,6 +228,18 @@ export const TAG_IPC_CHANNELS = {
   autoTagGenerate: 'tag:auto-tag-generate',   // { entryId } → string[]
   autoTagConfirm:  'tag:auto-tag-confirm',     // { entryId, tagNames } → Tag[]
 } as const;
+```
+
+Provider 管理复用已有的 `provider:*` IPC 通道（`provider:save` / `provider:get` / `provider:test`），但 `SaveProviderRequest` 需要扩展以支持第三个 Tag 路由：
+
+```ts
+export type SaveProviderRequest =
+  | {
+      summary: SaveProviderTaskRequest;
+      translation: SaveProviderTaskRequest;
+      tag: SaveProviderTaskRequest;     // ← 新增
+    }
+  | /* ... legacy compatibility shapes ... */;
 ```
 
 ## TODO（后续 Phase）
@@ -166,7 +257,14 @@ export const TAG_IPC_CHANNELS = {
 | **改** | `src/main/services.ts`（注入依赖） |
 | **改** | `src/preload/preload.ts`（暴露新 API） |
 | **改** | `src/renderer/features/tags/TagFloatingWindow.tsx`（集成 AutoTagPanel） |
-| **改** | `src/renderer/features/settings/AISettingsPage.tsx`（Tag Agent 配置区） |
+| **改** | `src/renderer/features/settings/AISettingsPage.tsx`（Tag Agent 配置区 + Tag Provider 配置区） |
+| **改** | `src/renderer/features/summary/ProviderSettings.tsx`（新增「标签生成」fieldset） |
+| **改** | `src/shared/contracts/provider.types.ts`（`SaveProviderRequest` 扩展 Tag 路由 + `ProviderProfile` 增加 Tag 字段） |
+| **改** | `src/main/ai/stores/ProviderProfileStore.ts`（`ProviderProfileRow` + `toActiveProviderProfile` + `saveActive` 增加 Tag 字段） |
+| **改** | `src/main/ai/services/ProviderService.ts`（`validateProviderRequest` + `save` 支持 Tag 路由） |
+| **改** | `src/main/database/DatabaseManager.ts`（注册 Migration 024） |
+| **新建** | `src/main/migrations/024_add_tag_provider_route.ts` |
+| **改** | `database-schema.md`（更新 `ai_provider_profile` 表结构） |
 
 ## 验收标准（人工）
 
@@ -184,8 +282,15 @@ export const TAG_IPC_CHANNELS = {
    - 在 Settings 切换触发模式为「自动触发」
    - 打开一篇无标签的文章 → 静默生成 → toast 提示标签已添加
 
-4. **失败处理**：
-   - Provider 未配置 → 按钮灰色 + 提示「请先在 AI 设置中配置 Provider」
+4. **Tag Provider 配置**：
+   - 在 Settings → AI 页面的「模型服务」区域，可见新增的「标签生成」fieldset
+   - 选择 Provider 类型、填写 URL、模型 ID 和 API Key → 保存成功
+   - Tag 配置不干扰已有的 Summary 和 Translation 配置
 
-5. **设置持久化**：
-   - 修改设置 → 关闭设置页 → 重新打开 → 设置值保持
+5. **失败处理**：
+   - Tag Provider 未配置 → 按钮灰色 + 提示「请先在 AI 设置中配置 Tag Provider」
+   - API Key 错误 → 清晰的错误提示，不影响 Summary/Translation 功能
+
+6. **设置持久化**：
+   - 修改行为设置（triggerMode/confirmMode/maxCandidates）→ 关闭设置页 → 重新打开 → 设置值保持
+   - 修改 Tag Provider 配置 → 保存后重新打开 → 配置值保持
