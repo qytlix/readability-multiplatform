@@ -908,6 +908,14 @@ export const App = () => {
           ref={storyListPaneRef}
           className="story-list-pane"
           aria-label="文章列表"
+          onClickCapture={(e) => {
+            if (activeView !== 'reader') return;
+            const tagEl = (e.target as HTMLElement).closest('.story-card-tag');
+            if (tagEl) {
+              e.stopPropagation();
+              handleSelectTag(tagEl.textContent ?? '');
+            }
+          }}
         >
           {activeView === 'tags' ? (
             <TagListPage onSelectTag={handleSelectTag} />

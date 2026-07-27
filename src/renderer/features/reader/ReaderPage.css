@@ -673,7 +673,15 @@ body.workspace-is-resizing * {
   font-size: 10px;
   line-height: 1.5;
   white-space: nowrap;
-  pointer-events: none;
+  cursor: pointer;
+}
+
+.story-card-tag:hover {
+  background: hsl(var(--tag-hue, 0), 35%, 40%);
+}
+
+.reader-page[data-theme="light"] .story-card-tag:hover {
+  background: hsl(var(--tag-hue, 0), 30%, 76%);
 }
 
 .reader-page[data-theme="light"] .story-card-tag {
