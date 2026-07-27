@@ -94,6 +94,25 @@ export class TagStore {
     `).all() as Array<TagRow & { count: number }>;
     return rows.map((row) => ({ ...toTag(row), count: row.count }));
   }
+
+  /**
+   * Return all tags that are used by at least one entry (count >= 1)
+   * but NOT associated with the given entry.
+   */
+  listAvailableForEntry(entryId: number): TagWithCount[] {
+    const rows = this.db.prepare(`
+      SELECT t.id, t.name, t.color, COUNT(et.entryId) AS count
+      FROM tag t
+      INNER JOIN entry_tag et ON t.id = et.tagId
+      INNER JOIN entry e ON e.id = et.entryId AND e.isDeleted = 0
+      WHERE t.id NOT IN (
+        SELECT et2.tagId FROM entry_tag et2 WHERE et2.entryId = ?
+      )
+      GROUP BY t.id
+      ORDER BY count DESC, t.name ASC
+    `).all(entryId) as Array<TagRow & { count: number }>;
+    return rows.map((row) => ({ ...toTag(row), count: row.count }));
+  }
 }
 
 function toTag(row: TagRow): Tag {

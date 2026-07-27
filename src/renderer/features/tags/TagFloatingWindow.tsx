@@ -5,7 +5,7 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import type { Tag } from '../../../shared/contracts/tag.types';
+import type { Tag, TagWithCount } from '../../../shared/contracts/tag.types';
 import { TagBadge } from './TagBadge';
 import { TagInput } from './TagInput';
 
@@ -26,6 +26,7 @@ export const TagFloatingWindow = ({
   container,
 }: TagFloatingWindowProps) => {
   const [tags, setTags] = useState<Tag[]>([]);
+  const [availableTags, setAvailableTags] = useState<TagWithCount[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [operationError, setOperationError] = useState('');
   const [duplicateWarning, setDuplicateWarning] = useState('');
@@ -53,14 +54,21 @@ export const TagFloatingWindow = ({
       setLoadState('loading');
       setOperationError('');
       try {
-        const result = await window.shaleAPI.tag.listByEntry(entryId);
+        const [entryResult, availResult] = await Promise.all([
+          window.shaleAPI.tag.listByEntry(entryId),
+          window.shaleAPI.tag.listAvailableForEntry(entryId),
+        ]);
         if (cancelled) return;
-        if (result.ok) {
-          setTags(result.data);
-          setLoadState('loaded');
-        } else {
+        if (!entryResult.ok) {
           setLoadState('error');
-          setOperationError(result.error?.message ?? 'Failed to load tags.');
+          setOperationError(entryResult.error?.message ?? 'Failed to load tags.');
+        } else if (!availResult.ok) {
+          setLoadState('error');
+          setOperationError(availResult.error?.message ?? 'Failed to load tags.');
+        } else {
+          setTags(entryResult.data);
+          setAvailableTags(availResult.data);
+          setLoadState('loaded');
         }
       } catch {
         if (!cancelled) {
@@ -123,15 +131,29 @@ export const TagFloatingWindow = ({
         setOperationError(tagResult.error?.message ?? 'Failed to tag entry.');
         return;
       }
-      // Reload tag list
-      const listResult = await window.shaleAPI.tag.listByEntry(entryId);
-      if (listResult.ok) {
-        setTags(listResult.data);
-      }
+      // Reload tag list and available tags
+      await reloadTagData(entryId, setTags, setAvailableTags);
     } catch {
       setOperationError('Failed to add tag.');
     }
   }, [entryId, tags]);
+
+  const handleAddAvailable = useCallback(async (tagName: string) => {
+    setOperationError('');
+    setDuplicateWarning('');
+    try {
+      // The tag already exists globally, just link it
+      const tagResult = await window.shaleAPI.tag.tagEntry(entryId, tagName);
+      if (!tagResult.ok) {
+        setOperationError(tagResult.error?.message ?? 'Failed to tag entry.');
+        return;
+      }
+      // Reload tag list and available tags
+      await reloadTagData(entryId, setTags, setAvailableTags);
+    } catch {
+      setOperationError('Failed to add tag.');
+    }
+  }, [entryId]);
 
   const handleRemove = useCallback(async (tagId: number) => {
     setOperationError('');
@@ -143,18 +165,15 @@ export const TagFloatingWindow = ({
       if (!result.ok) {
         setOperationError(result.error?.message ?? 'Failed to remove tag.');
         // Reload to restore correct state
-        const listResult = await window.shaleAPI.tag.listByEntry(entryId);
-        if (listResult.ok) {
-          setTags(listResult.data);
-        }
+        await reloadTagData(entryId, setTags, setAvailableTags);
+      } else {
+        // Reload available tags to reflect freed tag
+        const availResult = await window.shaleAPI.tag.listAvailableForEntry(entryId);
+        if (availResult.ok) setAvailableTags(availResult.data);
       }
     } catch {
       setOperationError('Failed to remove tag.');
-      // Reload to restore correct state
-      const listResult = await window.shaleAPI.tag.listByEntry(entryId);
-      if (listResult.ok) {
-        setTags(listResult.data);
-      }
+      await reloadTagData(entryId, setTags, setAvailableTags);
     }
   }, [entryId]);
 
@@ -186,6 +205,24 @@ export const TagFloatingWindow = ({
       {loadState === 'error' && !operationError && (
         <p className="tag-floating-error" role="alert">Failed to load tags.</p>
       )}
+      {loadState === 'loaded' && availableTags.length > 0 && (
+        <>
+          <p className="tag-floating-suggestion-label">已有标签</p>
+          <div className="tag-floating-suggestions">
+            {availableTags.map((tag) => (
+              <button
+                key={tag.id}
+                type="button"
+                className="tag-suggestion-pill"
+                onClick={() => handleAddAvailable(tag.name)}
+              >
+                {tag.name}
+                <span className="tag-suggestion-count">{tag.count}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       {loadState === 'loaded' && tags.length === 0 && (
         <p className="tag-floating-empty">还没有标签，输入名称添加。</p>
       )}
@@ -208,4 +245,17 @@ export const TagFloatingWindow = ({
 
 function getPageRoot(): HTMLElement {
   return document.querySelector<HTMLElement>('.reader-page') ?? document.body;
+}
+
+async function reloadTagData(
+  entryId: number,
+  setTags: (tags: Tag[]) => void,
+  setAvailableTags: (tags: TagWithCount[]) => void,
+): Promise<void> {
+  const [entryResult, availResult] = await Promise.all([
+    window.shaleAPI.tag.listByEntry(entryId),
+    window.shaleAPI.tag.listAvailableForEntry(entryId),
+  ]);
+  if (entryResult.ok) setTags(entryResult.data);
+  if (availResult.ok) setAvailableTags(availResult.data);
 }

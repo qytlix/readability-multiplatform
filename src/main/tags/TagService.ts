@@ -59,6 +59,14 @@ export class TagService {
     return this.tagStore.listAllWithCount();
   }
 
+  /**
+   * List tags with count >= 1 not yet associated with the entry.
+   */
+  listAvailableForEntry(entryId: number): TagWithCount[] {
+    this.assertEntryExists(entryId);
+    return this.tagStore.listAvailableForEntry(entryId);
+  }
+
   private assertEntryExists(entryId: number): void {
     if (!Number.isInteger(entryId) || entryId <= 0) {
       throw new TagError(

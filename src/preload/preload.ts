@@ -264,6 +264,8 @@ const tagAPI = {
     ipcRenderer.invoke(TAG_IPC_CHANNELS.untagEntry, { entryId, tagId }),
   listAllWithCount: () =>
     ipcRenderer.invoke(TAG_IPC_CHANNELS.listAllWithCount),
+  listAvailableForEntry: (entryId: number) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.listAvailableForEntry, { entryId }),
 };
 
 const shaleAPI: ShaleAPI = {

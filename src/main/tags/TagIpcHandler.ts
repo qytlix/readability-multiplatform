@@ -88,6 +88,16 @@ export function registerTagIpcHandlers(
       }
     },
   );
+
+  ipcMain.handle(
+    TAG_IPC_CHANNELS.listAvailableForEntry,
+    (event: IpcMainInvokeEvent, request: unknown) => handle(
+      event,
+      getMainWindow,
+      isEntryIdRequest(request),
+      () => services.tagService.listAvailableForEntry((request as EntryIdRequest).entryId),
+    ),
+  );
 }
 
 function handle<T>(

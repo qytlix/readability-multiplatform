@@ -6020,10 +6020,6 @@ body.workspace-is-resizing * {
   overflow: hidden;
 }
 
-.tag-floating-list:has(.tag-badge:hover) {
-  flex-wrap: nowrap;
-}
-
 .tag-floating-empty {
   margin: 8px 0 0;
   color: var(--reader-text-muted);
@@ -6046,6 +6042,50 @@ body.workspace-is-resizing * {
   margin: 4px 0 0;
   color: var(--reader-accent-strong);
   font-size: 11px;
+}
+
+/* ── Tag Suggestions ───────────────────────────── */
+
+.tag-floating-suggestion-label {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--reader-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tag-floating-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.tag-suggestion-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid var(--reader-line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--reader-text);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.tag-suggestion-pill:hover {
+  border-color: var(--reader-accent);
+  background: var(--reader-hover);
+}
+
+.tag-suggestion-count {
+  font-size: 10px;
+  color: var(--reader-text-muted);
 }
 
 
