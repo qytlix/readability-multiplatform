@@ -5,6 +5,7 @@ import type { TranslationTerminologyAPI } from './contracts/translation-terminol
 import type { DiagnosticsAPI } from './contracts/diagnostics.ipc';
 import type { UsageAPI } from './contracts/usage.ipc';
 import type { AnnotationAPI } from './contracts/annotation.ipc';
+import type { TagAPI } from './contracts/tag.ipc';
 import type {
   ExportAPI,
   FeedAPI,
@@ -24,7 +25,7 @@ export type PingResponse = {
 };
 
 // Domain API interfaces are re-exported from domain-api.ts for convenience.
-export type { FeedAPI, OPMLAPI, EntryAPI, ContentAPI, ExternalAPI };
+export type { FeedAPI, OPMLAPI, EntryAPI, ContentAPI, ExternalAPI, TagAPI };
 
 export interface ShaleAPI {
   system: {
@@ -56,4 +57,5 @@ export interface ShaleAPI {
   usage: UsageAPI;
   annotation: AnnotationAPI;
   export: ExportAPI;
+  tag: TagAPI;
 }

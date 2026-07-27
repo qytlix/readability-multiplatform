@@ -17,6 +17,7 @@ import { DIAGNOSTICS_IPC_CHANNELS } from '../shared/contracts/diagnostics.ipc';
 import { USAGE_IPC_CHANNELS } from '../shared/contracts/usage.ipc';
 import type { UsageStatisticsQuery } from '../shared/contracts/usage.types';
 import { ANNOTATION_IPC_CHANNELS } from '../shared/contracts/annotation.ipc';
+import { TAG_IPC_CHANNELS } from '../shared/contracts/tag.ipc';
 import { EXPORT_IPC_CHANNELS } from '../shared/contracts/export.ipc';
 import type { CleanProgressEvent } from '../shared/contracts/export.ipc';
 import type {
@@ -250,6 +251,17 @@ const exportAPI: ExportAPI = {
   ) => ipcRenderer.invoke(EXPORT_IPC_CHANNELS.exportMultiple, { entries }),
 };
 
+const tagAPI = {
+  listByEntry: (entryId: number) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.listByEntry, { entryId }),
+  createTag: (tagName: string) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.createTag, { tagName }),
+  tagEntry: (entryId: number, tagName: string) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.tagEntry, { entryId, tagName }),
+  untagEntry: (entryId: number, tagId: number) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.untagEntry, { entryId, tagId }),
+};
+
 const shaleAPI: ShaleAPI = {
   system: {
     ping,
@@ -269,6 +281,7 @@ const shaleAPI: ShaleAPI = {
   usage: usageAPI,
   annotation: annotationAPI,
   export: exportAPI,
+  tag: tagAPI,
 };
 
 contextBridge.exposeInMainWorld('shaleAPI', shaleAPI);
