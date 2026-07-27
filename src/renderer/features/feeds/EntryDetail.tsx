@@ -1063,6 +1063,7 @@ export const EntryDetail = ({
           onClose={() => setShowTagWindow(false)}
           onTagsChanged={onTagsChanged}
           maxCandidates={aiPreferences.tagAgentMaxCandidates}
+          tagSuggestionMaxCount={aiPreferences.tagSuggestionMaxCount}
         />
       )}
       <div className="entry-detail">

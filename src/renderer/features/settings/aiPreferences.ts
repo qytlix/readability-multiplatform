@@ -42,6 +42,8 @@ export interface AiPreferences {
   tagAgentConfirmMode: TagAgentConfirmMode;
   /** Tag Agent: maximum number of tag candidates per generation. */
   tagAgentMaxCandidates: number;
+  /** Max existing-tag suggestions to show in the tag floating window. */
+  tagSuggestionMaxCount: number;
 }
 
 export const DEFAULT_AI_PREFERENCES: AiPreferences = {
@@ -59,6 +61,7 @@ export const DEFAULT_AI_PREFERENCES: AiPreferences = {
   tagAgentTriggerMode: 'manual' as const,
   tagAgentConfirmMode: 'manual' as const,
   tagAgentMaxCandidates: 8,
+  tagSuggestionMaxCount: 10,
 };
 
 const STORAGE_KEY = 'shale.aiPreferences';
@@ -144,6 +147,12 @@ export function loadAiPreferences(storage: PreferenceStorage): AiPreferences {
         && candidate.tagAgentMaxCandidates <= 50
           ? candidate.tagAgentMaxCandidates
           : DEFAULT_AI_PREFERENCES.tagAgentMaxCandidates,
+      tagSuggestionMaxCount:
+        typeof candidate.tagSuggestionMaxCount === 'number'
+        && candidate.tagSuggestionMaxCount >= 1
+        && candidate.tagSuggestionMaxCount <= 50
+          ? candidate.tagSuggestionMaxCount
+          : DEFAULT_AI_PREFERENCES.tagSuggestionMaxCount,
     };
   } catch {
     return DEFAULT_AI_PREFERENCES;

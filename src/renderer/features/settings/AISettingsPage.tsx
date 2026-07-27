@@ -141,6 +141,8 @@ export const AISettingsPage = ({
     useState<TagAgentConfirmMode>(preferences.tagAgentConfirmMode);
   const [tagDraftMaxCandidates, setTagDraftMaxCandidates] =
     useState(preferences.tagAgentMaxCandidates);
+  const [tagDraftSuggestionMaxCount, setTagDraftSuggestionMaxCount] =
+    useState(preferences.tagSuggestionMaxCount);
   const [tagDraftSaved, setTagDraftSaved] = useState(false);
 
   // Sync draft when preferences change from outside
@@ -148,10 +150,12 @@ export const AISettingsPage = ({
     setTagDraftTriggerMode(preferences.tagAgentTriggerMode);
     setTagDraftConfirmMode(preferences.tagAgentConfirmMode);
     setTagDraftMaxCandidates(preferences.tagAgentMaxCandidates);
+    setTagDraftSuggestionMaxCount(preferences.tagSuggestionMaxCount);
   }, [
     preferences.tagAgentTriggerMode,
     preferences.tagAgentConfirmMode,
     preferences.tagAgentMaxCandidates,
+    preferences.tagSuggestionMaxCount,
   ]);
 
   const [activeSettingsSection, setActiveSettingsSection] =
@@ -1162,6 +1166,19 @@ export const AISettingsPage = ({
                     }}
                   />
                 </label>
+                <label>
+                  建议显示数
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={tagDraftSuggestionMaxCount}
+                    onChange={(event) => {
+                      setTagDraftSuggestionMaxCount(Math.max(1, Math.min(50, Number(event.target.value) || 1)));
+                      setTagDraftSaved(false);
+                    }}
+                  />
+                </label>
               </div>
               <div className="settings-card-actions">
                 <button
@@ -1172,6 +1189,7 @@ export const AISettingsPage = ({
                       tagAgentTriggerMode: tagDraftTriggerMode,
                       tagAgentConfirmMode: tagDraftConfirmMode,
                       tagAgentMaxCandidates: tagDraftMaxCandidates,
+                      tagSuggestionMaxCount: tagDraftSuggestionMaxCount,
                     });
                     setTagDraftSaved(true);
                   }}

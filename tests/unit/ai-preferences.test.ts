@@ -87,6 +87,7 @@ describe('AI preferences', () => {
       tagAgentTriggerMode: 'manual',
       tagAgentConfirmMode: 'manual',
       tagAgentMaxCandidates: 8,
+      tagSuggestionMaxCount: 10,
     });
   });
 
@@ -167,6 +168,7 @@ describe('AI preferences', () => {
       tagAgentTriggerMode: 'manual' as const,
       tagAgentConfirmMode: 'manual' as const,
       tagAgentMaxCandidates: 8,
+      tagSuggestionMaxCount: 10,
     };
 
     saveAiPreferences(storage, preferences);

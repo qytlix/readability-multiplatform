@@ -3,11 +3,13 @@ import { useCallback, useState, type KeyboardEvent } from 'react';
 interface TagInputProps {
   onAdd: (tagName: string) => void;
   disabled?: boolean;
+  /** Called on every input change with the current raw value (for parent filtering). */
+  onInputChange?: (value: string) => void;
 }
 
 const MAX_TAG_LENGTH = 50;
 
-export const TagInput = ({ onAdd, disabled = false }: TagInputProps) => {
+export const TagInput = ({ onAdd, disabled = false, onInputChange }: TagInputProps) => {
   const [value, setValue] = useState('');
   const [error, setError] = useState('');
 
@@ -38,10 +40,12 @@ export const TagInput = ({ onAdd, disabled = false }: TagInputProps) => {
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      setValue(e.target.value);
+      const next = e.target.value;
+      setValue(next);
+      onInputChange?.(next);
       if (error) setError('');
     },
-    [error],
+    [error, onInputChange],
   );
 
   return (

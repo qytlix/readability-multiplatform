@@ -6160,6 +6160,13 @@ body.workspace-is-resizing * {
   font-size: 11px;
 }
 
+.tag-floating-no-match {
+  margin: 8px 0 0;
+  color: var(--reader-text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
 /* ── Tag Suggestions ───────────────────────────── */
 
 .tag-floating-suggestion-label {

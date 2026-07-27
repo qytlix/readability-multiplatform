@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -20,6 +21,8 @@ interface TagFloatingWindowProps {
   onTagsChanged?: () => void;
   /** Max candidate tags from user preferences (tagAgentMaxCandidates). */
   maxCandidates?: number;
+  /** Max number of existing-tag suggestions to show (default 10). */
+  tagSuggestionMaxCount?: number;
 }
 
 type LoadState = 'loading' | 'loaded' | 'error';
@@ -31,14 +34,43 @@ export const TagFloatingWindow = ({
   container,
   onTagsChanged,
   maxCandidates,
+  tagSuggestionMaxCount = 10,
 }: TagFloatingWindowProps) => {
   const [tags, setTags] = useState<Tag[]>([]);
   const [availableTags, setAvailableTags] = useState<TagWithCount[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [inputValue, setInputValue] = useState('');
   const [operationError, setOperationError] = useState('');
   const [duplicateWarning, setDuplicateWarning] = useState('');
   const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
   const windowRef = useRef<HTMLDivElement>(null);
+
+  // Filter available tags based on input
+  const filteredAvailableTags = useMemo(() => {
+    const query = inputValue.trim().toLowerCase();
+    if (!query) {
+      // No input → top N by count
+      return availableTags.slice(0, tagSuggestionMaxCount);
+    }
+    // Prefix matches first, then substring matches — deduped, sorted by count
+    const prefix: TagWithCount[] = [];
+    const substring: TagWithCount[] = [];
+    const seen = new Set<number>();
+    for (const tag of availableTags) {
+      const lower = tag.name.toLowerCase();
+      if (lower.startsWith(query)) {
+        prefix.push(tag);
+        seen.add(tag.id);
+      }
+    }
+    for (const tag of availableTags) {
+      if (!seen.has(tag.id) && tag.name.toLowerCase().includes(query)) {
+        substring.push(tag);
+      }
+    }
+    // Both already sorted by count DESC from the backend
+    return [...prefix, ...substring].slice(0, tagSuggestionMaxCount);
+  }, [inputValue, availableTags, tagSuggestionMaxCount]);
 
   // Position the floating window relative to the anchor button
   useEffect(() => {
@@ -202,7 +234,7 @@ export const TagFloatingWindow = ({
       <div className="tag-floating-header">
         <span className="tag-floating-title">标签</span>
       </div>
-      <TagInput onAdd={handleAdd} disabled={loadState === 'loading'} />
+      <TagInput onAdd={handleAdd} disabled={loadState === 'loading'} onInputChange={setInputValue} />
       <AutoTagPanel
         entryId={entryId}
         onTagsChanged={onTagsChanged}
@@ -221,11 +253,11 @@ export const TagFloatingWindow = ({
       {loadState === 'error' && !operationError && (
         <p className="tag-floating-error" role="alert">Failed to load tags.</p>
       )}
-      {loadState === 'loaded' && availableTags.length > 0 && (
+      {loadState === 'loaded' && filteredAvailableTags.length > 0 && (
         <>
           <p className="tag-floating-suggestion-label">已有标签</p>
           <div className="tag-floating-suggestions">
-            {availableTags.map((tag) => (
+            {filteredAvailableTags.map((tag) => (
               <button
                 key={tag.id}
                 type="button"
@@ -238,6 +270,9 @@ export const TagFloatingWindow = ({
             ))}
           </div>
         </>
+      )}
+      {loadState === 'loaded' && inputValue.trim().length > 0 && filteredAvailableTags.length === 0 && (
+        <p className="tag-floating-no-match">无相关标签</p>
       )}
       {loadState === 'loaded' && tags.length === 0 && (
         <p className="tag-floating-empty">本文还没有标签，点击已有标签或输入标签以添加。</p>
