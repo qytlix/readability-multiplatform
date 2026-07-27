@@ -28,7 +28,7 @@ import type {
   TerminologyLibrary,
 } from '../../../shared/contracts/translation-terminology.types';
 import { ProviderSettings } from '../summary/ProviderSettings';
-import type { AiPreferences } from './aiPreferences';
+import type { AiPreferences, TagAgentTriggerMode, TagAgentConfirmMode } from './aiPreferences';
 import {
   areKeyboardShortcutsEqual,
   formatKeyboardShortcut,
@@ -84,6 +84,7 @@ const SETTINGS_NAVIGATION = [
   { id: 'settings-terminology', label: '术语库' },
   { id: 'settings-experts', label: 'AI 专家' },
   { id: 'settings-shortcuts', label: '快捷键' },
+  { id: 'settings-tag-agent', label: '标签生成' },
   { id: 'settings-provider', label: '模型服务' },
   { id: 'settings-usage', label: '用量统计' },
   { id: 'settings-diagnostics', label: '诊断' },
@@ -1084,6 +1085,61 @@ export const AISettingsPage = ({
               {shortcutError && (
                 <p className="settings-shortcut-error" role="status">{shortcutError}</p>
               )}
+            </div>
+          </section>
+
+          <section
+            id="settings-tag-agent"
+            className="settings-section"
+            aria-labelledby="tag-agent-settings-title"
+          >
+            <div className="settings-section-heading">
+              <div>
+                <h3 id="tag-agent-settings-title" className="settings-section-title">标签生成</h3>
+                <p>控制 AI 标签生成的行为。Provider 配置见下方「模型服务」区域。</p>
+              </div>
+            </div>
+            <div className="settings-card">
+              <div className="settings-fields settings-fields-two-columns">
+                <label>
+                  触发方式
+                  <select
+                    value={preferences.tagAgentTriggerMode}
+                    onChange={(event) => updatePreferences({
+                      tagAgentTriggerMode: event.target.value as TagAgentTriggerMode,
+                    })}
+                  >
+                    <option value="manual">手动触发</option>
+                    <option value="auto">进入文章自动触发</option>
+                  </select>
+                </label>
+                <label>
+                  确认方式
+                  <select
+                    value={preferences.tagAgentConfirmMode}
+                    onChange={(event) => updatePreferences({
+                      tagAgentConfirmMode: event.target.value as TagAgentConfirmMode,
+                    })}
+                  >
+                    <option value="manual">手动确认</option>
+                    <option value="auto">自动确认</option>
+                  </select>
+                </label>
+              </div>
+              <div className="settings-fields">
+                <label>
+                  max 候选数
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={preferences.tagAgentMaxCandidates}
+                    onChange={(event) => updatePreferences({
+                      tagAgentMaxCandidates: Math.max(1, Math.min(50, Number(event.target.value) || 1)),
+                    })}
+                  />
+                </label>
+              </div>
             </div>
           </section>
 
