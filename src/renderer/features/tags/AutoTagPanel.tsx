@@ -14,11 +14,16 @@ type PanelState =
   | { type: 'loading' }
   | { type: 'candidates'; candidates: TagCandidate[]; selected: Set<string> }
   | { type: 'timeout' }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'done' };
 
 const DEFAULT_MAX_CANDIDATES = 8;
 
 const LOADING_TIMEOUT_SECONDS = 60;
+
+// Track entries for which AI tags have been confirmed. Persists across
+// floating window open/close cycles within the same app session.
+const aiTagConfirmedEntries = new Set<number>();
 
 // Track in-flight generation requests across remounts: when the floating window
 // is closed and re-opened while a request is still pending, we reuse the
@@ -123,14 +128,19 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
     }
   }, [entryId]);
 
-  // Auto-trigger on mount
+  // Determine initial state and auto-trigger on mount
   useEffect(() => {
+    if (aiTagConfirmedEntries.has(entryId)) {
+      setPanelState({ type: 'done' });
+      return;
+    }
     if (!autoTrigger || hasTriggered.current) return;
     hasTriggered.current = true;
     void startGeneration();
   }, [autoTrigger, entryId, startGeneration]);
 
   const generate = useCallback(() => {
+    aiTagConfirmedEntries.delete(entryId);
     void startGeneration();
   }, [startGeneration]);
 
@@ -159,7 +169,8 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
         setPanelState({ type: 'error', message: result.error.message });
         return;
       }
-      setPanelState({ type: 'idle' });
+      aiTagConfirmedEntries.add(entryId);
+      setPanelState({ type: 'done' });
       onTagsChanged?.();
     } catch {
       setIsConfirming(false);
@@ -173,7 +184,24 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
 
   // ── Render ──────────────────────────────────────────────
 
-  // Idle: show generate button
+  // Done: show "AI标签已生成" with regenerate button
+  if (panelState.type === 'done') {
+    return (
+      <div className="auto-tag-panel">
+        <p className="tag-floating-suggestion-label">AI标签</p>
+        <p className="auto-tag-done">AI标签已生成</p>
+        <button
+          type="button"
+          className="auto-tag-trigger-pill"
+          onClick={generate}
+        >
+          ✨ 重新生成
+        </button>
+      </div>
+    );
+  }
+
+  // Idle: show generate button (only reached if done check passed and not autoTrigger)
   if (panelState.type === 'idle') {
     return (
       <div className="auto-tag-panel">

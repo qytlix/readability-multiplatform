@@ -6271,6 +6271,12 @@ body.workspace-is-resizing * {
   background: var(--reader-hover);
 }
 
+.auto-tag-done {
+  margin: 4px 0;
+  color: var(--reader-accent-strong);
+  font-size: 12px;
+}
+
 .auto-tag-error {
   margin: 4px 0;
   color: var(--reader-danger);
