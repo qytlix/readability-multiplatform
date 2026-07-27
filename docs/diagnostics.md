@@ -50,7 +50,10 @@ segment-ID hashes. It never includes nested provider objects, prompts, raw
 NDJSON, chunks, source text, or translated text.
 
 Markdown export records are operation-level terminal records only:
-`markdown.export.completed` includes the exported article count and duration;
+`markdown.export.completed` includes the exported article count and duration.
+When image localization actually processed remote images, it also includes only
+the aggregate downloaded and failed image counts; a partial image failure stays
+a completed export record. Exports with no localizable image omit both counts.
 `markdown.export.failed` adds a stable stage and error code. A save-dialog
 cancel produces no export log record. These records never include destination
 paths, generated names, article metadata, URLs, Markdown, annotations, or raw
@@ -78,6 +81,14 @@ failure. It contains only a controlled stage, stable error code, duration, and
 `translation:inline-cancel`, and confirmed Provider aborts produce no record.
 It never includes selected text, paragraph context, output, terminology,
 expert or model data, IDs, hashes, or raw errors.
+
+`usage.statistics.failed` is one terminal record emitted by the Usage Statistics
+IPC boundary only when a valid, read-only query cannot return a result. It
+contains only `stage: "read"`, `USAGE_STATISTICS_READ_FAILED`, duration, and
+`success: false`; it is distinct from `usage.ledger.persistence.failed`, which
+diagnoses Usage ledger writes. Successful queries and invalid requests produce
+no statistics record. Query dates, time zone, filters, Provider or model data,
+usage totals, execution identities, SQL, paths, and raw errors are excluded.
 
 ## Save behavior
 

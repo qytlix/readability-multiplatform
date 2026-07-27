@@ -71,6 +71,8 @@ const CONTEXT_FIELD_TYPES = {
   convertDurationMs: 'number',
   persistDurationMs: 'number',
   attemptCount: 'number',
+  downloadedImageCount: 'number',
+  failedImageCount: 'number',
   httpStatus: 'number',
   errorCode: 'string',
   reasonCode: 'string',
@@ -159,6 +161,8 @@ export interface StructuredLogContext {
   convertDurationMs?: number;
   persistDurationMs?: number;
   attemptCount?: number;
+  downloadedImageCount?: number;
+  failedImageCount?: number;
   httpStatus?: number;
   errorCode?: string;
   reasonCode?: string;
@@ -782,6 +786,12 @@ function assignContextField(
       return;
     case 'durationMs':
       if (typeof value === 'number') context.durationMs = value;
+      return;
+    case 'downloadedImageCount':
+      if (typeof value === 'number') context.downloadedImageCount = value;
+      return;
+    case 'failedImageCount':
+      if (typeof value === 'number') context.failedImageCount = value;
       return;
     case 'httpStatus':
       if (typeof value === 'number') context.httpStatus = value;

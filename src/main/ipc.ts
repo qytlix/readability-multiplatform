@@ -25,6 +25,7 @@ import { registerExportIpcHandlers } from './ipc/export.handler';
 import { ExportService } from './export/ExportService';
 import type { MarkdownExportOperationLogger } from './export/MarkdownExportLogging';
 import type { AnnotationOperationLogger } from './annotations/AnnotationLogging';
+import type { UsageStatisticsOperationLogger } from './ai/services/UsageStatisticsLogging';
 import {
   getDatabase,
   getFeedServices,
@@ -57,7 +58,8 @@ export function registerIpcHandlers(
   getMainWindow: GetMainWindow,
   feedLogger: FeedOperationLogger
     & MarkdownExportOperationLogger
-    & AnnotationOperationLogger,
+    & AnnotationOperationLogger
+    & UsageStatisticsOperationLogger,
 ): void {
   // System ping handler
   ipcMain.handle(IPC_CHANNELS.systemPing, (event): PingResponse => {
@@ -159,7 +161,11 @@ export function registerIpcHandlers(
 
   const usageServices = getUsageServices();
   if (usageServices) {
-    registerUsageIpcHandlers(getMainWindow, usageServices.usageStatisticsService);
+    registerUsageIpcHandlers(
+      getMainWindow,
+      usageServices.usageStatisticsService,
+      feedLogger,
+    );
   }
 
   const annotationServices = getAnnotationServices();

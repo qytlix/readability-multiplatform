@@ -70,6 +70,8 @@ export interface DiagnosticLogContext {
   inputCharacters?: number;
   outputCharacters?: number;
   durationMs?: number;
+  downloadedImageCount?: number;
+  failedImageCount?: number;
   httpStatus?: number;
   errorCode?: string;
   reasonCode?: string;

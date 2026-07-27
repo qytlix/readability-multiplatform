@@ -31,6 +31,8 @@ export type MarkdownExportLogErrorCode = (
 export interface MarkdownExportCompletedLogContext {
   durationMs: number;
   count: number;
+  downloadedImageCount?: number;
+  failedImageCount?: number;
 }
 
 export interface MarkdownExportFailedLogContext {
@@ -76,12 +78,22 @@ export function logMarkdownExportCompleted(
   logger: MarkdownExportOperationLogger | undefined,
   context: MarkdownExportCompletedLogContext,
 ): void {
-  if (!isSafeDuration(context.durationMs) || !isSafeCount(context.count)) return;
+  if (
+    !isSafeDuration(context.durationMs)
+    || !isSafeCount(context.count)
+    || !isValidImageLocalizationCounts(context)
+  ) return;
 
   try {
     logger?.info(MARKDOWN_EXPORT_LOG_EVENTS.completed, MARKDOWN_EXPORT_LOG_COMPONENT, {
       durationMs: context.durationMs,
       count: context.count,
+      ...(context.downloadedImageCount === undefined
+        ? {}
+        : { downloadedImageCount: context.downloadedImageCount }),
+      ...(context.failedImageCount === undefined
+        ? {}
+        : { failedImageCount: context.failedImageCount }),
     });
   } catch {
     // Logging is observational and must not change export behavior.
@@ -119,4 +131,18 @@ function isSafeDuration(value: number): boolean {
 
 function isSafeCount(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0;
+}
+
+function isValidImageLocalizationCounts(
+  context: MarkdownExportCompletedLogContext,
+): boolean {
+  return (context.downloadedImageCount === undefined && context.failedImageCount === undefined)
+    || (
+      isSafeNonNegativeCount(context.downloadedImageCount)
+      && isSafeNonNegativeCount(context.failedImageCount)
+    );
+}
+
+function isSafeNonNegativeCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }

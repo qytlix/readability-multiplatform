@@ -21,11 +21,13 @@ import type { PerArticleOptions } from '../../shared/contracts/export.types';
 import type { ShaleError } from '../../shared/errors/feed.errors';
 import { isAuthorizedSender, type GetMainWindow } from '../ipc';
 import type { ExportService } from '../export/ExportService';
+import type { ExportImageLocalizationResult } from '../export/ExportImageLocalizer';
 import {
   elapsedMarkdownExportMilliseconds,
   getMarkdownExportErrorCode,
   logMarkdownExportCompleted,
   logMarkdownExportFailed,
+  type MarkdownExportCompletedLogContext,
   type MarkdownExportOperationLogger,
   type MarkdownExportStage,
 } from '../export/MarkdownExportLogging';
@@ -202,6 +204,7 @@ export function registerExportIpcHandlers(
         logMarkdownExportCompleted(logger, {
           durationMs: elapsedMarkdownExportMilliseconds(startedAt),
           count,
+          ...toImageLocalizationLogFields(imageResult),
         });
 
         return ok({
@@ -309,6 +312,7 @@ export function registerExportIpcHandlers(
         logMarkdownExportCompleted(logger, {
           durationMs: elapsedMarkdownExportMilliseconds(startedAt),
           count,
+          ...toImageLocalizationLogFields(imageResult),
         });
 
         return ok({
@@ -323,6 +327,28 @@ export function registerExportIpcHandlers(
       }
     },
   );
+}
+
+function toImageLocalizationLogFields(
+  result: Pick<
+    ExportImageLocalizationResult,
+    'downloadedImageCount' | 'failedImageCount'
+  >,
+): Pick<
+  MarkdownExportCompletedLogContext,
+  'downloadedImageCount' | 'failedImageCount'
+> {
+  if (
+    !isSafeNonNegativeCount(result.downloadedImageCount)
+    || !isSafeNonNegativeCount(result.failedImageCount)
+    || (result.downloadedImageCount === 0 && result.failedImageCount === 0)
+  ) {
+    return {};
+  }
+  return {
+    downloadedImageCount: result.downloadedImageCount,
+    failedImageCount: result.failedImageCount,
+  };
 }
 
 function logMarkdownExportFailure(
@@ -356,6 +382,10 @@ function validateOptions(options: unknown): asserts options is PerArticleOptions
   if (typeof opts.includeNotes !== 'boolean') {
     throwObject({ code: 'EXPORT_INVALID_OPTIONS', message: 'includeNotes must be a boolean', retryable: false });
   }
+}
+
+function isSafeNonNegativeCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
 function throwObject(error: ShaleError): never {

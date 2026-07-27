@@ -55,6 +55,9 @@ const ARTICLE_TITLE_CANARY = 'ARTICLE_TITLE_CANARY_MUST_NOT_BE_LOGGED';
 const ARTICLE_URL_CANARY = 'https://article-url-canary.example.test/private';
 const ARTICLE_MARKDOWN_CANARY = 'ARTICLE_MARKDOWN_CANARY_MUST_NOT_BE_LOGGED';
 const WRITE_ERROR_CANARY = 'WRITE_ERROR_CANARY_MUST_NOT_BE_LOGGED';
+const IMAGE_URL_CANARY = 'https://image-url-canary.example.test/asset.png';
+const IMAGE_FILENAME_CANARY = 'image-file-name-canary.png';
+const IMAGE_CONTENT_CANARY = 'IMAGE_CONTENT_CANARY_MUST_NOT_BE_LOGGED';
 const options: PerArticleOptions = {
   includeSummary: false,
   includeTranslation: false,
@@ -133,7 +136,7 @@ beforeEach(() => {
 });
 
 describe('Markdown export structured logging', () => {
-  it('writes one completed JSONL record and retains its safe fields in the diagnostic export', async () => {
+  it('keeps completed exports without localizable images unchanged', async () => {
     const logDirectory = createDirectory();
     const diagnosticPath = path.join(createDirectory('shale-markdown-diagnostic-'), 'report.json');
     const logger = createLogger(logDirectory);
@@ -154,6 +157,8 @@ describe('Markdown export structured logging', () => {
       context: { count: 1 },
     });
     expect((records[0].context as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(0);
+    expect(records[0].context).not.toHaveProperty('downloadedImageCount');
+    expect(records[0].context).not.toHaveProperty('failedImageCount');
 
     const exporter = new DiagnosticExportService({
       logDirectory,
@@ -183,6 +188,8 @@ describe('Markdown export structured logging', () => {
         }),
       }),
     ]);
+    expect(report.logs.records[0]?.context).not.toHaveProperty('downloadedImageCount');
+    expect(report.logs.records[0]?.context).not.toHaveProperty('failedImageCount');
 
     const serialized = JSON.stringify({ records, report });
     for (const canary of [
@@ -190,6 +197,80 @@ describe('Markdown export structured logging', () => {
       ARTICLE_TITLE_CANARY,
       ARTICLE_URL_CANARY,
       ARTICLE_MARKDOWN_CANARY,
+    ]) {
+      expect(serialized).not.toContain(canary);
+    }
+  });
+
+  it('retains safe aggregate counts for fully localized images in JSONL and diagnostics', async () => {
+    const logDirectory = createDirectory();
+    const logger = createLogger(logDirectory);
+    const service = createExportService({
+      writeMarkdownExport: vi.fn(async () => ({
+        markdown: `${IMAGE_CONTENT_CANARY}\n![](${IMAGE_URL_CANARY})`,
+        assetDirectory: path.join('/private/markdown-assets', IMAGE_FILENAME_CANARY),
+        downloadedImageCount: 2,
+        failedImageCount: 0,
+      })),
+    });
+    captured.showSaveDialog.mockResolvedValue({ canceled: false, filePath: FILE_PATH_CANARY });
+    register(service, logger);
+
+    await expect(invoke(EXPORT_IPC_CHANNELS.exportSingle, { entryId: 1, options })).resolves
+      .toMatchObject({ ok: true });
+    await logger.flush();
+
+    const records = readRecords(logDirectory);
+    expect(records).toEqual([
+      expect.objectContaining({
+        level: 'info',
+        event: MARKDOWN_EXPORT_LOG_EVENTS.completed,
+        component: 'markdown.export',
+        context: {
+          count: 1,
+          durationMs: expect.any(Number),
+          downloadedImageCount: 2,
+          failedImageCount: 0,
+        },
+      }),
+    ]);
+
+    const report = await new DiagnosticExportService({
+      logDirectory,
+      runtime: {
+        applicationVersion: '0.3.0-test',
+        electronVersion: '43.0.0-test',
+        nodeVersion: '24.0.0-test',
+        operatingSystem: 'linux',
+        operatingSystemRelease: 'test',
+        architecture: 'x64',
+        isPackaged: false,
+        display: { session: 'wayland', waylandDetected: true, ozonePlatform: 'wayland' },
+      },
+      now: () => new Date('2026-07-27T12:00:01.000Z'),
+      createTemporaryName: () => 'markdown-export-image-diagnostics',
+    }).buildReport();
+    expect(report.logs.records).toEqual([
+      expect.objectContaining({
+        event: MARKDOWN_EXPORT_LOG_EVENTS.completed,
+        context: {
+          count: 1,
+          durationMs: expect.any(Number),
+          downloadedImageCount: 2,
+          failedImageCount: 0,
+        },
+      }),
+    ]);
+
+    const serialized = JSON.stringify({ records, report });
+    for (const canary of [
+      FILE_PATH_CANARY,
+      ARTICLE_TITLE_CANARY,
+      ARTICLE_URL_CANARY,
+      ARTICLE_MARKDOWN_CANARY,
+      IMAGE_URL_CANARY,
+      IMAGE_FILENAME_CANARY,
+      IMAGE_CONTENT_CANARY,
     ]) {
       expect(serialized).not.toContain(canary);
     }
@@ -255,7 +336,7 @@ describe('Markdown export structured logging', () => {
     expect(readRecords(logDirectory)).toEqual([]);
   });
 
-  it('writes one completed record for a multi-article document export', async () => {
+  it('keeps a partial image-localization result as one completed multi-article export', async () => {
     const logDirectory = createDirectory();
     const logger = createLogger(logDirectory);
     const service = createExportService({
@@ -276,11 +357,19 @@ describe('Markdown export structured logging', () => {
     })).resolves.toMatchObject({ ok: true });
     await logger.flush();
 
-    expect(readRecords(logDirectory)).toEqual([
+    const records = readRecords(logDirectory);
+    expect(records).toEqual([
       expect.objectContaining({
         event: MARKDOWN_EXPORT_LOG_EVENTS.completed,
-        context: expect.objectContaining({ count: 2 }),
+        context: {
+          count: 2,
+          durationMs: expect.any(Number),
+          downloadedImageCount: 1,
+          failedImageCount: 1,
+        },
       }),
     ]);
+    expect(records.some((record) => record.event === MARKDOWN_EXPORT_LOG_EVENTS.failed))
+      .toBe(false);
   });
 });

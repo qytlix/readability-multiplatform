@@ -1,4 +1,5 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { performance } from 'node:perf_hooks';
 import type { IPCResult } from '../../shared/contracts/feed.ipc';
 import { USAGE_IPC_CHANNELS } from '../../shared/contracts/usage.ipc';
 import {
@@ -7,12 +8,19 @@ import {
   type UsageStatisticsQuery,
 } from '../../shared/contracts/usage.types';
 import type { UsageStatisticsService } from '../ai/services/UsageStatisticsService';
+import {
+  elapsedUsageStatisticsMilliseconds,
+  logUsageStatisticsFailed,
+  USAGE_STATISTICS_LOG_ERROR_CODES,
+  type UsageStatisticsOperationLogger,
+} from '../ai/services/UsageStatisticsLogging';
 
 type GetMainWindow = () => BrowserWindow | null;
 
 export function registerUsageIpcHandlers(
   getMainWindow: GetMainWindow,
   usageStatisticsService: UsageStatisticsService,
+  logger?: UsageStatisticsOperationLogger,
 ): void {
   ipcMain.handle(
     USAGE_IPC_CHANNELS.statisticsGet,
@@ -20,9 +28,16 @@ export function registerUsageIpcHandlers(
       if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
       const query = parseUsageStatisticsQuery(request);
       if (!query) return invalidRequest();
+      const startedAt = performance.now();
       try {
         return { ok: true, data: usageStatisticsService.getStatistics(query) };
       } catch {
+        logUsageStatisticsFailed(logger, {
+          stage: 'read',
+          errorCode: USAGE_STATISTICS_LOG_ERROR_CODES.readFailed,
+          durationMs: elapsedUsageStatisticsMilliseconds(startedAt),
+          success: false,
+        });
         return queryFailure();
       }
     },
