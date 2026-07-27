@@ -5840,8 +5840,8 @@ body.workspace-is-resizing * {
 /* ── Tag Badge ─────────────────────────────────────────────── */
 
 .tag-badge {
-  --tag-saturation: 35%;
-  --tag-lightness: 30%;
+  --tag-saturation: 60%;
+  --tag-lightness: 25%;
   --tag-bg: hsl(var(--tag-hue), var(--tag-saturation), var(--tag-lightness));
   --tag-text-lightness: clamp(10%, calc(200% - var(--tag-lightness) * 4), 92%);
 
