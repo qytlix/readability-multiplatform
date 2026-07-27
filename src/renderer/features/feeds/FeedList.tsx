@@ -244,7 +244,7 @@ export const FeedList = ({
     const indicator = selectionIndicatorRef.current;
     if (!sidebar || !indicator) return;
 
-    const activeItem = settingsActive || showTagsView || searchInput.trim().length > 0
+    const activeItem = settingsActive || searchInput.trim().length > 0
       ? null
       : sidebar.querySelector<HTMLElement>('.sidebar-item.is-active');
     const feedList = sidebar.querySelector<HTMLElement>('.sidebar-feed-list');
@@ -370,6 +370,7 @@ export const FeedList = ({
             selectedFeedId === null
             && selectedFilter === 'unread'
             && !settingsActive
+            && !showTagsView
               ? ' is-active'
               : ''
           }`}
@@ -385,6 +386,7 @@ export const FeedList = ({
             selectedFeedId === null
             && selectedFilter === 'starred'
             && !settingsActive
+            && !showTagsView
               ? ' is-active'
               : ''
           }`}
