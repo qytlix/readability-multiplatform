@@ -102,6 +102,7 @@ export interface FeedEntryReadStats extends EntryReadStats {
 export interface EntryStats {
   all: EntryReadStats;
   feeds: FeedEntryReadStats[];
+  tagCount: number;
 }
 
 export interface EntryReadingProgress {

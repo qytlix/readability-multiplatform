@@ -310,6 +310,7 @@ describe('EntryStore', () => {
             readPercentage: 0,
           },
         ],
+        tagCount: 0,
       });
     });
   });

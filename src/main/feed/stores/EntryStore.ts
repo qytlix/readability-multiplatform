@@ -328,6 +328,12 @@ export class EntryStore {
       GROUP BY feedId
       ORDER BY feedId
     `).all() as Array<{ feedId: number; total: number; unread: number | null }>;
+    const tagCountRow = this.db.prepare(`
+      SELECT COUNT(DISTINCT t.id) AS cnt
+      FROM tag t
+      INNER JOIN entry_tag et ON et.tagId = t.id
+      INNER JOIN entry e ON e.id = et.entryId AND e.isDeleted = 0
+    `).get() as { cnt: number };
 
     return {
       all: toReadStats(allRow),
@@ -335,6 +341,7 @@ export class EntryStore {
         feedId: row.feedId,
         ...toReadStats(row),
       })),
+      tagCount: tagCountRow.cnt,
     };
   }
 

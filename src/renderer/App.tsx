@@ -88,6 +88,7 @@ const EMPTY_ENTRY_STATS: EntryStats = {
     readPercentage: 0,
   },
   feeds: [],
+  tagCount: 0,
 };
 
 const toEntry = (entry: EntryListItem): Entry => ({
@@ -458,9 +459,8 @@ export const App = () => {
       loadFeeds(false),
       requestEntries(undefined, false),
       loadEntryStats(),
-      loadTagCount(),
     ]);
-  }, [loadEntryStats, loadFeeds, requestEntries, loadTagCount]);
+  }, [loadEntryStats, loadFeeds, requestEntries]);
 
   const handleSyncAll = useCallback(async () => {
     setLoadingFeeds(true);
@@ -474,7 +474,6 @@ export const App = () => {
         loadFeeds(false),
         requestEntries(undefined, false),
         loadEntryStats(),
-        loadTagCount(),
       ]);
       return true;
     } catch {
@@ -483,7 +482,7 @@ export const App = () => {
     } finally {
       setLoadingFeeds(false);
     }
-  }, [loadEntryStats, loadFeeds, requestEntries, loadTagCount]);
+  }, [loadEntryStats, loadFeeds, requestEntries]);
 
   const handleAddFeed = useCallback(async (url: string) => {
     const result = await window.shaleAPI.feed.add(url);
@@ -492,9 +491,8 @@ export const App = () => {
       loadFeeds(false),
       requestEntries(undefined, false),
       loadEntryStats(),
-      loadTagCount(),
     ]);
-  }, [loadEntryStats, loadFeeds, requestEntries, loadTagCount]);
+  }, [loadEntryStats, loadFeeds, requestEntries]);
 
   const handleSelectEntry = useCallback((entryId: number) => {
     const listEntry = entries.find((entry) => entry.id === entryId);
@@ -881,7 +879,6 @@ export const App = () => {
               if (window.innerWidth < 900) setSidebarOpen(false);
             }}
             onOpenTags={handleOpenTags}
-            tagCount={tagCount}
           />
         </aside>
 
