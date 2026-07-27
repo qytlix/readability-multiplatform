@@ -13,6 +13,7 @@ interface EntryListHeadingInput {
   filter: EntryFilter;
   hasActiveSearch: boolean;
   tagName?: string;
+  searchAllFeeds?: boolean;
 }
 
 const getFilterHeading = (filter: EntryFilter): string => {
@@ -26,8 +27,17 @@ export const getEntryListHeading = ({
   filter,
   hasActiveSearch,
   tagName,
+  searchAllFeeds = false,
 }: EntryListHeadingInput): string => {
-  if (hasActiveSearch) return entryListCopy.searchResults;
+  if (hasActiveSearch) {
+    if (feedName !== null && !searchAllFeeds) {
+      return `${feedName} · ${entryListCopy.searchResults}`;
+    }
+    if (filter !== 'all') {
+      return `${entryListCopy.searchResults} · ${getFilterHeading(filter)}`;
+    }
+    return entryListCopy.searchResults;
+  }
 
   if (tagName) return `标签：${tagName}`;
 

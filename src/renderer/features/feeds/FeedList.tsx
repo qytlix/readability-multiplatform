@@ -44,8 +44,10 @@ interface FeedListProps {
   selectedFilter: EntryFilter;
   searchInput: string;
   searchStatus: SearchStatus;
+  searchAllFeeds?: boolean;
   searchInputRef: RefObject<HTMLInputElement | null>;
   onSearchInputChange: (query: string) => void;
+  onSearchAllFeedsChange?: (searchAllFeeds: boolean) => void;
   onSelectFilter: (filter: EntryFilter) => void;
   onSelectFeed: (feedId: number | null) => void;
   onRefresh: () => Promise<boolean>;
@@ -66,8 +68,10 @@ export const FeedList = ({
   selectedFilter,
   searchInput,
   searchStatus,
+  searchAllFeeds = false,
   searchInputRef,
   onSearchInputChange,
+  onSearchAllFeedsChange,
   onSelectFilter,
   onSelectFeed,
   onRefresh,
@@ -88,6 +92,16 @@ export const FeedList = ({
   const [syncProgress, setSyncProgress] = useState<Record<number, string>>({});
   const [syncingFeedIds, setSyncingFeedIds] = useState<Set<number>>(() => new Set());
   const mountedRef = useRef(true);
+  const selectedSearchFeed = feeds.find((feed) => feed.id === selectedFeedId);
+  const searchScopeLabel = selectedSearchFeed
+    ? searchAllFeeds
+      ? '所有订阅源'
+      : selectedSearchFeed.title ?? selectedSearchFeed.feedURL
+    : selectedFilter === 'unread'
+      ? '未读文章'
+      : selectedFilter === 'starred'
+        ? '收藏文章'
+        : '所有订阅源';
   const syncInFlightRef = useRef(false);
   const singleSyncInFlightRef = useRef<Set<number>>(new Set());
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -317,6 +331,21 @@ export const FeedList = ({
           </span>
         )}
       </label>
+      {searchInput.trim() && (
+        <div className="sidebar-search-scope">
+          {selectedSearchFeed && onSearchAllFeedsChange
+            ? (
+                <button
+                  type="button"
+                  onClick={() => onSearchAllFeedsChange(!searchAllFeeds)}
+                  aria-label={`搜索范围：${searchScopeLabel}，点击切换`}
+                >
+                  范围：{searchScopeLabel}
+                </button>
+              )
+            : <span>范围：{searchScopeLabel}</span>}
+        </div>
+      )}
 
       <nav className="sidebar-navigation" aria-label="文章范围">
         <button

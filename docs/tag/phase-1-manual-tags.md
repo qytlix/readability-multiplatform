@@ -171,7 +171,7 @@ Props: `onAdd: (tagName: string) => void`
 
 | 操作 | 文件 |
 |---|---|
-| **新建** | `src/main/migrations/019_create_entry_tags.ts` |
+| **新建** | `src/main/migrations/022_create_entry_tags.ts` |
 | **新建** | `src/shared/contracts/tag.types.ts` |
 | **新建** | `src/shared/contracts/tag.ipc.ts` |
 | **新建** | `src/main/tags/shared/tag.errors.ts` |

@@ -123,8 +123,22 @@ export function isValidProviderModel(model: string): boolean {
 /** Persisted configuration that is safe to return to the Renderer. */
 export interface ProviderProfile {
   id: number;
+  /** Summary Provider. Retained under the original field name for compatibility. */
   providerKind: ProviderKind;
+  /** Summary Provider base URL. Retained under the original field name for compatibility. */
   baseUrl: string;
+  /** Model used by Summary requests. */
+  summaryModel: string;
+  /** Provider used by all Translation requests. */
+  translationProviderKind: ProviderKind;
+  /** Provider base URL used by all Translation requests. */
+  translationBaseUrl: string;
+  /** Model used by full, inline, and context-assisted Translation requests. */
+  translationModel: string;
+  /**
+   * Legacy alias retained for compatibility with older callers. It always
+   * mirrors summaryModel and must not be used for task routing.
+   */
   model: string;
   isActive: boolean;
   createdAt: string;
@@ -133,18 +147,55 @@ export interface ProviderProfile {
   keyStorageMode?: ProviderKeyStorageMode;
   /** Whether Main can currently use the configured API key. */
   hasApiKey?: boolean;
+  /** Whether Main can use the Summary Provider API key. */
+  hasSummaryApiKey?: boolean;
+  /** Whether Main can use the Translation Provider API key. */
+  hasTranslationApiKey?: boolean;
+}
+
+export interface SaveProviderTaskRequest {
+  providerKind: ProviderKind;
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
 }
 
 /**
  * API keys are accepted only while saving configuration. They are never
  * returned by Main and should not be stored in Renderer state.
  */
-export interface SaveProviderRequest {
+interface LegacySaveProviderRequestBase {
   providerKind: ProviderKind;
   baseUrl: string;
-  model: string;
   apiKey?: string;
 }
+
+/** Current request shape with explicit task-to-model routing. */
+export type SaveProviderRequest =
+  | {
+      summary: SaveProviderTaskRequest;
+      translation: SaveProviderTaskRequest;
+      providerKind?: never;
+      baseUrl?: never;
+      model?: never;
+      summaryModel?: never;
+      translationModel?: never;
+      apiKey?: never;
+    }
+  | (LegacySaveProviderRequestBase & {
+      summaryModel: string;
+      translationModel: string;
+      model?: never;
+    })
+  /**
+   * Compatibility shape accepted from pre-migration Renderer builds. Main
+   * applies the single model to both tasks.
+   */
+  | (LegacySaveProviderRequestBase & {
+      model: string;
+      summaryModel?: never;
+      translationModel?: never;
+    });
 
 export interface ProviderConnectionTestResult {
   ok: true;

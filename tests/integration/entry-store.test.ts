@@ -175,10 +175,9 @@ describe('EntryStore', () => {
       expect(result.entries[0].title).toBe('Post 1');
     });
 
-    it('should search by summary', () => {
+    it('should not search by feed-provided summary', () => {
       const result = entryStore.query({ search: 'Summary 2', limit: 50 });
-      expect(result.entries).toHaveLength(1);
-      expect(result.entries[0].title).toBe('Post 2');
+      expect(result.entries).toHaveLength(0);
     });
   });
 
@@ -348,23 +347,16 @@ describe('EntryStore', () => {
   describe('search with entry_content', () => {
     let dbContent: ReturnType<typeof buildTestDbWithContent>['db'];
     let entryStoreContent: EntryStore;
-    let feedIdContent: number;
 
     beforeEach(() => {
       const testDb = buildTestDbWithContent();
       dbContent = testDb.db;
       entryStoreContent = new EntryStore(dbContent);
-      const feedStoreContent = new FeedStore(dbContent);
-      const feeds = feedStoreContent.findAll();
-      feedIdContent = feeds[0].id;
     });
 
-    it('should search by feed.title', () => {
+    it('should not search by feed.title', () => {
       const result = entryStoreContent.query({ search: 'Test Feed', limit: 50 });
-      expect(result.entries.length).toBeGreaterThanOrEqual(3);
-      for (const entry of result.entries) {
-        expect(entry.feedTitle).toBe('Test Feed');
-      }
+      expect(result.entries).toHaveLength(0);
     });
 
     it('should search by markdown content', () => {
@@ -398,10 +390,9 @@ describe('EntryStore', () => {
       expect(result.entries[0].title).toBe('100% completion rate');
     });
 
-    it('should handle LIKE special char _', () => {
+    it('should not match removed summary fields', () => {
       const result = entryStoreContent.query({ search: 'test_data', limit: 50 });
-      expect(result.entries).toHaveLength(1);
-      expect(result.entries[0].title).toBe('100% completion rate');
+      expect(result.entries).toHaveLength(0);
     });
 
     it('should handle LIKE special char backslash', () => {

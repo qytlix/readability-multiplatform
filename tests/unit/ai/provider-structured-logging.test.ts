@@ -50,7 +50,11 @@ afterEach(() => {
   }
 });
 
-function createRequest(overrides: Partial<SaveProviderRequest> = {}): SaveProviderRequest {
+type LegacySaveProviderRequest = Extract<SaveProviderRequest, { model: string }>;
+
+function createRequest(
+  overrides: Partial<LegacySaveProviderRequest> = {},
+): LegacySaveProviderRequest {
   return {
     providerKind: 'openai',
     baseUrl: 'https://provider.example.test/v1',
@@ -68,7 +72,12 @@ function createActiveProfile(
     providerKind: 'openai',
     baseUrl: 'https://provider.example.test/v1',
     model: 'gpt-5.4-mini',
+    summaryModel: 'gpt-5.4-mini',
+    translationProviderKind: 'openai',
+    translationBaseUrl: 'https://provider.example.test/v1',
+    translationModel: 'gpt-5.4-mini',
     apiKeyRef: 'stored-secret-reference',
+    translationApiKeyRef: 'stored-secret-reference',
     isActive: true,
     createdAt: '2026-07-21T00:00:00.000Z',
     updatedAt: '2026-07-21T00:00:00.000Z',
@@ -83,6 +92,10 @@ function createPublicProfile(overrides: Partial<ProviderProfile> = {}): Provider
     providerKind: activeProfile.providerKind,
     baseUrl: activeProfile.baseUrl,
     model: activeProfile.model,
+    summaryModel: activeProfile.summaryModel,
+    translationProviderKind: activeProfile.translationProviderKind,
+    translationBaseUrl: activeProfile.translationBaseUrl,
+    translationModel: activeProfile.translationModel,
     isActive: activeProfile.isActive,
     createdAt: activeProfile.createdAt,
     updatedAt: activeProfile.updatedAt,

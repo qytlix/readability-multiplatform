@@ -65,6 +65,11 @@ import {
   type ReaderTheme,
 } from './features/appearance/theme';
 import {
+  loadReaderPreferences,
+  saveReaderPreferences,
+  type ReaderPreferences,
+} from './features/settings/readerPreferences';
+import {
   createHorizontalFlipKeyframes,
   type LayoutRect,
 } from './features/reader/layoutTransition';
@@ -118,6 +123,7 @@ export const App = () => {
   const [entryFilter, setEntryFilter] = useState<EntryFilter>('all');
   const [searchInput, setSearchInput] = useState('');
   const [appliedSearchQuery, setAppliedSearchQuery] = useState('');
+  const [searchAllFeeds, setSearchAllFeeds] = useState(false);
   const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle');
   const [loadingFeeds, setLoadingFeeds] = useState(true);
   const [loadingEntries, setLoadingEntries] = useState(false);
@@ -151,6 +157,8 @@ export const App = () => {
   const [exportArticles, setExportArticles] = useState<ArticleAvailability[]>([]);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(() =>
     loadReaderTheme(window.localStorage));
+  const [readerPreferences, setReaderPreferences] = useState<ReaderPreferences>(() =>
+    loadReaderPreferences(window.localStorage));
   const [articleAIToolbarTarget, setArticleAIToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [articleExportToolbarTarget, setArticleExportToolbarTarget] =
     useState<HTMLDivElement | null>(null);
@@ -260,6 +268,9 @@ export const App = () => {
   const effectiveSearchStatus: SearchStatus = searchPending
     ? 'searching'
     : searchStatus;
+  const searchFeedId = appliedSearchQuery && searchAllFeeds
+    ? null
+    : selectedFeedId;
 
   const selectedFeed = useMemo(
     () => feeds.find((feed) => feed.id === selectedFeedId) ?? null,
@@ -336,7 +347,7 @@ export const App = () => {
 
     try {
       const params = buildEntryQuery({
-        selectedFeedId,
+        selectedFeedId: searchFeedId,
         filter: entryFilter,
         searchQuery: appliedSearchQuery,
         tagFilter,
@@ -379,7 +390,7 @@ export const App = () => {
         setLoadingEntries(false);
       }
     }
-  }, [appliedSearchQuery, entryFilter, selectedFeedId, tagFilter]);
+  }, [appliedSearchQuery, entryFilter, searchFeedId, tagFilter]);
 
   useEffect(() => {
     void loadFeeds();
@@ -396,8 +407,13 @@ export const App = () => {
   }, [readerTheme]);
 
   useEffect(() => {
+    saveReaderPreferences(window.localStorage, readerPreferences);
+  }, [readerPreferences]);
+
+  useEffect(() => {
     if (!normalizedInput) {
       setAppliedSearchQuery('');
+      setSearchAllFeeds(false);
       setSearchStatus('idle');
       return;
     }
@@ -740,6 +756,7 @@ export const App = () => {
     setEntryFilter('all');
     setSearchInput('');
     setAppliedSearchQuery('');
+    setSearchAllFeeds(false);
     setSearchStatus('idle');
     setSelectedFeedId(feedId);
     setSelectionMode(false);
@@ -752,6 +769,7 @@ export const App = () => {
     setTagFilter(null);
     setSearchInput('');
     setAppliedSearchQuery('');
+    setSearchAllFeeds(false);
     setSearchStatus('idle');
     setEntryFilter(filter);
     setSelectionMode(false);
@@ -765,6 +783,7 @@ export const App = () => {
     setTagFilter(null);
     setSearchInput('');
     setAppliedSearchQuery('');
+    setSearchAllFeeds(false);
     setSearchStatus('idle');
     setEntryFilter(filter);
     setSelectionMode(false);
@@ -779,6 +798,7 @@ export const App = () => {
     filter: entryFilter,
     hasActiveSearch: Boolean(appliedSearchQuery),
     tagName: tagFilter?.tagNames[0],
+    searchAllFeeds,
   });
   const handleExportRequest = useCallback(async () => {
     const ids = Array.from(selectedIds);
@@ -861,8 +881,10 @@ export const App = () => {
             selectedFilter={entryFilter}
             searchInput={searchInput}
             searchStatus={effectiveSearchStatus}
+            searchAllFeeds={searchAllFeeds}
             searchInputRef={searchInputRef}
             onSearchInputChange={setSearchInput}
+            onSearchAllFeedsChange={setSearchAllFeeds}
             onSelectFilter={handleSelectSidebarFilter}
             onSelectFeed={handleSelectFeed}
             onRefresh={handleSyncAll}
@@ -1118,6 +1140,8 @@ export const App = () => {
               <AISettingsPage
                 preferences={aiPreferences}
                 onPreferencesChange={setAiPreferences}
+                readerPreferences={readerPreferences}
+                onReaderPreferencesChange={setReaderPreferences}
                 onClose={() => setActiveView('reader')}
               />
             ) : (
@@ -1159,6 +1183,9 @@ export const App = () => {
                 onTagsChanged={() => void loadEntryStats()}
                 onExportRequest={handleExportRequest}
                 onFeedback={setReaderFeedback}
+                pageTurnAnimationEnabled={
+                  readerPreferences.pageTurnAnimationEnabled
+                }
               />
             )}
           </div>

@@ -202,8 +202,8 @@ export function tagColor(name: string): { hue: number } {
 
 | ID | 作用 |
 |---|---|
-| `019_create_entry_tags` | 初始 `tag` + `entry_tag` 表（`UNIQUE COLLATE NOCASE`） |
-| `020_tag_name_case_sensitive` | 重建 `tag` 表去掉 `NOCASE`，`name` 改为精确 `UNIQUE` |
+| `022_create_entry_tags` | 初始 `tag` + `entry_tag` 表（`UNIQUE COLLATE NOCASE`） |
+| `023_tag_name_case_sensitive` | 重建 `tag` 表去掉 `NOCASE`，`name` 改为精确 `UNIQUE` |
 
 ## 关键修复记录
 
@@ -222,8 +222,8 @@ export function tagColor(name: string): { hue: number } {
 
 | 操作 | 文件 |
 |---|---|
-| **新建** | `src/main/migrations/019_create_entry_tags.ts` |
-| **新建** | `src/main/migrations/020_tag_name_case_sensitive.ts` |
+| **新建** | `src/main/migrations/022_create_entry_tags.ts` |
+| **新建** | `src/main/migrations/023_tag_name_case_sensitive.ts` |
 | **改** | `src/main/database/DatabaseManager.ts` |
 | **新建** | `src/main/tags/shared/tag.errors.ts` |
 | **新建** | `src/main/tags/TagStore.ts` |

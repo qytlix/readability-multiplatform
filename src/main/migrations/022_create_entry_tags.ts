@@ -1,9 +1,9 @@
 /**
- * Migration 019: Manual tags for entries.
+ * Migration 022: Manual tags for entries.
  *
  * Creates the `tag` and `entry_tag` tables to support Phase 1 manual tagging.
  */
-export const MIGRATION_019 = `
+export const MIGRATION_022 = `
 CREATE TABLE IF NOT EXISTS tag (
   id    INTEGER PRIMARY KEY AUTOINCREMENT,
   name  TEXT NOT NULL UNIQUE COLLATE NOCASE,

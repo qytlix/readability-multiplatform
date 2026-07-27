@@ -2,32 +2,62 @@
 
 All notable changes to Shale will be documented in this file.
 
-## [Unreleased]
+## [0.3.0] - 2026-07-27
 
 ### Added
 
 - Advanced Translation：支持 `auto + 8` 语言、OpenAI/DeepSeek/OpenRouter/
   Anthropic/Gemini Provider、智能全文上下文、29 个离线 AI 专家、34 个离线
   术语库、用户 YAML/CSV 导入，以及结构化单词/短语/句子划词翻译。
-- 增加旧数据库从迁移 011 连续升级到 015、重启恢复、超长文章全文代表采样和
+- 文章导出功能：支持单篇和多篇 Markdown 导出，含自定义脚注、批注和
+  安全文件名生成；ExportService、IPC Handler、Preload API、导出对话框
+  和选择模式批量导出入口全链路实现。
+- Token 用量统计与图表：Provider 调用按模型记录 token 消费，用量统计
+  界面以图表展示。
+- 结构化本地日志系统：带保留策略的本地日志文件、Instrument feed/OPML/
+  Provider/Summary/Content Pipeline 各生命周期。
+- 文章批注笔记（Annotation Notes）：可锁定、持久化、对齐高亮的文本批注，
+  支持翻页后重新定位。
+- Feed 去重统一：FeedIdentity URL 规范化、`dedupKey` 列、跨 FeedService
+  和 OPMLImportService 的统一去重逻辑。
+- OPML 导入页面优化。
+- 新的 UI 风格与阅读体验：版面布局刷新、翻页动画、阅读进度跟踪与暂停页面。
+- 文章多选模式（选择模式下的批量操作）。
+- GPT-5.6 模型选项。
+- 旧数据库从迁移 011 连续升级到 015、重启恢复、超长文章全文代表采样和
   Translation 敏感日志哨兵的集成回归。
+- 设置界面优化。
 
 ### Changed
 
-- 超过 48,000 字符的智能上下文由“只分析开头”改为固定预算下覆盖文章开头、
+- 超过 48,000 字符的智能上下文由"只分析开头"改为固定预算下覆盖文章开头、
   中间区域和结尾的确定性采样；上下文缓存版本升级为
   `translation-context-v2`。
+- 交互逻辑优化：页面交互、工具栏整理、翻译流程改进。
 
 ### Fixed
 
 - 安装和启动时按 Electron ABI 加载验证 `better-sqlite3`，发现错误原生模块时自动重建，避免依赖更新或 Node 测试后因遗留 Forge 元数据启动失败。
-- 中文翻译结果在 Main 进程持久化或返回前统一为所选的简体中文或香港繁体中文，
-  并升级提示词缓存版本，避免旧的简繁混合结果继续复用。
+- 中文翻译结果统一为所选语言变体（简体中文/香港繁体），并升级提示词缓存版本。
+- 简体和繁体交错翻译问题。
+- 翻译时语言混合的问题。
+- 部分文章无法 fetch 的问题。
+- 重新翻译逻辑。
+- 按钮颜色问题。
+- 相对 URL 无法识别的问题。
+- 删除菜单栏。
+- 再次点击文章关闭文章的行为。
+- 减少翻译日志输出，保留 Reader 工具栏。
 
 ### Security
 
 - 生产依赖审计为 0 漏洞；新增自动化断言，确保 Translation 诊断不包含 API
   Key、Authorization/Bearer 信息或文章正文。
+
+### Docs
+
+- 导出文章详细计划与笔记导出格式更新。
+- 复选框适配经验汇总。
 
 ## [0.2.4] - 2026-07-21
 

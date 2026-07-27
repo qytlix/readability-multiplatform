@@ -100,6 +100,7 @@ interface EntryDetailProps {
   selectedIds?: Set<number>;
   onExportRequest?: () => void;
   onFeedback?: (message: string) => void;
+  pageTurnAnimationEnabled?: boolean;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -134,6 +135,7 @@ export const EntryDetail = ({
   onRetranslationRequestComplete,
   beforeTranslationStart,
   onTagsChanged,
+  pageTurnAnimationEnabled = true,
 }: EntryDetailProps) => {
   const [content, setContent] = useState<CleanedContent | null>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
@@ -181,6 +183,15 @@ export const EntryDetail = ({
   const lastReadingBookSampleAtRef = useRef<number | null>(null);
   const readingBookDirectionRef = useRef<ReadingBookTurnDirection | null>(null);
   const readingBookDistanceRef = useRef(0);
+
+  useEffect(() => {
+    if (pageTurnAnimationEnabled) return;
+
+    setReadingBookTurn(null);
+    lastReadingBookSampleAtRef.current = null;
+    readingBookDirectionRef.current = null;
+    readingBookDistanceRef.current = 0;
+  }, [pageTurnAnimationEnabled]);
 
   const readerDisplayState = getReaderDisplayState({
     feedLoadStatus,
@@ -763,6 +774,8 @@ export const EntryDetail = ({
     const turnDirection = getReadingBookTurnDirection(scrollDelta);
     if (turnDirection) {
       setReadingJumpTarget(turnDirection === 'left' ? 'end' : 'start');
+    }
+    if (turnDirection && pageTurnAnimationEnabled) {
       const sampleAt = event.timeStamp;
       const previousSampleAt = lastReadingBookSampleAtRef.current;
       const elapsedSinceSample = previousSampleAt === null
@@ -1197,7 +1210,7 @@ export const EntryDetail = ({
         />
         <ReadingProgressBook
           readingProgress={visibleReadingProgress}
-          turnMotion={readingBookTurn}
+          turnMotion={pageTurnAnimationEnabled ? readingBookTurn : null}
           jumpTarget={readingJumpTarget}
           onJump={handleReadingJump}
         />

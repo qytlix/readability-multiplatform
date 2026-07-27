@@ -14,10 +14,9 @@ Renderer                 Preload                     Main
    ├─ EntryAPI.list(        │                          │
    │   { search, ... }) ────┤── IPC invoke ────────────┤── entryStore.query()
    │                        │        'entry:list'      │       │
-   │                        │                          │  LEFT JOIN feed f
-   │                        │                          │  LEFT JOIN entry_content ec
-   │                        │                          │  WHERE title/summary LIKE ?
-   │                        │                          │       + new: markdown + feed.title
+   │                        │                          │  FTS5 trigram / short LIKE
+   │                        │                          │  title + cleaned markdown
+   │                        │                          │  current feed/filter scope
    │◄──── IPCResult ◄───────┼──────────────────────────┤
 ```
 
@@ -33,11 +32,11 @@ Renderer                 Preload                     Main
 | `src/shared/contracts/feed.ipc.ts:EntryListRequest` | `search?: string` 字段 | ✅ 已就绪 |
 | `src/shared/contracts/feed.ipc.ts:EntryListResponse` | `{ entries, nextCursor }` — 搜索结果回到同一结构 | ✅ 已就绪 |
 | `src/shared/domain-api.ts:EntryAPI.list` | `search?: string` 参数已暴露 | ✅ 已就绪 |
-| `entry_content.markdown` — 清洗正文搜索 | EntryStore.query ECASE WHEN + LIKE | ✅ 已实现 |
-| `feed.title` — 来源名称搜索 | EntryStore.query LEFT JOIN + LIKE | ✅ 已实现 |
-| 相关性评分排序 | CASE WHEN 评分: title=3, markdown=2, summary=1, feed.title=1 | ✅ 已实现 |
-| LIKE 特殊字符转义 | escapeLike() + ESCAPE '\\' | ✅ 已实现 |
-| 空字符串防御 | options.search?.trim() | ✅ 已实现 |
+| `entry.title` + `entry_content.markdown` | FTS5 trigram；短词 LIKE | ✅ 已实现 |
+| 当前范围 | 保留 `feedId`、`isRead`、`isStarred` | ✅ 已实现 |
+| 相关性评分排序 | 标题分层 + `bm25(title=8, markdown=1)` | ✅ 已实现 |
+| 搜索分页 | rank-aware keyset cursor | ✅ 已实现 |
+| Unicode | 查询与索引统一 NFKC | ✅ 已实现 |
 
 ### 2.2 IPC 层
 
@@ -49,103 +48,65 @@ IPC Handler 已经是通用转发，不需要新增 channel。
 
 ### 2.3 查询 SQL
 
-`EntryStore.query()` 当前的 SQL：
+`EntryStore.query()` 将浏览查询、FTS 查询和短查询回退拆成独立路径。FTS
+查询的主要结构为：
 
 ```sql
-SELECT e.*, f.title AS feedTitle, ec.pipelineStatus
-FROM entry e
-LEFT JOIN feed f ON f.id = e.feedId
-LEFT JOIN entry_content ec ON ec.entryId = e.id
-WHERE e.isDeleted = 0
-  [AND e.feedId = ?]
-  [AND e.isRead = ?]
-  [AND e.isStarred = ?]
-  [AND (e.title LIKE ? OR e.summary LIKE ?)]
-  [AND keyset pagination]
-ORDER BY e.publishedAt DESC, e.id DESC
-LIMIT ?
+WITH ranked_entries AS (
+  SELECT
+    e.*,
+    CASE
+      WHEN normalized_title = ? THEN 4
+      WHEN normalized_title LIKE ? THEN 3
+      WHEN title_contains_all_terms THEN 2
+      ELSE 1
+    END AS matchTier,
+    bm25(entry_search_fts, 8.0, 1.0) AS searchRank,
+    COALESCE(e.publishedAt, e.createdAt) AS effectivePublishedAt
+  FROM entry_search_fts
+  JOIN entry e ON e.id = entry_search_fts.rowid
+  LEFT JOIN entry_content ec ON ec.entryId = e.id
+  WHERE entry_search_fts MATCH ?
+    [AND current scope]
+)
+SELECT *
+FROM ranked_entries
+WHERE [rank-aware cursor]
+ORDER BY matchTier DESC, searchRank ASC, effectivePublishedAt DESC, id DESC
+LIMIT ?;
 ```
 
-✅ `LEFT JOIN feed f` 和 `LEFT JOIN entry_content ec` 已存在。
-✅ 搜索条件已接入 `e.title` 和 `e.summary`。
-✅ 结果可 keyset 分页。
+少于 3 个 Unicode 字符的词不进入 `MATCH`，改为同范围内对规范化标题和
+Markdown 执行参数化 `LIKE`。
 
 ---
 
 ## 3. 后端实现状态 — ✅ 已完成
 
-所有后端工作已通过以下 4 个提交完成（详见同目录 `search-feature-backend-commit-plan.md`）：
+当前后端包含：
 
-| 提交 | 变更内容 | 文件 |
-|------|----------|------|
-| commit 2 | 搜索扩展至 4 字段 + 相关性评分 | `EntryStore.ts` |
-| commit 3 | escapeLike 工具函数 + LIKE ESCAPE | `EntryStore.ts` |
-| commit 4 | 空字符串/纯空格防御 | `EntryStore.ts` |
-| commits 5-6 | 13 个新增测试 | `entry-store.test.ts` |
+- Migration 019 的 FTS5 trigram contentless-delete 索引；
+- Entry 与 Content 表触发器和旧库回填；
+- shared 查询规范化、短语解析和 FTS 转义；
+- 标题分层、BM25 和搜索专用 keyset cursor；
+- 纯文本搜索片段。
 
-### 3.1 最终 SQL 形态
-
-```sql
-SELECT e.*, f.title AS feedTitle, ec.pipelineStatus,
-  (CASE WHEN e.title LIKE ? ESCAPE '\\'         THEN 3 ELSE 0 END +
-   CASE WHEN ec.markdown LIKE ? ESCAPE '\\'     THEN 2 ELSE 0 END +
-   CASE WHEN e.summary LIKE ? ESCAPE '\\'       THEN 1 ELSE 0 END +
-   CASE WHEN f.title LIKE ? ESCAPE '\\'         THEN 1 ELSE 0 END) AS relevance
-FROM entry e
-LEFT JOIN feed f ON f.id = e.feedId
-LEFT JOIN entry_content ec ON ec.entryId = e.id
-WHERE e.isDeleted = 0
-  [AND e.feedId = ?]
-  [AND e.isRead = ?]
-  [AND e.isStarred = ?]
-  [AND (e.title LIKE ? ESCAPE '\\' OR e.summary LIKE ? ESCAPE '\\'
-        OR ec.markdown LIKE ? ESCAPE '\\' OR f.title LIKE ? ESCAPE '\\')]
-  [AND keyset pagination]
-ORDER BY relevance DESC, e.publishedAt DESC, e.id DESC
-LIMIT ?
-```
-
-- 搜索时：SELECT 含 `relevance` 列，ORDER BY 以 `relevance DESC` 开头
-- 无搜索时：SELECT 不含 `relevance`，ORDER BY `e.publishedAt DESC, e.id DESC`
-- 所有 8 处 LIKE 表达式均带 `ESCAPE '\\'`
-
-### 3.2 参数绑定顺序
-
-SQLite 的 `?` 占位符按出现顺序绑定。实现中将参数分为三组：
-
-1. `selectParams` — SELECT 中 CASE WHEN 的 4 个 `?` 参数
-2. `whereParams` — WHERE 中所有过滤和搜索条件参数
-3. `limit + 1` — LIMIT 参数
-
-最终参数数组为 `[...selectParams, ...whereParams, limit + 1]`。
+第一版 LIKE 实现的提交计划保留在
+`search-feature-backend-commit-plan.md`，仅作为历史记录，不再描述当前 SQL。
 
 ---
 
 ## 4. 测试实现状态
 
-测试总数：**28 个**（15 已有 + 13 新增），全部通过 ✅
+搜索专项测试位于：
 
-| 测试 | 文件 | 状态 |
-|------|------|------|
-| 按标题搜索 | `entry-store.test.ts` | ✅ 通过 |
-| 按 summary 搜索 | `entry-store.test.ts` | ✅ 通过 |
-| 按来源名称搜索（feed.title） | `entry-store.test.ts` — search with entry_content > should search by feed.title | ✅ 通过 |
-| 按正文关键词搜索（markdown） | `entry-store.test.ts` — should search by markdown content | ✅ 通过 |
-| 相关性排序 — title 优先 | 标题命中的排在最前 | ✅ 通过 |
-| 相关性排序 — markdown 高于 summary | 正文匹配的优先级验证 | ✅ 通过 |
-| 特殊字符 `%` | 搜索含 `100%` 的内容不产生误匹配 | ✅ 通过 |
-| 特殊字符 `_` | 搜索含 `test_data` 的内容不产生误匹配 | ✅ 通过 |
-| 特殊字符 `\` | 搜索含 `backslash` 的内容不崩溃 | ✅ 通过 |
-| 空查询（undefined） | `options.search` 为 undefined 时正常返回 | ✅ 通过 |
-| 空查询（空字符串） | `options.search` 为 `''` 时等同无搜索 | ✅ 通过 |
-| 空查询（纯空格） | `options.search` 为 `'   '` 时等同无搜索 | ✅ 通过 |
-| 未清洗条目 — 按 title 搜索 | 只有 entry 无 entry_content，按 title 可搜到 | ✅ 通过 |
-| 未清洗条目 — 按 markdown 搜索 | 只有 entry 无 entry_content，按 markdown 不返回 | ✅ 通过 |
-| 超过 limit 的搜索结果 | 搜索后 keyset 分页正常工作 | ✅ 通过 |
+- `tests/integration/entry-search-index-migration.test.ts`
+- `tests/integration/entry-search-query.test.ts`
+- `tests/unit/shared/search.test.ts`
+- `tests/unit/renderer/searchHighlightedText.test.ts`
 
-未覆盖（P1/P2 低优先级，可后续补充）：
-- 特殊字符单引号搜索
-- 大小写不敏感行为显式验证
+覆盖旧库回填、触发器生命周期、范围组合、标题分层、BM25、多词和短语、
+中英文/NFKC、短查询回退、rank-aware 分页和安全高亮。
 
 ---
 
@@ -153,34 +114,19 @@ SQLite 的 `?` 占位符按出现顺序绑定。实现中将参数分为三组�
 
 ### 5.1 搜索范围
 
-**搜索覆盖全部 Feed，不保留当前 Feed 过滤。**
-
-用户搜索时，结果来自所有已持久化文章，不受当前 feed 选择影响。搜索结束后恢复之前的 Feed 上下文。
-
-对应 Issue #34 验收标准："用户可以搜索所有已持久化文章"。
+搜索默认继承当前 Feed、未读和收藏范围。当前 Feed 搜索可以由 Renderer 的
+显式范围按钮切换到所有 Feed，避免隐藏地丢弃用户上下文。
 
 ### 5.2 未清洗条目
 
-**未清洗条目仍可通过标题/摘要/来源名搜索到，只是不能按正文内容匹配。**
-
-`WHERE` 条件是 4 个字段的 `OR` 串联，且 `entry_content` 使用 `LEFT JOIN`。未清洗的条目（无对应 `entry_content` 行，或 `markdown = NULL`）中 `ec.markdown LIKE ?` 为 NULL（假值），但只要 `e.title` 或 `e.summary` 或 `f.title` 命中，整行就会被返回。
-
-这是预期行为，不需要 fallback 或特殊处理。
+未清洗条目只有标题进入索引，因此仍可按标题找到，但不能按尚不存在的
+Cleaned Markdown 匹配。Feed 名称和 Feed Entry 摘要不参与搜索。
 
 ### 5.3 相关性排序
 
-**第一版即使用基于 LIKE 的相关性评分排序。**
-
-| 命中字段 | 分值 | 理由 |
-|---------|------|------|
-| `entry.title` | **+3** | 标题匹配最相关 |
-| `entry_content.markdown` | **+2** | 正文匹配比摘要/来源名更相关 |
-| `entry.summary` | **+1** | RSS 摘要匹配 |
-| `feed.title` | **+1** | 来源名称匹配 |
-
-多个字段同时命中时分数累加。同分时按 `publishedAt DESC, id DESC` 排序，保证结果稳定。
-
-非搜索模式（无 `search` 参数）不生成 `relevance` 列，按原排序规则返回。
+搜索先按标题完全匹配、标题前缀、标题包含全部词、正文命中分层，再按
+FTS5 BM25、有效发布时间和 Entry ID 排序。搜索 cursor 保存相同排序字段。
+非搜索模式继续按有效发布时间和 Entry ID 排序。
 
 ### 5.4 空字符串防御
 
@@ -196,16 +142,11 @@ if (options.search?.trim()) {
 
 ### 5.5 为什么不使用 SQLite FTS5？
 
-| 对比项 | LIKE + JOIN | FTS5 |
-|--------|-------------|------|
-| 实现复杂度 | 低 | 中 |
-| 需要 Migration | 否（现有 JOIN 可用） | 是（新建 FTS 表 + triggers） |
-| 性能（小数据量 <1 万） | 可接受 | 好 |
-| 性能（大数据量 >10 万） | 下降 | 好 |
-| 相关性排序 | ✅ 可使用 CASE WHEN 模拟 | 原生支持 |
-| 中文分词 | 不支持 | 需要额外 ICU tokenizer |
-
-**决定**: 第一版使用 `LIKE + JOIN` + `CASE WHEN` 相关性评分快速实现。当条目数超过 5 万且搜索延迟超过 1s 时，开新 Issue 迁移至 FTS5。
+第一版曾使用 `LIKE + JOIN` + `CASE WHEN`。该决定已由
+Migration `019_create_entry_search_index` 取代：当前实现使用 FTS5 trigram，
+支持中英日韩子串检索和 BM25；少于 3 个 Unicode 字符的查询才回退到
+限定范围的参数化 `LIKE`。完整设计见
+[`search-optimization.md`](./search-optimization.md)。
 
 ### 5.6 为什么不在本条 Issue 实现关键词语法？
 
@@ -222,7 +163,7 @@ if (options.search?.trim()) {
 - **按日期/作者等组合条件筛选** — 已有独立 filter 参数但不纳入 search 语法
 - **搜索 Summary/Translation/笔记/标签** — 不在 #34 范围内
 - **AI 语义搜索** — 不在第一版
-- **搜索结果高亮的富文本处理** — 前端范围
+- **复杂富文本片段** — 当前只传输纯文本 snippet，并由 React 安全高亮
 
 ---
 

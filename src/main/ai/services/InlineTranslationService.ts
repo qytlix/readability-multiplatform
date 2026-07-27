@@ -104,10 +104,10 @@ export class InlineTranslationService {
     try {
       let output = '';
       for await (const delta of this.provider.stream({
-        providerKind: profile.providerKind,
-        baseUrl: profile.baseUrl,
-        model: profile.model,
-        apiKey: this.secretStore.read(profile.apiKeyRef),
+        providerKind: profile.translationProviderKind,
+        baseUrl: profile.translationBaseUrl,
+        model: profile.translationModel,
+        apiKey: this.secretStore.read(profile.translationApiKeyRef),
         prompt: buildInlineTranslationPrompt(
           normalized,
           terminologyCandidates,
