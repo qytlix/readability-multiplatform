@@ -19,6 +19,7 @@ import {
   SettingsIcon,
   StarIcon,
   SyncIcon,
+  TagIcon,
   TrashIcon,
 } from '../reader/ReaderIcons';
 import type { EntryFilter } from '../search/entrySearch';
@@ -364,7 +365,7 @@ export const FeedList = ({
           className={`sidebar-item${showTagsView && !settingsActive ? ' is-active' : ''}`}
           onClick={onOpenTags}
         >
-          <span className="sidebar-tag-icon" aria-hidden="true">🏷️</span>
+          <TagIcon />
           <span>标签</span>
         </button>
       </nav>

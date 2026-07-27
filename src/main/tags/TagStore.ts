@@ -88,6 +88,7 @@ export class TagStore {
       SELECT t.id, t.name, t.color, COUNT(et.entryId) AS count
       FROM tag t
       INNER JOIN entry_tag et ON t.id = et.tagId
+      INNER JOIN entry e ON e.id = et.entryId AND e.isDeleted = 0
       GROUP BY t.id
       ORDER BY count DESC, t.name COLLATE NOCASE ASC
     `).all() as Array<TagRow & { count: number }>;

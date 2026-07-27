@@ -764,6 +764,7 @@ export const App = () => {
     feedName: selectedFeedName,
     filter: entryFilter,
     hasActiveSearch: Boolean(appliedSearchQuery),
+    tagName: tagFilter?.tagNames[0],
   });
   const handleExportRequest = useCallback(async () => {
     const ids = Array.from(selectedIds);

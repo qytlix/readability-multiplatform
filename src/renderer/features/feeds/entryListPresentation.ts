@@ -12,6 +12,7 @@ interface EntryListHeadingInput {
   feedName: string | null;
   filter: EntryFilter;
   hasActiveSearch: boolean;
+  tagName?: string;
 }
 
 const getFilterHeading = (filter: EntryFilter): string => {
@@ -24,8 +25,11 @@ export const getEntryListHeading = ({
   feedName,
   filter,
   hasActiveSearch,
+  tagName,
 }: EntryListHeadingInput): string => {
   if (hasActiveSearch) return entryListCopy.searchResults;
+
+  if (tagName) return `标签：${tagName}`;
 
   const filterHeading = getFilterHeading(filter);
   if (feedName === null) return filterHeading;
