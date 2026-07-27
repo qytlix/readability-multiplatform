@@ -384,7 +384,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger, maxCandidate
                 onClick={() => toggleCandidate(candidate.name)}
                 title={candidate.source === 'matched' ? '已有标签' : '新标签建议'}
               >
-                {candidate.source === 'matched' ? '☆ ' : '✨ '}
+                {candidate.source === 'matched' ? '☆ ' : '★ '}
                 {candidate.name}
               </button>
             );
