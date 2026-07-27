@@ -87,7 +87,7 @@ export class TagStore {
     const rows = this.db.prepare(`
       SELECT t.id, t.name, t.color, COUNT(et.entryId) AS count
       FROM tag t
-      LEFT JOIN entry_tag et ON t.id = et.tagId
+      INNER JOIN entry_tag et ON t.id = et.tagId
       GROUP BY t.id
       ORDER BY count DESC, t.name COLLATE NOCASE ASC
     `).all() as Array<TagRow & { count: number }>;
