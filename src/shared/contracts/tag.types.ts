@@ -4,6 +4,11 @@ export interface Tag {
   color: string;
 }
 
+/** Tag with associated entry count (for tag list page). */
+export interface TagWithCount extends Tag {
+  count: number;
+}
+
 export interface EntryTag {
   entryId: number;
   tagId: number;

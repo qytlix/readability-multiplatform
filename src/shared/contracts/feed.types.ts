@@ -37,6 +37,7 @@ export interface Entry {
 
 /** 文章列表轻量投影 */
 import type { PipelineStatus } from './content.types';
+import type { Tag } from './tag.types';
 
 export interface EntryListItem {
   id: number;
@@ -52,6 +53,7 @@ export interface EntryListItem {
   isStarred: boolean;
   summary?: string;                     // 纯文本；不得包含 Feed HTML 标记
   pipelineStatus: PipelineStatus;
+  tags?: Tag[];                         // Phase 3: tag pills + filtering
 }
 
 /** Entry 查询参数 */
@@ -60,6 +62,8 @@ export interface EntryQuery {
   isRead?: boolean;
   isStarred?: boolean;
   search?: string;
+  tagNames?: string[];
+  matchAll?: boolean;
   limit: number;                        // 默认 50
   cursor?: {
     publishedAt: string;

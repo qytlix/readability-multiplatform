@@ -9,6 +9,7 @@ import type {
   FeedEntryReadStats,
 } from '../../../shared/contracts/feed.types';
 import type { PipelineStatus } from '../../../shared/contracts/content.types';
+import type { Tag } from '../../../shared/contracts/tag.types';
 
 interface UpsertEntryParams {
   feedId: number;
@@ -168,6 +169,36 @@ export class EntryStore {
       orderBy = 'ORDER BY relevance DESC, e.publishedAt DESC, e.id DESC';
     }
 
+    // Tag filter: sub-query on entry_tag via tag name(s)
+    if (options.tagNames && options.tagNames.length > 0) {
+      const tagNames = options.tagNames.filter((n) => n.trim().length > 0);
+      if (tagNames.length > 0) {
+        const placeholders = tagNames.map(() => '?').join(', ');
+        const matchAll = options.matchAll !== false; // default AND
+        if (matchAll) {
+          conditions.push(
+            `e.id IN (
+              SELECT et.entryId FROM entry_tag et
+              JOIN tag t ON t.id = et.tagId
+              WHERE t.name IN (${placeholders})
+              GROUP BY et.entryId
+              HAVING COUNT(DISTINCT t.id) = ?
+            )`
+          );
+          whereParams.push(...tagNames, tagNames.length);
+        } else {
+          conditions.push(
+            `e.id IN (
+              SELECT et.entryId FROM entry_tag et
+              JOIN tag t ON t.id = et.tagId
+              WHERE t.name IN (${placeholders})
+            )`
+          );
+          whereParams.push(...tagNames);
+        }
+      }
+    }
+
     // Keyset pagination
     if (options.cursor) {
       conditions.push('(e.publishedAt < ? OR (e.publishedAt = ? AND e.id < ?))');
@@ -195,6 +226,15 @@ export class EntryStore {
     if (hasMore) rows.pop();
 
     const entries = rows.map(toEntryListItem);
+
+    // Batch-populate tags for all returned entries
+    if (entries.length > 0) {
+      const entryIds = entries.map((e) => e.id);
+      const tagMap = this.batchTagsByEntry(entryIds);
+      for (const entry of entries) {
+        entry.tags = tagMap.get(entry.id) ?? [];
+      }
+    }
 
     let nextCursor: { publishedAt: string; id: number } | undefined;
     if (hasMore && entries.length > 0) {
@@ -327,6 +367,32 @@ export class EntryStore {
 
     const row = this.db.prepare(sql).get(...params) as { cnt: number };
     return row.cnt;
+  }
+
+  /**
+   * Batch query tags for a set of entry IDs. Returns a Map<entryId, Tag[]>.
+   */
+  private batchTagsByEntry(entryIds: number[]): Map<number, Tag[]> {
+    if (entryIds.length === 0) return new Map();
+    const placeholders = entryIds.map(() => '?').join(', ');
+    const rows = this.db.prepare(`
+      SELECT et.entryId, t.id, t.name, t.color
+      FROM entry_tag et
+      JOIN tag t ON t.id = et.tagId
+      WHERE et.entryId IN (${placeholders})
+      ORDER BY t.name COLLATE NOCASE ASC
+    `).all(...entryIds) as Array<{ entryId: number; id: number; name: string; color: string }>;
+
+    const map = new Map<number, Tag[]>();
+    for (const row of rows) {
+      let tags = map.get(row.entryId);
+      if (!tags) {
+        tags = [];
+        map.set(row.entryId, tags);
+      }
+      tags.push({ id: row.id, name: row.name, color: row.color });
+    }
+    return map;
   }
 }
 

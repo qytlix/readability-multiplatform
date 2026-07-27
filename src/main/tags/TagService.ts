@@ -1,6 +1,6 @@
 import type { EntryStore } from '../feed/stores/EntryStore';
 import { TAG_ERROR_CODES, TagError } from './shared/tag.errors';
-import type { Tag } from '../../shared/contracts/tag.types';
+import type { Tag, TagWithCount } from '../../shared/contracts/tag.types';
 import type { TagStore } from './TagStore';
 
 const MAX_TAG_NAME_LENGTH = 50;
@@ -50,6 +50,13 @@ export class TagService {
       );
     }
     this.tagStore.untagEntry(entryId, tagId);
+  }
+
+  /**
+   * List all tags with their associated entry count.
+   */
+  listAllWithCount(): TagWithCount[] {
+    return this.tagStore.listAllWithCount();
   }
 
   private assertEntryExists(entryId: number): void {

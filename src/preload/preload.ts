@@ -77,6 +77,8 @@ const entryAPI = {
     isRead?: boolean;
     isStarred?: boolean;
     search?: string;
+    tagNames?: string[];
+    matchAll?: boolean;
     limit: number;
     cursor?: { publishedAt: string; id: number };
   }) => ipcRenderer.invoke(FEED_IPC_CHANNELS.entryList, params),
@@ -260,6 +262,8 @@ const tagAPI = {
     ipcRenderer.invoke(TAG_IPC_CHANNELS.tagEntry, { entryId, tagName }),
   untagEntry: (entryId: number, tagId: number) =>
     ipcRenderer.invoke(TAG_IPC_CHANNELS.untagEntry, { entryId, tagId }),
+  listAllWithCount: () =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.listAllWithCount),
 };
 
 const shaleAPI: ShaleAPI = {

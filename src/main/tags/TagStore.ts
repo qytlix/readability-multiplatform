@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { Tag } from '../../shared/contracts/tag.types';
+import type { Tag, TagWithCount } from '../../shared/contracts/tag.types';
 
 interface TagRow {
   id: number;
@@ -78,6 +78,20 @@ export class TagStore {
     this.db.prepare(`
       DELETE FROM entry_tag WHERE entryId = ? AND tagId = ?
     `).run(entryId, tagId);
+  }
+
+  /**
+   * Return all tags with their associated entry count, ordered by count DESC, name ASC.
+   */
+  listAllWithCount(): TagWithCount[] {
+    const rows = this.db.prepare(`
+      SELECT t.id, t.name, t.color, COUNT(et.entryId) AS count
+      FROM tag t
+      LEFT JOIN entry_tag et ON t.id = et.tagId
+      GROUP BY t.id
+      ORDER BY count DESC, t.name COLLATE NOCASE ASC
+    `).all() as Array<TagRow & { count: number }>;
+    return rows.map((row) => ({ ...toTag(row), count: row.count }));
   }
 }
 
