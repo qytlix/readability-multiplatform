@@ -18,6 +18,8 @@ interface TagFloatingWindowProps {
   container?: HTMLElement;
   /** Called after any tag is added or removed (for sidebar count refresh) */
   onTagsChanged?: () => void;
+  /** Max candidate tags from user preferences (tagAgentMaxCandidates). */
+  maxCandidates?: number;
 }
 
 type LoadState = 'loading' | 'loaded' | 'error';
@@ -28,6 +30,7 @@ export const TagFloatingWindow = ({
   onClose,
   container,
   onTagsChanged,
+  maxCandidates,
 }: TagFloatingWindowProps) => {
   const [tags, setTags] = useState<Tag[]>([]);
   const [availableTags, setAvailableTags] = useState<TagWithCount[]>([]);
@@ -204,6 +207,7 @@ export const TagFloatingWindow = ({
         entryId={entryId}
         onTagsChanged={onTagsChanged}
         autoTrigger
+        maxCandidates={maxCandidates}
       />
       {duplicateWarning && (
         <p className="tag-floating-warning" role="alert">{duplicateWarning}</p>

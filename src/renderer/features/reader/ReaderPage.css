@@ -3393,6 +3393,36 @@ body.workspace-is-resizing * {
   font-weight: 620;
 }
 
+.settings-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.settings-save-btn {
+  padding: 8px 24px;
+  border: 1px solid var(--reader-accent);
+  border-radius: 8px;
+  background: var(--reader-accent);
+  color: var(--reader-accent-ink);
+  font-size: 13px;
+  font-weight: 540;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.settings-save-btn:hover {
+  background: color-mix(in srgb, var(--reader-accent) 85%, white);
+  border-color: color-mix(in srgb, var(--reader-accent) 85%, white);
+}
+
+.settings-save-btn:active {
+  background: var(--reader-accent);
+  opacity: 0.85;
+}
+
 .settings-card-heading p,
 .diagnostics-summary {
   margin: 0;

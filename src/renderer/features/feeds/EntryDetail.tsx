@@ -1062,6 +1062,7 @@ export const EntryDetail = ({
           anchorEl={tagBtnRef.current}
           onClose={() => setShowTagWindow(false)}
           onTagsChanged={onTagsChanged}
+          maxCandidates={aiPreferences.tagAgentMaxCandidates}
         />
       )}
       <div className="entry-detail">

@@ -7,6 +7,8 @@ interface AutoTagPanelProps {
   onTagsChanged?: () => void;
   /** Whether to auto-trigger generation on mount. */
   autoTrigger?: boolean;
+  /** Max number of candidate tags the AI should generate (from user preferences). */
+  maxCandidates?: number;
 }
 
 type PanelState =
@@ -18,48 +20,56 @@ type PanelState =
   | { type: 'error'; message: string }
   | { type: 'done' };
 
-const DEFAULT_MAX_CANDIDATES = 8;
-
 const LOADING_TIMEOUT_SECONDS = 60;
 
 // Persist candidates in the current app session so re-opening the floating
 // window shows the same suggestions without re-generating.
 const sessionCandidates = new Map<number, TagCandidate[]>();
 
-// Track in-flight generation requests across remounts.
+// Track in-flight generation requests across remounts, keyed by
+// "${entryId}:${maxCandidates}" so that changing the setting mid-session
+// does not accidentally reuse a stale promise.
 const pendingRequests = new Map<
-  number,
+  string,
   Promise<{ ok: boolean; data?: TagCandidate[]; error?: { message: string } }>
 >();
 
-async function fetchCandidates(entryId: number): Promise<{
+function pendingKey(entryId: number, maxCandidates: number): string {
+  return `${entryId}:${maxCandidates}`;
+}
+
+async function fetchCandidates(
+  entryId: number,
+  maxCandidates: number,
+): Promise<{
   ok: boolean;
   data?: TagCandidate[];
   error?: { message: string };
 }> {
-  const existing = pendingRequests.get(entryId);
+  const key = pendingKey(entryId, maxCandidates);
+  const existing = pendingRequests.get(key);
   if (existing) return existing;
 
   const promise = window.shaleAPI.tag.autoTagGenerate({
     entryId,
-    maxCandidates: DEFAULT_MAX_CANDIDATES,
+    maxCandidates,
   });
-  pendingRequests.set(entryId, promise);
+  pendingRequests.set(key, promise);
 
   void promise.then(() => {
-    if (pendingRequests.get(entryId) === promise) {
-      pendingRequests.delete(entryId);
+    if (pendingRequests.get(key) === promise) {
+      pendingRequests.delete(key);
     }
   }, () => {
-    if (pendingRequests.get(entryId) === promise) {
-      pendingRequests.delete(entryId);
+    if (pendingRequests.get(key) === promise) {
+      pendingRequests.delete(key);
     }
   });
 
   return promise;
 }
 
-export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPanelProps) => {
+export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger, maxCandidates = 8 }: AutoTagPanelProps) => {
   const [panelState, setPanelState] = useState<PanelState>({ type: 'checking' });
   const [isConfirming, setIsConfirming] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(LOADING_TIMEOUT_SECONDS);
@@ -108,7 +118,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
         setPanelState({ type: 'loading' });
         loadingStartedAt.current = Date.now();
         try {
-          const result = await fetchCandidates(entryId);
+          const result = await fetchCandidates(entryId, maxCandidates);
           if (cancelled || panelPhase.current !== 'loading') return;
           if (!result.ok) {
             setPanelState({ type: 'error', message: result.error?.message ?? '生成失败。' });
@@ -135,7 +145,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
       }
     })();
     return () => { cancelled = true; };
-  }, [entryId, autoTrigger]);
+  }, [entryId, autoTrigger, maxCandidates]);
 
   // Countdown timer while loading
   useEffect(() => {
@@ -166,7 +176,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
     setPanelState({ type: 'loading' });
     loadingStartedAt.current = Date.now();
     try {
-      const result = await fetchCandidates(entryId);
+      const result = await fetchCandidates(entryId, maxCandidates);
       if (panelPhase.current !== 'loading') return;
       if (!result.ok) {
         setPanelState({ type: 'error', message: result.error?.message ?? '生成失败。' });
@@ -187,7 +197,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
       if (panelPhase.current !== 'loading') return;
       setPanelState({ type: 'error', message: '标签生成请求失败。' });
     }
-  }, [entryId]);
+  }, [entryId, maxCandidates]);
 
   const generate = useCallback(() => {
     void startGeneration();

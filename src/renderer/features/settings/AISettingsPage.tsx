@@ -134,6 +134,26 @@ export const AISettingsPage = ({
   const [pendingTerminologyLibraryId, setPendingTerminologyLibraryId] =
     useState<string | null>(null);
   const terminologyFileRef = useRef<HTMLInputElement>(null);
+  // Tag Agent local draft: changes only apply on explicit Save.
+  const [tagDraftTriggerMode, setTagDraftTriggerMode] =
+    useState<TagAgentTriggerMode>(preferences.tagAgentTriggerMode);
+  const [tagDraftConfirmMode, setTagDraftConfirmMode] =
+    useState<TagAgentConfirmMode>(preferences.tagAgentConfirmMode);
+  const [tagDraftMaxCandidates, setTagDraftMaxCandidates] =
+    useState(preferences.tagAgentMaxCandidates);
+  const [tagDraftSaved, setTagDraftSaved] = useState(false);
+
+  // Sync draft when preferences change from outside
+  useEffect(() => {
+    setTagDraftTriggerMode(preferences.tagAgentTriggerMode);
+    setTagDraftConfirmMode(preferences.tagAgentConfirmMode);
+    setTagDraftMaxCandidates(preferences.tagAgentMaxCandidates);
+  }, [
+    preferences.tagAgentTriggerMode,
+    preferences.tagAgentConfirmMode,
+    preferences.tagAgentMaxCandidates,
+  ]);
+
   const [activeSettingsSection, setActiveSettingsSection] =
     useState<SettingsSectionId>('settings-reading');
   const settingsNavigationRef = useRef<HTMLElement>(null);
@@ -1104,10 +1124,11 @@ export const AISettingsPage = ({
                 <label>
                   触发方式
                   <select
-                    value={preferences.tagAgentTriggerMode}
-                    onChange={(event) => updatePreferences({
-                      tagAgentTriggerMode: event.target.value as TagAgentTriggerMode,
-                    })}
+                    value={tagDraftTriggerMode}
+                    onChange={(event) => {
+                      setTagDraftTriggerMode(event.target.value as TagAgentTriggerMode);
+                      setTagDraftSaved(false);
+                    }}
                   >
                     <option value="manual">手动触发</option>
                     <option value="auto">进入文章自动触发</option>
@@ -1116,29 +1137,47 @@ export const AISettingsPage = ({
                 <label>
                   确认方式
                   <select
-                    value={preferences.tagAgentConfirmMode}
-                    onChange={(event) => updatePreferences({
-                      tagAgentConfirmMode: event.target.value as TagAgentConfirmMode,
-                    })}
+                    value={tagDraftConfirmMode}
+                    onChange={(event) => {
+                      setTagDraftConfirmMode(event.target.value as TagAgentConfirmMode);
+                      setTagDraftSaved(false);
+                    }}
                   >
                     <option value="manual">手动确认</option>
                     <option value="auto">自动确认</option>
                   </select>
                 </label>
               </div>
-              <div className="settings-fields">
+              <div className="settings-fields settings-fields-two-columns">
                 <label>
                   max 候选数
                   <input
                     type="number"
                     min={1}
                     max={50}
-                    value={preferences.tagAgentMaxCandidates}
-                    onChange={(event) => updatePreferences({
-                      tagAgentMaxCandidates: Math.max(1, Math.min(50, Number(event.target.value) || 1)),
-                    })}
+                    value={tagDraftMaxCandidates}
+                    onChange={(event) => {
+                      setTagDraftMaxCandidates(Math.max(1, Math.min(50, Number(event.target.value) || 1)));
+                      setTagDraftSaved(false);
+                    }}
                   />
                 </label>
+              </div>
+              <div className="settings-card-actions">
+                <button
+                  type="button"
+                  className="settings-save-btn"
+                  onClick={() => {
+                    updatePreferences({
+                      tagAgentTriggerMode: tagDraftTriggerMode,
+                      tagAgentConfirmMode: tagDraftConfirmMode,
+                      tagAgentMaxCandidates: tagDraftMaxCandidates,
+                    });
+                    setTagDraftSaved(true);
+                  }}
+                >
+                  {tagDraftSaved ? '已保存 ✓' : '保存'}
+                </button>
               </div>
             </div>
           </section>
