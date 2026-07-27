@@ -16,7 +16,9 @@ import { DEFAULT_TRANSLATION_EXPERT_ID } from '../../../shared/contracts/transla
 import {
   TRANSLATION_ERROR_CODES,
   TranslationError,
+  toTranslationIpcError,
 } from '../../../shared/errors/translation.errors';
+import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summary.errors';
 import type { ProviderProfileStore } from '../stores/ProviderProfileStore';
 import type { SecretStore } from '../stores/SecretStore';
 import type { TextGenerationProvider } from '../provider/TextGenerationProvider';
@@ -34,6 +36,14 @@ import type {
   ResolvedTranslationExpert,
   TranslationExpertService,
 } from './TranslationExpertService';
+import {
+  elapsedTranslationMilliseconds,
+  logTranslationInlineFailed,
+  TRANSLATION_INLINE_FAILURE_ERROR_CODES,
+  type TranslationInlineFailureErrorCode,
+  type TranslationInlineFailureStage,
+  type TranslationOperationLogger,
+} from './TranslationLogging';
 
 const MAX_SELECTION_CHARACTERS = 500;
 const MAX_PARAGRAPH_CHARACTERS = 4_000;
@@ -63,56 +73,64 @@ export class InlineTranslationService {
     private readonly provider: TextGenerationProvider,
     private readonly terminologyLookup: TerminologyLookup = new EmptyTerminologyLookup(),
     private readonly expertService?: Pick<TranslationExpertService, 'resolve'>,
+    private readonly logger?: TranslationOperationLogger,
   ) {}
 
   async translate(request: InlineTranslationRequest): Promise<InlineTranslationResult> {
     const normalized = validateInlineTranslationRequest(request);
-    const profile = this.profileStore.findActiveWithSecret();
-    if (!profile) {
-      throw new TranslationError(
-        TRANSLATION_ERROR_CODES.TRANSLATION_PROVIDER_NOT_CONFIGURED,
-        'Configure an AI provider before using inline Translation.',
-        false,
-      );
-    }
-
-    const terminologyVersion = normalized.useTerminology === false
-      ? 'none'
-      : this.terminologyLookup.getVersion();
-    const terminologyCandidates = terminologyVersion === 'none'
-      ? []
-      : this.terminologyLookup.findCandidates(
-          [normalized.sourceText, normalized.context].filter(Boolean).join('\n'),
-          normalized.targetLanguage,
-          terminologyVersion,
-        ).slice(0, MAX_TERMINOLOGY_CANDIDATES);
-    const expert = this.resolveExpert(normalized.expertId);
-    const expertInstruction = expert.expert
-      ? renderExpertInstruction(
-          expert.expert.instruction,
-          normalized.sourceLanguage === 'auto'
-            ? 'automatically detected source language'
-            : TRANSLATION_LANGUAGE_LABELS[normalized.sourceLanguage],
-          TRANSLATION_LANGUAGE_LABELS[normalized.targetLanguage],
-        )
-      : undefined;
-
-    this.activeController?.abort();
-    const controller = new AbortController();
-    this.activeController = controller;
+    const startedAt = performance.now();
+    let stage: TranslationInlineFailureStage = 'configuration';
+    let controller: AbortController | undefined;
 
     try {
+      const profile = this.profileStore.findActiveWithSecret();
+      if (!profile) {
+        throw new TranslationError(
+          TRANSLATION_ERROR_CODES.TRANSLATION_PROVIDER_NOT_CONFIGURED,
+          'Configure an AI provider before using inline Translation.',
+          false,
+        );
+      }
+
+      const terminologyVersion = normalized.useTerminology === false
+        ? 'none'
+        : this.terminologyLookup.getVersion();
+      const terminologyCandidates = terminologyVersion === 'none'
+        ? []
+        : this.terminologyLookup.findCandidates(
+            [normalized.sourceText, normalized.context].filter(Boolean).join('\n'),
+            normalized.targetLanguage,
+            terminologyVersion,
+          ).slice(0, MAX_TERMINOLOGY_CANDIDATES);
+      const expert = this.resolveExpert(normalized.expertId);
+      const expertInstruction = expert.expert
+        ? renderExpertInstruction(
+            expert.expert.instruction,
+            normalized.sourceLanguage === 'auto'
+              ? 'automatically detected source language'
+              : TRANSLATION_LANGUAGE_LABELS[normalized.sourceLanguage],
+            TRANSLATION_LANGUAGE_LABELS[normalized.targetLanguage],
+          )
+        : undefined;
+      const apiKey = this.secretStore.read(profile.apiKeyRef);
+      const prompt = buildInlineTranslationPrompt(
+        normalized,
+        terminologyCandidates,
+        expertInstruction,
+      );
+
+      this.activeController?.abort();
+      controller = new AbortController();
+      this.activeController = controller;
+
+      stage = 'provider';
       let output = '';
       for await (const delta of this.provider.stream({
         providerKind: profile.providerKind,
         baseUrl: profile.baseUrl,
         model: profile.model,
-        apiKey: this.secretStore.read(profile.apiKeyRef),
-        prompt: buildInlineTranslationPrompt(
-          normalized,
-          terminologyCandidates,
-          expertInstruction,
-        ),
+        apiKey,
+        prompt,
         signal: controller.signal,
       })) {
         output += delta;
@@ -125,6 +143,7 @@ export class InlineTranslationService {
         }
       }
 
+      stage = 'parse';
       if (!output.trim()) {
         throw new TranslationError(
           TRANSLATION_ERROR_CODES.TRANSLATION_EMPTY_OUTPUT,
@@ -134,6 +153,16 @@ export class InlineTranslationService {
       }
 
       return parseInlineTranslationOutput(normalized, output);
+    } catch (error) {
+      const failure = classifyInlineTranslationFailure(error, stage);
+      if (!isConfirmedInlineAbort(error, controller) && failure) {
+        logTranslationInlineFailed(this.logger, {
+          ...failure,
+          durationMs: elapsedTranslationMilliseconds(startedAt),
+          success: false,
+        });
+      }
+      throw error;
     } finally {
       if (this.activeController === controller) this.activeController = null;
     }
@@ -165,6 +194,90 @@ export class InlineTranslationService {
       id: DEFAULT_TRANSLATION_EXPERT_ID,
       contentHash: DEFAULT_TRANSLATION_EXPERT_ID,
     };
+  }
+}
+
+function isConfirmedInlineAbort(
+  error: unknown,
+  controller: AbortController | undefined,
+): boolean {
+  if (!controller?.signal.aborted) return false;
+  if (
+    error instanceof TranslationError
+    && error.code === TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED
+  ) {
+    return true;
+  }
+  if (
+    error instanceof SummaryError
+    && error.code === SUMMARY_ERROR_CODES.SUMMARY_INTERRUPTED
+  ) {
+    return true;
+  }
+  if (error instanceof Error && error.name === 'AbortError') return true;
+  return controller.signal.reason !== undefined && controller.signal.reason === error;
+}
+
+function classifyInlineTranslationFailure(
+  error: unknown,
+  fallbackStage: TranslationInlineFailureStage,
+): { stage: TranslationInlineFailureStage; errorCode: TranslationInlineFailureErrorCode } | undefined {
+  const errorCode = toTranslationIpcError(error).code;
+  if (errorCode === TRANSLATION_ERROR_CODES.TRANSLATION_INVALID_REQUEST) return undefined;
+
+  switch (errorCode) {
+    case TRANSLATION_ERROR_CODES.TRANSLATION_PROVIDER_NOT_CONFIGURED:
+      return {
+        stage: 'configuration',
+        errorCode: TRANSLATION_INLINE_FAILURE_ERROR_CODES.providerNotConfigured,
+      };
+    case TRANSLATION_ERROR_CODES.TRANSLATION_TERMINOLOGY_UNAVAILABLE:
+      return {
+        stage: 'configuration',
+        errorCode: TRANSLATION_INLINE_FAILURE_ERROR_CODES.terminologyUnavailable,
+      };
+    case TRANSLATION_ERROR_CODES.TRANSLATION_PROVIDER_AUTH:
+      return {
+        stage: 'provider',
+        errorCode: TRANSLATION_INLINE_FAILURE_ERROR_CODES.providerAuth,
+      };
+    case TRANSLATION_ERROR_CODES.TRANSLATION_PROVIDER_REQUEST_FAILED:
+      return {
+        stage: 'provider',
+        errorCode: TRANSLATION_INLINE_FAILURE_ERROR_CODES.providerRequestFailed,
+      };
+    case TRANSLATION_ERROR_CODES.TRANSLATION_PROVIDER_TIMEOUT:
+      return {
+        stage: 'provider',
+        errorCode: TRANSLATION_INLINE_FAILURE_ERROR_CODES.providerTimeout,
+      };
+    case TRANSLATION_ERROR_CODES.TRANSLATION_NETWORK_ERROR:
+      return {
+        stage: 'provider',
+        errorCode: TRANSLATION_INLINE_FAILURE_ERROR_CODES.networkError,
+      };
+    case TRANSLATION_ERROR_CODES.TRANSLATION_EMPTY_OUTPUT:
+      return {
+        stage: 'parse',
+        errorCode: TRANSLATION_INLINE_FAILURE_ERROR_CODES.emptyOutput,
+      };
+    case TRANSLATION_ERROR_CODES.TRANSLATION_INVALID_STRUCTURE:
+      return {
+        stage: 'parse',
+        errorCode: TRANSLATION_INLINE_FAILURE_ERROR_CODES.invalidStructure,
+      };
+    case TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED:
+      return fallbackStage === 'provider'
+        ? {
+            stage: 'provider',
+            errorCode: TRANSLATION_INLINE_FAILURE_ERROR_CODES.unknownError,
+          }
+        : undefined;
+    default:
+      return {
+        stage: fallbackStage,
+        errorCode: TRANSLATION_INLINE_FAILURE_ERROR_CODES.unknownError,
+      };
   }
 }
 

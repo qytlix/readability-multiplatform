@@ -16,6 +16,7 @@ const capturedLoggers = vi.hoisted(() => ({
   provider: undefined as unknown,
   summary: undefined as unknown,
   translation: undefined as unknown,
+  inlineTranslation: undefined as unknown,
 }));
 
 vi.mock('electron', () => ({ safeStorage: {} }));
@@ -109,7 +110,11 @@ vi.mock('../../../src/main/ai/services/TranslationService', () => ({
   },
 }));
 vi.mock('../../../src/main/ai/services/InlineTranslationService', () => ({
-  InlineTranslationService: class {},
+  InlineTranslationService: class {
+    constructor(...arguments_: unknown[]) {
+      capturedLoggers.inlineTranslation = arguments_[5];
+    }
+  },
 }));
 vi.mock('../../../src/main/ai/stores/TranslationStore', () => ({
   TranslationStore: class {
@@ -134,9 +139,10 @@ describe('Operation logger service assembly', () => {
     capturedLoggers.provider = undefined;
     capturedLoggers.summary = undefined;
     capturedLoggers.translation = undefined;
+    capturedLoggers.inlineTranslation = undefined;
   });
 
-  it('passes the same Main operation logger to Feed, Content, OPML, Provider, Summary, and Translation services', () => {
+  it('passes the same Main operation logger to Feed, Content, OPML, Provider, and Translation services', () => {
     const operationLogger: FeedOperationLogger
       & ContentOperationLogger
       & OPMLOperationLogger
@@ -157,5 +163,6 @@ describe('Operation logger service assembly', () => {
     expect(capturedLoggers.provider).toBe(operationLogger);
     expect(capturedLoggers.summary).toBe(operationLogger);
     expect(capturedLoggers.translation).toBe(operationLogger);
+    expect(capturedLoggers.inlineTranslation).toBe(operationLogger);
   });
 });

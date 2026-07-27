@@ -71,6 +71,14 @@ contains annotation IDs, notes, selected text, anchors, offsets, article data,
 or raw database errors. Normal annotation actions and ordinary input or overlap
 validation produce no diagnostic record.
 
+`translation.inline.failed` is emitted only by the one-shot inline Translation
+service after a final configuration, Provider, or structured-output parse
+failure. It contains only a controlled stage, stable error code, duration, and
+`success: false`. Successful translations, overlay closure, selection changes,
+`translation:inline-cancel`, and confirmed Provider aborts produce no record.
+It never includes selected text, paragraph context, output, terminology,
+expert or model data, IDs, hashes, or raw errors.
+
 ## Save behavior
 
 Main owns the native save dialog and the final write. Cancel returns a normal

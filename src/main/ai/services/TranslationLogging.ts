@@ -22,6 +22,7 @@ export const TRANSLATION_LOG_EVENTS = {
   recoveryCompleted: 'translation.recovery.completed',
   providerRequestFailed: 'translation.provider.request.failed',
   missingSegmentsDetected: 'translation.provider.omission.detected',
+  inlineFailed: 'translation.inline.failed',
 } as const;
 
 export const TRANSLATION_LOG_COMPONENTS = {
@@ -29,9 +30,15 @@ export const TRANSLATION_LOG_COMPONENTS = {
   recovery: 'translation.recovery',
   providerRequest: 'translation.provider.request',
   providerRecovery: 'translation.provider.recovery',
+  inline: 'translation.inline',
 } as const;
 
 export const TRANSLATION_RUN_FAILURE_STAGES = ['stream', 'persist'] as const;
+export const TRANSLATION_INLINE_FAILURE_STAGES = [
+  'configuration',
+  'provider',
+  'parse',
+] as const;
 export const TRANSLATION_PROVIDER_REQUEST_KINDS = ['batch', 'compensation'] as const;
 export const TRANSLATION_LOG_TRIGGERS = [
   'initial',
@@ -57,7 +64,20 @@ export const TRANSLATION_LOG_ERROR_CODES = {
   interrupted: 'TRANSLATION_INTERRUPTED',
 } as const;
 
+export const TRANSLATION_INLINE_FAILURE_ERROR_CODES = {
+  providerNotConfigured: 'TRANSLATION_PROVIDER_NOT_CONFIGURED',
+  terminologyUnavailable: 'TRANSLATION_TERMINOLOGY_UNAVAILABLE',
+  providerAuth: 'TRANSLATION_PROVIDER_AUTH',
+  providerRequestFailed: 'TRANSLATION_PROVIDER_REQUEST_FAILED',
+  providerTimeout: 'TRANSLATION_PROVIDER_TIMEOUT',
+  networkError: 'TRANSLATION_NETWORK_ERROR',
+  emptyOutput: 'TRANSLATION_EMPTY_OUTPUT',
+  invalidStructure: 'TRANSLATION_INVALID_STRUCTURE',
+  unknownError: 'TRANSLATION_UNKNOWN_ERROR',
+} as const;
+
 export type TranslationRunFailureStage = (typeof TRANSLATION_RUN_FAILURE_STAGES)[number];
+export type TranslationInlineFailureStage = (typeof TRANSLATION_INLINE_FAILURE_STAGES)[number];
 export type TranslationProviderRequestKind = (
   typeof TRANSLATION_PROVIDER_REQUEST_KINDS
 )[number];
@@ -75,6 +95,9 @@ export type TranslationContextWarningCode = (
 export type TranslationLogErrorCode = (
   typeof TRANSLATION_LOG_ERROR_CODES
 )[keyof typeof TRANSLATION_LOG_ERROR_CODES];
+export type TranslationInlineFailureErrorCode = (
+  typeof TRANSLATION_INLINE_FAILURE_ERROR_CODES
+)[keyof typeof TRANSLATION_INLINE_FAILURE_ERROR_CODES];
 
 export interface TranslationRunStartedLogContext {
   taskRunId: number;
@@ -215,6 +238,14 @@ export interface TranslationMissingSegmentsLogContext
   responseDiagnostics?: TranslationProviderResponseDiagnostics;
 }
 
+/** Safe terminal diagnostics for an ephemeral Reader selection or paragraph translation. */
+export interface TranslationInlineFailedLogContext {
+  stage: TranslationInlineFailureStage;
+  errorCode: TranslationInlineFailureErrorCode;
+  durationMs: number;
+  success: false;
+}
+
 const TRANSLATION_RUN_FAILURE_ERROR_CODES_BY_STAGE = {
   stream: [
     TRANSLATION_LOG_ERROR_CODES.emptyOutput,
@@ -227,6 +258,29 @@ const TRANSLATION_RUN_FAILURE_ERROR_CODES_BY_STAGE = {
   ],
   persist: [TRANSLATION_LOG_ERROR_CODES.unknownError],
 } as const satisfies Record<TranslationRunFailureStage, readonly TranslationLogErrorCode[]>;
+
+const TRANSLATION_INLINE_FAILURE_ERROR_CODES_BY_STAGE = {
+  configuration: [
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.providerNotConfigured,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.terminologyUnavailable,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.unknownError,
+  ],
+  provider: [
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.providerAuth,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.providerRequestFailed,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.providerTimeout,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.networkError,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.unknownError,
+  ],
+  parse: [
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.emptyOutput,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.invalidStructure,
+    TRANSLATION_INLINE_FAILURE_ERROR_CODES.unknownError,
+  ],
+} as const satisfies Record<
+  TranslationInlineFailureStage,
+  readonly TranslationInlineFailureErrorCode[]
+>;
 
 /** The limited logging surface required by Translation task lifecycle operations. */
 export interface TranslationOperationLogger {
@@ -256,11 +310,16 @@ export interface TranslationOperationLogger {
   error(
     event:
       | typeof TRANSLATION_LOG_EVENTS.runFailed
-      | typeof TRANSLATION_LOG_EVENTS.providerRequestFailed,
+      | typeof TRANSLATION_LOG_EVENTS.providerRequestFailed
+      | typeof TRANSLATION_LOG_EVENTS.inlineFailed,
     component:
       | typeof TRANSLATION_LOG_COMPONENTS.run
-      | typeof TRANSLATION_LOG_COMPONENTS.providerRequest,
-    context: TranslationRunFailedLogContext | TranslationProviderRequestFailedLogContext,
+      | typeof TRANSLATION_LOG_COMPONENTS.providerRequest
+      | typeof TRANSLATION_LOG_COMPONENTS.inline,
+    context:
+      | TranslationRunFailedLogContext
+      | TranslationProviderRequestFailedLogContext
+      | TranslationInlineFailedLogContext,
   ): void;
 }
 
@@ -463,6 +522,34 @@ export function logTranslationMissingSegmentsDetected(
   }
 }
 
+export function logTranslationInlineFailed(
+  logger: TranslationOperationLogger | undefined,
+  context: TranslationInlineFailedLogContext,
+): void {
+  if (
+    !isSafeDuration(context.durationMs)
+    || context.success !== false
+    || !isAllowedInlineFailure(context.stage, context.errorCode)
+  ) {
+    return;
+  }
+
+  try {
+    logger?.error(
+      TRANSLATION_LOG_EVENTS.inlineFailed,
+      TRANSLATION_LOG_COMPONENTS.inline,
+      {
+        stage: context.stage,
+        errorCode: context.errorCode,
+        durationMs: context.durationMs,
+        success: false,
+      },
+    );
+  } catch {
+    // Logging is observational and must not change inline Translation behavior.
+  }
+}
+
 function toRunSummaryContext(
   context: TranslationRunDiagnosticSummary,
 ): TranslationRunDiagnosticSummary {
@@ -566,6 +653,19 @@ function isAllowedRunFailure(
 
   return TRANSLATION_RUN_FAILURE_ERROR_CODES_BY_STAGE[
     stage as TranslationRunFailureStage
+  ].includes(errorCode as never);
+}
+
+function isAllowedInlineFailure(
+  stage: unknown,
+  errorCode: unknown,
+): stage is TranslationInlineFailureStage {
+  if (!TRANSLATION_INLINE_FAILURE_STAGES.includes(stage as TranslationInlineFailureStage)) {
+    return false;
+  }
+
+  return TRANSLATION_INLINE_FAILURE_ERROR_CODES_BY_STAGE[
+    stage as TranslationInlineFailureStage
   ].includes(errorCode as never);
 }
 
