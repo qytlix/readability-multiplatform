@@ -1180,7 +1180,10 @@ export const App = () => {
                 beforeTranslationStart={requestTranslationSetupNotice}
                 selectionMode={selectionMode}
                 selectedIds={selectedIds}
-                onTagsChanged={() => void loadEntryStats()}
+                onTagsChanged={() => {
+                  void loadEntryStats();
+                  void requestEntries(undefined, false);
+                }}
                 onExportRequest={handleExportRequest}
                 onFeedback={setReaderFeedback}
                 pageTurnAnimationEnabled={
