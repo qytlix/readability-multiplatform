@@ -625,6 +625,29 @@ body.workspace-is-resizing * {
   line-height: 1.5;
 }
 
+.story-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.story-card-tag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: hsl(var(--tag-hue, 0), 30%, 32%);
+  color: #d0d8ce;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.reader-page[data-theme="light"] .story-card-tag {
+  background: hsl(var(--tag-hue, 0), 24%, 82%);
+  color: #3a3f39;
+}
+
 .story-list-empty {
   display: grid;
   min-height: 300px;
