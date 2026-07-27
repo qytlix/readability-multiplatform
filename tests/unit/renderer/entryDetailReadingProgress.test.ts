@@ -202,6 +202,7 @@ describe('EntryDetail reading-progress restoration', () => {
     const onReadingProgressChange = vi.fn().mockResolvedValue(undefined);
     const renderWithLoadStatus = async (
       entryLoadStatus: 'loading' | 'success',
+      pageTurnAnimationEnabled = true,
     ): Promise<void> => {
       await act(async () => {
         root.render(createElement(EntryDetail, {
@@ -220,6 +221,7 @@ describe('EntryDetail reading-progress restoration', () => {
           aiToolbarTarget: null,
           onAIViewStateChange: vi.fn(),
           onReadingProgressChange,
+          pageTurnAnimationEnabled,
         }));
         await Promise.resolve();
       });
@@ -268,6 +270,12 @@ describe('EntryDetail reading-progress restoration', () => {
     });
     vi.useRealTimers();
 
+    act(() => {
+      container.querySelector<HTMLElement>(
+        '.reading-progress-book-single-page.is-turning-left',
+      )?.dispatchEvent(new window.Event('webkitAnimationEnd', { bubbles: true }));
+    });
+
     expect(onReadingProgressChange).toHaveBeenCalledWith(entry.id, 0.75);
     expect(
       container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'),
@@ -289,6 +297,11 @@ describe('EntryDetail reading-progress restoration', () => {
       scrollContainer.scrollTop = 650;
       scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
     });
+    act(() => {
+      container.querySelector<HTMLElement>(
+        '.reading-progress-book-flips.is-turning-left > .flip1',
+      )?.dispatchEvent(new window.Event('webkitAnimationEnd', { bubbles: true }));
+    });
 
     expect(
       container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'),
@@ -304,6 +317,19 @@ describe('EntryDetail reading-progress restoration', () => {
     expect(jumpToStartButton).not.toBeNull();
     act(() => jumpToStartButton?.click());
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'smooth' });
+
+    await renderWithLoadStatus('success', false);
+    expect(container.querySelector(
+      '.reading-progress-book-flips:not(.is-resting), .reading-progress-book-single-page',
+    )).toBeNull();
+    act(() => {
+      if (!scrollContainer) return;
+      scrollContainer.scrollTop = 700;
+      scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    expect(container.querySelector(
+      '.reading-progress-book-flips:not(.is-resting), .reading-progress-book-single-page',
+    )).toBeNull();
   });
 
   it('reapplies saved progress when delayed content increases the scroll height', async () => {

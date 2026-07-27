@@ -261,6 +261,39 @@
   color: var(--reader-accent);
 }
 
+.sidebar-search-scope {
+  display: flex;
+  min-height: 24px;
+  padding: 0 8px 6px 34px;
+  align-items: center;
+  color: var(--reader-text-muted);
+  font-size: 10px;
+}
+
+.sidebar-search-scope button,
+.sidebar-search-scope span {
+  max-width: 100%;
+  overflow: hidden;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-search-scope button {
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--reader-accent) 30%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--reader-accent) 8%, transparent);
+  cursor: pointer;
+}
+
+.sidebar-search-scope button:hover,
+.sidebar-search-scope button:focus-visible {
+  color: var(--reader-text);
+  border-color: color-mix(in srgb, var(--reader-accent) 58%, transparent);
+  outline: none;
+}
+
 .sidebar-navigation {
   padding: 9px 0 16px;
 }
@@ -623,6 +656,14 @@ body.workspace-is-resizing * {
   color: #8f988d;
   font-size: 11px;
   line-height: 1.5;
+}
+
+.entry-search-match {
+  padding: 0 0.08em;
+  border-radius: 0.16em;
+  color: inherit;
+  background: color-mix(in srgb, var(--reader-accent) 28%, transparent);
+  box-decoration-break: clone;
 }
 
 .story-list-empty {
@@ -1655,10 +1696,30 @@ body.workspace-is-resizing * {
   position: relative;
   width: 100px;
   height: 60px;
+  contain: layout style;
+  isolation: isolate;
+}
+
+.reading-progress-book-visual::after {
+  position: absolute;
+  z-index: 0;
+  right: 5px;
+  bottom: 4px;
+  left: 5px;
+  height: 15px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0.28) 0%,
+    rgba(0, 0, 0, 0.12) 42%,
+    transparent 74%
+  );
+  content: "";
+  pointer-events: none;
 }
 
 .reading-progress-book-model {
   position: absolute;
+  z-index: 1;
   top: 0;
   left: 50%;
   width: 520px;
@@ -1666,7 +1727,6 @@ body.workspace-is-resizing * {
   margin-left: -260px;
   perspective: 630px;
   perspective-origin: center 50px;
-  filter: drop-shadow(0 10px 5px rgba(0, 0, 0, 0.25));
   transform: scale(0.22);
   transform-origin: top center;
   transform-style: preserve-3d;
@@ -4050,6 +4110,23 @@ body.workspace-is-resizing * {
 .provider-settings-dialog form {
   display: grid;
   gap: 18px;
+}
+
+.provider-route-settings {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--reader-line);
+  border-radius: 8px;
+  gap: 14px;
+}
+
+.provider-route-settings legend {
+  padding: 0 6px;
+  color: var(--reader-text);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .provider-settings-embedded label span,

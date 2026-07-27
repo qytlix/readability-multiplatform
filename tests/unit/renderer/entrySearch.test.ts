@@ -5,17 +5,19 @@ import {
 } from '../../../src/renderer/features/search/entrySearch';
 
 describe('entry search query', () => {
-  it('trims the search query', () => {
-    expect(normalizeSearchQuery('  local first  ')).toBe('local first');
+  it('normalizes compatibility characters and whitespace', () => {
+    expect(normalizeSearchQuery('  local   ﬁrst  ')).toBe('local first');
   });
 
-  it('searches every feed and ignores the browsing filter', () => {
+  it('keeps the current feed and browsing filter while searching', () => {
     expect(buildEntryQuery({
       selectedFeedId: 42,
       filter: 'starred',
       searchQuery: ' design ',
       limit: 30,
     })).toEqual({
+      feedId: 42,
+      isStarred: true,
       search: 'design',
       limit: 30,
     });

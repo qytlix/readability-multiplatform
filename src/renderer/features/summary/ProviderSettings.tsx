@@ -34,42 +34,75 @@ export const ProviderSettings = ({
   mode = 'dialog',
   onClose,
 }: ProviderSettingsProps) => {
-  const initialKind = profile?.providerKind ?? DEFAULT_PROVIDER_KIND;
-  const initialPreset = getProviderPreset(initialKind);
-  const [providerKind, setProviderKind] = useState<ProviderKind>(initialKind);
-  const [baseUrl, setBaseUrl] = useState(profile?.baseUrl ?? initialPreset.defaultBaseUrl);
-  const [model, setModel] = useState(profile?.model ?? initialPreset.defaultModel);
+  const initialSummaryKind = profile?.providerKind ?? DEFAULT_PROVIDER_KIND;
+  const initialSummaryPreset = getProviderPreset(initialSummaryKind);
+  const initialTranslationKind = profile?.translationProviderKind ?? initialSummaryKind;
+  const initialTranslationPreset = getProviderPreset(initialTranslationKind);
+  const [summaryProviderKind, setSummaryProviderKind] =
+    useState<ProviderKind>(initialSummaryKind);
+  const [summaryBaseUrl, setSummaryBaseUrl] = useState(
+    profile?.baseUrl ?? initialSummaryPreset.defaultBaseUrl,
+  );
+  const [summaryModel, setSummaryModel] = useState(
+    profile?.summaryModel ?? initialSummaryPreset.defaultModel,
+  );
+  const [translationProviderKind, setTranslationProviderKind] =
+    useState<ProviderKind>(initialTranslationKind);
+  const [translationBaseUrl, setTranslationBaseUrl] = useState(
+    profile?.translationBaseUrl ?? initialTranslationPreset.defaultBaseUrl,
+  );
+  const [translationModel, setTranslationModel] = useState(
+    profile?.translationModel ?? initialTranslationPreset.defaultModel,
+  );
   const [status, setStatus] = useState('');
   const [statusTone, setStatusTone] = useState<'neutral' | 'success' | 'error'>('neutral');
   const [saving, setSaving] = useState(false);
-  const apiKeyInputRef = useRef<HTMLInputElement>(null);
+  const summaryApiKeyInputRef = useRef<HTMLInputElement>(null);
+  const translationApiKeyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const kind = profile?.providerKind ?? DEFAULT_PROVIDER_KIND;
-    const preset = getProviderPreset(kind);
-    setProviderKind(kind);
-    setBaseUrl(profile?.baseUrl ?? preset.defaultBaseUrl);
-    setModel(profile?.model ?? preset.defaultModel);
+    const nextSummaryKind = profile?.providerKind ?? DEFAULT_PROVIDER_KIND;
+    const nextSummaryPreset = getProviderPreset(nextSummaryKind);
+    const nextTranslationKind = profile?.translationProviderKind ?? nextSummaryKind;
+    const nextTranslationPreset = getProviderPreset(nextTranslationKind);
+    setSummaryProviderKind(nextSummaryKind);
+    setSummaryBaseUrl(profile?.baseUrl ?? nextSummaryPreset.defaultBaseUrl);
+    setSummaryModel(profile?.summaryModel ?? nextSummaryPreset.defaultModel);
+    setTranslationProviderKind(nextTranslationKind);
+    setTranslationBaseUrl(
+      profile?.translationBaseUrl ?? nextTranslationPreset.defaultBaseUrl,
+    );
+    setTranslationModel(profile?.translationModel ?? nextTranslationPreset.defaultModel);
   }, [profile]);
 
   const save = async (): Promise<ProviderProfile | null> => {
     setSaving(true);
     setStatus('');
     setStatusTone('neutral');
-    const apiKey = apiKeyInputRef.current?.value.trim();
+    const summaryApiKey = summaryApiKeyInputRef.current?.value.trim();
+    const translationApiKey = translationApiKeyInputRef.current?.value.trim();
     try {
       const result = await window.shaleAPI.provider.save({
-        providerKind,
-        baseUrl,
-        model,
-        ...(apiKey ? { apiKey } : {}),
+        summary: {
+          providerKind: summaryProviderKind,
+          baseUrl: summaryBaseUrl,
+          model: summaryModel,
+          ...(summaryApiKey ? { apiKey: summaryApiKey } : {}),
+        },
+        translation: {
+          providerKind: translationProviderKind,
+          baseUrl: translationBaseUrl,
+          model: translationModel,
+          ...(translationApiKey ? { apiKey: translationApiKey } : {}),
+        },
       });
       if (!result.ok) {
         setStatus(result.error.message);
         setStatusTone('error');
         return null;
       }
-      if (apiKeyInputRef.current) apiKeyInputRef.current.value = '';
+      if (summaryApiKeyInputRef.current) summaryApiKeyInputRef.current.value = '';
+      if (translationApiKeyInputRef.current) translationApiKeyInputRef.current.value = '';
       onSaved(result.data);
       setStatus(
         result.data.keyStorageMode === 'insecure'
@@ -107,18 +140,44 @@ export const ProviderSettings = ({
     await save();
   };
 
-  const hasApiKey = profile?.hasApiKey ?? false;
-  const providerChanged = Boolean(profile && profile.providerKind !== providerKind);
-  const endpointChanged = Boolean(
-    profile && safeUrlOrigin(profile.baseUrl) !== safeUrlOrigin(baseUrl),
+  const hasSummaryApiKey = profile?.hasSummaryApiKey ?? profile?.hasApiKey ?? false;
+  const hasTranslationApiKey =
+    profile?.hasTranslationApiKey ?? profile?.hasApiKey ?? false;
+  const summaryProviderChanged = Boolean(
+    profile && profile.providerKind !== summaryProviderKind,
+  );
+  const summaryEndpointChanged = Boolean(
+    profile && safeUrlOrigin(profile.baseUrl) !== safeUrlOrigin(summaryBaseUrl),
+  );
+  const translationProviderChanged = Boolean(
+    profile && profile.translationProviderKind !== translationProviderKind,
+  );
+  const translationEndpointChanged = Boolean(
+    profile
+    && safeUrlOrigin(profile.translationBaseUrl) !== safeUrlOrigin(translationBaseUrl),
   );
   const hasUnsavedProfileChanges = Boolean(
     !profile
-    || providerChanged
-    || profile.baseUrl !== baseUrl
-    || profile.model !== model,
+    || summaryProviderChanged
+    || profile.baseUrl !== summaryBaseUrl
+    || profile.summaryModel !== summaryModel
+    || translationProviderChanged
+    || profile.translationBaseUrl !== translationBaseUrl
+    || profile.translationModel !== translationModel,
   );
-  const requiresApiKey = !hasApiKey || providerChanged || endpointChanged;
+  const routesShareCredentialScope = summaryProviderKind === translationProviderKind
+    && safeUrlOrigin(summaryBaseUrl) === safeUrlOrigin(translationBaseUrl);
+  const summaryCredentialAvailable =
+    hasSummaryApiKey && !summaryProviderChanged && !summaryEndpointChanged;
+  const translationCredentialAvailable =
+    hasTranslationApiKey && !translationProviderChanged && !translationEndpointChanged;
+  const summaryNeedsApiKey = !summaryCredentialAvailable;
+  const translationNeedsApiKey = !translationCredentialAvailable;
+  const requiresSummaryApiKey =
+    summaryNeedsApiKey && !(routesShareCredentialScope && translationCredentialAvailable);
+  const requiresTranslationApiKey =
+    translationNeedsApiKey
+    && !(routesShareCredentialScope && (summaryCredentialAvailable || requiresSummaryApiKey));
   const usesInsecureStorage = profile?.keyStorageMode === 'insecure';
 
   const handleApiKeyPaste = (event: React.ClipboardEvent<HTMLInputElement>): void => {
@@ -130,15 +189,17 @@ export const ProviderSettings = ({
   };
 
   const titleId = `provider-settings-title-${mode}`;
-  const modelSuggestionsId = `provider-model-suggestions-${mode}`;
-  const selectedPreset = getProviderPreset(providerKind);
+  const summaryModelSuggestionsId = `provider-summary-model-suggestions-${mode}`;
+  const translationModelSuggestionsId = `provider-translation-model-suggestions-${mode}`;
+  const selectedSummaryPreset = getProviderPreset(summaryProviderKind);
+  const selectedTranslationPreset = getProviderPreset(translationProviderKind);
   const providerHeader = (
     <header className="provider-settings-header">
       <div>
         <h2 id={titleId}>模型服务</h2>
         {mode === 'embedded' && (
           <p className="provider-settings-description">
-            配置生成摘要和翻译所使用的 Provider、模型与 API Key。
+            为总结和翻译分别配置 Provider、模型与 API Key。
           </p>
         )}
       </div>
@@ -156,16 +217,18 @@ export const ProviderSettings = ({
   );
   const providerForm = (
     <form onSubmit={handleSubmit}>
+      <fieldset className="provider-route-settings">
+        <legend>总结</legend>
         <label>
           Provider 类型
           <select
-            value={providerKind}
+            value={summaryProviderKind}
             onChange={(event) => {
               const kind = event.target.value as ProviderKind;
               const preset = getProviderPreset(kind);
-              setProviderKind(kind);
-              setBaseUrl(preset.defaultBaseUrl);
-              setModel(preset.defaultModel);
+              setSummaryProviderKind(kind);
+              setSummaryBaseUrl(preset.defaultBaseUrl);
+              setSummaryModel(preset.defaultModel);
               setStatus('');
               setStatusTone('neutral');
             }}
@@ -179,25 +242,25 @@ export const ProviderSettings = ({
         <label>
           Provider 基础 URL
           <input
-            value={baseUrl}
-            onChange={(event) => setBaseUrl(event.target.value)}
-            placeholder={selectedPreset.defaultBaseUrl}
+            value={summaryBaseUrl}
+            onChange={(event) => setSummaryBaseUrl(event.target.value)}
+            placeholder={selectedSummaryPreset.defaultBaseUrl}
             inputMode="url"
             required
           />
         </label>
         <label>
-          模型
+          总结模型
           <input
-            value={model}
-            onChange={(event) => setModel(event.target.value)}
-            list={modelSuggestionsId}
-            placeholder={selectedPreset.defaultModel}
+            value={summaryModel}
+            onChange={(event) => setSummaryModel(event.target.value)}
+            list={summaryModelSuggestionsId}
+            placeholder={selectedSummaryPreset.defaultModel}
             spellCheck={false}
             required
           />
-          <datalist id={modelSuggestionsId}>
-            {selectedPreset.suggestedModels.map((suggestedModel) => (
+          <datalist id={summaryModelSuggestionsId}>
+            {selectedSummaryPreset.suggestedModels.map((suggestedModel) => (
               <option key={suggestedModel} value={suggestedModel} />
             ))}
           </datalist>
@@ -205,18 +268,85 @@ export const ProviderSettings = ({
         <label>
           API Key
           <input
-            ref={apiKeyInputRef}
+            ref={summaryApiKeyInputRef}
             type="password"
-            name="provider-api-key"
-            placeholder={requiresApiKey ? '输入 API Key' : SAVED_API_KEY_MASK}
+            name="summary-provider-api-key"
+            placeholder={requiresSummaryApiKey ? '输入总结 Provider API Key' : SAVED_API_KEY_MASK}
             autoComplete="new-password"
             spellCheck={false}
             data-1p-ignore="true"
             data-lpignore="true"
             onPaste={handleApiKeyPaste}
-            required={requiresApiKey}
+            required={requiresSummaryApiKey}
           />
         </label>
+      </fieldset>
+      <fieldset className="provider-route-settings">
+        <legend>翻译</legend>
+        <label>
+          Provider 类型
+          <select
+            value={translationProviderKind}
+            onChange={(event) => {
+              const kind = event.target.value as ProviderKind;
+              const preset = getProviderPreset(kind);
+              setTranslationProviderKind(kind);
+              setTranslationBaseUrl(preset.defaultBaseUrl);
+              setTranslationModel(preset.defaultModel);
+              setStatus('');
+              setStatusTone('neutral');
+            }}
+            required
+          >
+            {PROVIDER_PRESETS.map((preset) => (
+              <option key={preset.kind} value={preset.kind}>{preset.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Provider 基础 URL
+          <input
+            value={translationBaseUrl}
+            onChange={(event) => setTranslationBaseUrl(event.target.value)}
+            placeholder={selectedTranslationPreset.defaultBaseUrl}
+            inputMode="url"
+            required
+          />
+        </label>
+        <label>
+          翻译模型
+          <input
+            value={translationModel}
+            onChange={(event) => setTranslationModel(event.target.value)}
+            list={translationModelSuggestionsId}
+            placeholder={selectedTranslationPreset.defaultModel}
+            spellCheck={false}
+            required
+          />
+          <datalist id={translationModelSuggestionsId}>
+            {selectedTranslationPreset.suggestedModels.map((suggestedModel) => (
+              <option key={suggestedModel} value={suggestedModel} />
+            ))}
+          </datalist>
+        </label>
+        <label>
+          API Key
+          <input
+            ref={translationApiKeyInputRef}
+            type="password"
+            name="translation-provider-api-key"
+            placeholder={
+              requiresTranslationApiKey ? '输入翻译 Provider API Key' : SAVED_API_KEY_MASK
+            }
+            autoComplete="new-password"
+            spellCheck={false}
+            data-1p-ignore="true"
+            data-lpignore="true"
+            onPaste={handleApiKeyPaste}
+            required={requiresTranslationApiKey}
+          />
+        </label>
+      </fieldset>
         {usesInsecureStorage && (
           <p className="provider-settings-note">
             操作系统安全密钥存储不可用，API Key 将以未加密方式保存在本地文件中。
@@ -234,7 +364,12 @@ export const ProviderSettings = ({
           <button
             type="button"
             onClick={() => void testConnection()}
-            disabled={saving || !hasApiKey || hasUnsavedProfileChanges}
+            disabled={
+              saving
+              || !hasSummaryApiKey
+              || !hasTranslationApiKey
+              || hasUnsavedProfileChanges
+            }
           >
             测试连接
           </button>

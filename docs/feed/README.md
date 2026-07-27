@@ -46,7 +46,7 @@
 | Cleaned Markdown 生成 | P0 | 由 Cleaned HTML 转换 |
 | 清洗失败原文/Web 回退 | P0 | 失败时保留原文访问路径 |
 | 同步状态与错误提示 | P0 | 用户可感知的进度和错误 |
-| 搜索（标题+摘要） | P1 | 300ms debounce |
+| 搜索（标题+清洗正文） | P1 | 300ms debounce；FTS5 trigram + 短查询 LIKE 回退 |
 | 完整 Feed 管理 UI | P0 | 列表、编辑、删除 |
 
 ### 范围外（不属于本模块）
@@ -349,7 +349,7 @@ interface EntryQuery {
   feedId?: number;
   isRead?: boolean;
   isStarred?: boolean;
-  search?: string;           // title + summary LIKE
+  search?: string;           // title + cleaned markdown
   limit: number;             // 默认 50
   cursor?: {                 // keyset pagination
     publishedAt: string;
@@ -562,12 +562,17 @@ export interface EntryListRequest {
   isStarred?: boolean;
   search?: string;
   limit: number;
-  cursor?: { publishedAt: string; id: number };
+  cursor?: {
+    publishedAt: string;
+    id: number;
+    matchTier?: number;      // 搜索 cursor
+    rank?: number;           // 搜索 cursor
+  };
 }
 
 export interface EntryListResponse {
   entries: EntryListItem[];
-  nextCursor?: { publishedAt: string; id: number };
+  nextCursor?: EntryCursor;
 }
 
 // --- Channel 常量 ---
@@ -773,7 +778,7 @@ interface ShaleError {
 | Issue | 工作量 | 验收结果 |
 |---|---|---|
 | **M3-FEED-01: 清洗流水线版本化缓存** | 1d | 按版本号按层重建，仅版本变化时不联网 |
-| **M3-FEED-02: 文章搜索（标题+摘要）** | 0.5d | P1 按剩余容量选择 |
+| **M3-FEED-02: 文章搜索（标题+清洗正文）** | 0.5d | FTS5 trigram 与范围搜索已实现 |
 | **M3-FEED-03: Feed 模块集成测试** | 0.5d | 全链路自动化测试通过 |
 
 ---

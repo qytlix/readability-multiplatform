@@ -238,7 +238,12 @@ describe('inline Translation', () => {
           providerKind: 'openai',
           baseUrl: 'https://provider.example/v1',
           model: 'mock-model',
+          summaryModel: 'summary-model',
+          translationProviderKind: 'deepseek',
+          translationBaseUrl: 'https://api.deepseek.com',
+          translationModel: 'mock-model',
           apiKeyRef: 'key-1',
+          translationApiKeyRef: 'translation-key-1',
           isActive: true,
           createdAt: '2026-07-20T00:00:00.000Z',
           updatedAt: '2026-07-20T00:00:00.000Z',
@@ -252,7 +257,7 @@ describe('inline Translation', () => {
 
     await expect(service.translate({ ...request, expertId: 'legal' })).resolves
       .toMatchObject({ translation: '相关的', inputKind: 'word' });
-    expect(providerKinds[0]).toBe('openai');
+    expect(providerKinds[0]).toBe('deepseek');
     expect(findCandidates).toHaveBeenCalledWith(
       expect.stringContaining('related'),
       'zh-CN',
@@ -296,7 +301,12 @@ describe('inline Translation', () => {
           providerKind: 'openai',
           baseUrl: 'https://provider.example/v1',
           model: 'mock-model',
+          summaryModel: 'summary-model',
+          translationProviderKind: 'deepseek',
+          translationBaseUrl: 'https://api.deepseek.com',
+          translationModel: 'mock-model',
           apiKeyRef: 'key-1',
+          translationApiKeyRef: 'translation-key-1',
           isActive: true,
           createdAt: '2026-07-20T00:00:00.000Z',
           updatedAt: '2026-07-20T00:00:00.000Z',

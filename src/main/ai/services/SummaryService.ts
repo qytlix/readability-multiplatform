@@ -192,7 +192,7 @@ export class SummaryService {
     void this.executeRun(run, content.markdown, inputMarkdownHash, {
       providerKind: profile.providerKind,
       baseUrl: profile.baseUrl,
-      model: profile.model,
+      model: profile.summaryModel,
       apiKey,
       providerProfileId: profile.id,
       abortController,

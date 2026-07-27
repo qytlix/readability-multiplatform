@@ -52,12 +52,21 @@ describe('SummaryService', () => {
     });
     const profiles = new ProviderProfileStore(db);
     const savedProfile = profiles.saveActive({
-      providerKind: 'openai',
-      baseUrl: 'https://provider.example/v1',
-      model: 'mock-model',
-      apiKeyRef: 'key-1',
+      summary: {
+        providerKind: 'openai',
+        baseUrl: 'https://provider.example/v1',
+        model: 'summary-model',
+        apiKeyRef: 'key-1',
+      },
+      translation: {
+        providerKind: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'translation-model',
+        apiKeyRef: 'translation-key-1',
+      },
     });
     memorySecrets.set('key-1', 'not-a-real-key');
+    memorySecrets.set('translation-key-1', 'not-a-real-translation-key');
     provider = new MockSummaryProvider(['Local ', 'summary.']);
     service = new SummaryService(
       contentStore,
@@ -89,7 +98,10 @@ describe('SummaryService', () => {
     const state = service.getState(request);
     expect(state).toMatchObject({ state: 'succeeded' });
     expect(events).toEqual(['started', 'delta', 'delta', 'completed']);
-    expect(stream.mock.calls[0]?.[0]).toMatchObject({ providerKind: 'openai' });
+    expect(stream.mock.calls[0]?.[0]).toMatchObject({
+      providerKind: 'openai',
+      model: 'summary-model',
+    });
 
     const cached = service.generate(request);
     expect(cached).toEqual({ runId: started.runId, reused: true });
