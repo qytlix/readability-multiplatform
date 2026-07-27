@@ -69,6 +69,30 @@ describe('EntryList header', () => {
     expect(container.querySelector('.story-list-heading')).not.toBeNull();
   });
 
+  it('renders plain-text search snippets and safe match elements', async () => {
+    await render({
+      entries: [{
+        id: 1,
+        feedId: 1,
+        title: '<script>Database title</script>',
+        createdAt: '2026-07-27T00:00:00.000Z',
+        isRead: false,
+        readingProgress: 0,
+        isStarred: false,
+        pipelineStatus: 'success',
+        searchSnippet: 'A database body with <img src=x> text.',
+      }],
+      searchQuery: 'database',
+      searchStatus: 'results',
+    });
+
+    expect(container.querySelectorAll('.entry-search-match')).toHaveLength(2);
+    expect(container.querySelector('script')).toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.textContent).toContain('<script>');
+    expect(container.textContent).toContain('<img src=x>');
+  });
+
   async function render(overrides: Partial<Parameters<typeof EntryList>[0]> = {}): Promise<void> {
     await act(async () => {
       root.render(createElement(EntryList, {

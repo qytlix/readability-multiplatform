@@ -6,6 +6,7 @@ import {
 import type { EntryListItem } from '../../../shared/contracts/feed.types';
 import { FilterIcon, SearchIcon } from '../reader/ReaderIcons';
 import type { EntryFilter } from '../search/entrySearch';
+import { SearchHighlightedText } from '../search/SearchHighlightedText';
 import { entryListCopy } from './entryListPresentation';
 import { getReadingProgressPercentage } from './readingProgress';
 import type { EntryLoadStatus } from './readerState';
@@ -185,7 +186,16 @@ export const EntryList = ({
                       />
                     </span>
                   )}
-                  <h2>{entry.title ?? '无标题文章'}</h2>
+                  <h2>
+                    {showsSearch
+                      ? (
+                          <SearchHighlightedText
+                            text={entry.title ?? '无标题文章'}
+                            query={searchQuery}
+                          />
+                        )
+                      : entry.title ?? '无标题文章'}
+                  </h2>
                   <span
                     className="story-card-reading-progress"
                     aria-label={`阅读进度 ${readingPercentage}%`}
@@ -194,7 +204,16 @@ export const EntryList = ({
                     {readingPercentage}%
                   </span>
                 </div>
-                {entry.summary && <p>{entry.summary}</p>}
+                {showsSearch
+                  ? entry.searchSnippet && (
+                      <p>
+                        <SearchHighlightedText
+                          text={entry.searchSnippet}
+                          query={searchQuery}
+                        />
+                      </p>
+                    )
+                  : entry.summary && <p>{entry.summary}</p>}
               </div>
             </button>
           );

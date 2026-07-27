@@ -125,10 +125,12 @@ EntryList
 |------|--------|-----------|--------|------|
 | 普通浏览 | ✅ | — | — | 显示当前 feed 全部文章 |
 | 星标筛选 | ✅ | `true` | — | 当前 feed 的星标文章 |
-| 搜索 | — | — | `keyword` | 所有 feed 的搜索结果 |
+| 搜索 | ✅（若当前选中） | — | `keyword` | 当前 feed 的搜索结果 |
 | 星标 + 搜索 | ✅ | `true` | `keyword` | 当前 feed 星标文章中搜索 |
 
-具体组合策略由 #36 的关键词语法解析决定，后端不做特殊处理 —— 四个维度都是独立的 `EntryQuery` 参数。
+当前实现始终保留可见范围中的 `feedId`、`isRead` 和 `isStarred`。选中 Feed
+时，搜索框下方提供显式按钮切换到所有 Feed。查询解析、短查询回退和排序见
+[`search-optimization.md`](./search-optimization.md)。
 
 ---
 
@@ -174,10 +176,15 @@ interface EntryAPI {
     isStarred?: boolean;
     search?: string;         // ← 搜索关键词
     limit: number;
-    cursor?: { publishedAt: string; id: number };
+    cursor?: {
+      publishedAt: string;
+      id: number;
+      matchTier?: number;
+      rank?: number;
+    };
   }) => Promise<IPCResult<{
     entries: EntryListItem[];
-    nextCursor?: { publishedAt: string; id: number };
+    nextCursor?: EntryCursor;
   }>>;
 }
 ```
@@ -186,9 +193,11 @@ interface EntryAPI {
 
 ---
 
-## 7. 搜索高亮（范围外）
+## 7. 搜索高亮
 
-Issue #34 明确将"搜索结果高亮的复杂富文本处理"标记为范围外。第一版搜索结果列表与普通列表样式一致，不突出显示匹配词。
+Main 返回纯文本 `searchSnippet`，Renderer 将标题和 snippet 拆成普通文本节点
+与 `<mark>` 节点。实现不使用 `dangerouslySetInnerHTML`，文章中的标签字符串
+不会被当作 HTML 执行。
 
 ---
 
@@ -202,4 +211,4 @@ Issue #34 明确将"搜索结果高亮的复杂富文本处理"标记为范围�
 - [x] 搜索中的 loading、无结果和 error 状态
 - [x] 清除搜索后恢复之前的普通列表查询
 - [x] 搜索结果点击打开 Reader
-- [x] 搜索覆盖所有 Feed；普通 Feed、未读和收藏筛选保持独立
+- [x] 搜索继承当前 Feed、未读和收藏范围，并可显式切换所有 Feed

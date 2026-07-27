@@ -12,6 +12,7 @@ interface EntryListHeadingInput {
   feedName: string | null;
   filter: EntryFilter;
   hasActiveSearch: boolean;
+  searchAllFeeds?: boolean;
 }
 
 const getFilterHeading = (filter: EntryFilter): string => {
@@ -24,8 +25,17 @@ export const getEntryListHeading = ({
   feedName,
   filter,
   hasActiveSearch,
+  searchAllFeeds = false,
 }: EntryListHeadingInput): string => {
-  if (hasActiveSearch) return entryListCopy.searchResults;
+  if (hasActiveSearch) {
+    if (feedName !== null && !searchAllFeeds) {
+      return `${feedName} · ${entryListCopy.searchResults}`;
+    }
+    if (filter !== 'all') {
+      return `${entryListCopy.searchResults} · ${getFilterHeading(filter)}`;
+    }
+    return entryListCopy.searchResults;
+  }
 
   const filterHeading = getFilterHeading(filter);
   if (feedName === null) return filterHeading;

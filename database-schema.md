@@ -98,6 +98,25 @@
 
 ---
 
+### entry_search_fts — 本地文章全文索引（Migration 019）
+
+`entry_search_fts` 是 FTS5 `contentless-delete` 虚拟表，是可重建的派生数据，
+不取代 `entry` 或 `entry_content`。
+
+| 列 | 索引 | 说明 |
+|---|---|---|
+| `rowid` | FTS 文档身份 | 固定等于 `entry.id` |
+| `title` | trigram | NFKC 规范化后的文章标题 |
+| `markdown` | trigram | NFKC 规范化后的 Cleaned Markdown |
+| `feedId` | UNINDEXED | 索引维护快照；实际范围过滤仍以 `entry.feedId` 为准 |
+
+Migration 019 回填已有非删除文章，并通过 `entry`、`entry_content` 触发器同步
+标题、正文、软删除和级联删除。搜索仅匹配标题和 Markdown；Feed 名称与
+Feed Entry 摘要不进入索引。完整查询、排序、短词回退和重建规则见
+`docs/search_bar/search-optimization.md`。
+
+---
+
 ### content_html_cache — 渲染 HTML 缓存
 
 按主题缓存的 reader 渲染产物。key 为 `(themeId, entryId)`。

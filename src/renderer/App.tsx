@@ -113,6 +113,7 @@ export const App = () => {
   const [entryFilter, setEntryFilter] = useState<EntryFilter>('all');
   const [searchInput, setSearchInput] = useState('');
   const [appliedSearchQuery, setAppliedSearchQuery] = useState('');
+  const [searchAllFeeds, setSearchAllFeeds] = useState(false);
   const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle');
   const [loadingFeeds, setLoadingFeeds] = useState(true);
   const [loadingEntries, setLoadingEntries] = useState(false);
@@ -254,6 +255,9 @@ export const App = () => {
   const effectiveSearchStatus: SearchStatus = searchPending
     ? 'searching'
     : searchStatus;
+  const searchFeedId = appliedSearchQuery && searchAllFeeds
+    ? null
+    : selectedFeedId;
 
   const selectedFeed = useMemo(
     () => feeds.find((feed) => feed.id === selectedFeedId) ?? null,
@@ -319,7 +323,7 @@ export const App = () => {
 
     try {
       const params = buildEntryQuery({
-        selectedFeedId,
+        selectedFeedId: searchFeedId,
         filter: entryFilter,
         searchQuery: appliedSearchQuery,
         limit: ENTRY_PAGE_SIZE,
@@ -361,7 +365,7 @@ export const App = () => {
         setLoadingEntries(false);
       }
     }
-  }, [appliedSearchQuery, entryFilter, selectedFeedId]);
+  }, [appliedSearchQuery, entryFilter, searchFeedId]);
 
   useEffect(() => {
     void loadFeeds();
@@ -379,6 +383,7 @@ export const App = () => {
   useEffect(() => {
     if (!normalizedInput) {
       setAppliedSearchQuery('');
+      setSearchAllFeeds(false);
       setSearchStatus('idle');
       return;
     }
@@ -697,6 +702,7 @@ export const App = () => {
     setEntryFilter('all');
     setSearchInput('');
     setAppliedSearchQuery('');
+    setSearchAllFeeds(false);
     setSearchStatus('idle');
     setSelectedFeedId(feedId);
     setSelectionMode(false);
@@ -708,6 +714,7 @@ export const App = () => {
     setActiveView('reader');
     setSearchInput('');
     setAppliedSearchQuery('');
+    setSearchAllFeeds(false);
     setSearchStatus('idle');
     setEntryFilter(filter);
     setSelectionMode(false);
@@ -720,6 +727,7 @@ export const App = () => {
     setActiveView('reader');
     setSearchInput('');
     setAppliedSearchQuery('');
+    setSearchAllFeeds(false);
     setSearchStatus('idle');
     setEntryFilter(filter);
     setSelectionMode(false);
@@ -733,6 +741,7 @@ export const App = () => {
     feedName: selectedFeedName,
     filter: entryFilter,
     hasActiveSearch: Boolean(appliedSearchQuery),
+    searchAllFeeds,
   });
   const handleExportRequest = useCallback(async () => {
     const ids = Array.from(selectedIds);
@@ -815,8 +824,10 @@ export const App = () => {
             selectedFilter={entryFilter}
             searchInput={searchInput}
             searchStatus={effectiveSearchStatus}
+            searchAllFeeds={searchAllFeeds}
             searchInputRef={searchInputRef}
             onSearchInputChange={setSearchInput}
+            onSearchAllFeedsChange={setSearchAllFeeds}
             onSelectFilter={handleSelectSidebarFilter}
             onSelectFeed={handleSelectFeed}
             onRefresh={handleSyncAll}

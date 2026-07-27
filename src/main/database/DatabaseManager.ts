@@ -21,6 +21,11 @@ import { runMigration016 } from '../migrations/016_normalize_relative_entry_urls
 import { MIGRATION_017 } from '../migrations/017_add_translation_active_result';
 import { runMigration017 } from '../migrations/017_normalize_entry_summaries';
 import { MIGRATION_018 } from '../migrations/018_add_feed_content_html';
+import {
+  MIGRATION_019,
+  rebuildEntrySearchIndex,
+  registerEntrySearchFunctions,
+} from '../migrations/019_create_entry_search_index';
 
 interface Migration {
   id: string;
@@ -56,6 +61,11 @@ const MIGRATIONS: Migration[] = [
   { id: '017_add_translation_active_result', sql: MIGRATION_017 },
   { id: '017_normalize_entry_summaries', run: runMigration017 },
   { id: '018_add_feed_content_html', sql: MIGRATION_018 },
+  {
+    id: '019_create_entry_search_index',
+    sql: MIGRATION_019,
+    run: rebuildEntrySearchIndex,
+  },
 ];
 
 export class DatabaseManager {
@@ -67,6 +77,7 @@ export class DatabaseManager {
     // WAL mode for better concurrent read performance
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
+    registerEntrySearchFunctions(this.db);
   }
 
   /**

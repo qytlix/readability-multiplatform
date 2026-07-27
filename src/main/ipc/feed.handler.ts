@@ -24,6 +24,7 @@ import type {
   OPMLExportRequest,
 } from '../../shared/contracts/feed.ipc';
 import type {
+  EntryCursor,
   EntryReadingProgress,
   EntryStats,
   Feed,
@@ -227,7 +228,7 @@ export function registerFeedIpcHandlers(
     async (
       event: IpcMainInvokeEvent,
       request: EntryListRequest,
-    ): Promise<IPCResult<{ entries: EntryListItem[]; nextCursor?: { publishedAt: string; id: number } }>> => {
+    ): Promise<IPCResult<{ entries: EntryListItem[]; nextCursor?: EntryCursor }>> => {
       if (!isAuthorizedSender(event, getMainWindow)) {
         return failure({ code: 'UNAUTHORIZED', message: 'Unauthorized IPC sender.' });
       }
