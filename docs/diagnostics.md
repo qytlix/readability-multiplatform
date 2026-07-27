@@ -40,8 +40,7 @@ article URLs, user text, article and cleaned content, summaries, translations,
 notes, SQLite data, full home paths, provider configuration, and raw system
 errors. Translation's console-only timing output is deliberately outside v1.
 
-For `translation.provider.request.completed`,
-`translation.provider.request.failed`, and omission records, the report may
+For `translation.provider.request.failed` and omission records, the report may
 also contain a deliberately flat, allow-listed response summary: request kind,
 stable reason, validation stage, HTML-validation subreason when applicable,
 and a text-slot compensation protocol plus aggregate slot counts when applicable,
@@ -49,6 +48,20 @@ an available normalized finish reason,
 segment counts, input/output character counts, and up to three 16-character
 segment-ID hashes. It never includes nested provider objects, prompts, raw
 NDJSON, chunks, source text, or translated text.
+
+Markdown export records are operation-level terminal records only:
+`markdown.export.completed` includes the exported article count and duration;
+`markdown.export.failed` adds a stable stage and error code. A save-dialog
+cancel produces no export log record. These records never include destination
+paths, generated names, article metadata, URLs, Markdown, annotations, or raw
+write errors.
+
+`content.pipeline.failed` is likewise one terminal record for an operation that
+cannot return displayable content. It may contain only entry/feed identifiers,
+duration, a controlled final stage, and a stable error code; it does not record
+cache data, page URLs, response bodies, cleaned content, or raw errors. Cached
+or Feed-content fallback success remains a completed Content operation, and a
+confirmed caller abort has no business-failure record.
 
 ## Save behavior
 

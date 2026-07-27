@@ -91,6 +91,11 @@ export class FetchStrategyTimeoutError extends Error {
   }
 }
 
+/** A response arrived but cannot supply an article body to the Content pipeline. */
+export class FetchResponseUnavailableError extends Error {
+  override readonly name = 'FetchResponseUnavailableError';
+}
+
 // ── Tier 0: SimpleFetchStrategy ────────────────────────────────
 
 /**
@@ -134,7 +139,9 @@ export class SimpleFetchStrategy implements FetcherStrategy {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new FetchResponseUnavailableError(
+          `HTTP ${response.status}: ${response.statusText}`,
+        );
       }
 
       const finalUrl = response.url || url;
@@ -144,7 +151,7 @@ export class SimpleFetchStrategy implements FetcherStrategy {
       // Read body with size limit
       const reader = response.body?.getReader();
       if (!reader) {
-        throw new Error('No response body');
+        throw new FetchResponseUnavailableError('No response body');
       }
 
       const chunks: Uint8Array[] = [];
@@ -158,7 +165,9 @@ export class SimpleFetchStrategy implements FetcherStrategy {
         totalSize += value.length;
         if (totalSize > this.maxSize) {
           reader.cancel();
-          throw new Error(`Response too large (exceeded ${this.maxSize} bytes)`);
+          throw new FetchResponseUnavailableError(
+            `Response too large (exceeded ${this.maxSize} bytes)`,
+          );
         }
 
         chunks.push(value);
@@ -278,7 +287,9 @@ export class EnhancedFetchStrategy implements FetcherStrategy {
         }
 
         // Non-retryable error — throw immediately
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new FetchResponseUnavailableError(
+          `HTTP ${response.status}: ${response.statusText}`,
+        );
       } catch (error) {
         clearTimeout(timeout);
 
@@ -326,7 +337,7 @@ export class EnhancedFetchStrategy implements FetcherStrategy {
 
     const reader = response.body?.getReader();
     if (!reader) {
-      throw new Error('No response body');
+      throw new FetchResponseUnavailableError('No response body');
     }
 
     const chunks: Uint8Array[] = [];
@@ -340,7 +351,9 @@ export class EnhancedFetchStrategy implements FetcherStrategy {
       totalSize += value.length;
       if (totalSize > this.maxSize) {
         reader.cancel();
-        throw new Error(`Response too large (exceeded ${this.maxSize} bytes)`);
+        throw new FetchResponseUnavailableError(
+          `Response too large (exceeded ${this.maxSize} bytes)`,
+        );
       }
 
       chunks.push(value);
@@ -470,7 +483,7 @@ export class BrowserFetchStrategy implements FetcherStrategy {
           }
           if (err) reject(err);
           else if (result) resolve(result);
-          else reject(new Error('Browser fetch completed without a result'));
+          else reject(new FetchResponseUnavailableError('Browser fetch completed without a result'));
         };
 
         const resetTimer = (ms?: number) => {

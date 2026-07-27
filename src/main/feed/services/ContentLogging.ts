@@ -10,19 +10,24 @@ export const CONTENT_LOG_COMPONENTS = {
 } as const;
 
 export const CONTENT_PIPELINE_STAGES = [
+  'cache',
   'lookup',
   'validate',
   'fetch',
+  'extract',
   'clean',
   'convert',
   'persist',
 ] as const;
 
 export const CONTENT_PIPELINE_ERROR_CODES = {
+  cacheReadFailed: 'CONTENT_CACHE_READ_FAILED',
   lookupFailed: 'CONTENT_LOOKUP_FAILED',
   entryNotFound: 'CONTENT_ENTRY_NOT_FOUND',
   entryUrlMissing: 'CONTENT_ENTRY_URL_MISSING',
   fetchFailed: 'CONTENT_FETCH_FAILED',
+  responseUnavailable: 'CONTENT_RESPONSE_UNAVAILABLE',
+  extractFailed: 'CONTENT_EXTRACTION_FAILED',
   cleanFailed: 'CONTENT_CLEAN_FAILED',
   convertFailed: 'CONTENT_CONVERT_FAILED',
   persistFailed: 'CONTENT_PERSIST_FAILED',
@@ -34,12 +39,17 @@ export type ContentPipelineErrorCode = (
 )[keyof typeof CONTENT_PIPELINE_ERROR_CODES];
 
 const CONTENT_PIPELINE_ERROR_CODES_BY_STAGE = {
+  cache: [CONTENT_PIPELINE_ERROR_CODES.cacheReadFailed],
   lookup: [
     CONTENT_PIPELINE_ERROR_CODES.lookupFailed,
     CONTENT_PIPELINE_ERROR_CODES.entryNotFound,
   ],
   validate: [CONTENT_PIPELINE_ERROR_CODES.entryUrlMissing],
-  fetch: [CONTENT_PIPELINE_ERROR_CODES.fetchFailed],
+  fetch: [
+    CONTENT_PIPELINE_ERROR_CODES.fetchFailed,
+    CONTENT_PIPELINE_ERROR_CODES.responseUnavailable,
+  ],
+  extract: [CONTENT_PIPELINE_ERROR_CODES.extractFailed],
   clean: [CONTENT_PIPELINE_ERROR_CODES.cleanFailed],
   convert: [CONTENT_PIPELINE_ERROR_CODES.convertFailed],
   persist: [CONTENT_PIPELINE_ERROR_CODES.persistFailed],

@@ -23,6 +23,7 @@ import { registerUsageIpcHandlers } from './ipc/usage.handler';
 import { registerAnnotationIpcHandlers } from './ipc/annotation.handler';
 import { registerExportIpcHandlers } from './ipc/export.handler';
 import { ExportService } from './export/ExportService';
+import type { MarkdownExportOperationLogger } from './export/MarkdownExportLogging';
 import {
   getDatabase,
   getFeedServices,
@@ -53,7 +54,7 @@ export const isAuthorizedSender = (
 
 export function registerIpcHandlers(
   getMainWindow: GetMainWindow,
-  feedLogger: FeedOperationLogger,
+  feedLogger: FeedOperationLogger & MarkdownExportOperationLogger,
 ): void {
   // System ping handler
   ipcMain.handle(IPC_CHANNELS.systemPing, (event): PingResponse => {
@@ -173,6 +174,6 @@ export function registerIpcHandlers(
       db,
       annotationServices?.annotationService,
     );
-    registerExportIpcHandlers(getMainWindow, exportService);
+    registerExportIpcHandlers(getMainWindow, exportService, feedLogger);
   }
 }

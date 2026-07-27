@@ -10,6 +10,15 @@ import {
 
 export const CONTENT_CLEANER_VERSION = 6;
 
+/** A stable distinction for a successful response with no extractable article. */
+export class ContentExtractionError extends Error {
+  override readonly name = 'ContentExtractionError';
+
+  constructor() {
+    super('Readability could not extract content');
+  }
+}
+
 export class ContentCleaner {
   /**
    * Clean HTML using Mozilla Readability and DOMPurify sanitization.
@@ -31,7 +40,7 @@ export class ContentCleaner {
     const result = reader.parse();
 
     if (!result) {
-      throw new Error('Readability could not extract content');
+      throw new ContentExtractionError();
     }
 
     return {

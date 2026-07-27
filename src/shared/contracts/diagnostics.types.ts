@@ -48,6 +48,7 @@ export interface DiagnosticLogContext {
   providerRequestSuccessCount?: number;
   providerRequestFailureCount?: number;
   missingSegmentCount?: number;
+  unresolvedMissingSegmentCount?: number;
   expectedSegmentCount?: number;
   parsedSegmentCount?: number;
   acceptedSegmentCount?: number;
@@ -80,6 +81,11 @@ export interface DiagnosticLogContext {
   stage?: string;
   requestKind?: string;
   trigger?: string;
+  previousResultAtStart?: 'none' | 'retained';
+  previousResultOutcome?: 'none' | 'retained' | 'replaced';
+  stopReason?: 'paused' | 'shutdown';
+  contextDegraded?: true;
+  contextWarningCode?: 'TRANSLATION_CONTEXT_UNAVAILABLE';
   outcome?: string;
   success?: boolean;
   phase?: 'services' | 'ipc' | 'window' | 'sync';

@@ -44,6 +44,7 @@ const CONTEXT_FIELD_TYPES = {
   providerRequestSuccessCount: 'number',
   providerRequestFailureCount: 'number',
   missingSegmentCount: 'number',
+  unresolvedMissingSegmentCount: 'number',
   expectedSegmentCount: 'number',
   parsedSegmentCount: 'number',
   acceptedSegmentCount: 'number',
@@ -82,6 +83,11 @@ const CONTEXT_FIELD_TYPES = {
   strategy: 'string',
   requestKind: 'string',
   trigger: 'string',
+  previousResultAtStart: 'string',
+  previousResultOutcome: 'string',
+  stopReason: 'string',
+  contextDegraded: 'boolean',
+  contextWarningCode: 'string',
   outcome: 'string',
   success: 'boolean',
   phase: 'string',
@@ -125,6 +131,7 @@ export interface StructuredLogContext {
   providerRequestSuccessCount?: number;
   providerRequestFailureCount?: number;
   missingSegmentCount?: number;
+  unresolvedMissingSegmentCount?: number;
   expectedSegmentCount?: number;
   parsedSegmentCount?: number;
   acceptedSegmentCount?: number;
@@ -163,6 +170,11 @@ export interface StructuredLogContext {
   strategy?: string;
   requestKind?: string;
   trigger?: string;
+  previousResultAtStart?: string;
+  previousResultOutcome?: string;
+  stopReason?: string;
+  contextDegraded?: true;
+  contextWarningCode?: string;
   outcome?: string;
   success?: boolean;
   phase?: AppInitializationPhase;
@@ -627,6 +639,20 @@ function sanitizeContextValue(
       ? value
       : undefined;
   }
+  if (field === 'previousResultAtStart') {
+    return value === 'none' || value === 'retained' ? value : undefined;
+  }
+  if (field === 'previousResultOutcome') {
+    return value === 'none' || value === 'retained' || value === 'replaced'
+      ? value
+      : undefined;
+  }
+  if (field === 'stopReason') {
+    return value === 'paused' || value === 'shutdown' ? value : undefined;
+  }
+  if (field === 'contextWarningCode') {
+    return value === 'TRANSLATION_CONTEXT_UNAVAILABLE' ? value : undefined;
+  }
   if (field === 'phase') {
     return isAppInitializationPhase(value) ? value : undefined;
   }
@@ -688,6 +714,9 @@ function assignContextField(
       return;
     case 'missingSegmentCount':
       if (typeof value === 'number') context.missingSegmentCount = value;
+      return;
+    case 'unresolvedMissingSegmentCount':
+      if (typeof value === 'number') context.unresolvedMissingSegmentCount = value;
       return;
     case 'expectedSegmentCount':
       if (typeof value === 'number') context.expectedSegmentCount = value;
@@ -784,6 +813,21 @@ function assignContextField(
       return;
     case 'trigger':
       if (typeof value === 'string') context.trigger = value;
+      return;
+    case 'previousResultAtStart':
+      if (typeof value === 'string') context.previousResultAtStart = value;
+      return;
+    case 'previousResultOutcome':
+      if (typeof value === 'string') context.previousResultOutcome = value;
+      return;
+    case 'stopReason':
+      if (typeof value === 'string') context.stopReason = value;
+      return;
+    case 'contextDegraded':
+      if (value === true) context.contextDegraded = true;
+      return;
+    case 'contextWarningCode':
+      if (typeof value === 'string') context.contextWarningCode = value;
       return;
     case 'outcome':
       if (typeof value === 'string') context.outcome = value;
