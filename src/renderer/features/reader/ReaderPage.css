@@ -6173,7 +6173,124 @@ body.workspace-is-resizing * {
   color: var(--reader-text-muted);
 }
 
+/* ── AI Tag Panel (inside floating window) ─────────── */
 
+.auto-tag-panel {
+  margin-bottom: 4px;
+}
+
+.auto-tag-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.auto-tag-select-all {
+  border: none;
+  background: none;
+  color: var(--reader-accent);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.auto-tag-select-all:hover {
+  text-decoration: underline;
+}
+
+.auto-tag-trigger-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px dashed var(--reader-line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--reader-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.auto-tag-trigger-pill:hover {
+  border-color: var(--reader-accent);
+  color: var(--reader-accent);
+}
+
+.tag-suggestion-pill.is-selected {
+  border-color: var(--reader-accent);
+  background: var(--reader-hover);
+}
+
+.auto-tag-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.auto-tag-confirm {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--reader-accent);
+  color: var(--reader-accent-text, #fff);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.auto-tag-confirm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.auto-tag-cancel {
+  padding: 4px 12px;
+  border: 1px solid var(--reader-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--reader-text);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.auto-tag-cancel:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.auto-tag-cancel:hover:not(:disabled) {
+  border-color: var(--reader-accent);
+  background: var(--reader-hover);
+}
+
+.auto-tag-error {
+  margin: 4px 0;
+  color: var(--reader-danger);
+  font-size: 11px;
+}
+
+.auto-tag-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--reader-line);
+  border-top-color: var(--reader-accent);
+  border-radius: 50%;
+  animation: auto-tag-spin 600ms linear infinite;
+  vertical-align: middle;
+}
+
+@keyframes auto-tag-spin {
+  to { transform: rotate(360deg); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

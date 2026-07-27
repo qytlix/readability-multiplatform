@@ -150,9 +150,6 @@ export const EntryDetail = ({
   const [isTitleTranslating, setIsTitleTranslating] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showTagWindow, setShowTagWindow] = useState(false);
-  const [autoTagCandidates, setAutoTagCandidates] = useState<
-    import('../../../shared/contracts/tag.types').TagCandidate[] | null
-  >(null);
   const [exportArticleAvail, setExportArticleAvail] = useState<ArticleAvailability | null>(null);
   const [titleTranslationTarget, setTitleTranslationTarget] = useState<HTMLDivElement | null>(null);
   const [isFloatingHeaderVisible, setIsFloatingHeaderVisible] = useState(false);
@@ -600,6 +597,8 @@ export const EntryDetail = ({
   const handleExportCancel = useCallback((): void => {
     setShowExportDialog(false);
   }, []);
+
+
 
   if (readerDisplayState === 'feed-loading') {
     return <div className="entry-detail empty entry-detail-empty-state">正在载入订阅源…</div>;
@@ -1053,58 +1052,6 @@ export const EntryDetail = ({
     )
     : null;
 
-  // ── Auto-tag trigger ────────────────────────────────────
-  useEffect(() => {
-    const pref = aiPreferences;
-    if (
-      !entry
-      || pref.tagAgentTriggerMode !== 'auto'
-    ) {
-      return;
-    }
-    const entryId = entry.id;
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        // Generate candidates
-        const genResult = await window.shaleAPI.tag.autoTagGenerate({
-          entryId,
-          maxCandidates: pref.tagAgentMaxCandidates,
-        });
-        if (cancelled || !genResult.ok) return;
-
-        const candidates = genResult.data;
-        if (candidates.length === 0) return;
-
-        if (pref.tagAgentConfirmMode === 'auto') {
-          // Auto-confirm: persist all candidates directly
-          const tagNames = candidates.map((c) => c.name);
-          const confirmResult = await window.shaleAPI.tag.autoTagConfirm({
-            entryId,
-            tagNames,
-          });
-          if (!cancelled && confirmResult.ok) {
-            onFeedback?.(
-              `已为本文添加 ${tagNames.length} 个标签。`,
-            );
-            onTagsChanged?.();
-          }
-        } else {
-          // Manual confirm: store candidates and open floating window
-          if (!cancelled) {
-            setAutoTagCandidates(candidates);
-            setShowTagWindow(true);
-          }
-        }
-      } catch {
-        // Silently fail — user can still click the generate button manually
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [entry?.id]);
-
   return (
     <>
       {aiToolbar}
@@ -1113,12 +1060,8 @@ export const EntryDetail = ({
         <TagFloatingWindow
           entryId={entry.id}
           anchorEl={tagBtnRef.current}
-          onClose={() => {
-            setShowTagWindow(false);
-            setAutoTagCandidates(null);
-          }}
+          onClose={() => setShowTagWindow(false)}
           onTagsChanged={onTagsChanged}
-          initialCandidates={autoTagCandidates ?? undefined}
         />
       )}
       <div className="entry-detail">

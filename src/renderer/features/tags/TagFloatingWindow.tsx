@@ -10,8 +10,6 @@ import { TagBadge } from './TagBadge';
 import { TagInput } from './TagInput';
 import { AutoTagPanel } from './AutoTagPanel';
 
-import type { TagCandidate } from '../../../shared/contracts/tag.types';
-
 interface TagFloatingWindowProps {
   entryId: number;
   anchorEl: HTMLElement | null;
@@ -20,8 +18,6 @@ interface TagFloatingWindowProps {
   container?: HTMLElement;
   /** Called after any tag is added or removed (for sidebar count refresh) */
   onTagsChanged?: () => void;
-  /** Pre-generated AI tag candidates (set by auto-trigger). */
-  initialCandidates?: TagCandidate[];
 }
 
 type LoadState = 'loading' | 'loaded' | 'error';
@@ -32,7 +28,6 @@ export const TagFloatingWindow = ({
   onClose,
   container,
   onTagsChanged,
-  initialCandidates,
 }: TagFloatingWindowProps) => {
   const [tags, setTags] = useState<Tag[]>([]);
   const [availableTags, setAvailableTags] = useState<TagWithCount[]>([]);
@@ -204,12 +199,12 @@ export const TagFloatingWindow = ({
       <div className="tag-floating-header">
         <span className="tag-floating-title">标签</span>
       </div>
+      <TagInput onAdd={handleAdd} disabled={loadState === 'loading'} />
       <AutoTagPanel
         entryId={entryId}
         onTagsChanged={onTagsChanged}
-        initialCandidates={initialCandidates}
+        autoTrigger
       />
-      <TagInput onAdd={handleAdd} disabled={loadState === 'loading'} />
       {duplicateWarning && (
         <p className="tag-floating-warning" role="alert">{duplicateWarning}</p>
       )}
