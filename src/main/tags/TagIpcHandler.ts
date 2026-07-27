@@ -5,19 +5,23 @@ import {
 } from 'electron';
 import { TAG_IPC_CHANNELS } from '../../shared/contracts/tag.ipc';
 import type {
+  AutoTagConfirmRequest,
+  AutoTagGenerateRequest,
   EntryIdRequest,
   TagEntryRequest,
   UntagEntryRequest,
 } from '../../shared/contracts/tag.types';
 import type { CreateTagRequest } from '../../shared/contracts/tag.types';
 import type { IPCResult } from '../../shared/contracts/feed.ipc';
-import { toTagIpcError } from './shared/tag.errors';
+import { TAG_ERROR_CODES, TagError, toTagIpcError } from './shared/tag.errors';
+import type { AutoTagService } from './AutoTagService';
 import type { TagService } from './TagService';
 
 type GetMainWindow = () => BrowserWindow | null;
 
 export interface TagServices {
   tagService: TagService;
+  autoTagService?: AutoTagService;
 }
 
 export function registerTagIpcHandlers(
@@ -98,6 +102,63 @@ export function registerTagIpcHandlers(
       () => services.tagService.listAvailableForEntry((request as EntryIdRequest).entryId),
     ),
   );
+
+  // ── Auto-Tag handlers ──────────────────────────────────
+
+  ipcMain.handle(
+    TAG_IPC_CHANNELS.autoTagGenerate,
+    async (event: IpcMainInvokeEvent, request: unknown) =>
+      handleAsync(event, getMainWindow, isAutoTagGenerateRequest(request), async () => {
+        if (!services.autoTagService) {
+          throw new TagError(
+            TAG_ERROR_CODES.PROVIDER_NOT_CONFIGURED,
+            'Auto-tag service is not available.',
+          );
+        }
+        const { entryId, maxCandidates } = request as AutoTagGenerateRequest;
+        return services.autoTagService.generateCandidates(entryId, maxCandidates);
+      }),
+  );
+
+  ipcMain.handle(
+    TAG_IPC_CHANNELS.autoTagConfirm,
+    async (event: IpcMainInvokeEvent, request: unknown) =>
+      handleAsync(event, getMainWindow, isAutoTagConfirmRequest(request), async () => {
+        if (!services.autoTagService) {
+          throw new TagError(
+            TAG_ERROR_CODES.PROVIDER_NOT_CONFIGURED,
+            'Auto-tag service is not available.',
+          );
+        }
+        const { entryId, tagNames } = request as AutoTagConfirmRequest;
+        return services.autoTagService.confirmTags(entryId, tagNames);
+      }),
+  );
+}
+
+async function handleAsync<T>(
+  event: IpcMainInvokeEvent,
+  getMainWindow: GetMainWindow,
+  validRequest: boolean,
+  action: () => Promise<T>,
+): Promise<IPCResult<T>> {
+  if (!isAuthorizedSender(event, getMainWindow)) {
+    return {
+      ok: false,
+      error: { code: 'UNAUTHORIZED', message: 'Unauthorized IPC sender.', retryable: false },
+    };
+  }
+  if (!validRequest) {
+    return {
+      ok: false,
+      error: { code: 'TAG_INVALID_REQUEST', message: 'The auto-tag request is invalid.', retryable: false },
+    };
+  }
+  try {
+    return { ok: true, data: await action() };
+  } catch (error) {
+    return { ok: false, error: toTagIpcError(error) };
+  }
 }
 
 function handle<T>(
@@ -170,4 +231,21 @@ function isUntagEntryRequest(value: unknown): value is UntagEntryRequest {
   return isRecord(value)
     && isPositiveInteger(value.entryId)
     && isPositiveInteger(value.tagId);
+}
+
+function isAutoTagGenerateRequest(value: unknown): value is AutoTagGenerateRequest {
+  return isRecord(value)
+    && isPositiveInteger(value.entryId)
+    && Number.isInteger(value.maxCandidates)
+    && (value.maxCandidates as number) > 0
+    && (value.maxCandidates as number) <= 50;
+}
+
+function isAutoTagConfirmRequest(value: unknown): value is AutoTagConfirmRequest {
+  if (!isRecord(value) || !isPositiveInteger(value.entryId)) return false;
+  const tagNames = value.tagNames;
+  return Array.isArray(tagNames)
+    && tagNames.length > 0
+    && tagNames.length <= 50
+    && tagNames.every((n): n is string => typeof n === 'string' && n.trim().length > 0);
 }

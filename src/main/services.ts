@@ -45,6 +45,7 @@ import { AnnotationStore } from './annotations/AnnotationStore';
 import { AnnotationService } from './annotations/AnnotationService';
 import { TagStore } from './tags/TagStore';
 import { TagService } from './tags/TagService';
+import { AutoTagService } from './tags/AutoTagService';
 
 // ── Service Interfaces ──────────────────────────────────
 
@@ -82,6 +83,7 @@ export interface AnnotationServices {
 
 export interface TagServices {
   tagService: TagService;
+  autoTagService: AutoTagService;
 }
 
 // ── Module-level Singletons ─────────────────────────────
@@ -248,6 +250,14 @@ export function initializeServices(
   const annotationService = new AnnotationService(annotationStore, entryStore);
   const tagStore = new TagStore(dbManager.getDb());
   const tagService = new TagService(tagStore, entryStore);
+  const autoTagService = new AutoTagService(
+    contentStore,
+    tagStore,
+    providerProfileStore,
+    secretStore,
+    provider,
+    tagStore,
+  );
 
   feedServicesSingleton = {
     feedService,
@@ -268,7 +278,7 @@ export function initializeServices(
     terminologyStore,
   };
   annotationServicesSingleton = { annotationService };
-  tagServicesSingleton = { tagService };
+  tagServicesSingleton = { tagService, autoTagService };
   usageServicesSingleton = { usageStatisticsService };
   return feedServicesSingleton;
 }
