@@ -10,8 +10,12 @@ interface ProviderProfileRow {
   translationProviderPreset: ProviderKind;
   translationBaseUrl: string;
   translationModel: string;
+  tagProviderPreset: ProviderKind;
+  tagBaseUrl: string;
+  tagModel: string;
   apiKeyRef: string;
   translationApiKeyRef: string;
+  tagApiKeyRef: string;
   isActive: number;
   createdAt: string;
   updatedAt: string;
@@ -20,6 +24,7 @@ interface ProviderProfileRow {
 export interface ActiveProviderProfile extends ProviderProfile {
   apiKeyRef: string;
   translationApiKeyRef: string;
+  tagApiKeyRef: string;
 }
 
 interface SaveProviderTaskProfileParams {
@@ -32,6 +37,7 @@ interface SaveProviderTaskProfileParams {
 export interface SaveProviderProfileParams {
   summary?: SaveProviderTaskProfileParams;
   translation?: SaveProviderTaskProfileParams;
+  tag?: SaveProviderTaskProfileParams;
   providerKind?: ProviderKind;
   baseUrl?: string;
   summaryModel?: string;
@@ -61,6 +67,8 @@ export class ProviderProfileStore {
     const existing = this.findActiveWithSecret();
     const { summary, translation } = resolveTaskProfiles(params);
 
+    const { tag } = resolveTagProfile(params);
+
     if (existing) {
       this.db
         .prepare(`
@@ -68,7 +76,9 @@ export class ProviderProfileStore {
           SET providerPreset = ?, baseUrl = ?, model = ?,
               summaryModel = ?, translationProviderPreset = ?,
               translationBaseUrl = ?, translationModel = ?,
-              apiKeyRef = ?, translationApiKeyRef = ?, updatedAt = ?
+              tagProviderPreset = ?, tagBaseUrl = ?, tagModel = ?,
+              apiKeyRef = ?, translationApiKeyRef = ?, tagApiKeyRef = ?,
+              updatedAt = ?
           WHERE id = ?
         `)
         .run(
@@ -79,8 +89,12 @@ export class ProviderProfileStore {
           translation.providerKind,
           translation.baseUrl,
           translation.model,
+          tag.providerKind,
+          tag.baseUrl,
+          tag.model,
           summary.apiKeyRef,
           translation.apiKeyRef,
+          tag.apiKeyRef,
           now,
           existing.id,
         );
@@ -93,8 +107,12 @@ export class ProviderProfileStore {
         translationProviderKind: translation.providerKind,
         translationBaseUrl: translation.baseUrl,
         translationModel: translation.model,
+        tagProviderKind: tag.providerKind,
+        tagBaseUrl: tag.baseUrl,
+        tagModel: tag.model,
         apiKeyRef: summary.apiKeyRef,
         translationApiKeyRef: translation.apiKeyRef,
+        tagApiKeyRef: tag.apiKeyRef,
         updatedAt: now,
       });
     }
@@ -104,9 +122,10 @@ export class ProviderProfileStore {
         INSERT INTO ai_provider_profile
           (providerKind, providerPreset, baseUrl, model, summaryModel,
            translationProviderPreset, translationBaseUrl, translationModel,
-           apiKeyRef, translationApiKeyRef,
+           tagProviderPreset, tagBaseUrl, tagModel,
+           apiKeyRef, translationApiKeyRef, tagApiKeyRef,
            isActive, createdAt, updatedAt)
-        VALUES ('openai-compatible', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        VALUES ('openai-compatible', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       `)
       .run(
         summary.providerKind,
@@ -116,8 +135,12 @@ export class ProviderProfileStore {
         translation.providerKind,
         translation.baseUrl,
         translation.model,
+        tag.providerKind,
+        tag.baseUrl,
+        tag.model,
         summary.apiKeyRef,
         translation.apiKeyRef,
+        tag.apiKeyRef,
         now,
         now,
       );
@@ -131,6 +154,9 @@ export class ProviderProfileStore {
       translationProviderKind: translation.providerKind,
       translationBaseUrl: translation.baseUrl,
       translationModel: translation.model,
+      tagProviderKind: tag.providerKind,
+      tagBaseUrl: tag.baseUrl,
+      tagModel: tag.model,
       isActive: true,
       createdAt: now,
       updatedAt: now,
@@ -148,8 +174,12 @@ function toActiveProviderProfile(row: ProviderProfileRow): ActiveProviderProfile
     translationProviderKind: row.translationProviderPreset,
     translationBaseUrl: row.translationBaseUrl,
     translationModel: row.translationModel,
+    tagProviderKind: row.tagProviderPreset,
+    tagBaseUrl: row.tagBaseUrl,
+    tagModel: row.tagModel,
     apiKeyRef: row.apiKeyRef,
     translationApiKeyRef: row.translationApiKeyRef,
+    tagApiKeyRef: row.tagApiKeyRef,
     isActive: row.isActive === 1,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -166,6 +196,9 @@ function omitSecretReference(profile: ActiveProviderProfile): ProviderProfile {
     translationProviderKind: profile.translationProviderKind,
     translationBaseUrl: profile.translationBaseUrl,
     translationModel: profile.translationModel,
+    tagProviderKind: profile.tagProviderKind,
+    tagBaseUrl: profile.tagBaseUrl,
+    tagModel: profile.tagModel,
     isActive: profile.isActive,
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
@@ -202,6 +235,27 @@ function resolveTaskProfiles(params: SaveProviderProfileParams): {
       baseUrl: params.baseUrl,
       model: translationModel,
       apiKeyRef: params.apiKeyRef,
+    },
+  };
+}
+
+function resolveTagProfile(params: SaveProviderProfileParams): {
+  tag: SaveProviderTaskProfileParams;
+} {
+  if (params.tag) {
+    return { tag: params.tag };
+  }
+  // Legacy single-profile callers: inherit Summary's provider kind and base URL
+  // but use a default tag model. The tagApiKeyRef is left empty so that the
+  // user is prompted to configure it explicitly.
+  const providerKind = params.providerKind ?? 'openai';
+  const baseUrl = params.baseUrl ?? '';
+  return {
+    tag: {
+      providerKind,
+      baseUrl,
+      model: 'gpt-5.4-mini',
+      apiKeyRef: '',
     },
   };
 }
