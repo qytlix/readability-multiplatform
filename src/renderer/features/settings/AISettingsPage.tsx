@@ -36,6 +36,10 @@ import {
 } from './keyboardShortcut';
 import { DiagnosticsSection } from './DiagnosticsSection';
 import { UsageStatisticsSection } from './UsageStatisticsSection';
+import {
+  DEFAULT_READER_PREFERENCES,
+  type ReaderPreferences,
+} from './readerPreferences';
 
 type ShortcutPreferenceKey =
   | 'fullTranslationShortcut'
@@ -74,6 +78,7 @@ const formatSettingsAuthor = (
 };
 
 const SETTINGS_NAVIGATION = [
+  { id: 'settings-reading', label: '阅读' },
   { id: 'settings-summary', label: '摘要' },
   { id: 'settings-translation', label: '翻译' },
   { id: 'settings-terminology', label: '术语库' },
@@ -89,12 +94,16 @@ type SettingsSectionId = (typeof SETTINGS_NAVIGATION)[number]['id'];
 interface AISettingsPageProps {
   preferences: AiPreferences;
   onPreferencesChange: (preferences: AiPreferences) => void;
+  readerPreferences?: ReaderPreferences;
+  onReaderPreferencesChange?: (preferences: ReaderPreferences) => void;
   onClose: () => void;
 }
 
 export const AISettingsPage = ({
   preferences,
   onPreferencesChange,
+  readerPreferences = DEFAULT_READER_PREFERENCES,
+  onReaderPreferencesChange,
   onClose,
 }: AISettingsPageProps) => {
   const [profile, setProfile] = useState<ProviderProfile | null>(null);
@@ -125,7 +134,7 @@ export const AISettingsPage = ({
     useState<string | null>(null);
   const terminologyFileRef = useRef<HTMLInputElement>(null);
   const [activeSettingsSection, setActiveSettingsSection] =
-    useState<SettingsSectionId>('settings-summary');
+    useState<SettingsSectionId>('settings-reading');
   const settingsNavigationRef = useRef<HTMLElement>(null);
   const settingsSelectionIndicatorRef = useRef<HTMLSpanElement>(null);
   const settingsPageMainRef = useRef<HTMLElement>(null);
@@ -524,6 +533,37 @@ export const AISettingsPage = ({
         </header>
 
         <div className="settings-page-content">
+          <section
+            id="settings-reading"
+            className="settings-section"
+            aria-labelledby="reading-settings-title"
+          >
+            <div className="settings-section-heading">
+              <div>
+                <h3 id="reading-settings-title" className="settings-section-title">阅读</h3>
+                <p>控制阅读界面的动态效果。</p>
+              </div>
+            </div>
+            <div className="settings-card">
+              <div className="settings-toggle-grid">
+                <label className="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={readerPreferences.pageTurnAnimationEnabled}
+                    onChange={(event) => onReaderPreferencesChange?.({
+                      ...readerPreferences,
+                      pageTurnAnimationEnabled: event.target.checked,
+                    })}
+                  />
+                  <span>
+                    <strong>翻页动画</strong>
+                    <small>滚动文章时显示右下角书本翻页；关闭后保留阅读进度和跳转按钮。</small>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </section>
+
           <section
             id="settings-summary"
             className="settings-section"

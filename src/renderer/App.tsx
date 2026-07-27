@@ -62,6 +62,11 @@ import {
   type ReaderTheme,
 } from './features/appearance/theme';
 import {
+  loadReaderPreferences,
+  saveReaderPreferences,
+  type ReaderPreferences,
+} from './features/settings/readerPreferences';
+import {
   createHorizontalFlipKeyframes,
   type LayoutRect,
 } from './features/reader/layoutTransition';
@@ -146,6 +151,8 @@ export const App = () => {
   const [exportArticles, setExportArticles] = useState<ArticleAvailability[]>([]);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(() =>
     loadReaderTheme(window.localStorage));
+  const [readerPreferences, setReaderPreferences] = useState<ReaderPreferences>(() =>
+    loadReaderPreferences(window.localStorage));
   const [articleAIToolbarTarget, setArticleAIToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [articleExportToolbarTarget, setArticleExportToolbarTarget] =
     useState<HTMLDivElement | null>(null);
@@ -379,6 +386,10 @@ export const App = () => {
   useEffect(() => {
     saveReaderTheme(window.localStorage, readerTheme);
   }, [readerTheme]);
+
+  useEffect(() => {
+    saveReaderPreferences(window.localStorage, readerPreferences);
+  }, [readerPreferences]);
 
   useEffect(() => {
     if (!normalizedInput) {
@@ -1077,6 +1088,8 @@ export const App = () => {
               <AISettingsPage
                 preferences={aiPreferences}
                 onPreferencesChange={setAiPreferences}
+                readerPreferences={readerPreferences}
+                onReaderPreferencesChange={setReaderPreferences}
                 onClose={() => setActiveView('reader')}
               />
             ) : (
@@ -1117,6 +1130,9 @@ export const App = () => {
                 selectedIds={selectedIds}
                 onExportRequest={handleExportRequest}
                 onFeedback={setReaderFeedback}
+                pageTurnAnimationEnabled={
+                  readerPreferences.pageTurnAnimationEnabled
+                }
               />
             )}
           </div>
