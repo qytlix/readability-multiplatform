@@ -17,12 +17,49 @@ type PanelState =
 
 const DEFAULT_MAX_CANDIDATES = 8;
 
+// Track in-flight generation requests across remounts: when the floating window
+// is closed and re-opened while a request is still pending, we reuse the
+// existing promise instead of sending a duplicate request.
+const pendingRequests = new Map<
+  number,
+  Promise<{ ok: boolean; data?: TagCandidate[]; error?: { message: string } }>
+>();
+
+async function fetchCandidates(entryId: number): Promise<{
+  ok: boolean;
+  data?: TagCandidate[];
+  error?: { message: string };
+}> {
+  // Check for an existing in-flight request for this entry
+  const existing = pendingRequests.get(entryId);
+  if (existing) return existing;
+
+  const promise = window.shaleAPI.tag.autoTagGenerate({
+    entryId,
+    maxCandidates: DEFAULT_MAX_CANDIDATES,
+  });
+  pendingRequests.set(entryId, promise);
+
+  // Clean up the pending flag once the request settles
+  void promise.then(() => {
+    if (pendingRequests.get(entryId) === promise) {
+      pendingRequests.delete(entryId);
+    }
+  }, () => {
+    if (pendingRequests.get(entryId) === promise) {
+      pendingRequests.delete(entryId);
+    }
+  });
+
+  return promise;
+}
+
 export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPanelProps) => {
   const [panelState, setPanelState] = useState<PanelState>({ type: 'idle' });
   const [isConfirming, setIsConfirming] = useState(false);
   const hasTriggered = useRef(false);
 
-  // Auto-trigger on mount
+  // Auto-trigger on mount — reuses any in-flight request from a previous mount
   useEffect(() => {
     if (!autoTrigger || hasTriggered.current) return;
     hasTriggered.current = true;
@@ -30,16 +67,13 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
     void (async () => {
       setPanelState({ type: 'loading' });
       try {
-        const result = await window.shaleAPI.tag.autoTagGenerate({
-          entryId,
-          maxCandidates: DEFAULT_MAX_CANDIDATES,
-        });
+        const result = await fetchCandidates(entryId);
         if (cancelled || !result.ok) {
           if (!cancelled) setPanelState({ type: 'idle' });
           return;
         }
         const candidates = result.data;
-        if (candidates.length === 0) {
+        if (!candidates || candidates.length === 0) {
           if (!cancelled) setPanelState({ type: 'idle' });
           return;
         }
@@ -60,16 +94,13 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
   const generate = useCallback(async () => {
     setPanelState({ type: 'loading' });
     try {
-      const result = await window.shaleAPI.tag.autoTagGenerate({
-        entryId,
-        maxCandidates: DEFAULT_MAX_CANDIDATES,
-      });
+      const result = await fetchCandidates(entryId);
       if (!result.ok) {
-        setPanelState({ type: 'error', message: result.error.message });
+        setPanelState({ type: 'error', message: result.error?.message ?? '生成失败。' });
         return;
       }
       const candidates = result.data;
-      if (candidates.length === 0) {
+      if (!candidates || candidates.length === 0) {
         setPanelState({ type: 'error', message: '未能生成标签，请重试。' });
         return;
       }
