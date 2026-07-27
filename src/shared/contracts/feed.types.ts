@@ -75,6 +75,7 @@ export interface EntryQuery {
   isStarred?: boolean;
   search?: string;
   tagNames?: string[];
+  tagFuzzyNames?: string[];
   matchAll?: boolean;
   limit: number;                        // 默认 50
   cursor?: EntryCursor;

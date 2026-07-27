@@ -496,6 +496,16 @@ function validateEntryQuery(options: EntryQuery): void {
   if (options.search !== undefined && options.search.length > 256) {
     throw new RangeError('Entry search query must not exceed 256 characters.');
   }
+  if (options.tagFuzzyNames !== undefined) {
+    if (!Array.isArray(options.tagFuzzyNames) || options.tagFuzzyNames.length > 50) {
+      throw new RangeError('Entry query tagFuzzyNames must be an array of up to 50 strings.');
+    }
+    for (const name of options.tagFuzzyNames) {
+      if (typeof name !== 'string' || name.length > 100) {
+        throw new RangeError('Entry query tagFuzzyNames entries must be strings up to 100 characters.');
+      }
+    }
+  }
   if (
     options.cursor
     && (
@@ -552,6 +562,42 @@ function appendScopeConditions(
           )`
         );
         params.push(...tagNames);
+      }
+    }
+  }
+
+  // Tag filter: fuzzy match via LIKE on tag name(s)
+  if (options.tagFuzzyNames && options.tagFuzzyNames.length > 0) {
+    const fuzzyNames = options.tagFuzzyNames.filter((n) => n.trim().length > 0);
+    if (fuzzyNames.length > 0) {
+      const matchAll = options.matchAll !== false; // default AND
+      const esc = " ESCAPE '\\'";
+      const subConditions: string[] = fuzzyNames.map(
+        (name) => `t.name LIKE ?${esc}`
+      );
+      if (matchAll) {
+        // Each fuzzy name must match at least one tag (AND across terms)
+        for (const name of fuzzyNames) {
+          conditions.push(
+            `e.id IN (
+              SELECT et.entryId FROM entry_tag et
+              JOIN tag t ON t.id = et.tagId
+              WHERE t.name LIKE ?
+            )`
+          );
+          params.push(`%${escapeLike(name)}%`);
+        }
+      } else {
+        // Any fuzzy name can match (OR across terms)
+        const likeParams = fuzzyNames.map((name) => `%${escapeLike(name)}%`);
+        conditions.push(
+          `e.id IN (
+            SELECT et.entryId FROM entry_tag et
+            JOIN tag t ON t.id = et.tagId
+            WHERE ${subConditions.join(' OR ')}
+          )`
+        );
+        params.push(...likeParams);
       }
     }
   }
