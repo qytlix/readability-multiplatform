@@ -1,5 +1,11 @@
 import type { IPCResult } from './feed.ipc';
-import type { Tag, TagWithCount } from './tag.types';
+import type {
+  AutoTagConfirmRequest,
+  AutoTagGenerateRequest,
+  Tag,
+  TagCandidate,
+  TagWithCount,
+} from './tag.types';
 
 export const TAG_IPC_CHANNELS = {
   listByEntry:       'tag:list-by-entry',
@@ -8,6 +14,8 @@ export const TAG_IPC_CHANNELS = {
   untagEntry:        'tag:untag-entry',
   listAllWithCount:  'tag:list-all-with-count',
   listAvailableForEntry: 'tag:list-available-for-entry',
+  autoTagGenerate:   'tag:auto-tag-generate',
+  autoTagConfirm:    'tag:auto-tag-confirm',
 } as const;
 
 export interface TagAPI {
@@ -17,4 +25,6 @@ export interface TagAPI {
   untagEntry: (entryId: number, tagId: number) => Promise<IPCResult<void>>;
   listAllWithCount: () => Promise<IPCResult<TagWithCount[]>>;
   listAvailableForEntry: (entryId: number) => Promise<IPCResult<TagWithCount[]>>;
+  autoTagGenerate: (request: AutoTagGenerateRequest) => Promise<IPCResult<TagCandidate[]>>;
+  autoTagConfirm: (request: AutoTagConfirmRequest) => Promise<IPCResult<Tag[]>>;
 }

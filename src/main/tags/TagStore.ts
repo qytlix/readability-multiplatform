@@ -63,12 +63,14 @@ export class TagStore {
 
   /**
    * Associate a tag with an entry (idempotent — no-op if already linked).
+   *
+   * @param source - 'manual' (user-typed) or 'auto' (AI-generated, Tag Agent).
    */
-  tagEntry(entryId: number, tagId: number): void {
+  tagEntry(entryId: number, tagId: number, source: 'manual' | 'auto' = 'manual'): void {
     this.db.prepare(`
       INSERT OR IGNORE INTO entry_tag (entryId, tagId, source, createdAt)
-      VALUES (?, ?, 'manual', ?)
-    `).run(entryId, tagId, new Date().toISOString());
+      VALUES (?, ?, ?, ?)
+    `).run(entryId, tagId, source, new Date().toISOString());
   }
 
   /**

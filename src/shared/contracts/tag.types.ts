@@ -36,3 +36,25 @@ export interface EntryIdRequest {
 export interface CreateTagRequest {
   tagName: string;
 }
+
+// ── Auto-Tag Types ────────────────────────────────────────
+
+/** A single tag candidate returned by the AI. */
+export interface TagCandidate {
+  name: string;
+  /** 'matched' = existing tag that the AI chose from the global pool;
+   *  'generated' = AI-generated new tag. */
+  source: 'matched' | 'generated';
+  /** Present when source === 'matched' — the existing tag's database ID. */
+  tagId?: number;
+}
+
+export interface AutoTagGenerateRequest {
+  entryId: number;
+  maxCandidates: number;
+}
+
+export interface AutoTagConfirmRequest {
+  entryId: number;
+  tagNames: string[];
+}
