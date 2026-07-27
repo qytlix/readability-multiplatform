@@ -49,11 +49,14 @@ const createFeedListProps = (
     feeds: [
       { feedId: 1, total: 5, unread: 3, readPercentage: 40 },
     ],
+    tagCount: 0,
   },
   loading: false,
   feedLoadStatus: 'success',
   settingsActive: false,
+  showTagsView: false,
   onOpenSettings: vi.fn(),
+  onOpenTags: vi.fn(),
   ...overrides,
 });
 
@@ -79,6 +82,38 @@ describe('FeedList unread counts', () => {
       .map((count) => count.textContent);
 
     expect(counts).toEqual(['3', '0']);
+  });
+
+  it('shows and toggles the explicit search scope for a selected feed', async () => {
+    const onSearchAllFeedsChange = vi.fn();
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(createElement(
+          FeedList,
+          createFeedListProps({
+            selectedFeedId: feeds[0].id,
+            searchInput: 'database',
+            onSearchAllFeedsChange,
+          }),
+        ));
+      });
+
+      const scope = container.querySelector<HTMLButtonElement>(
+        '.sidebar-search-scope button',
+      );
+      expect(scope?.textContent).toContain('范围：TechCrunch');
+      expect(scope?.getAttribute('aria-label')).toContain('搜索范围：TechCrunch');
+
+      await act(async () => scope?.click());
+      expect(onSearchAllFeedsChange).toHaveBeenCalledWith(true);
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
   });
 
   it('moves one shared selection indicator between range and feed items', async () => {

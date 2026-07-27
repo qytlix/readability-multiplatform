@@ -12,6 +12,8 @@ interface EntryListHeadingInput {
   feedName: string | null;
   filter: EntryFilter;
   hasActiveSearch: boolean;
+  tagName?: string;
+  searchAllFeeds?: boolean;
 }
 
 export interface EntryListHeadingPresentation {
@@ -30,10 +32,34 @@ export const getEntryListHeadingPresentation = ({
   feedName,
   filter,
   hasActiveSearch,
+  tagName,
+  searchAllFeeds = false,
 }: EntryListHeadingInput): EntryListHeadingPresentation => {
   if (hasActiveSearch) {
+    if (feedName !== null && !searchAllFeeds) {
+      return {
+        text: `${feedName} · ${entryListCopy.searchResults}`,
+        feedName,
+        filterSuffix: entryListCopy.searchResults,
+      };
+    }
+    if (filter !== 'all') {
+      return {
+        text: `${entryListCopy.searchResults} · ${getFilterHeading(filter)}`,
+        feedName: null,
+        filterSuffix: null,
+      };
+    }
     return {
       text: entryListCopy.searchResults,
+      feedName: null,
+      filterSuffix: null,
+    };
+  }
+
+  if (tagName) {
+    return {
+      text: `标签：${tagName}`,
       feedName: null,
       filterSuffix: null,
     };

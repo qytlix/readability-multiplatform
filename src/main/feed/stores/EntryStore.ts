@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type {
   Entry,
+  EntryCursor,
   EntryListItem,
   EntryQuery,
   EntryReadingProgress,
@@ -9,6 +10,15 @@ import type {
   FeedEntryReadStats,
 } from '../../../shared/contracts/feed.types';
 import type { PipelineStatus } from '../../../shared/contracts/content.types';
+import type { Tag } from '../../../shared/contracts/tag.types';
+import {
+  getPlainSearchText,
+  normalizeSearchQuery,
+  parseSearchTerms,
+  requiresShortSearchFallback,
+  toFts5Query,
+  type ParsedSearchTerm,
+} from '../../../shared/search';
 
 interface UpsertEntryParams {
   feedId: number;
@@ -20,6 +30,11 @@ interface UpsertEntryParams {
   summary?: string;
   feedContentHtml?: string;
   contentHash?: string;
+}
+
+interface EntryQueryResult {
+  entries: EntryListItem[];
+  nextCursor?: EntryCursor;
 }
 
 export class EntryStore {
@@ -125,93 +140,198 @@ export class EntryStore {
   /**
    * Query entries with optional filters and keyset pagination.
    */
-  query(options: EntryQuery): { entries: EntryListItem[]; nextCursor?: { publishedAt: string; id: number } } {
+  query(options: EntryQuery): EntryQueryResult {
+    validateEntryQuery(options);
+    const searchTerms = parseSearchTerms(options.search ?? '');
+    const result = searchTerms.length > 0
+      ? this.querySearch(options, searchTerms)
+      : this.queryBrowse(options);
+
+    // Batch-populate tags for all returned entries
+    if (result.entries.length > 0) {
+      const entryIds = result.entries.map((e) => e.id);
+      const tagMap = this.batchTagsByEntry(entryIds);
+      for (const entry of result.entries) {
+        entry.tags = tagMap.get(entry.id) ?? [];
+      }
+    }
+
+    return result;
+  }
+
+  private queryBrowse(options: EntryQuery): EntryQueryResult {
     const conditions: string[] = ['e.isDeleted = 0'];
-    // Params ordered by SQL appearance: SELECT CASE WHEN ? first, then WHERE ?, then LIMIT ?
-    const selectParams: unknown[] = [];
     const whereParams: unknown[] = [];
-    let selectFields = 'e.*, f.title AS feedTitle, ec.pipelineStatus';
-    let orderBy = 'ORDER BY e.publishedAt DESC, e.id DESC';
-
-    if (options.feedId !== undefined) {
-      conditions.push('e.feedId = ?');
-      whereParams.push(options.feedId);
-    }
-
-    if (options.isRead !== undefined) {
-      conditions.push('e.isRead = ?');
-      whereParams.push(options.isRead ? 1 : 0);
-    }
-
-    if (options.isStarred !== undefined) {
-      conditions.push('e.isStarred = ?');
-      whereParams.push(options.isStarred ? 1 : 0);
-    }
-
-    if (options.search?.trim()) {
-      const escaped = escapeLike(options.search.trim());
-      const likeParam = `%${escaped}%`;
-      const esc = " ESCAPE '\\'";
-      conditions.push(
-        `(e.title LIKE ?${esc} OR e.summary LIKE ?${esc} OR ec.markdown LIKE ?${esc} OR f.title LIKE ?${esc})`
-      );
-      whereParams.push(likeParam, likeParam, likeParam, likeParam);
-
-      // SELECT-level relevance scoring — ? placeholders come before WHERE in SQL
-      selectFields = `e.*, f.title AS feedTitle, ec.pipelineStatus,
-        (CASE WHEN e.title LIKE ?${esc}         THEN 3 ELSE 0 END +
-         CASE WHEN ec.markdown LIKE ?${esc}     THEN 2 ELSE 0 END +
-         CASE WHEN e.summary LIKE ?${esc}       THEN 1 ELSE 0 END +
-         CASE WHEN f.title LIKE ?${esc}         THEN 1 ELSE 0 END) AS relevance`;
-      selectParams.push(likeParam, likeParam, likeParam, likeParam);
-
-      orderBy = 'ORDER BY relevance DESC, e.publishedAt DESC, e.id DESC';
-    }
-
-    // Keyset pagination
+    appendScopeConditions(options, conditions, whereParams);
     if (options.cursor) {
-      conditions.push('(e.publishedAt < ? OR (e.publishedAt = ? AND e.id < ?))');
+      conditions.push(`(
+        COALESCE(e.publishedAt, e.createdAt) < ?
+        OR (COALESCE(e.publishedAt, e.createdAt) = ? AND e.id < ?)
+      )`);
       whereParams.push(options.cursor.publishedAt, options.cursor.publishedAt, options.cursor.id);
     }
 
-    const limit = options.limit ?? 50;
+    const limit = options.limit;
     const query = `
-      SELECT ${selectFields}
+      SELECT
+        e.*,
+        f.title AS feedTitle,
+        ec.pipelineStatus,
+        COALESCE(e.publishedAt, e.createdAt) AS effectivePublishedAt
       FROM entry e
       LEFT JOIN feed f ON f.id = e.feedId
       LEFT JOIN entry_content ec ON ec.entryId = e.id
       WHERE ${conditions.join(' AND ')}
-      ${orderBy}
+      ORDER BY effectivePublishedAt DESC, e.id DESC
       LIMIT ?
     `;
-    // Params order: SELECT CASE WHEN ? first, then WHERE ?, then LIMIT ?
-    const allParams = [...selectParams, ...whereParams, limit + 1];
-
-    const rows = this.db.prepare(query).all(...allParams) as Array<
-      Record<string, unknown>
+    const rows = this.db.prepare(query).all(...whereParams, limit + 1) as Array<
+      Record<string, unknown> & { effectivePublishedAt: string }
     >;
 
     const hasMore = rows.length > limit;
     if (hasMore) rows.pop();
-
     const entries = rows.map(toEntryListItem);
+    const lastRow = hasMore ? rows.at(-1) : undefined;
+    const nextCursor = lastRow
+      ? { publishedAt: lastRow.effectivePublishedAt, id: lastRow.id as number }
+      : undefined;
+    return { entries, nextCursor };
+  }
 
-    let nextCursor: { publishedAt: string; id: number } | undefined;
-    if (hasMore && entries.length > 0) {
-      const last = entries[entries.length - 1];
-      nextCursor = {
-        publishedAt: last.publishedAt ?? last.createdAt,
-        id: last.id,
-      };
+  private querySearch(
+    options: EntryQuery,
+    searchTerms: ParsedSearchTerm[],
+  ): EntryQueryResult {
+    const esc = " ESCAPE '\\'";
+    const plainSearch = getPlainSearchText(searchTerms);
+    const titleTermConditions = searchTerms
+      .map(() => `search_normalize(e.title) LIKE ?${esc}`)
+      .join(' AND ');
+    const titleTierSql = `CASE
+      WHEN search_normalize(e.title) = ? COLLATE NOCASE THEN 4
+      WHEN search_normalize(e.title) LIKE ?${esc} THEN 3
+      WHEN (${titleTermConditions}) THEN 2
+      ELSE 1
+    END`;
+    const titleTierParams: unknown[] = [
+      plainSearch,
+      `${escapeLike(plainSearch)}%`,
+      ...searchTerms.map((term) => `%${escapeLike(term.value)}%`),
+    ];
+
+    const conditions: string[] = ['e.isDeleted = 0'];
+    const whereParams: unknown[] = [];
+    const useLikeFallback = requiresShortSearchFallback(searchTerms);
+    let searchSource = '';
+    let searchRankSql = '0';
+
+    if (useLikeFallback) {
+      for (const term of searchTerms) {
+        conditions.push(`(
+          search_normalize(e.title) LIKE ?${esc}
+          OR search_normalize(ec.markdown) LIKE ?${esc}
+        )`);
+        const likeParam = `%${escapeLike(term.value)}%`;
+        whereParams.push(likeParam, likeParam);
+      }
+    } else {
+      searchSource = 'JOIN entry_search_fts ON entry_search_fts.rowid = e.id';
+      conditions.push('entry_search_fts MATCH ?');
+      whereParams.push(toFts5Query(searchTerms));
+      searchRankSql = 'bm25(entry_search_fts, 8.0, 1.0)';
     }
 
+    appendScopeConditions(options, conditions, whereParams);
+
+    const cursorConditions: string[] = [];
+    const cursorParams: unknown[] = [];
+    if (options.cursor) {
+      const { matchTier, rank, publishedAt, id } = options.cursor;
+      if (matchTier === undefined || rank === undefined) {
+        throw new RangeError('Ranked searches require a ranked cursor.');
+      }
+      cursorConditions.push(`(
+        matchTier < ?
+        OR (matchTier = ? AND searchRank > ?)
+        OR (
+          matchTier = ? AND searchRank = ?
+          AND effectivePublishedAt < ?
+        )
+        OR (
+          matchTier = ? AND searchRank = ?
+          AND effectivePublishedAt = ? AND id < ?
+        )
+      )`);
+      cursorParams.push(
+        matchTier,
+        matchTier, rank,
+        matchTier, rank, publishedAt,
+        matchTier, rank, publishedAt, id,
+      );
+    }
+
+    const query = `
+      WITH ranked_entries AS (
+        SELECT
+          e.*,
+          f.title AS feedTitle,
+          ec.pipelineStatus,
+          ec.markdown AS searchMarkdown,
+          COALESCE(e.publishedAt, e.createdAt) AS effectivePublishedAt,
+          ${titleTierSql} AS matchTier,
+          ${searchRankSql} AS searchRank
+        FROM entry e
+        ${searchSource}
+        LEFT JOIN feed f ON f.id = e.feedId
+        LEFT JOIN entry_content ec ON ec.entryId = e.id
+        WHERE ${conditions.join(' AND ')}
+      )
+      SELECT *
+      FROM ranked_entries
+      ${cursorConditions.length > 0 ? `WHERE ${cursorConditions.join(' AND ')}` : ''}
+      ORDER BY
+        matchTier DESC,
+        searchRank ASC,
+        effectivePublishedAt DESC,
+        id DESC
+      LIMIT ?
+    `;
+    const rows = this.db.prepare(query).all(
+      ...titleTierParams,
+      ...whereParams,
+      ...cursorParams,
+      options.limit + 1,
+    ) as Array<Record<string, unknown> & {
+      effectivePublishedAt: string;
+      matchTier: number;
+      searchRank: number;
+      searchMarkdown: string | null;
+    }>;
+
+    const hasMore = rows.length > options.limit;
+    if (hasMore) rows.pop();
+    const entries = rows.map((row) => {
+      const entry = toEntryListItem(row);
+      const searchSnippet = buildSearchSnippet(row.searchMarkdown, searchTerms);
+      return searchSnippet ? { ...entry, searchSnippet } : entry;
+    });
+    const lastRow = hasMore ? rows.at(-1) : undefined;
+    const nextCursor = lastRow
+      ? {
+          publishedAt: lastRow.effectivePublishedAt,
+          id: lastRow.id as number,
+          matchTier: lastRow.matchTier,
+          rank: lastRow.searchRank,
+        }
+      : undefined;
     return { entries, nextCursor };
   }
 
   findByFeed(
     feedId: number,
     options: Omit<EntryQuery, 'feedId'> = { limit: 50 },
-  ): { entries: EntryListItem[]; nextCursor?: { publishedAt: string; id: number } } {
+  ): EntryQueryResult {
     return this.query({ ...options, feedId });
   }
 
@@ -288,6 +408,12 @@ export class EntryStore {
       GROUP BY feedId
       ORDER BY feedId
     `).all() as Array<{ feedId: number; total: number; unread: number | null }>;
+    const tagCountRow = this.db.prepare(`
+      SELECT COUNT(DISTINCT t.id) AS cnt
+      FROM tag t
+      INNER JOIN entry_tag et ON et.tagId = t.id
+      INNER JOIN entry e ON e.id = et.entryId AND e.isDeleted = 0
+    `).get() as { cnt: number };
 
     return {
       all: toReadStats(allRow),
@@ -295,6 +421,7 @@ export class EntryStore {
         feedId: row.feedId,
         ...toReadStats(row),
       })),
+      tagCount: tagCountRow.cnt,
     };
   }
 
@@ -328,6 +455,187 @@ export class EntryStore {
     const row = this.db.prepare(sql).get(...params) as { cnt: number };
     return row.cnt;
   }
+
+  /**
+   * Batch query tags for a set of entry IDs. Returns a Map<entryId, Tag[]>.
+   */
+  private batchTagsByEntry(entryIds: number[]): Map<number, Tag[]> {
+    if (entryIds.length === 0) return new Map();
+    const placeholders = entryIds.map(() => '?').join(', ');
+    const rows = this.db.prepare(`
+      SELECT et.entryId, t.id, t.name, t.color
+      FROM entry_tag et
+      JOIN tag t ON t.id = et.tagId
+      WHERE et.entryId IN (${placeholders})
+      ORDER BY t.name COLLATE NOCASE ASC
+    `).all(...entryIds) as Array<{ entryId: number; id: number; name: string; color: string }>;
+
+    const map = new Map<number, Tag[]>();
+    for (const row of rows) {
+      let tags = map.get(row.entryId);
+      if (!tags) {
+        tags = [];
+        map.set(row.entryId, tags);
+      }
+      tags.push({ id: row.id, name: row.name, color: row.color });
+    }
+    return map;
+  }
+}
+
+function validateEntryQuery(options: EntryQuery): void {
+  if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100) {
+    throw new RangeError('Entry query limit must be between 1 and 100.');
+  }
+  if (
+    options.feedId !== undefined
+    && (!Number.isInteger(options.feedId) || options.feedId <= 0)
+  ) {
+    throw new RangeError('Entry query feedId must be a positive integer.');
+  }
+  if (options.search !== undefined && options.search.length > 256) {
+    throw new RangeError('Entry search query must not exceed 256 characters.');
+  }
+  if (options.tagFuzzyNames !== undefined) {
+    if (!Array.isArray(options.tagFuzzyNames) || options.tagFuzzyNames.length > 50) {
+      throw new RangeError('Entry query tagFuzzyNames must be an array of up to 50 strings.');
+    }
+    for (const name of options.tagFuzzyNames) {
+      if (typeof name !== 'string' || name.length > 100) {
+        throw new RangeError('Entry query tagFuzzyNames entries must be strings up to 100 characters.');
+      }
+    }
+  }
+  if (
+    options.cursor
+    && (
+      !options.cursor.publishedAt
+      || !Number.isInteger(options.cursor.id)
+      || options.cursor.id <= 0
+    )
+  ) {
+    throw new RangeError('Entry query cursor is invalid.');
+  }
+}
+
+function appendScopeConditions(
+  options: EntryQuery,
+  conditions: string[],
+  params: unknown[],
+): void {
+  if (options.feedId !== undefined) {
+    conditions.push('e.feedId = ?');
+    params.push(options.feedId);
+  }
+  if (options.isRead !== undefined) {
+    conditions.push('e.isRead = ?');
+    params.push(options.isRead ? 1 : 0);
+  }
+  if (options.isStarred !== undefined) {
+    conditions.push('e.isStarred = ?');
+    params.push(options.isStarred ? 1 : 0);
+  }
+
+  // Tag filter: sub-query on entry_tag via tag name(s)
+  if (options.tagNames && options.tagNames.length > 0) {
+    const tagNames = options.tagNames.filter((n) => n.trim().length > 0);
+    if (tagNames.length > 0) {
+      const placeholders = tagNames.map(() => '?').join(', ');
+      const matchAll = options.matchAll !== false; // default AND
+      if (matchAll) {
+        conditions.push(
+          `e.id IN (
+            SELECT et.entryId FROM entry_tag et
+            JOIN tag t ON t.id = et.tagId
+            WHERE t.name IN (${placeholders})
+            GROUP BY et.entryId
+            HAVING COUNT(DISTINCT t.id) = ?
+          )`
+        );
+        params.push(...tagNames, tagNames.length);
+      } else {
+        conditions.push(
+          `e.id IN (
+            SELECT et.entryId FROM entry_tag et
+            JOIN tag t ON t.id = et.tagId
+            WHERE t.name IN (${placeholders})
+          )`
+        );
+        params.push(...tagNames);
+      }
+    }
+  }
+
+  // Tag filter: fuzzy match via LIKE on tag name(s)
+  if (options.tagFuzzyNames && options.tagFuzzyNames.length > 0) {
+    const fuzzyNames = options.tagFuzzyNames.filter((n) => n.trim().length > 0);
+    if (fuzzyNames.length > 0) {
+      const matchAll = options.matchAll !== false; // default AND
+      const esc = " ESCAPE '\\'";
+      const subConditions: string[] = fuzzyNames.map(
+        (name) => `t.name LIKE ?${esc}`
+      );
+      if (matchAll) {
+        // Each fuzzy name must match at least one tag (AND across terms)
+        for (const name of fuzzyNames) {
+          conditions.push(
+            `e.id IN (
+              SELECT et.entryId FROM entry_tag et
+              JOIN tag t ON t.id = et.tagId
+              WHERE t.name LIKE ?
+            )`
+          );
+          params.push(`%${escapeLike(name)}%`);
+        }
+      } else {
+        // Any fuzzy name can match (OR across terms)
+        const likeParams = fuzzyNames.map((name) => `%${escapeLike(name)}%`);
+        conditions.push(
+          `e.id IN (
+            SELECT et.entryId FROM entry_tag et
+            JOIN tag t ON t.id = et.tagId
+            WHERE ${subConditions.join(' OR ')}
+          )`
+        );
+        params.push(...likeParams);
+      }
+    }
+  }
+}
+
+function buildSearchSnippet(
+  markdown: string | null,
+  searchTerms: ParsedSearchTerm[],
+): string | undefined {
+  if (!markdown) return undefined;
+  const plainText = normalizeSearchQuery(markdown);
+  if (!plainText) return undefined;
+
+  const foldedText = plainText.toLocaleLowerCase();
+  const firstMatch = searchTerms.reduce<number | undefined>((earliest, term) => {
+    const position = foldedText.indexOf(term.value.toLocaleLowerCase());
+    if (position < 0) return earliest;
+    return earliest === undefined ? position : Math.min(earliest, position);
+  }, undefined);
+  if (firstMatch === undefined) return undefined;
+
+  const excerptLength = 190;
+  const contextBefore = 70;
+  let start = Math.max(0, firstMatch - contextBefore);
+  let end = Math.min(plainText.length, start + excerptLength);
+
+  if (start > 0) {
+    const nextSpace = plainText.indexOf(' ', start);
+    if (nextSpace > start && nextSpace < firstMatch) start = nextSpace + 1;
+  }
+  if (end < plainText.length) {
+    const previousSpace = plainText.lastIndexOf(' ', end);
+    if (previousSpace > firstMatch) end = previousSpace;
+  }
+
+  return `${start > 0 ? '…' : ''}${plainText.slice(start, end)}${
+    end < plainText.length ? '…' : ''
+  }`;
 }
 
 /**

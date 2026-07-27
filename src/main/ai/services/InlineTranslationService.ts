@@ -112,7 +112,7 @@ export class InlineTranslationService {
             TRANSLATION_LANGUAGE_LABELS[normalized.targetLanguage],
           )
         : undefined;
-      const apiKey = this.secretStore.read(profile.apiKeyRef);
+      const apiKey = this.secretStore.read(profile.translationApiKeyRef);
       const prompt = buildInlineTranslationPrompt(
         normalized,
         terminologyCandidates,
@@ -126,9 +126,9 @@ export class InlineTranslationService {
       stage = 'provider';
       let output = '';
       for await (const delta of this.provider.stream({
-        providerKind: profile.providerKind,
-        baseUrl: profile.baseUrl,
-        model: profile.model,
+        providerKind: profile.translationProviderKind,
+        baseUrl: profile.translationBaseUrl,
+        model: profile.translationModel,
         apiKey,
         prompt,
         signal: controller.signal,

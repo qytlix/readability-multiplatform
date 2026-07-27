@@ -26,11 +26,28 @@ describe('Entry list presentation', () => {
     })).toBe(expected);
   });
 
-  it('uses the global search heading because search queries ignore feed and filter scope', () => {
+  it('shows the current feed in a scoped search heading', () => {
     expect(getEntryListHeading({
       feedName: 'Daily Feed',
       filter: 'starred',
       hasActiveSearch: true,
+    })).toBe(`Daily Feed · ${entryListCopy.searchResults}`);
+  });
+
+  it('shows the active list filter in a scoped search heading', () => {
+    expect(getEntryListHeading({
+      feedName: null,
+      filter: 'starred',
+      hasActiveSearch: true,
+    })).toBe(`${entryListCopy.searchResults} · ${entryListCopy.starredArticles}`);
+  });
+
+  it('uses the global heading after switching a feed search to all feeds', () => {
+    expect(getEntryListHeading({
+      feedName: 'Daily Feed',
+      filter: 'all',
+      hasActiveSearch: true,
+      searchAllFeeds: true,
     })).toBe(entryListCopy.searchResults);
   });
 

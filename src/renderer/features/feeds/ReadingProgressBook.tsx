@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
   type AnimationEventHandler,
   type CSSProperties,
@@ -56,25 +57,37 @@ export const ReadingProgressBook = ({
   jumpTarget,
   onJump,
 }: ReadingProgressBookProps) => {
-  const [activeTurns, setActiveTurns] = useState<ReadingBookTurnMotion[]>([]);
+  const [activeTurn, setActiveTurn] = useState<ReadingBookTurnMotion | null>(null);
+  const pendingTurnRef = useRef<ReadingBookTurnMotion | null>(null);
   const percentage = getReadingProgressPercentage(readingProgress);
   const jumpsToStart = jumpTarget === 'start';
 
   useEffect(() => {
     if (!turnMotion) {
-      setActiveTurns([]);
+      pendingTurnRef.current = null;
+      setActiveTurn(null);
       return;
     }
 
-    setActiveTurns((currentTurns) => (
-      [...currentTurns, turnMotion].slice(-5)
-    ));
+    setActiveTurn((currentTurn) => {
+      if (!currentTurn) return turnMotion;
+
+      // Keep the current page turn uninterrupted and coalesce bursty scroll
+      // updates into one latest follow-up instead of animating several 3D
+      // page stacks at the same time.
+      pendingTurnRef.current = turnMotion;
+      return currentTurn;
+    });
   }, [turnMotion]);
 
-  const removeTurn = (turnId: number): void => {
-    setActiveTurns((currentTurns) => (
-      currentTurns.filter(({ id }) => id !== turnId)
-    ));
+  const finishTurn = (turnId: number): void => {
+    setActiveTurn((currentTurn) => {
+      if (currentTurn?.id !== turnId) return currentTurn;
+
+      const pendingTurn = pendingTurnRef.current;
+      pendingTurnRef.current = null;
+      return pendingTurn;
+    });
   };
 
   return (
@@ -114,10 +127,11 @@ export const ReadingProgressBook = ({
               <div className="reading-progress-book-page" />
             </div>
             <BookFlip className="is-resting" />
-            {activeTurns.map((turn, index) => {
+            {activeTurn && (() => {
+              const turn = activeTurn;
               const style: PageTurnStyle = {
                 '--reading-book-turn-duration': `${turn.durationMs}ms`,
-                zIndex: 6 + index,
+                zIndex: 6,
               };
 
               if (turn.variant === 'single') {
@@ -126,7 +140,7 @@ export const ReadingProgressBook = ({
                     key={turn.id}
                     className={`reading-progress-book-single-page is-turning-${turn.direction}`}
                     style={style}
-                    onAnimationEnd={() => removeTurn(turn.id)}
+                    onAnimationEnd={() => finishTurn(turn.id)}
                   />
                 );
               }
@@ -138,12 +152,12 @@ export const ReadingProgressBook = ({
                   style={style}
                   onAnimationEnd={(event) => {
                     if (event.target === event.currentTarget) {
-                      removeTurn(turn.id);
+                      finishTurn(turn.id);
                     }
                   }}
                 />
               );
-            })}
+            })()}
           </div>
         </div>
         <div className="reading-progress-book-label">

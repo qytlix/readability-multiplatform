@@ -19,6 +19,7 @@ import {
   SettingsIcon,
   StarIcon,
   SyncIcon,
+  TagIcon,
   TrashIcon,
 } from '../reader/ReaderIcons';
 import type { EntryFilter } from '../search/entrySearch';
@@ -43,8 +44,10 @@ interface FeedListProps {
   selectedFilter: EntryFilter;
   searchInput: string;
   searchStatus: SearchStatus;
+  searchAllFeeds?: boolean;
   searchInputRef: RefObject<HTMLInputElement | null>;
   onSearchInputChange: (query: string) => void;
+  onSearchAllFeedsChange?: (searchAllFeeds: boolean) => void;
   onSelectFilter: (filter: EntryFilter) => void;
   onSelectFeed: (feedId: number | null) => void;
   onRefresh: () => Promise<boolean>;
@@ -54,7 +57,10 @@ interface FeedListProps {
   loading: boolean;
   feedLoadStatus: FeedLoadStatus;
   settingsActive: boolean;
+  showTagsView: boolean;
   onOpenSettings: () => void;
+  onOpenTags: () => void;
+  hasTagFilter?: boolean;
 }
 
 export const FeedList = ({
@@ -63,8 +69,10 @@ export const FeedList = ({
   selectedFilter,
   searchInput,
   searchStatus,
+  searchAllFeeds = false,
   searchInputRef,
   onSearchInputChange,
+  onSearchAllFeedsChange,
   onSelectFilter,
   onSelectFeed,
   onRefresh,
@@ -74,7 +82,10 @@ export const FeedList = ({
   loading,
   feedLoadStatus,
   settingsActive,
+  showTagsView,
   onOpenSettings,
+  onOpenTags,
+  hasTagFilter,
 }: FeedListProps) => {
   const [editFeed, setEditFeed] = useState<Feed | null>(null);
   const [deleteFeed, setDeleteFeed] = useState<Feed | null>(null);
@@ -83,6 +94,16 @@ export const FeedList = ({
   const [syncProgress, setSyncProgress] = useState<Record<number, string>>({});
   const [syncingFeedIds, setSyncingFeedIds] = useState<Set<number>>(() => new Set());
   const mountedRef = useRef(true);
+  const selectedSearchFeed = feeds.find((feed) => feed.id === selectedFeedId);
+  const searchScopeLabel = selectedSearchFeed
+    ? searchAllFeeds
+      ? '所有订阅源'
+      : selectedSearchFeed.title ?? selectedSearchFeed.feedURL
+    : selectedFilter === 'unread'
+      ? '未读文章'
+      : selectedFilter === 'starred'
+        ? '收藏文章'
+        : '所有订阅源';
   const syncInFlightRef = useRef(false);
   const singleSyncInFlightRef = useRef<Set<number>>(new Set());
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -214,6 +235,8 @@ export const FeedList = ({
   const allSelected = selectedFeedId === null
     && selectedFilter === 'all'
     && !settingsActive
+    && !showTagsView
+    && !hasTagFilter
     && searchInput.trim().length === 0;
 
   useLayoutEffect(() => {
@@ -279,6 +302,8 @@ export const FeedList = ({
     selectedFeedId,
     selectedFilter,
     settingsActive,
+    showTagsView,
+    hasTagFilter,
   ]);
 
   return (
@@ -310,6 +335,21 @@ export const FeedList = ({
           </span>
         )}
       </label>
+      {searchInput.trim() && (
+        <div className="sidebar-search-scope">
+          {selectedSearchFeed && onSearchAllFeedsChange
+            ? (
+                <button
+                  type="button"
+                  onClick={() => onSearchAllFeedsChange(!searchAllFeeds)}
+                  aria-label={`搜索范围：${searchScopeLabel}，点击切换`}
+                >
+                  范围：{searchScopeLabel}
+                </button>
+              )
+            : <span>范围：{searchScopeLabel}</span>}
+        </div>
+      )}
 
       <nav className="sidebar-navigation" aria-label="文章范围">
         <button
@@ -330,6 +370,7 @@ export const FeedList = ({
             selectedFeedId === null
             && selectedFilter === 'unread'
             && !settingsActive
+            && !showTagsView
               ? ' is-active'
               : ''
           }`}
@@ -345,6 +386,7 @@ export const FeedList = ({
             selectedFeedId === null
             && selectedFilter === 'starred'
             && !settingsActive
+            && !showTagsView
               ? ' is-active'
               : ''
           }`}
@@ -352,6 +394,15 @@ export const FeedList = ({
         >
           <StarIcon />
           <span>收藏</span>
+        </button>
+        <button
+          type="button"
+          className={`sidebar-item${(showTagsView || hasTagFilter) && !settingsActive ? ' is-active' : ''}`}
+          onClick={onOpenTags}
+        >
+          <TagIcon />
+          <span>标签</span>
+          {entryStats.tagCount > 0 && <span className="sidebar-count">{entryStats.tagCount}</span>}
         </button>
       </nav>
 

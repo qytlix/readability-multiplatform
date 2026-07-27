@@ -98,6 +98,25 @@
 
 ---
 
+### entry_search_fts — 本地文章全文索引（Migration 019）
+
+`entry_search_fts` 是 FTS5 `contentless-delete` 虚拟表，是可重建的派生数据，
+不取代 `entry` 或 `entry_content`。
+
+| 列 | 索引 | 说明 |
+|---|---|---|
+| `rowid` | FTS 文档身份 | 固定等于 `entry.id` |
+| `title` | trigram | NFKC 规范化后的文章标题 |
+| `markdown` | trigram | NFKC 规范化后的 Cleaned Markdown |
+| `feedId` | UNINDEXED | 索引维护快照；实际范围过滤仍以 `entry.feedId` 为准 |
+
+Migration 019 回填已有非删除文章，并通过 `entry`、`entry_content` 触发器同步
+标题、正文、软删除和级联删除。搜索仅匹配标题和 Markdown；Feed 名称与
+Feed Entry 摘要不进入索引。完整查询、排序、短词回退和重建规则见
+`docs/search_bar/search-optimization.md`。
+
+---
+
 ### content_html_cache — 渲染 HTML 缓存
 
 按主题缓存的 reader 渲染产物。key 为 `(themeId, entryId)`。
@@ -252,15 +271,17 @@ struct EntryListItem: Identifiable, Hashable {
 
 ## 2. LLM
 
-> **当前运行实现（迁移 006～014）**：下方 Mercury 多 Provider 模型仍是参考设计。运行代码使用较小的 `ai_provider_profile`、Summary 的 `agent_task_run` / `summary_result`、Translation 的 `translation_result` / `translation_segment`，以及实际生效的 `llm_usage_event` 请求账本。尚未实现参考模型中的 `agent_model_profile` 或 `agent_profile`。
+> **当前运行实现（迁移 006～021）**：下方 Mercury 多 Provider 模型仍是参考设计。运行代码使用较小的 `ai_provider_profile`、Summary 的 `agent_task_run` / `summary_result`、Translation 的 `translation_result` / `translation_segment`，以及实际生效的 `llm_usage_event` 请求账本。尚未实现参考模型中的 `agent_model_profile` 或 `agent_profile`。
 
-### ai_provider_profile — 当前 Summary Provider
+### ai_provider_profile — 当前 AI Provider
 
 | 列 | 说明 |
 |---|---|
 | `providerKind` | 当前固定为 `openai-compatible` |
-| `baseUrl` / `model` | 用户配置的 Chat Completions 端点和模型 |
-| `apiKeyRef` | 不透明密钥引用；SQLite 中不存储明文或密文 Key |
+| `providerPreset` / `baseUrl` / `summaryModel` | Summary 使用的 Provider、服务端点和模型 ID |
+| `translationProviderPreset` / `translationBaseUrl` / `translationModel` | Translation（含全文、划词和智能上下文）使用的独立 Provider、服务端点和模型 ID |
+| `model` | 兼容旧版本的模型列；迁移 020 后镜像 `summaryModel`，不参与任务路由 |
+| `apiKeyRef` / `translationApiKeyRef` | 两套 Provider 的不透明密钥引用；SQLite 中不存储明文或密文 Key |
 | `isActive` | P0 只允许一条活动配置 |
 
 Key 位于 Electron `userData/ai-secrets.json`。系统 `safeStorage` 可用时会加密；按当前产品决定，Linux `basic_text`、未知后端或无安全存储时改为持久化明文，并在界面明确警告用户。

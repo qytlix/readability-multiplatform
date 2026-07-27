@@ -1,4 +1,4 @@
-import type { Feed, EntryListItem } from './feed.types';
+import type { EntryCursor, Feed, EntryListItem } from './feed.types';
 import type { CleanedContent } from './content.types';
 
 // ── Feed IPC ──────────────────────────────────────────────
@@ -57,13 +57,15 @@ export interface EntryListRequest {
   isRead?: boolean;
   isStarred?: boolean;
   search?: string;
+  tagNames?: string[];
+  matchAll?: boolean;
   limit: number;
-  cursor?: { publishedAt: string; id: number };
+  cursor?: EntryCursor;
 }
 
 export interface EntryListResponse {
   entries: EntryListItem[];
-  nextCursor?: { publishedAt: string; id: number };
+  nextCursor?: EntryCursor;
 }
 
 export interface EntryMarkReadRequest {

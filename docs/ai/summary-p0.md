@@ -4,7 +4,13 @@
 
 Summary consumes only persisted `CleanedContent.markdown`; the Feed-provided `entry.summary` remains unrelated metadata. The Reader places the Summary panel directly below the article title and metadata, before the cleaned article body.
 
-P0 supports one active OpenAI-compatible Chat Completions provider, streaming output, `zh-CN` and `en` targets, and `short` / `medium` / `detailed` detail levels. The settings dialog only offers the supported GPT models (`gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, and legacy `gpt-4o-mini`); Main validates that allowlist as well. Translation, automatic retry, cancellation UI, queuing, multi-provider management, and chunked/map-reduce summaries remain out of scope.
+Summary supports one active Provider configuration, streaming output, `zh-CN`
+and `en` targets, and `short` / `medium` / `detailed` detail levels. The
+settings page offers Provider-specific model suggestions while keeping model
+IDs editable. Summary and Translation each have an independent Provider type,
+base URL, model, and API Key. Automatic retry, queuing, an arbitrary number of
+user-defined Provider profiles, and chunked/map-reduce summaries remain out of
+scope.
 
 ## Security boundary
 
@@ -16,9 +22,12 @@ P0 supports one active OpenAI-compatible Chat Completions provider, streaming ou
 
 ## Persistence and cache behavior
 
-Migrations `006_create_ai_profiles` and `007_create_summary` add:
+Migrations `006_create_ai_profiles`, `007_create_summary`,
+`020_add_provider_task_models`, and `021_add_translation_provider_route` add or
+extend:
 
-- `ai_provider_profile`: active provider URL, model, and opaque key reference;
+- `ai_provider_profile`: task-specific Summary/Translation Provider routes and
+  opaque key references;
 - `agent_task_run`: Summary identity, input hash, state, and sanitized failure;
 - `summary_result`: one result per `(entryId, targetLanguage, detailLevel)`.
 

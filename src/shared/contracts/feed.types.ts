@@ -37,6 +37,7 @@ export interface Entry {
 
 /** 文章列表轻量投影 */
 import type { PipelineStatus } from './content.types';
+import type { Tag } from './tag.types';
 
 export interface EntryListItem {
   id: number;
@@ -52,6 +53,19 @@ export interface EntryListItem {
   isStarred: boolean;
   summary?: string;                     // 纯文本；不得包含 Feed HTML 标记
   pipelineStatus: PipelineStatus;
+  tags?: Tag[];                         // Phase 3: tag pills + filtering
+  /** Plain-text excerpt around the first body match. Renderer owns highlighting. */
+  searchSnippet?: string;
+}
+
+export interface EntryCursor {
+  /** Effective publication time: publishedAt with createdAt as the fallback. */
+  publishedAt: string;
+  id: number;
+  /** Present only for ranked search pagination. Higher tiers sort first. */
+  matchTier?: number;
+  /** FTS5 BM25 rank. Lower values are more relevant. */
+  rank?: number;
 }
 
 /** Entry 查询参数 */
@@ -60,11 +74,11 @@ export interface EntryQuery {
   isRead?: boolean;
   isStarred?: boolean;
   search?: string;
+  tagNames?: string[];
+  tagFuzzyNames?: string[];
+  matchAll?: boolean;
   limit: number;                        // 默认 50
-  cursor?: {
-    publishedAt: string;
-    id: number;
-  };
+  cursor?: EntryCursor;
 }
 
 /** Feed 解析器统一输出 */
@@ -98,6 +112,7 @@ export interface FeedEntryReadStats extends EntryReadStats {
 export interface EntryStats {
   all: EntryReadStats;
   feeds: FeedEntryReadStats[];
+  tagCount: number;
 }
 
 export interface EntryReadingProgress {

@@ -1,4 +1,5 @@
 import type {
+  EntryCursor,
   EntryReadingProgress,
   EntryStats,
   Feed,
@@ -82,11 +83,13 @@ export interface EntryAPI {
     isRead?: boolean;
     isStarred?: boolean;
     search?: string;
+    tagNames?: string[];
+    matchAll?: boolean;
     limit: number;
-    cursor?: { publishedAt: string; id: number };
+    cursor?: EntryCursor;
   }) => Promise<IPCResult<{
     entries: EntryListItem[];
-    nextCursor?: { publishedAt: string; id: number };
+    nextCursor?: EntryCursor;
   }>>;
   stats: () => Promise<IPCResult<EntryStats>>;
   updateReadingProgress: (

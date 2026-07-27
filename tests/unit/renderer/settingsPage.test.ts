@@ -40,11 +40,14 @@ describe('full-screen settings page', () => {
     document.body.append(container);
     const root = createRoot(container);
     const onClose = vi.fn();
+    const onReaderPreferencesChange = vi.fn();
 
     await act(async () => {
       root.render(createElement(AISettingsPage, {
         preferences: DEFAULT_AI_PREFERENCES,
         onPreferencesChange: vi.fn(),
+        readerPreferences: { pageTurnAnimationEnabled: false },
+        onReaderPreferencesChange,
         onClose,
       }));
       await Promise.resolve();
@@ -56,17 +59,19 @@ describe('full-screen settings page', () => {
       (link) => link.textContent,
     );
     expect(navigationLabels).toEqual([
+      '阅读',
       '摘要',
       '翻译',
       '术语库',
       'AI 专家',
       '快捷键',
+      '标签生成',
       '模型服务',
       '用量统计',
       '诊断',
     ]);
     expect(container.querySelectorAll('.settings-page-content > [id^="settings-"]'))
-      .toHaveLength(8);
+      .toHaveLength(10);
     expect(container.textContent).not.toContain('Settings');
 
     const navigationIndicator = container.querySelector<HTMLElement>(
@@ -74,12 +79,21 @@ describe('full-screen settings page', () => {
     );
     expect(navigationIndicator).not.toBeNull();
     expect(navigationIndicator?.style.opacity).toBe('1');
-    expect(navigationLabels[0]).toBe('摘要');
+    expect(navigationLabels[0]).toBe('阅读');
     expect(
       container.querySelector<HTMLAnchorElement>(
         '.settings-navigation-links a.is-active',
       )?.getAttribute('href'),
-    ).toBe('#settings-summary');
+    ).toBe('#settings-reading');
+
+    const pageTurnToggle = container.querySelector<HTMLInputElement>(
+      '#settings-reading input[type="checkbox"]',
+    );
+    expect(pageTurnToggle?.checked).toBe(false);
+    act(() => pageTurnToggle?.click());
+    expect(onReaderPreferencesChange).toHaveBeenCalledWith({
+      pageTurnAnimationEnabled: true,
+    });
 
     const translationLink = container.querySelector<HTMLAnchorElement>(
       '[data-settings-section="settings-translation"]',

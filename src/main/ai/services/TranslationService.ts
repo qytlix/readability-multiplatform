@@ -396,7 +396,7 @@ export class TranslationService {
       );
     }
 
-    const apiKey = this.secretStore.read(profile.apiKeyRef);
+    const apiKey = this.secretStore.read(profile.translationApiKeyRef);
     const isResuming = !request.forceNew
       && existingResult !== undefined
       && existingResult.status !== 'succeeded';
@@ -454,9 +454,9 @@ export class TranslationService {
     this.executeTimer = setTimeout(() => {
       this.executeTimer = undefined;
       void this.executeRun(result, {
-        providerKind: profile.providerKind,
-        baseUrl: profile.baseUrl,
-        model: profile.model,
+        providerKind: profile.translationProviderKind,
+        baseUrl: profile.translationBaseUrl,
+        model: profile.translationModel,
         apiKey,
         providerProfileId: profile.id,
         expert,

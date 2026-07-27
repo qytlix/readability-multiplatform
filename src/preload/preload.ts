@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, type PingResponse, type ShaleAPI } from '../shared/ipc';
 import type { ExportAPI } from '../shared/domain-api';
 import type { PerArticleOptions } from '../shared/contracts/export.types';
+import type { EntryCursor } from '../shared/contracts/feed.types';
 import {
   FEED_IPC_CHANNELS,
   type FeedSyncProgress,
@@ -17,6 +18,7 @@ import { DIAGNOSTICS_IPC_CHANNELS } from '../shared/contracts/diagnostics.ipc';
 import { USAGE_IPC_CHANNELS } from '../shared/contracts/usage.ipc';
 import type { UsageStatisticsQuery } from '../shared/contracts/usage.types';
 import { ANNOTATION_IPC_CHANNELS } from '../shared/contracts/annotation.ipc';
+import { TAG_IPC_CHANNELS } from '../shared/contracts/tag.ipc';
 import { EXPORT_IPC_CHANNELS } from '../shared/contracts/export.ipc';
 import type { CleanProgressEvent } from '../shared/contracts/export.ipc';
 import type {
@@ -76,8 +78,10 @@ const entryAPI = {
     isRead?: boolean;
     isStarred?: boolean;
     search?: string;
+    tagNames?: string[];
+    matchAll?: boolean;
     limit: number;
-    cursor?: { publishedAt: string; id: number };
+    cursor?: EntryCursor;
   }) => ipcRenderer.invoke(FEED_IPC_CHANNELS.entryList, params),
   stats: () => ipcRenderer.invoke(FEED_IPC_CHANNELS.entryStats),
   updateReadingProgress: (entryId: number, readingProgress: number) =>
@@ -250,6 +254,29 @@ const exportAPI: ExportAPI = {
   ) => ipcRenderer.invoke(EXPORT_IPC_CHANNELS.exportMultiple, { entries }),
 };
 
+const tagAPI = {
+  listByEntry: (entryId: number) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.listByEntry, { entryId }),
+  createTag: (tagName: string) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.createTag, { tagName }),
+  tagEntry: (entryId: number, tagName: string) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.tagEntry, { entryId, tagName }),
+  untagEntry: (entryId: number, tagId: number) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.untagEntry, { entryId, tagId }),
+  listAllWithCount: () =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.listAllWithCount),
+  listAvailableForEntry: (entryId: number) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.listAvailableForEntry, { entryId }),
+  autoTagGenerate: (request: { entryId: number; maxCandidates: number }) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.autoTagGenerate, request),
+  autoTagConfirm: (request: { entryId: number; tagNames: string[] }) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.autoTagConfirm, request),
+  autoTagCheckStatus: (entryId: number) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.autoTagCheckStatus, { entryId }),
+  autoTagClearStatus: (entryId: number) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.autoTagClearStatus, { entryId }),
+};
+
 const shaleAPI: ShaleAPI = {
   system: {
     ping,
@@ -269,6 +296,7 @@ const shaleAPI: ShaleAPI = {
   usage: usageAPI,
   annotation: annotationAPI,
   export: exportAPI,
+  tag: tagAPI,
 };
 
 contextBridge.exposeInMainWorld('shaleAPI', shaleAPI);

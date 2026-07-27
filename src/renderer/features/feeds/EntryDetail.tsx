@@ -32,7 +32,7 @@ import {
 } from '../translation/TranslationPanel';
 import type { AiPreferences } from '../settings/aiPreferences';
 import { InlineTranslationOverlay } from '../translation/InlineTranslationOverlay';
-import { SummaryIcon, TranslateIcon, ExportIcon } from '../reader/ReaderIcons';
+import { SummaryIcon, TranslateIcon, ExportIcon, TagIcon } from '../reader/ReaderIcons';
 import { formatArticleDate, getArticleDateLocale } from './articleMetadata';
 import {
   checkAvailability,
@@ -62,6 +62,7 @@ import {
   getTrustedVideoEmbed,
 } from './trustedVideoEmbed';
 import { AnnotatedArticle } from '../annotations/AnnotatedArticle';
+import { TagFloatingWindow } from '../tags/TagFloatingWindow';
 
 interface EntryDetailProps {
   entry: Entry | null;
@@ -93,11 +94,13 @@ interface EntryDetailProps {
     entryId: number,
     result: RetranslationRequestResult,
   ) => void;
+  onTagsChanged?: () => void;
   beforeTranslationStart?: () => boolean | Promise<boolean>;
   selectionMode?: boolean;
   selectedIds?: Set<number>;
   onExportRequest?: () => void;
   onFeedback?: (message: string) => void;
+  pageTurnAnimationEnabled?: boolean;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -131,6 +134,8 @@ export const EntryDetail = ({
   retranslationRequest,
   onRetranslationRequestComplete,
   beforeTranslationStart,
+  onTagsChanged,
+  pageTurnAnimationEnabled = true,
 }: EntryDetailProps) => {
   const [content, setContent] = useState<CleanedContent | null>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
@@ -144,6 +149,7 @@ export const EntryDetail = ({
   const [retranslationStatus, setRetranslationStatus] = useState<RetranslationStatus | null>(null);
   const [isTitleTranslating, setIsTitleTranslating] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showTagWindow, setShowTagWindow] = useState(false);
   const [exportArticleAvail, setExportArticleAvail] = useState<ArticleAvailability | null>(null);
   const [titleTranslationTarget, setTitleTranslationTarget] = useState<HTMLDivElement | null>(null);
   const [isFloatingHeaderVisible, setIsFloatingHeaderVisible] = useState(false);
@@ -173,9 +179,19 @@ export const EntryDetail = ({
   const hasUserScrolledSinceRestoreRef = useRef(false);
   const programmaticScrollRef = useRef<{ entryId: number; scrollTop: number } | null>(null);
   const readingBookTurnIdRef = useRef(0);
+  const tagBtnRef = useRef<HTMLButtonElement>(null);
   const lastReadingBookSampleAtRef = useRef<number | null>(null);
   const readingBookDirectionRef = useRef<ReadingBookTurnDirection | null>(null);
   const readingBookDistanceRef = useRef(0);
+
+  useEffect(() => {
+    if (pageTurnAnimationEnabled) return;
+
+    setReadingBookTurn(null);
+    lastReadingBookSampleAtRef.current = null;
+    readingBookDirectionRef.current = null;
+    readingBookDistanceRef.current = 0;
+  }, [pageTurnAnimationEnabled]);
 
   const readerDisplayState = getReaderDisplayState({
     feedLoadStatus,
@@ -582,6 +598,8 @@ export const EntryDetail = ({
     setShowExportDialog(false);
   }, []);
 
+
+
   if (readerDisplayState === 'feed-loading') {
     return <div className="entry-detail empty entry-detail-empty-state">正在载入订阅源…</div>;
   }
@@ -758,6 +776,8 @@ export const EntryDetail = ({
     const turnDirection = getReadingBookTurnDirection(scrollDelta);
     if (turnDirection) {
       setReadingJumpTarget(turnDirection === 'left' ? 'end' : 'start');
+    }
+    if (turnDirection && pageTurnAnimationEnabled) {
       const sampleAt = event.timeStamp;
       const previousSampleAt = lastReadingBookSampleAtRef.current;
       const elapsedSinceSample = previousSampleAt === null
@@ -973,6 +993,27 @@ export const EntryDetail = ({
             <TranslateIcon />
           </button>
         </span>
+        <span
+          className="article-action-tooltip"
+          data-tooltip="标签"
+        >
+          <button
+            ref={tagBtnRef}
+            type="button"
+            className={showTagWindow ? 'is-active' : ''}
+            aria-label="管理标签"
+            aria-haspopup="dialog"
+            aria-expanded={showTagWindow}
+            onClick={() => {
+              if (showTagWindow) {
+                tagBtnRef.current?.blur();
+              }
+              setShowTagWindow(!showTagWindow);
+            }}
+          >
+            <TagIcon />
+          </button>
+        </span>
         {currentRetranslationStatus && (
           <RetranslationStatusNotice status={currentRetranslationStatus} />
         )}
@@ -1015,6 +1056,16 @@ export const EntryDetail = ({
     <>
       {aiToolbar}
       {exportToolbar}
+      {showTagWindow && entry && tagBtnRef.current && (
+        <TagFloatingWindow
+          entryId={entry.id}
+          anchorEl={tagBtnRef.current}
+          onClose={() => setShowTagWindow(false)}
+          onTagsChanged={onTagsChanged}
+          maxCandidates={aiPreferences.tagAgentMaxCandidates}
+          tagSuggestionMaxCount={aiPreferences.tagSuggestionMaxCount}
+        />
+      )}
       <div className="entry-detail">
         <div
           ref={scrollContainerRef}
@@ -1163,7 +1214,7 @@ export const EntryDetail = ({
         />
         <ReadingProgressBook
           readingProgress={visibleReadingProgress}
-          turnMotion={readingBookTurn}
+          turnMotion={pageTurnAnimationEnabled ? readingBookTurn : null}
           jumpTarget={readingJumpTarget}
           onJump={handleReadingJump}
         />

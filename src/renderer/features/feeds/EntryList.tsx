@@ -5,11 +5,13 @@ import {
 } from 'react';
 import type { EntryListItem } from '../../../shared/contracts/feed.types';
 import { FilterIcon, SearchIcon } from '../reader/ReaderIcons';
+import { tagColor } from '../tags/tagColor';
 import type { EntryFilter } from '../search/entrySearch';
 import {
   entryListCopy,
   type EntryListHeadingPresentation,
 } from './entryListPresentation';
+import { SearchHighlightedText } from '../search/SearchHighlightedText';
 import { getReadingProgressPercentage } from './readingProgress';
 import type { EntryLoadStatus } from './readerState';
 
@@ -206,7 +208,16 @@ export const EntryList = ({
                       />
                     </span>
                   )}
-                  <h2>{entry.title ?? '无标题文章'}</h2>
+                  <h2>
+                    {showsSearch
+                      ? (
+                          <SearchHighlightedText
+                            text={entry.title ?? '无标题文章'}
+                            query={searchQuery}
+                          />
+                        )
+                      : entry.title ?? '无标题文章'}
+                  </h2>
                   <span
                     className="story-card-reading-progress"
                     aria-label={`阅读进度 ${readingPercentage}%`}
@@ -215,7 +226,32 @@ export const EntryList = ({
                     {readingPercentage}%
                   </span>
                 </div>
-                {entry.summary && <p>{entry.summary}</p>}
+                {showsSearch
+                  ? entry.searchSnippet && (
+                      <p>
+                        <SearchHighlightedText
+                          text={entry.searchSnippet}
+                          query={searchQuery}
+                        />
+                      </p>
+                    )
+                  : entry.summary && <p>{entry.summary}</p>}
+                {entry.tags && entry.tags.length > 0 && (
+                  <div className="story-card-tags">
+                    {entry.tags.map((tag) => {
+                      const { hue } = tagColor(tag.name);
+                      return (
+                        <span
+                          key={tag.id}
+                          className="story-card-tag"
+                          style={{ '--tag-hue': hue } as React.CSSProperties}
+                        >
+                          {tag.name}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </button>
           );

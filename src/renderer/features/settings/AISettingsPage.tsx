@@ -28,7 +28,7 @@ import type {
   TerminologyLibrary,
 } from '../../../shared/contracts/translation-terminology.types';
 import { ProviderSettings } from '../summary/ProviderSettings';
-import type { AiPreferences } from './aiPreferences';
+import type { AiPreferences, TagAgentTriggerMode, TagAgentConfirmMode } from './aiPreferences';
 import {
   areKeyboardShortcutsEqual,
   formatKeyboardShortcut,
@@ -36,6 +36,10 @@ import {
 } from './keyboardShortcut';
 import { DiagnosticsSection } from './DiagnosticsSection';
 import { UsageStatisticsSection } from './UsageStatisticsSection';
+import {
+  DEFAULT_READER_PREFERENCES,
+  type ReaderPreferences,
+} from './readerPreferences';
 
 type ShortcutPreferenceKey =
   | 'fullTranslationShortcut'
@@ -74,11 +78,13 @@ const formatSettingsAuthor = (
 };
 
 const SETTINGS_NAVIGATION = [
+  { id: 'settings-reading', label: '阅读' },
   { id: 'settings-summary', label: '摘要' },
   { id: 'settings-translation', label: '翻译' },
   { id: 'settings-terminology', label: '术语库' },
   { id: 'settings-experts', label: 'AI 专家' },
   { id: 'settings-shortcuts', label: '快捷键' },
+  { id: 'settings-tag-agent', label: '标签生成' },
   { id: 'settings-provider', label: '模型服务' },
   { id: 'settings-usage', label: '用量统计' },
   { id: 'settings-diagnostics', label: '诊断' },
@@ -89,12 +95,16 @@ type SettingsSectionId = (typeof SETTINGS_NAVIGATION)[number]['id'];
 interface AISettingsPageProps {
   preferences: AiPreferences;
   onPreferencesChange: (preferences: AiPreferences) => void;
+  readerPreferences?: ReaderPreferences;
+  onReaderPreferencesChange?: (preferences: ReaderPreferences) => void;
   onClose: () => void;
 }
 
 export const AISettingsPage = ({
   preferences,
   onPreferencesChange,
+  readerPreferences = DEFAULT_READER_PREFERENCES,
+  onReaderPreferencesChange,
   onClose,
 }: AISettingsPageProps) => {
   const [profile, setProfile] = useState<ProviderProfile | null>(null);
@@ -124,8 +134,32 @@ export const AISettingsPage = ({
   const [pendingTerminologyLibraryId, setPendingTerminologyLibraryId] =
     useState<string | null>(null);
   const terminologyFileRef = useRef<HTMLInputElement>(null);
+  // Tag Agent local draft: changes only apply on explicit Save.
+  const [tagDraftTriggerMode, setTagDraftTriggerMode] =
+    useState<TagAgentTriggerMode>(preferences.tagAgentTriggerMode);
+  const [tagDraftConfirmMode, setTagDraftConfirmMode] =
+    useState<TagAgentConfirmMode>(preferences.tagAgentConfirmMode);
+  const [tagDraftMaxCandidates, setTagDraftMaxCandidates] =
+    useState(preferences.tagAgentMaxCandidates);
+  const [tagDraftSuggestionMaxCount, setTagDraftSuggestionMaxCount] =
+    useState(preferences.tagSuggestionMaxCount);
+  const [tagDraftSaved, setTagDraftSaved] = useState(false);
+
+  // Sync draft when preferences change from outside
+  useEffect(() => {
+    setTagDraftTriggerMode(preferences.tagAgentTriggerMode);
+    setTagDraftConfirmMode(preferences.tagAgentConfirmMode);
+    setTagDraftMaxCandidates(preferences.tagAgentMaxCandidates);
+    setTagDraftSuggestionMaxCount(preferences.tagSuggestionMaxCount);
+  }, [
+    preferences.tagAgentTriggerMode,
+    preferences.tagAgentConfirmMode,
+    preferences.tagAgentMaxCandidates,
+    preferences.tagSuggestionMaxCount,
+  ]);
+
   const [activeSettingsSection, setActiveSettingsSection] =
-    useState<SettingsSectionId>('settings-summary');
+    useState<SettingsSectionId>('settings-reading');
   const settingsNavigationRef = useRef<HTMLElement>(null);
   const settingsSelectionIndicatorRef = useRef<HTMLSpanElement>(null);
   const settingsPageMainRef = useRef<HTMLElement>(null);
@@ -524,6 +558,37 @@ export const AISettingsPage = ({
         </header>
 
         <div className="settings-page-content">
+          <section
+            id="settings-reading"
+            className="settings-section"
+            aria-labelledby="reading-settings-title"
+          >
+            <div className="settings-section-heading">
+              <div>
+                <h3 id="reading-settings-title" className="settings-section-title">阅读</h3>
+                <p>控制阅读界面的动态效果。</p>
+              </div>
+            </div>
+            <div className="settings-card">
+              <div className="settings-toggle-grid">
+                <label className="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={readerPreferences.pageTurnAnimationEnabled}
+                    onChange={(event) => onReaderPreferencesChange?.({
+                      ...readerPreferences,
+                      pageTurnAnimationEnabled: event.target.checked,
+                    })}
+                  />
+                  <span>
+                    <strong>翻页动画</strong>
+                    <small>滚动文章时显示右下角书本翻页；关闭后保留阅读进度和跳转按钮。</small>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </section>
+
           <section
             id="settings-summary"
             className="settings-section"
@@ -1044,6 +1109,94 @@ export const AISettingsPage = ({
               {shortcutError && (
                 <p className="settings-shortcut-error" role="status">{shortcutError}</p>
               )}
+            </div>
+          </section>
+
+          <section
+            id="settings-tag-agent"
+            className="settings-section"
+            aria-labelledby="tag-agent-settings-title"
+          >
+            <div className="settings-section-heading">
+              <div>
+                <h3 id="tag-agent-settings-title" className="settings-section-title">标签生成</h3>
+                <p>控制 AI 标签生成的行为。Provider 配置见下方「模型服务」区域。</p>
+              </div>
+            </div>
+            <div className="settings-card">
+              <div className="settings-fields settings-fields-two-columns">
+                <label>
+                  触发方式
+                  <select
+                    value={tagDraftTriggerMode}
+                    onChange={(event) => {
+                      setTagDraftTriggerMode(event.target.value as TagAgentTriggerMode);
+                      setTagDraftSaved(false);
+                    }}
+                  >
+                    <option value="manual">手动触发</option>
+                    <option value="auto">进入文章自动触发</option>
+                  </select>
+                </label>
+                <label>
+                  确认方式
+                  <select
+                    value={tagDraftConfirmMode}
+                    onChange={(event) => {
+                      setTagDraftConfirmMode(event.target.value as TagAgentConfirmMode);
+                      setTagDraftSaved(false);
+                    }}
+                  >
+                    <option value="manual">手动确认</option>
+                    <option value="auto">自动确认</option>
+                  </select>
+                </label>
+              </div>
+              <div className="settings-fields settings-fields-two-columns">
+                <label>
+                  max 候选数
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={tagDraftMaxCandidates}
+                    onChange={(event) => {
+                      setTagDraftMaxCandidates(Math.max(1, Math.min(50, Number(event.target.value) || 1)));
+                      setTagDraftSaved(false);
+                    }}
+                  />
+                </label>
+                <label>
+                  建议显示数
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={tagDraftSuggestionMaxCount}
+                    onChange={(event) => {
+                      setTagDraftSuggestionMaxCount(Math.max(1, Math.min(50, Number(event.target.value) || 1)));
+                      setTagDraftSaved(false);
+                    }}
+                  />
+                </label>
+              </div>
+              <div className="settings-card-actions">
+                <button
+                  type="button"
+                  className="settings-save-btn"
+                  onClick={() => {
+                    updatePreferences({
+                      tagAgentTriggerMode: tagDraftTriggerMode,
+                      tagAgentConfirmMode: tagDraftConfirmMode,
+                      tagAgentMaxCandidates: tagDraftMaxCandidates,
+                      tagSuggestionMaxCount: tagDraftSuggestionMaxCount,
+                    });
+                    setTagDraftSaved(true);
+                  }}
+                >
+                  {tagDraftSaved ? '已保存 ✓' : '保存'}
+                </button>
+              </div>
             </div>
           </section>
 
