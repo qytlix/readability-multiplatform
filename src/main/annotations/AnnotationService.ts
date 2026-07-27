@@ -9,6 +9,11 @@ import {
   AnnotationError,
 } from '../../shared/errors/annotation.errors';
 import type { EntryStore } from '../feed/stores/EntryStore';
+import {
+  rememberAnnotationOperationFailure,
+  type AnnotationOperation,
+  type AnnotationOperationStage,
+} from './AnnotationLogging';
 import type { AnnotationStore } from './AnnotationStore';
 
 const MAX_SELECTED_TEXT_LENGTH = 10_000;
@@ -22,50 +27,85 @@ export class AnnotationService {
   ) {}
 
   list(entryId: number): EntryAnnotation[] {
-    this.assertEntryExists(entryId);
-    return this.annotationStore.findByEntry(entryId);
+    let stage: AnnotationOperationStage = 'lookup';
+    try {
+      this.assertEntryExists(entryId);
+      stage = 'read';
+      return this.annotationStore.findByEntry(entryId);
+    } catch (error) {
+      this.rememberFailure(error, 'load', stage);
+      throw error;
+    }
   }
 
   create(request: CreateAnnotationRequest): EntryAnnotation {
-    this.assertEntryExists(request.entryId);
-    assertCreateRequest(request);
-    const overlaps = this.annotationStore.findByEntry(request.entryId).some(
-      (annotation) => (
-        request.startOffset < annotation.endOffset
-        && request.endOffset > annotation.startOffset
-      ),
-    );
-    if (overlaps) {
-      throw new AnnotationError(
-        ANNOTATION_ERROR_CODES.OVERLAP,
-        'The selected text overlaps an existing annotation.',
+    let stage: AnnotationOperationStage = 'lookup';
+    try {
+      this.assertEntryExists(request.entryId);
+      assertCreateRequest(request);
+      stage = 'read';
+      const overlaps = this.annotationStore.findByEntry(request.entryId).some(
+        (annotation) => (
+          request.startOffset < annotation.endOffset
+          && request.endOffset > annotation.startOffset
+        ),
       );
+      if (overlaps) {
+        throw new AnnotationError(
+          ANNOTATION_ERROR_CODES.OVERLAP,
+          'The selected text overlaps an existing annotation.',
+        );
+      }
+      stage = 'persist';
+      return this.annotationStore.create(request);
+    } catch (error) {
+      this.rememberFailure(error, 'create', stage);
+      throw error;
     }
-    return this.annotationStore.create(request);
   }
 
   updateNote(request: UpdateAnnotationNoteRequest): EntryAnnotation {
-    if (!Number.isInteger(request.annotationId) || request.annotationId <= 0) {
-      throw invalidRequest('The annotation identity is invalid.');
+    const stage: AnnotationOperationStage = 'persist';
+    try {
+      if (!Number.isInteger(request.annotationId) || request.annotationId <= 0) {
+        throw invalidRequest('The annotation identity is invalid.');
+      }
+      if (request.noteText.length > MAX_NOTE_LENGTH) {
+        throw invalidRequest('The annotation note is too long.');
+      }
+      const annotation = this.annotationStore.updateNote(
+        request.annotationId,
+        request.noteText,
+      );
+      if (!annotation) throw annotationNotFound();
+      return annotation;
+    } catch (error) {
+      this.rememberFailure(error, 'update', stage);
+      throw error;
     }
-    if (request.noteText.length > MAX_NOTE_LENGTH) {
-      throw invalidRequest('The annotation note is too long.');
-    }
-    const annotation = this.annotationStore.updateNote(
-      request.annotationId,
-      request.noteText,
-    );
-    if (!annotation) throw annotationNotFound();
-    return annotation;
   }
 
   delete(annotationId: number): void {
-    if (!Number.isInteger(annotationId) || annotationId <= 0) {
-      throw invalidRequest('The annotation identity is invalid.');
+    const stage: AnnotationOperationStage = 'persist';
+    try {
+      if (!Number.isInteger(annotationId) || annotationId <= 0) {
+        throw invalidRequest('The annotation identity is invalid.');
+      }
+      if (!this.annotationStore.delete(annotationId)) {
+        throw annotationNotFound();
+      }
+    } catch (error) {
+      this.rememberFailure(error, 'delete', stage);
+      throw error;
     }
-    if (!this.annotationStore.delete(annotationId)) {
-      throw annotationNotFound();
-    }
+  }
+
+  private rememberFailure(
+    error: unknown,
+    operation: AnnotationOperation,
+    stage: AnnotationOperationStage,
+  ): void {
+    rememberAnnotationOperationFailure(error, operation, stage);
   }
 
   private assertEntryExists(entryId: number): void {

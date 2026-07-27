@@ -80,6 +80,7 @@ const CONTEXT_FIELD_TYPES = {
   finishReason: 'string',
   affectedSegmentIdHashes: 'hash-list',
   stage: 'string',
+  operation: 'string',
   strategy: 'string',
   requestKind: 'string',
   trigger: 'string',
@@ -167,6 +168,7 @@ export interface StructuredLogContext {
   finishReason?: string;
   affectedSegmentIdHashes?: string[];
   stage?: string;
+  operation?: string;
   strategy?: string;
   requestKind?: string;
   trigger?: string;
@@ -807,6 +809,9 @@ function assignContextField(
       return;
     case 'stage':
       if (typeof value === 'string') context.stage = value;
+      return;
+    case 'operation':
+      if (typeof value === 'string') context.operation = value;
       return;
     case 'requestKind':
       if (typeof value === 'string') context.requestKind = value;

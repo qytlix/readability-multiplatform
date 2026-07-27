@@ -79,6 +79,7 @@ export interface DiagnosticLogContext {
   finishReason?: string;
   affectedSegmentIdHashes?: string[];
   stage?: string;
+  operation?: string;
   requestKind?: string;
   trigger?: string;
   previousResultAtStart?: 'none' | 'retained';

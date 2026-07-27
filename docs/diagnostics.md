@@ -63,6 +63,14 @@ cache data, page URLs, response bodies, cleaned content, or raw errors. Cached
 or Feed-content fallback success remains a completed Content operation, and a
 confirmed caller abort has no business-failure record.
 
+`annotation.operation.failed` is emitted only by the annotation IPC operation
+boundary after a final failed load, create, update, or delete. It includes only
+the controlled operation, final stage, stable error code, duration, failure
+flag, and entry ID when the request already identifies an article. It never
+contains annotation IDs, notes, selected text, anchors, offsets, article data,
+or raw database errors. Normal annotation actions and ordinary input or overlap
+validation produce no diagnostic record.
+
 ## Save behavior
 
 Main owns the native save dialog and the final write. Cancel returns a normal

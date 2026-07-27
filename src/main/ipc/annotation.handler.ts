@@ -3,6 +3,7 @@ import {
   type BrowserWindow,
   type IpcMainInvokeEvent,
 } from 'electron';
+import { performance } from 'node:perf_hooks';
 import { ANNOTATION_IPC_CHANNELS } from '../../shared/contracts/annotation.ipc';
 import {
   ANNOTATION_COLORS,
@@ -17,6 +18,13 @@ import {
   AnnotationError,
   toAnnotationIpcError,
 } from '../../shared/errors/annotation.errors';
+import {
+  elapsedAnnotationMilliseconds,
+  getAnnotationOperationFailure,
+  logAnnotationOperationFailure,
+  type AnnotationOperation,
+  type AnnotationOperationLogger,
+} from '../annotations/AnnotationLogging';
 import type { AnnotationServices } from '../services';
 
 type GetMainWindow = () => BrowserWindow | null;
@@ -24,12 +32,16 @@ type GetMainWindow = () => BrowserWindow | null;
 export function registerAnnotationIpcHandlers(
   getMainWindow: GetMainWindow,
   services: AnnotationServices,
+  logger?: AnnotationOperationLogger,
 ): void {
   ipcMain.handle(
     ANNOTATION_IPC_CHANNELS.list,
     (event: IpcMainInvokeEvent, request: unknown) => handle(
       event,
       getMainWindow,
+      logger,
+      'load',
+      (request as AnnotationListRequest).entryId,
       isListRequest(request),
       () => services.annotationService.list((request as AnnotationListRequest).entryId),
     ),
@@ -39,6 +51,9 @@ export function registerAnnotationIpcHandlers(
     (event: IpcMainInvokeEvent, request: unknown) => handle(
       event,
       getMainWindow,
+      logger,
+      'create',
+      (request as CreateAnnotationRequest).entryId,
       isCreateRequest(request),
       () => services.annotationService.create(request as CreateAnnotationRequest),
     ),
@@ -48,6 +63,9 @@ export function registerAnnotationIpcHandlers(
     (event: IpcMainInvokeEvent, request: unknown) => handle(
       event,
       getMainWindow,
+      logger,
+      'update',
+      undefined,
       isUpdateNoteRequest(request),
       () => services.annotationService.updateNote(
         request as UpdateAnnotationNoteRequest,
@@ -59,6 +77,9 @@ export function registerAnnotationIpcHandlers(
     (event: IpcMainInvokeEvent, request: unknown) => handle(
       event,
       getMainWindow,
+      logger,
+      'delete',
+      undefined,
       isAnnotationIdRequest(request),
       () => services.annotationService.delete(
         (request as AnnotationIdRequest).annotationId,
@@ -70,6 +91,9 @@ export function registerAnnotationIpcHandlers(
 function handle<T>(
   event: IpcMainInvokeEvent,
   getMainWindow: GetMainWindow,
+  logger: AnnotationOperationLogger | undefined,
+  operation: AnnotationOperation,
+  entryId: number | undefined,
   validRequest: boolean,
   action: () => T,
 ): IPCResult<T> {
@@ -92,9 +116,19 @@ function handle<T>(
       )),
     };
   }
+  const startedAt = performance.now();
   try {
     return { ok: true, data: action() };
   } catch (error) {
+    const failure = getAnnotationOperationFailure(error, operation);
+    if (failure) {
+      logAnnotationOperationFailure(logger, {
+        ...failure,
+        durationMs: elapsedAnnotationMilliseconds(startedAt),
+        success: false,
+        ...(entryId === undefined ? {} : { entryId }),
+      });
+    }
     return { ok: false, error: toAnnotationIpcError(error) };
   }
 }
