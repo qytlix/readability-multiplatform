@@ -224,7 +224,7 @@ export const TagFloatingWindow = ({
         </>
       )}
       {loadState === 'loaded' && tags.length === 0 && (
-        <p className="tag-floating-empty">还没有标签，输入名称添加。</p>
+        <p className="tag-floating-empty">本文还没有标签，点击已有标签或输入标签以添加。</p>
       )}
       {tags.length > 0 && (
         <div className="tag-floating-list">
