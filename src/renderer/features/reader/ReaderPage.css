@@ -5840,9 +5840,10 @@ body.workspace-is-resizing * {
 /* ── Tag Badge ─────────────────────────────────────────────── */
 
 .tag-badge {
-  --tag-saturation: 50%;
-  --tag-lightness: 62%;
+  --tag-saturation: 35%;
+  --tag-lightness: 30%;
   --tag-bg: hsl(var(--tag-hue), var(--tag-saturation), var(--tag-lightness));
+  --tag-text-lightness: clamp(10%, calc(200% - var(--tag-lightness) * 4), 92%);
 
   display: flex;
   align-items: center;
@@ -5852,7 +5853,7 @@ body.workspace-is-resizing * {
   border-radius: 8px;
   font-size: 13px;
   line-height: 1.5;
-  color: hsl(0, 0%, 8%);
+  color: hsl(0, 0%, var(--tag-text-lightness));
   background: var(--tag-bg);
   box-sizing: border-box;
   transition: background 120ms ease;
@@ -5879,7 +5880,7 @@ body.workspace-is-resizing * {
   padding: 0;
   border: none;
   border-radius: 50%;
-  color: hsl(0, 0%, 15%);
+  color: hsl(0, 0%, clamp(15%, calc(200% - var(--tag-lightness) * 4), 85%));
   background: hsla(0, 0%, 0%, 0.18);
   cursor: pointer;
   font-size: 13px;
@@ -5909,7 +5910,6 @@ body.workspace-is-resizing * {
 .reader-page[data-theme="light"] .tag-badge {
   --tag-lightness: 88%;
   --tag-saturation: 35%;
-  color: hsl(0, 0%, 13%);
   box-shadow: inset 0 0 0 1px hsla(0, 0%, 0%, 0.06);
 }
 
