@@ -118,6 +118,57 @@ describe('ProviderService', () => {
     }
   });
 
+  it('persists and tests distinct Summary and Translation Provider routes', async () => {
+    const { databaseManager, service, requestProvider } = createService();
+
+    try {
+      expect(service.save({
+        summary: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'gpt-summary-model',
+          apiKey: 'sk-summary-key',
+        },
+        translation: {
+          providerKind: 'deepseek',
+          baseUrl: 'https://api.deepseek.com',
+          model: 'deepseek-translation-model',
+          apiKey: 'sk-translation-key',
+        },
+      })).toMatchObject({
+        providerKind: 'openai',
+        model: 'gpt-summary-model',
+        summaryModel: 'gpt-summary-model',
+        translationProviderKind: 'deepseek',
+        translationBaseUrl: 'https://api.deepseek.com',
+        translationModel: 'deepseek-translation-model',
+        hasSummaryApiKey: true,
+        hasTranslationApiKey: true,
+      });
+
+      await expect(service.testConnection()).resolves.toMatchObject({ ok: true });
+      expect(requestProvider.testConnection).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          providerKind: 'openai',
+          model: 'gpt-summary-model',
+          apiKey: 'sk-summary-key',
+        }),
+      );
+      expect(requestProvider.testConnection).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          providerKind: 'deepseek',
+          baseUrl: 'https://api.deepseek.com',
+          model: 'deepseek-translation-model',
+          apiKey: 'sk-translation-key',
+        }),
+      );
+    } finally {
+      databaseManager.close();
+    }
+  });
+
   it('rejects unsafe model IDs and requires a new key when changing provider type or host', () => {
     const { databaseManager, service } = createService();
 

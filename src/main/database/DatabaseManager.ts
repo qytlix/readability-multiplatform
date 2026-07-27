@@ -26,6 +26,8 @@ import {
   rebuildEntrySearchIndex,
   registerEntrySearchFunctions,
 } from '../migrations/019_create_entry_search_index';
+import { MIGRATION_020 } from '../migrations/020_add_provider_task_models';
+import { MIGRATION_021 } from '../migrations/021_add_translation_provider_route';
 
 interface Migration {
   id: string;
@@ -66,6 +68,8 @@ const MIGRATIONS: Migration[] = [
     sql: MIGRATION_019,
     run: rebuildEntrySearchIndex,
   },
+  { id: '020_add_provider_task_models', sql: MIGRATION_020 },
+  { id: '021_add_translation_provider_route', sql: MIGRATION_021 },
 ];
 
 export class DatabaseManager {

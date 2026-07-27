@@ -271,15 +271,17 @@ struct EntryListItem: Identifiable, Hashable {
 
 ## 2. LLM
 
-> **当前运行实现（迁移 006～014）**：下方 Mercury 多 Provider 模型仍是参考设计。运行代码使用较小的 `ai_provider_profile`、Summary 的 `agent_task_run` / `summary_result`、Translation 的 `translation_result` / `translation_segment`，以及实际生效的 `llm_usage_event` 请求账本。尚未实现参考模型中的 `agent_model_profile` 或 `agent_profile`。
+> **当前运行实现（迁移 006～021）**：下方 Mercury 多 Provider 模型仍是参考设计。运行代码使用较小的 `ai_provider_profile`、Summary 的 `agent_task_run` / `summary_result`、Translation 的 `translation_result` / `translation_segment`，以及实际生效的 `llm_usage_event` 请求账本。尚未实现参考模型中的 `agent_model_profile` 或 `agent_profile`。
 
-### ai_provider_profile — 当前 Summary Provider
+### ai_provider_profile — 当前 AI Provider
 
 | 列 | 说明 |
 |---|---|
 | `providerKind` | 当前固定为 `openai-compatible` |
-| `baseUrl` / `model` | 用户配置的 Chat Completions 端点和模型 |
-| `apiKeyRef` | 不透明密钥引用；SQLite 中不存储明文或密文 Key |
+| `providerPreset` / `baseUrl` / `summaryModel` | Summary 使用的 Provider、服务端点和模型 ID |
+| `translationProviderPreset` / `translationBaseUrl` / `translationModel` | Translation（含全文、划词和智能上下文）使用的独立 Provider、服务端点和模型 ID |
+| `model` | 兼容旧版本的模型列；迁移 020 后镜像 `summaryModel`，不参与任务路由 |
+| `apiKeyRef` / `translationApiKeyRef` | 两套 Provider 的不透明密钥引用；SQLite 中不存储明文或密文 Key |
 | `isActive` | P0 只允许一条活动配置 |
 
 Key 位于 Electron `userData/ai-secrets.json`。系统 `safeStorage` 可用时会加密；按当前产品决定，Linux `basic_text`、未知后端或无安全存储时改为持久化明文，并在界面明确警告用户。

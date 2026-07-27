@@ -41,46 +41,87 @@ export class ProviderService {
   save(request: SaveProviderRequest): ProviderProfile {
     const startedAt = performance.now();
     let stage: ProviderConfigStage = 'validate';
+    const newlyStoredSecretReferences: string[] = [];
     try {
-      const { providerKind, baseUrl, model } = validateProviderRequest(request);
+      const routes = validateProviderRequest(request);
       stage = 'profileLookup';
       const existing = this.profileStore.findActiveWithSecret();
-      const suppliedKey = request.apiKey?.trim();
-      const reusableKeyReference = (
-        existing
-        && existing.providerKind === providerKind
-        && new URL(existing.baseUrl).origin === new URL(baseUrl).origin
-      )
-        ? existing.apiKeyRef
-        : undefined;
-      const apiKeyRef = suppliedKey
-        ? randomUUID()
-        : reusableKeyReference;
-
       stage = 'key';
-      if (!apiKeyRef) {
+      const sameCredentialScope = hasSameCredentialScope(routes.summary, routes.translation);
+      const summarySuppliedKey = routes.summary.apiKey?.trim();
+      const translationSuppliedKey = routes.translation.apiKey?.trim();
+      let summaryApiKeyRef = reusableKeyReference(
+        existing,
+        'summary',
+        routes.summary,
+      );
+      let translationApiKeyRef = reusableKeyReference(
+        existing,
+        'translation',
+        routes.translation,
+      );
+      const secretWrites = new Map<string, string>();
+
+      if (
+        sameCredentialScope
+        && summarySuppliedKey
+        && summarySuppliedKey === translationSuppliedKey
+      ) {
+        const sharedReference = randomUUID();
+        summaryApiKeyRef = sharedReference;
+        translationApiKeyRef = sharedReference;
+        secretWrites.set(sharedReference, summarySuppliedKey);
+      } else {
+        if (summarySuppliedKey) {
+          summaryApiKeyRef = randomUUID();
+          secretWrites.set(summaryApiKeyRef, summarySuppliedKey);
+        }
+        if (translationSuppliedKey) {
+          translationApiKeyRef = randomUUID();
+          secretWrites.set(translationApiKeyRef, translationSuppliedKey);
+        }
+      }
+
+      if (sameCredentialScope) {
+        summaryApiKeyRef ??= translationApiKeyRef;
+        translationApiKeyRef ??= summaryApiKeyRef;
+      }
+      if (!summaryApiKeyRef || !translationApiKeyRef) {
         throw new SummaryError(
           SUMMARY_ERROR_CODES.SUMMARY_KEY_MISSING,
-          'A new API key is required when configuring a provider or changing its type or host.',
+          'A new API key is required for each Provider whose type or host changed.',
           false,
         );
       }
 
-      if (suppliedKey) this.secretStore.save(apiKeyRef, suppliedKey);
-
       try {
+        for (const [reference, apiKey] of secretWrites) {
+          this.secretStore.save(reference, apiKey);
+          newlyStoredSecretReferences.push(reference);
+        }
         stage = 'profileSave';
         const profile = this.profileStore.saveActive({
-          providerKind,
-          baseUrl,
-          model,
-          apiKeyRef,
+          summary: {
+            providerKind: routes.summary.providerKind,
+            baseUrl: routes.summary.baseUrl,
+            model: routes.summary.model,
+            apiKeyRef: summaryApiKeyRef,
+          },
+          translation: {
+            providerKind: routes.translation.providerKind,
+            baseUrl: routes.translation.baseUrl,
+            model: routes.translation.model,
+            apiKeyRef: translationApiKeyRef,
+          },
         });
-        if (suppliedKey && existing && existing.apiKeyRef !== apiKeyRef) {
-          // The old encrypted value is harmless if cleanup fails; never remove the
-          // newly stored key after its database reference has been committed.
+        const retainedReferences = new Set([summaryApiKeyRef, translationApiKeyRef]);
+        const obsoleteReferences = existing
+          ? new Set([existing.apiKeyRef, existing.translationApiKeyRef])
+          : new Set<string>();
+        for (const reference of obsoleteReferences) {
+          if (retainedReferences.has(reference)) continue;
           try {
-            this.secretStore.delete(existing.apiKeyRef);
+            this.secretStore.delete(reference);
           } catch {
             logProviderSecretCleanupFailed(this.logger, {
               providerId: profile.id,
@@ -91,10 +132,14 @@ export class ProviderService {
           }
         }
         stage = 'key';
-        const result = {
+        const hasSummaryApiKey = this.secretStore.has(summaryApiKeyRef);
+        const hasTranslationApiKey = this.secretStore.has(translationApiKeyRef);
+        const result: ProviderProfile = {
           ...profile,
           keyStorageMode: this.secretStore.getStorageMode(),
-          hasApiKey: this.secretStore.has(apiKeyRef),
+          hasApiKey: hasSummaryApiKey,
+          hasSummaryApiKey,
+          hasTranslationApiKey,
         };
         logProviderConfigCompleted(this.logger, {
           providerId: profile.id,
@@ -103,9 +148,9 @@ export class ProviderService {
         });
         return result;
       } catch (error) {
-        if (suppliedKey) {
+        for (const reference of newlyStoredSecretReferences) {
           try {
-            this.secretStore.delete(apiKeyRef);
+            this.secretStore.delete(reference);
           } catch (rollbackError) {
             stage = 'key';
             throw rollbackError;
@@ -139,18 +184,45 @@ export class ProviderService {
       }
 
       providerId = profile.id;
-      stage = 'key';
-      const apiKey = this.secretStore.read(profile.apiKeyRef);
-      stage = 'request';
-      await this.provider.testConnection({
-        providerKind: profile.providerKind,
-        baseUrl: profile.baseUrl,
-        model: profile.model,
-        apiKey,
-      });
+      const routes = [
+        {
+          providerKind: profile.providerKind,
+          baseUrl: profile.baseUrl,
+          model: profile.summaryModel,
+          apiKeyRef: profile.apiKeyRef,
+        },
+        {
+          providerKind: profile.translationProviderKind,
+          baseUrl: profile.translationBaseUrl,
+          model: profile.translationModel,
+          apiKeyRef: profile.translationApiKeyRef,
+        },
+      ];
+      const distinctRoutes = [...new Map(routes.map((route) => [
+        [
+          route.providerKind,
+          route.baseUrl,
+          route.model,
+          route.apiKeyRef,
+        ].join('\u0000'),
+        route,
+      ])).values()];
+      for (const route of distinctRoutes) {
+        stage = 'key';
+        const apiKey = this.secretStore.read(route.apiKeyRef);
+        stage = 'request';
+        await this.provider.testConnection({
+          providerKind: route.providerKind,
+          baseUrl: route.baseUrl,
+          model: route.model,
+          apiKey,
+        });
+      }
       const result: ProviderConnectionTestResult = {
         ok: true,
-        message: 'Provider connection succeeded.',
+        message: distinctRoutes.length === 1
+          ? 'Provider connection succeeded.'
+          : 'Summary and Translation Provider connections succeeded.',
       };
       logProviderConnectionCompleted(this.logger, {
         providerId,
@@ -176,11 +248,17 @@ export class ProviderService {
       providerKind: profile.providerKind,
       baseUrl: profile.baseUrl,
       model: profile.model,
+      summaryModel: profile.summaryModel,
+      translationProviderKind: profile.translationProviderKind,
+      translationBaseUrl: profile.translationBaseUrl,
+      translationModel: profile.translationModel,
       isActive: profile.isActive,
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
       keyStorageMode: this.secretStore.getStorageMode(),
       hasApiKey: this.secretStore.has(profile.apiKeyRef),
+      hasSummaryApiKey: this.secretStore.has(profile.apiKeyRef),
+      hasTranslationApiKey: this.secretStore.has(profile.translationApiKeyRef),
     };
   }
 }
@@ -244,45 +322,66 @@ function toConnectionErrorCode(
   return PROVIDER_LOG_ERROR_CODES.unknownError;
 }
 
-function validateProviderRequest(request: SaveProviderRequest): {
+interface ValidatedProviderRoute {
   providerKind: ProviderKind;
   baseUrl: string;
   model: string;
+  apiKey?: string;
+}
+
+function validateProviderRequest(request: SaveProviderRequest): {
+  summary: ValidatedProviderRoute;
+  translation: ValidatedProviderRoute;
 } {
-  if (!isProviderKind(request.providerKind)) {
+  if ('summary' in request) {
+    return {
+      summary: validateProviderRoute(request.summary, 'Summary'),
+      translation: validateProviderRoute(request.translation, 'Translation'),
+    };
+  }
+
+  const legacyModel = 'model' in request ? request.model : undefined;
+  return {
+    summary: validateProviderRoute({
+      providerKind: request.providerKind,
+      baseUrl: request.baseUrl,
+      model: request.summaryModel ?? legacyModel ?? '',
+      ...(request.apiKey ? { apiKey: request.apiKey } : {}),
+    }, legacyModel === undefined ? 'Summary' : undefined),
+    translation: validateProviderRoute({
+      providerKind: request.providerKind,
+      baseUrl: request.baseUrl,
+      model: request.translationModel ?? legacyModel ?? '',
+      ...(request.apiKey ? { apiKey: request.apiKey } : {}),
+    }, legacyModel === undefined ? 'Translation' : undefined),
+  };
+}
+
+function validateProviderRoute(
+  route: ValidatedProviderRoute,
+  taskLabel: 'Summary' | 'Translation' | undefined,
+): ValidatedProviderRoute {
+  if (!isProviderKind(route.providerKind)) {
     throw new SummaryError(
       SUMMARY_ERROR_CODES.SUMMARY_INVALID_REQUEST,
-      'Select a supported provider type.',
+      taskLabel
+        ? `Select a supported ${taskLabel} provider type.`
+        : 'Select a supported provider type.',
       false,
     );
   }
 
-  const model = request.model.trim();
-  if (!isValidProviderModel(model)) {
-    throw new SummaryError(
-      SUMMARY_ERROR_CODES.SUMMARY_INVALID_REQUEST,
-      'Enter a valid provider model ID.',
-      false,
-    );
-  }
-  if (
-    request.providerKind === 'gemini'
-    && !/^(?:models\/)?[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(model)
-  ) {
-    throw new SummaryError(
-      SUMMARY_ERROR_CODES.SUMMARY_INVALID_REQUEST,
-      'Enter a valid Gemini model ID.',
-      false,
-    );
-  }
+  const model = validateTaskModel(route.model, taskLabel, route.providerKind);
 
   let parsedUrl: URL;
   try {
-    parsedUrl = new URL(request.baseUrl.trim());
+    parsedUrl = new URL(route.baseUrl.trim());
   } catch {
     throw new SummaryError(
       SUMMARY_ERROR_CODES.SUMMARY_INVALID_REQUEST,
-      'Enter a valid provider URL.',
+      taskLabel
+        ? `Enter a valid ${taskLabel} provider URL.`
+        : 'Enter a valid provider URL.',
       false,
     );
   }
@@ -296,14 +395,76 @@ function validateProviderRequest(request: SaveProviderRequest): {
   ) {
     throw new SummaryError(
       SUMMARY_ERROR_CODES.SUMMARY_INVALID_REQUEST,
-      'The provider URL must be an http or https endpoint without credentials.',
+      taskLabel
+        ? `The ${taskLabel} provider URL must be an http or https endpoint without credentials.`
+        : 'The provider URL must be an http or https endpoint without credentials.',
       false,
     );
   }
 
   return {
-    providerKind: request.providerKind,
+    providerKind: route.providerKind,
     baseUrl: parsedUrl.toString().replace(/\/$/, ''),
     model,
+    ...(route.apiKey?.trim() ? { apiKey: route.apiKey.trim() } : {}),
   };
+}
+
+function validateTaskModel(
+  value: string,
+  taskLabel: 'Summary' | 'Translation' | undefined,
+  providerKind: ProviderKind,
+): string {
+  const model = value.trim();
+  if (!isValidProviderModel(model)) {
+    throw new SummaryError(
+      SUMMARY_ERROR_CODES.SUMMARY_INVALID_REQUEST,
+      taskLabel
+        ? `Enter a valid ${taskLabel} model ID.`
+        : 'Enter a valid provider model ID.',
+      false,
+    );
+  }
+  if (
+    providerKind === 'gemini'
+    && !/^(?:models\/)?[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(model)
+  ) {
+    throw new SummaryError(
+      SUMMARY_ERROR_CODES.SUMMARY_INVALID_REQUEST,
+      taskLabel
+        ? `Enter a valid Gemini ${taskLabel} model ID.`
+        : 'Enter a valid Gemini model ID.',
+      false,
+    );
+  }
+  return model;
+}
+
+function hasSameCredentialScope(
+  first: ValidatedProviderRoute,
+  second: ValidatedProviderRoute,
+): boolean {
+  return first.providerKind === second.providerKind
+    && new URL(first.baseUrl).origin === new URL(second.baseUrl).origin;
+}
+
+function reusableKeyReference(
+  existing: ReturnType<ProviderProfileStore['findActiveWithSecret']>,
+  task: 'summary' | 'translation',
+  route: ValidatedProviderRoute,
+): string | undefined {
+  if (!existing) return undefined;
+  const existingKind = task === 'summary'
+    ? existing.providerKind
+    : existing.translationProviderKind;
+  const existingBaseUrl = task === 'summary'
+    ? existing.baseUrl
+    : existing.translationBaseUrl;
+  if (
+    existingKind !== route.providerKind
+    || new URL(existingBaseUrl).origin !== new URL(route.baseUrl).origin
+  ) {
+    return undefined;
+  }
+  return task === 'summary' ? existing.apiKeyRef : existing.translationApiKeyRef;
 }

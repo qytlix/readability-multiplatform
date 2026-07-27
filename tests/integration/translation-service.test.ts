@@ -83,12 +83,14 @@ function createCapturingLogger(records: TranslationLogRecord[]): TranslationOper
 class BatchMockProvider implements SummaryProvider {
   readonly prompts: string[] = [];
   readonly providerKinds: Array<SummaryProviderRequest['providerKind']> = [];
+  readonly models: string[] = [];
   activeStreams = 0;
   maxActiveStreams = 0;
 
   async *stream(request: SummaryProviderRequest): AsyncIterable<string> {
     this.prompts.push(request.prompt);
     this.providerKinds.push(request.providerKind);
+    this.models.push(request.model);
     this.activeStreams += 1;
     this.maxActiveStreams = Math.max(this.maxActiveStreams, this.activeStreams);
     try {
@@ -158,11 +160,20 @@ describe('TranslationService', () => {
     });
     profileStore = new ProviderProfileStore(db);
     profileStore.saveActive({
-      providerKind: 'openai',
-      baseUrl: 'https://provider.example/v1',
-      model: 'mock-model',
-      apiKeyRef: 'key-1',
+      summary: {
+        providerKind: 'openai',
+        baseUrl: 'https://provider.example/v1',
+        model: 'summary-model',
+        apiKeyRef: 'summary-key-1',
+      },
+      translation: {
+        providerKind: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'translation-model',
+        apiKeyRef: 'key-1',
+      },
     });
+    memorySecrets.set('summary-key-1', 'not-a-real-summary-key');
     memorySecrets.set('key-1', 'not-a-real-key');
     provider = new BatchMockProvider();
     usageStore = new UsageStore(db);
@@ -223,7 +234,8 @@ describe('TranslationService', () => {
     expect(service.generate(request)).toMatchObject({ runId: started.runId, reused: true });
     expect(stream).toHaveBeenCalledTimes(1);
     expect(provider.maxActiveStreams).toBe(1);
-    expect(provider.providerKinds).toEqual(['openai']);
+    expect(provider.providerKinds).toEqual(['deepseek']);
+    expect(provider.models).toEqual(['translation-model']);
   });
 
   it('creates a fresh, usage-tracked run when retranslation is explicitly requested', async () => {
