@@ -987,7 +987,12 @@ export const EntryDetail = ({
             aria-label="管理标签"
             aria-haspopup="dialog"
             aria-expanded={showTagWindow}
-            onClick={() => setShowTagWindow(!showTagWindow)}
+            onClick={() => {
+              if (showTagWindow) {
+                tagBtnRef.current?.blur();
+              }
+              setShowTagWindow(!showTagWindow);
+            }}
           >
             <TagIcon />
           </button>
