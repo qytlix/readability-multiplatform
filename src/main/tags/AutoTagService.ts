@@ -84,7 +84,7 @@ export class AutoTagService {
         model: profile.tagModel,
         apiKey,
         prompt,
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(60_000),
       })) {
         output += delta;
       }

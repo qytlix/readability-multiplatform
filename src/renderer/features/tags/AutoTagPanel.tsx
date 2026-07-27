@@ -13,9 +13,12 @@ type PanelState =
   | { type: 'idle' }
   | { type: 'loading' }
   | { type: 'candidates'; candidates: TagCandidate[]; selected: Set<string> }
+  | { type: 'timeout' }
   | { type: 'error'; message: string };
 
 const DEFAULT_MAX_CANDIDATES = 8;
+
+const LOADING_TIMEOUT_SECONDS = 60;
 
 // Track in-flight generation requests across remounts: when the floating window
 // is closed and re-opened while a request is still pending, we reuse the
@@ -54,73 +57,52 @@ async function fetchCandidates(entryId: number): Promise<{
   return promise;
 }
 
-const LOADING_TIMEOUT_SECONDS = 15;
-
 export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPanelProps) => {
   const [panelState, setPanelState] = useState<PanelState>({ type: 'idle' });
   const [isConfirming, setIsConfirming] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(LOADING_TIMEOUT_SECONDS);
   const hasTriggered = useRef(false);
   const loadingStartedAt = useRef(0);
+  // Guard against the async fetch promise settling after the panel has already
+  // transitioned out of 'loading' (e.g. countdown → timeout).
+  const panelPhase = useRef<PanelState['type']>('idle');
+
+  // Sync panelPhase ref whenever panelState changes
+  useEffect(() => {
+    panelPhase.current = panelState.type;
+  }, [panelState]);
 
   // Countdown timer while loading
   useEffect(() => {
-    if (panelState.type !== 'loading' && panelState.type !== 'candidates') {
-      setRemainingSeconds(LOADING_TIMEOUT_SECONDS);
-      return;
-    }
-    if (panelState.type === 'loading' && loadingStartedAt.current === 0) {
-      loadingStartedAt.current = Date.now();
-    }
-    if (panelState.type === 'candidates') {
+    if (panelState.type !== 'loading') {
       loadingStartedAt.current = 0;
       setRemainingSeconds(LOADING_TIMEOUT_SECONDS);
       return;
+    }
+    if (loadingStartedAt.current === 0) {
+      loadingStartedAt.current = Date.now();
     }
     const interval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - loadingStartedAt.current) / 1000);
       const remaining = Math.max(0, LOADING_TIMEOUT_SECONDS - elapsed);
       setRemainingSeconds(remaining);
+      if (remaining <= 0) {
+        setPanelState({ type: 'timeout' });
+      }
     }, 500);
     return () => clearInterval(interval);
   }, [panelState.type]);
 
-  // Auto-trigger on mount — reuses any in-flight request from a previous mount
-  useEffect(() => {
-    if (!autoTrigger || hasTriggered.current) return;
-    hasTriggered.current = true;
-    let cancelled = false;
-    void (async () => {
-      setPanelState({ type: 'loading' });
-      try {
-        const result = await fetchCandidates(entryId);
-        if (cancelled || !result.ok) {
-          if (!cancelled) setPanelState({ type: 'idle' });
-          return;
-        }
-        const candidates = result.data;
-        if (!candidates || candidates.length === 0) {
-          if (!cancelled) setPanelState({ type: 'idle' });
-          return;
-        }
-        if (!cancelled) {
-          setPanelState({
-            type: 'candidates',
-            candidates,
-            selected: new Set(candidates.map((c) => c.name)),
-          });
-        }
-      } catch {
-        if (!cancelled) setPanelState({ type: 'idle' });
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [autoTrigger, entryId]);
+  // ── Core: send request and handle result ────────────────
 
-  const generate = useCallback(async () => {
+  const startGeneration = useCallback(async () => {
     setPanelState({ type: 'loading' });
+    loadingStartedAt.current = Date.now();
     try {
       const result = await fetchCandidates(entryId);
+      // If the panel has already left loading (e.g. countdown → timeout),
+      // discard the stale result.
+      if (panelPhase.current !== 'loading') return;
       if (!result.ok) {
         setPanelState({ type: 'error', message: result.error?.message ?? '生成失败。' });
         return;
@@ -136,9 +118,21 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
         selected: new Set(candidates.map((c) => c.name)),
       });
     } catch {
+      if (panelPhase.current !== 'loading') return;
       setPanelState({ type: 'error', message: '标签生成请求失败。' });
     }
   }, [entryId]);
+
+  // Auto-trigger on mount
+  useEffect(() => {
+    if (!autoTrigger || hasTriggered.current) return;
+    hasTriggered.current = true;
+    void startGeneration();
+  }, [autoTrigger, entryId, startGeneration]);
+
+  const generate = useCallback(() => {
+    void startGeneration();
+  }, [startGeneration]);
 
   const toggleCandidate = useCallback((name: string) => {
     setPanelState((prev) => {
@@ -187,7 +181,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
         <button
           type="button"
           className="auto-tag-trigger-pill"
-          onClick={() => void generate()}
+          onClick={generate}
         >
           ✨ 生成标签
         </button>
@@ -209,6 +203,23 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
     );
   }
 
+  // Timeout: show retry button
+  if (panelState.type === 'timeout') {
+    return (
+      <div className="auto-tag-panel">
+        <p className="tag-floating-suggestion-label">AI标签</p>
+        <p className="auto-tag-error" role="alert">请求超时。</p>
+        <button
+          type="button"
+          className="auto-tag-trigger-pill"
+          onClick={generate}
+        >
+          ✨ 超时重试
+        </button>
+      </div>
+    );
+  }
+
   // Error: show message + retry
   if (panelState.type === 'error') {
     return (
@@ -218,7 +229,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger }: AutoTagPan
         <button
           type="button"
           className="auto-tag-trigger-pill"
-          onClick={() => void generate()}
+          onClick={generate}
         >
           ✨ 重试
         </button>
