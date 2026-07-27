@@ -1017,6 +1017,11 @@ body.workspace-is-resizing * {
   transition: color 160ms ease;
 }
 
+/* Shift tag icon 5px right to align visually with other nav icons */
+.sidebar-navigation .sidebar-item:nth-child(4) .reader-icon {
+  margin-left: 2px;
+}
+
 .sidebar-navigation .sidebar-item.is-active .reader-icon {
   color: var(--reader-accent);
 }

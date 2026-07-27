@@ -105,9 +105,8 @@ export const TagFloatingWindow = ({
     setOperationError('');
     setDuplicateWarning('');
 
-    // Check for duplicate (case-insensitive)
-    const tagNameLower = tagName.toLowerCase();
-    if (tags.some((t) => t.name.toLowerCase() === tagNameLower)) {
+    // Check for duplicate (case-sensitive)
+    if (tags.some((t) => t.name === tagName)) {
       setDuplicateWarning(`标签“${tagName}”已存在。`);
       return;
     }

@@ -22,6 +22,7 @@ import { MIGRATION_017 } from '../migrations/017_add_translation_active_result';
 import { runMigration017 } from '../migrations/017_normalize_entry_summaries';
 import { MIGRATION_018 } from '../migrations/018_add_feed_content_html';
 import { MIGRATION_019 } from '../migrations/019_create_entry_tags';
+import { MIGRATION_020 } from '../migrations/020_tag_name_case_sensitive';
 
 interface Migration {
   id: string;
@@ -58,6 +59,7 @@ const MIGRATIONS: Migration[] = [
   { id: '017_normalize_entry_summaries', run: runMigration017 },
   { id: '018_add_feed_content_html', sql: MIGRATION_018 },
   { id: '019_create_entry_tags', sql: MIGRATION_019 },
+  { id: '020_tag_name_case_sensitive', sql: MIGRATION_020 },
 ];
 
 export class DatabaseManager {

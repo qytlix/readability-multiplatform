@@ -24,14 +24,14 @@ export class TagStore {
   constructor(private readonly db: Database.Database) {}
 
   /**
-   * Find a tag by name (NOCASE) or create it if it doesn't exist.
+   * Find a tag by name or create it if it doesn't exist.
    * Auto-generates color for new tags.
    */
   findOrCreate(name: string): Tag {
     const trimmed = name.trim();
     // First try to find existing
     const existing = this.db.prepare(
-      'SELECT * FROM tag WHERE name = ? COLLATE NOCASE',
+      'SELECT * FROM tag WHERE name = ?',
     ).get(trimmed) as TagRow | undefined;
     if (existing) return toTag(existing);
 
@@ -56,7 +56,7 @@ export class TagStore {
       FROM tag t
       INNER JOIN entry_tag et ON et.tagId = t.id
       WHERE et.entryId = ?
-      ORDER BY t.name COLLATE NOCASE ASC
+      ORDER BY t.name ASC
     `).all(entryId) as TagRow[];
     return rows.map(toTag);
   }
@@ -90,7 +90,7 @@ export class TagStore {
       INNER JOIN entry_tag et ON t.id = et.tagId
       INNER JOIN entry e ON e.id = et.entryId AND e.isDeleted = 0
       GROUP BY t.id
-      ORDER BY count DESC, t.name COLLATE NOCASE ASC
+      ORDER BY count DESC, t.name ASC
     `).all() as Array<TagRow & { count: number }>;
     return rows.map((row) => ({ ...toTag(row), count: row.count }));
   }
