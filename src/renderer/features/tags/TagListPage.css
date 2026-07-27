@@ -1,16 +1,22 @@
 /* ── Tag List Page ─────────────────────────────────────── */
-/* Uses .story-list, .story-card, .story-list-header classes from ReaderPage.css */
+/* Uses .story-list, .story-card classes from ReaderPage.css */
 
-.story-card-tag-dot {
-  width: 8px;
-  height: 8px;
-  margin-right: 8px;
-  border-radius: 50%;
-  background: hsl(var(--tag-hue, 0), 55%, 58%);
-  flex-shrink: 0;
-  align-self: center;
+/* Compact tag cards — half height of article cards, left border color accent */
+.story-card-tag-item {
+  min-height: 0 !important;
+  padding: 10px 22px !important;
+  border-left: 3px solid hsl(var(--tag-hue, 0), 55%, 50%) !important;
 }
 
-.reader-page[data-theme="light"] .story-card-tag-dot {
-  background: hsl(var(--tag-hue, 0), 45%, 62%);
+.story-card-tag-item .story-card-title {
+  margin-bottom: 2px !important;
+}
+
+.story-card-tag-item .story-card-copy p {
+  -webkit-line-clamp: 1 !important;
+}
+
+/* Light theme */
+.reader-page[data-theme="light"] .story-card-tag-item {
+  border-left-color: hsl(var(--tag-hue, 0), 45%, 55%) !important;
 }

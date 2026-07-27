@@ -110,6 +110,7 @@ export const App = () => {
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [entries, setEntries] = useState<EntryListItem[]>([]);
   const [entryStats, setEntryStats] = useState<EntryStats>(EMPTY_ENTRY_STATS);
+  const [tagCount, setTagCount] = useState(0);
   const [selectedFeedId, setSelectedFeedId] = useState<number | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
@@ -308,6 +309,17 @@ export const App = () => {
     }
   }, []);
 
+  const loadTagCount = useCallback(async () => {
+    try {
+      const result = await window.shaleAPI.tag.listAllWithCount();
+      if (result.ok) setTagCount(result.data.length);
+      return true;
+    } catch {
+      setReaderFeedback('无法读取标签数量。');
+      return false;
+    }
+  }, []);
+
   const requestEntries = useCallback(async (
     cursor: EntryQuery['cursor'],
     append: boolean,
@@ -371,7 +383,8 @@ export const App = () => {
   useEffect(() => {
     void loadFeeds();
     void loadEntryStats();
-  }, [loadEntryStats, loadFeeds]);
+    void loadTagCount();
+  }, [loadEntryStats, loadFeeds, loadTagCount]);
 
   useEffect(() => {
     saveAiPreferences(window.localStorage, aiPreferences);
@@ -445,8 +458,9 @@ export const App = () => {
       loadFeeds(false),
       requestEntries(undefined, false),
       loadEntryStats(),
+      loadTagCount(),
     ]);
-  }, [loadEntryStats, loadFeeds, requestEntries]);
+  }, [loadEntryStats, loadFeeds, requestEntries, loadTagCount]);
 
   const handleSyncAll = useCallback(async () => {
     setLoadingFeeds(true);
@@ -460,6 +474,7 @@ export const App = () => {
         loadFeeds(false),
         requestEntries(undefined, false),
         loadEntryStats(),
+        loadTagCount(),
       ]);
       return true;
     } catch {
@@ -468,7 +483,7 @@ export const App = () => {
     } finally {
       setLoadingFeeds(false);
     }
-  }, [loadEntryStats, loadFeeds, requestEntries]);
+  }, [loadEntryStats, loadFeeds, requestEntries, loadTagCount]);
 
   const handleAddFeed = useCallback(async (url: string) => {
     const result = await window.shaleAPI.feed.add(url);
@@ -477,8 +492,9 @@ export const App = () => {
       loadFeeds(false),
       requestEntries(undefined, false),
       loadEntryStats(),
+      loadTagCount(),
     ]);
-  }, [loadEntryStats, loadFeeds, requestEntries]);
+  }, [loadEntryStats, loadFeeds, requestEntries, loadTagCount]);
 
   const handleSelectEntry = useCallback((entryId: number) => {
     const listEntry = entries.find((entry) => entry.id === entryId);
@@ -865,6 +881,7 @@ export const App = () => {
               if (window.innerWidth < 900) setSidebarOpen(false);
             }}
             onOpenTags={handleOpenTags}
+            tagCount={tagCount}
           />
         </aside>
 

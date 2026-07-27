@@ -38,9 +38,6 @@ export const TagListPage = ({ onSelectTag }: TagListPageProps) => {
       <header className="story-list-header">
         <div className="story-list-heading">
           <h1>标签</h1>
-          {loadState === 'loaded' && (
-            <span className="story-list-count">{tags.length}</span>
-          )}
         </div>
       </header>
 
@@ -79,15 +76,12 @@ export const TagListPage = ({ onSelectTag }: TagListPageProps) => {
               <button
                 key={tag.id}
                 type="button"
-                className="story-card"
+                className="story-card story-card-tag-item"
+                style={{ '--tag-hue': hue } as React.CSSProperties}
                 onClick={() => onSelectTag(tag.name)}
               >
                 <div className="story-card-copy">
                   <div className="story-card-title">
-                    <span
-                      className="story-card-tag-dot"
-                      style={{ '--tag-hue': hue } as React.CSSProperties}
-                    />
                     <h2>{tag.name}</h2>
                     <span className="story-card-reading-progress">
                       {tag.count}

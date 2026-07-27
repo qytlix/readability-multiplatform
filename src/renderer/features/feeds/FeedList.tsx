@@ -58,6 +58,7 @@ interface FeedListProps {
   showTagsView: boolean;
   onOpenSettings: () => void;
   onOpenTags: () => void;
+  tagCount: number;
 }
 
 export const FeedList = ({
@@ -80,6 +81,7 @@ export const FeedList = ({
   showTagsView,
   onOpenSettings,
   onOpenTags,
+  tagCount,
 }: FeedListProps) => {
   const [editFeed, setEditFeed] = useState<Feed | null>(null);
   const [deleteFeed, setDeleteFeed] = useState<Feed | null>(null);
@@ -367,6 +369,7 @@ export const FeedList = ({
         >
           <TagIcon />
           <span>标签</span>
+          {tagCount > 0 && <span className="sidebar-count">{tagCount}</span>}
         </button>
       </nav>
 

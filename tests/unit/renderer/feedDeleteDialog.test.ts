@@ -44,6 +44,7 @@ const createFeedListProps = (
   showTagsView: false,
   onOpenSettings: vi.fn(),
   onOpenTags: vi.fn(),
+  tagCount: 0,
   ...overrides,
 });
 
