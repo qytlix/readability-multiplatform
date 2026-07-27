@@ -5853,10 +5853,10 @@ body.workspace-is-resizing * {
 }
 
 .tag-badge-remove {
-  display: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: 0;
   height: 16px;
   padding: 0;
   border: none;
@@ -5866,11 +5866,22 @@ body.workspace-is-resizing * {
   cursor: pointer;
   font-size: 12px;
   line-height: 1;
-  flex: 0 0 16px;
+  flex: 0 0 0;
+  opacity: 0;
+  transform: scale(0);
+  overflow: hidden;
+  transition:
+    width 120ms ease,
+    flex 120ms ease,
+    opacity 120ms ease,
+    transform 120ms ease;
 }
 
 .tag-badge:hover .tag-badge-remove {
-  display: inline-flex;
+  width: 16px;
+  flex: 0 0 16px;
+  opacity: 1;
+  transform: scale(1);
 }
 
 .tag-badge-remove:hover {
