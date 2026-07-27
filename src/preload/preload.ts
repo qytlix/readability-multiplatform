@@ -267,6 +267,10 @@ const tagAPI = {
     ipcRenderer.invoke(TAG_IPC_CHANNELS.listAllWithCount),
   listAvailableForEntry: (entryId: number) =>
     ipcRenderer.invoke(TAG_IPC_CHANNELS.listAvailableForEntry, { entryId }),
+  autoTagGenerate: (request: { entryId: number; maxCandidates: number }) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.autoTagGenerate, request),
+  autoTagConfirm: (request: { entryId: number; tagNames: string[] }) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.autoTagConfirm, request),
 };
 
 const shaleAPI: ShaleAPI = {

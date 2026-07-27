@@ -170,6 +170,8 @@ export function registerIpcHandlers(
     registerTagIpcHandlers(getMainWindow, tagServices);
   }
 
+  // Auto-tag service is part of TagServices and registered above
+
   // Export module handlers
   const db = getDatabase();
   if (feedServices && db) {

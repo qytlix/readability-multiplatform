@@ -118,6 +118,14 @@ function isAuthorizedSender(
 function isSaveProviderRequest(value: unknown): value is SaveProviderRequest {
   if (!value || typeof value !== 'object') return false;
   const request = value as Record<string, unknown>;
+  // Three-route shape: { summary, translation, tag }
+  if (typeof request.summary === 'object' && request.summary !== null) {
+    return (
+      typeof request.translation === 'object' && request.translation !== null
+      && typeof request.tag === 'object' && request.tag !== null
+    );
+  }
+  // Legacy single-route shape: { providerKind, baseUrl, model, apiKey? }
   return (
     typeof request.providerKind === 'string'
     && isProviderKind(request.providerKind)
