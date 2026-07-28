@@ -12,6 +12,7 @@ interface SearchOverlayProps {
   onSearchAllFeedsChange: (searchAllFeeds: boolean) => void;
   onClose: () => void;
   selectedSearchFeedLabel?: string | null;
+  children?: React.ReactNode;
 }
 
 export const SearchOverlay = ({
@@ -23,6 +24,7 @@ export const SearchOverlay = ({
   onSearchAllFeedsChange,
   onClose,
   selectedSearchFeedLabel,
+  children,
 }: SearchOverlayProps) => {
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -107,6 +109,11 @@ export const SearchOverlay = ({
           </div>
         )}
       </div>
+      {children && (
+        <div className="search-overlay-results">
+          {children}
+        </div>
+      )}
     </div>
   );
 };

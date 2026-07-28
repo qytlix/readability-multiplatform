@@ -876,7 +876,7 @@ export const App = () => {
 
       <div
         ref={workspaceRef}
-        className="reader-workspace"
+        className={"reader-workspace" + (searchFocused ? ' is-search-active' : '')}
       >
         <button
           type="button"
@@ -934,7 +934,7 @@ export const App = () => {
         >
           {activeView === 'tags' ? (
             <TagListPage onSelectTag={handleSelectTag} />
-          ) : (
+          ) : searchFocused ? null : (
             <EntryList
               entries={visibleEntries}
               selectedEntryId={selectedEntryId}
@@ -1226,7 +1226,37 @@ export const App = () => {
             onSearchAllFeedsChange={setSearchAllFeeds}
             onClose={() => setSearchFocused(false)}
             selectedSearchFeedLabel={selectedSearchFeedLabel}
-          />
+          >
+            <EntryList
+              entries={visibleEntries}
+              selectedEntryId={selectedEntryId}
+              heading={listHeading}
+              loading={loadingEntries}
+              loadStatus={entryLoadStatus}
+              loadError={entryLoadError}
+              searchQuery={normalizedInput}
+              searchStatus={effectiveSearchStatus}
+              filter={entryFilter}
+              onFilterChange={handleEntryListFilter}
+              onSelectEntry={handleSelectEntry}
+              onLoadMore={handleLoadMore}
+              hasMore={hasNoFeeds ? false : hasMoreEntries}
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              onSelectionModeChange={(enabled: boolean) => {
+                if (!enabled) setSelectedIds(new Set());
+                setSelectionMode(enabled);
+              }}
+              onSelectionToggle={(entryId: number) => {
+                setSelectedIds((previousIds: Set<number>) => {
+                  const nextIds = new Set(previousIds);
+                  if (nextIds.has(entryId)) nextIds.delete(entryId);
+                  else nextIds.add(entryId);
+                  return nextIds;
+                });
+              }}
+            />
+          </SearchOverlay>
         )}
       </div>
 
