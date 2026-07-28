@@ -339,6 +339,113 @@
   margin-top: clamp(40px, 12vh, 120px);
 }
 
+.search-overlay-input {
+  display: flex;
+  height: 52px;
+  padding: 0 16px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--reader-line);
+  border-radius: 12px;
+  color: var(--reader-accent);
+  background: var(--reader-input);
+  box-shadow: 0 8px 32px var(--reader-shadow);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.search-overlay-input:focus-within {
+  border-color: var(--reader-accent-strong);
+  box-shadow: 0 8px 32px var(--reader-shadow), 0 0 0 3px var(--reader-accent-glow);
+}
+
+.search-overlay-input input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--reader-text);
+  background: transparent;
+  font-size: 16px;
+}
+
+.search-overlay-input input::placeholder {
+  color: var(--reader-text-muted);
+}
+
+.search-overlay-input input::-webkit-search-cancel-button {
+  filter: invert(0.8);
+}
+
+.search-overlay-status {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  min-height: 24px;
+  color: var(--reader-accent);
+  font-size: 12px;
+}
+
+.search-overlay-status.is-error {
+  color: #ff9f91;
+  font-weight: 800;
+}
+
+.search-overlay-close-btn {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: var(--reader-text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease;
+}
+
+.search-overlay-close-btn:hover {
+  color: var(--reader-text);
+  background: var(--reader-hover);
+}
+
+.search-overlay-scope {
+  display: flex;
+  min-height: 28px;
+  padding: 6px 0 0;
+  align-items: center;
+  color: var(--reader-text-muted);
+  font-size: 10px;
+}
+
+.search-overlay-scope button,
+.search-overlay-scope span {
+  max-width: 100%;
+  overflow: hidden;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-overlay-scope button {
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--reader-accent) 30%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--reader-accent) 8%, transparent);
+  cursor: pointer;
+}
+
+.search-overlay-scope button:hover,
+.search-overlay-scope button:focus-visible {
+  color: var(--reader-text);
+  border-color: color-mix(in srgb, var(--reader-accent) 58%, transparent);
+  outline: none;
+}
+
 .search-overlay-results {
   width: min(600px, 80%);
   flex: 1;

@@ -48,6 +48,7 @@ interface FeedListProps {
   searchAllFeeds?: boolean;
   searchInputRef: RefObject<HTMLInputElement | null>;
   onSearchInputChange: (query: string) => void;
+  onSearchFocus?: () => void;
   onSearchAllFeedsChange?: (searchAllFeeds: boolean) => void;
   onSelectFilter: (filter: EntryFilter) => void;
   onSelectFeed: (feedId: number | null) => void;
@@ -74,6 +75,7 @@ export const FeedList = ({
   searchAllFeeds = false,
   searchInputRef,
   onSearchInputChange,
+  onSearchFocus,
   onSearchAllFeedsChange,
   onSelectFilter,
   onSelectFeed,
@@ -324,6 +326,7 @@ export const FeedList = ({
           placeholder="搜索本地文章"
           aria-label="搜索本地文章"
           data-entry-search
+          onFocus={onSearchFocus}
           onChange={(event) => onSearchInputChange(event.target.value)}
         />
         {searchStatus !== 'idle' && (

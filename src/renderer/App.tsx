@@ -41,6 +41,7 @@ import {
 import { ExportOptionsDialog } from './features/feeds/ExportOptionsDialog';
 import type { TagFilterState } from './features/search/entrySearch';
 import { TagListPage } from './features/tags/TagListPage';
+import { SearchOverlay } from './features/search/SearchOverlay';
 import './features/tags/TagListPage.css';
 import type { ArticleAvailability } from '../shared/contracts/export.types';
 import {
@@ -821,6 +822,9 @@ export const App = () => {
   const selectedSourceTitle = selectedEntryFeed?.title
     ?? selectedEntryFeed?.feedURL
     ?? '';
+  const selectedSearchFeedLabel = selectedFeed
+    ? selectedFeed.title ?? selectedFeed.feedURL
+    : null;
 
   return (
     <div
@@ -893,6 +897,7 @@ export const App = () => {
             searchAllFeeds={searchAllFeeds}
             searchInputRef={searchInputRef}
             onSearchInputChange={setSearchInput}
+            onSearchFocus={() => setSearchFocused(true)}
             onSearchAllFeedsChange={setSearchAllFeeds}
             onSelectFilter={handleSelectSidebarFilter}
             onSelectFeed={handleSelectFeed}
@@ -1211,6 +1216,18 @@ export const App = () => {
             )}
           </div>
         </main>
+        {searchFocused && (
+          <SearchOverlay
+            searchInput={searchInput}
+            searchStatus={effectiveSearchStatus}
+            searchAllFeeds={searchAllFeeds}
+            searchInputRef={searchInputRef}
+            onSearchInputChange={setSearchInput}
+            onSearchAllFeedsChange={setSearchAllFeeds}
+            onClose={() => setSearchFocused(false)}
+            selectedSearchFeedLabel={selectedSearchFeedLabel}
+          />
+        )}
       </div>
 
       <div className="annotation-overlay-root" />
