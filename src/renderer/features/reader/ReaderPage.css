@@ -317,6 +317,22 @@
 .search-overlay {
   position: absolute;
   z-index: 50;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 260ms ease;
+}
+
+.search-overlay.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.search-overlay-panel {
+  position: absolute;
   top: 10%;
   bottom: 10%;
   left: 20%;
@@ -327,14 +343,6 @@
   border-radius: 16px;
   background: color-mix(in srgb, var(--reader-bg) 94%, transparent);
   backdrop-filter: blur(8px);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 260ms ease;
-}
-
-.search-overlay.is-visible {
-  opacity: 1;
-  pointer-events: auto;
 }
 
 .search-overlay-inner {
