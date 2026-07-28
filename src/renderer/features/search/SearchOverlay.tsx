@@ -4,6 +4,7 @@ import { CheckIcon, SearchIcon } from '../reader/ReaderIcons';
 type SearchStatus = 'idle' | 'searching' | 'results' | 'no-results' | 'error';
 
 interface SearchOverlayProps {
+  visible: boolean;
   searchInput: string;
   searchStatus: SearchStatus;
   searchAllFeeds: boolean;
@@ -16,6 +17,7 @@ interface SearchOverlayProps {
 }
 
 export const SearchOverlay = ({
+  visible,
   searchInput,
   searchStatus,
   searchAllFeeds,
@@ -43,7 +45,7 @@ export const SearchOverlay = ({
   return (
     <div
       ref={overlayRef}
-      className="search-overlay is-visible"
+      className={"search-overlay" + (visible ? ' is-visible' : '')}
       role="dialog"
       aria-label="搜索"
       onClick={handleBackdropClick}

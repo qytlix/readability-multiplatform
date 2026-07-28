@@ -1216,17 +1216,18 @@ export const App = () => {
             )}
           </div>
         </main>
-        {searchFocused && (
-          <SearchOverlay
-            searchInput={searchInput}
-            searchStatus={effectiveSearchStatus}
-            searchAllFeeds={searchAllFeeds}
-            searchInputRef={searchInputRef}
-            onSearchInputChange={setSearchInput}
-            onSearchAllFeedsChange={setSearchAllFeeds}
-            onClose={() => setSearchFocused(false)}
-            selectedSearchFeedLabel={selectedSearchFeedLabel}
-          >
+        <SearchOverlay
+          visible={searchFocused}
+          searchInput={searchInput}
+          searchStatus={effectiveSearchStatus}
+          searchAllFeeds={searchAllFeeds}
+          searchInputRef={searchInputRef}
+          onSearchInputChange={setSearchInput}
+          onSearchAllFeedsChange={setSearchAllFeeds}
+          onClose={() => setSearchFocused(false)}
+          selectedSearchFeedLabel={selectedSearchFeedLabel}
+        >
+          {searchFocused && (
             <EntryList
               entries={visibleEntries}
               selectedEntryId={selectedEntryId}
@@ -1256,8 +1257,8 @@ export const App = () => {
                 });
               }}
             />
-          </SearchOverlay>
-        )}
+          )}
+        </SearchOverlay>
       </div>
 
       <div className="annotation-overlay-root" />
