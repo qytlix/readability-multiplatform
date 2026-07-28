@@ -1,7 +1,7 @@
 # 搜索过滤器多字段扩展
 
 > 状态：**已完成**
-> 对应 Issue：待创建
+> 对应 Issue：[qytlix/readability-multiplatform#98](https://github.com/qytlix/readability-multiplatform/issues/98)
 > 提交记录：
 > 1. `e26316a` feat(shared): add generic parseSearchQuery with +/-/field filters
 > 2. `dcd4ef1` feat(shared): add SearchFilter types and extend EntryQuery
