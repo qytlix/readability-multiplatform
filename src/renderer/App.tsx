@@ -2,17 +2,9 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react';
-import type {
-  Entry,
-  EntryListItem,
-  EntryQuery,
-  EntryStats,
-  Feed,
-} from '../shared/contracts/feed.types';
 import { FeedList } from './features/feeds/FeedList';
 import { EntryList } from './features/feeds/EntryList';
 import { EntryDetail } from './features/feeds/EntryDetail';
@@ -24,10 +16,6 @@ import {
   type EntryAIViewState,
   type EntryAIViewStates,
 } from './features/feeds/entryAIViewState';
-import {
-  type EntryLoadStatus,
-  type FeedLoadStatus,
-} from './features/feeds/readerState';
 import { AISettingsPage } from './features/settings/AISettingsPage';
 import {
   loadAiPreferences,
@@ -39,7 +27,6 @@ import {
   exportMultipleEntries,
 } from './features/feeds/entryExport';
 import { ExportOptionsDialog } from './features/feeds/ExportOptionsDialog';
-import type { TagFilterState } from './features/search/entrySearch';
 import { TagListPage } from './features/tags/TagListPage';
 import { SearchOverlay } from './features/search/SearchOverlay';
 import './features/tags/TagListPage.css';
@@ -76,72 +63,75 @@ import {
 } from './features/reader/layoutTransition';
 import { PaneDivider } from './features/layout/PaneDivider';
 import { useReaderPaneResize } from './features/layout/useReaderPaneResize';
-import {
-  buildEntryQuery,
-  normalizeSearchQuery,
-  type EntryFilter,
-} from './features/search/entrySearch';
+import { useReaderWorkspace } from './features/reader/useReaderWorkspace';
+import type { EntryFilter } from './features/search/entrySearch';
 import './features/reader/ReaderPage.css';
 
 type AppView = 'reader' | 'settings' | 'tags';
-type SearchStatus = 'idle' | 'searching' | 'results' | 'no-results' | 'error';
-
-const ENTRY_PAGE_SIZE = 30;
-const EMPTY_ENTRY_STATS: EntryStats = {
-  all: {
-    total: 0,
-    unread: 0,
-    readPercentage: 0,
-  },
-  feeds: [],
-  tagCount: 0,
-};
-
-const toEntry = (entry: EntryListItem): Entry => ({
-  id: entry.id,
-  feedId: entry.feedId,
-  url: entry.url,
-  title: entry.title,
-  author: entry.author,
-  publishedAt: entry.publishedAt,
-  createdAt: entry.createdAt,
-  isRead: entry.isRead,
-  readingProgress: entry.readingProgress,
-  isStarred: entry.isStarred,
-  isDeleted: false,
-  updatedAt: entry.createdAt,
-  summary: entry.summary,
-});
 
 export const App = () => {
-  const [feeds, setFeeds] = useState<Feed[]>([]);
-  const [entries, setEntries] = useState<EntryListItem[]>([]);
-  const [entryStats, setEntryStats] = useState<EntryStats>(EMPTY_ENTRY_STATS);
-  const [tagCount, setTagCount] = useState(0);
-  const [selectedFeedId, setSelectedFeedId] = useState<number | null>(null);
-  const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
-  const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
-  const [entryFilter, setEntryFilter] = useState<EntryFilter>('all');
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchInput, setSearchInput] = useState('');
-  const [appliedSearchQuery, setAppliedSearchQuery] = useState('');
-  const [searchAllFeeds, setSearchAllFeeds] = useState(false);
-  const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle');
-  const [loadingFeeds, setLoadingFeeds] = useState(true);
-  const [loadingEntries, setLoadingEntries] = useState(false);
-  const [feedLoadStatus, setFeedLoadStatus] = useState<FeedLoadStatus>('loading');
-  const [feedLoadError, setFeedLoadError] = useState('');
-  const [entryLoadStatus, setEntryLoadStatus] = useState<EntryLoadStatus>('loading');
-  const [entryLoadError, setEntryLoadError] = useState('');
+  const [readerFeedback, setReaderFeedback] = useState('');
+  const {
+    state: {
+      feeds,
+      visibleEntries,
+      entryStats,
+      selectedFeedId,
+      selectedFeed,
+      selectedEntryId,
+      selectedEntry,
+      selectedEntryFeed,
+      entryFilter,
+      tagFilter,
+      searchInput,
+      normalizedSearchInput,
+      appliedSearchQuery,
+      searchAllFeeds,
+      effectiveSearchStatus,
+      hasSearchInput,
+      loadingFeeds,
+      loadingEntries,
+      feedLoadStatus,
+      feedLoadError,
+      entryLoadStatus,
+      entryLoadError,
+      hasMoreEntries,
+      hasNoFeeds,
+      markingReadEntryId,
+      selectionMode,
+      selectedIds,
+    },
+    actions: {
+      setSearchInput,
+      setSearchAllFeeds,
+      setSelectionMode,
+      toggleSelectedId,
+      selectEntry,
+      selectTag,
+      openTags,
+      selectFeed,
+      selectSidebarFilter,
+      selectEntryListFilter,
+      loadMore: handleLoadMore,
+      retryFeeds,
+      retryEntries,
+      refreshAfterTagsChanged,
+      reloadLocalData,
+      syncAll: handleSyncAll,
+      addFeed: handleAddFeed,
+      updateReadingProgress: handleReadingProgressChange,
+      markRead: handleMarkRead,
+      toggleStarred: handleToggleStarred,
+    },
+  } = useReaderWorkspace({ onFeedback: setReaderFeedback });
   const [showAddFeedDialog, setShowAddFeedDialog] = useState(false);
   const [activeView, setActiveView] = useState<AppView>('reader');
-  const [tagFilter, setTagFilter] = useState<TagFilterState | null>(null);
+  const [searchFocused, setSearchFocused] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isReadingFocus, setIsReadingFocus] = useState(false);
   const [largeType, setLargeType] = useState(false);
   const [copiedOriginalEntryId, setCopiedOriginalEntryId] =
     useState<number | null>(null);
-  const [readerFeedback, setReaderFeedback] = useState('');
   const [contentRefreshVersions, setContentRefreshVersions] =
     useState<Record<number, number>>({});
   const [refreshingContentEntryId, setRefreshingContentEntryId] =
@@ -152,9 +142,6 @@ export const App = () => {
   } | null>(null);
   const [showTranslationSetupNotice, setShowTranslationSetupNotice] = useState(false);
   const [retranslationNotice, setRetranslationNotice] = useState<string | null>(null);
-  const [markingReadEntryId, setMarkingReadEntryId] = useState<number | null>(null);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportArticles, setExportArticles] = useState<ArticleAvailability[]>([]);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(() =>
@@ -167,9 +154,6 @@ export const App = () => {
   const [entryAIViewStates, setEntryAIViewStates] = useState<EntryAIViewStates>({});
   const [aiPreferences, setAiPreferences] = useState<AiPreferences>(() =>
     loadAiPreferences(window.localStorage));
-  const [entriesCursor, setEntriesCursor] = useState<EntryQuery['cursor']>();
-  const [hasMoreEntries, setHasMoreEntries] = useState(true);
-  const requestSequenceRef = useRef(0);
   const translationSetupNoticeResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const storyListPaneRef = useRef<HTMLElement>(null);
@@ -264,142 +248,6 @@ export const App = () => {
     layoutAnimationsRef.current.forEach((animation) => animation.cancel());
   }, []);
 
-  const normalizedInput = normalizeSearchQuery(searchInput);
-  const searchPending = normalizedInput.length > 0
-    && normalizedInput !== appliedSearchQuery;
-  const effectiveSearchStatus: SearchStatus = searchPending
-    ? 'searching'
-    : searchStatus;
-  const searchFeedId = appliedSearchQuery && searchAllFeeds
-    ? null
-    : selectedFeedId;
-
-  const selectedFeed = useMemo(
-    () => feeds.find((feed) => feed.id === selectedFeedId) ?? null,
-    [feeds, selectedFeedId],
-  );
-  const selectedEntryFeed = useMemo(
-    () => feeds.find((feed) => feed.id === selectedEntry?.feedId) ?? null,
-    [feeds, selectedEntry?.feedId],
-  );
-
-  const loadFeeds = useCallback(async (showLoadingState = true) => {
-    setLoadingFeeds(true);
-    if (showLoadingState) {
-      setFeedLoadStatus('loading');
-      setFeedLoadError('');
-    }
-    try {
-      const result = await window.shaleAPI.feed.list();
-      if (!result.ok) {
-        setFeedLoadStatus('error');
-        setFeedLoadError(result.error.message);
-        return false;
-      }
-      setFeeds(result.data);
-      setFeedLoadStatus('success');
-      return true;
-    } catch {
-      setFeedLoadStatus('error');
-      setFeedLoadError('无法读取本地订阅源。');
-      return false;
-    } finally {
-      setLoadingFeeds(false);
-    }
-  }, []);
-
-  const loadEntryStats = useCallback(async () => {
-    try {
-      const result = await window.shaleAPI.entry.stats();
-      if (!result.ok) {
-        setReaderFeedback(result.error.message);
-        return false;
-      }
-      setEntryStats(result.data);
-      return true;
-    } catch {
-      setReaderFeedback('无法读取文章统计。');
-      return false;
-    }
-  }, []);
-
-  const loadTagCount = useCallback(async () => {
-    try {
-      const result = await window.shaleAPI.tag.listAllWithCount();
-      if (result.ok) setTagCount(result.data.length);
-      return true;
-    } catch {
-      setReaderFeedback('无法读取标签数量。');
-      return false;
-    }
-  }, []);
-
-  const requestEntries = useCallback(async (
-    cursor: EntryQuery['cursor'],
-    append: boolean,
-  ) => {
-    const requestSequence = requestSequenceRef.current + 1;
-    requestSequenceRef.current = requestSequence;
-    setLoadingEntries(true);
-    if (!append) {
-      setEntryLoadStatus('loading');
-      setEntryLoadError('');
-      if (appliedSearchQuery) setSearchStatus('searching');
-    }
-
-    try {
-      const params = buildEntryQuery({
-        selectedFeedId: searchFeedId,
-        filter: entryFilter,
-        searchQuery: appliedSearchQuery,
-        tagFilter,
-        limit: ENTRY_PAGE_SIZE,
-        cursor,
-      });
-      const result = await window.shaleAPI.entry.list(params);
-      if (requestSequenceRef.current !== requestSequence) return false;
-      if (!result.ok) {
-        if (!append) {
-          setEntryLoadStatus('error');
-          setEntryLoadError(result.error.message);
-          setHasMoreEntries(false);
-          if (appliedSearchQuery) setSearchStatus('error');
-        }
-        return false;
-      }
-
-      setEntries((current) => append
-        ? [...current, ...result.data.entries]
-        : result.data.entries);
-      setEntriesCursor(result.data.nextCursor);
-      setHasMoreEntries(Boolean(result.data.nextCursor));
-      setEntryLoadStatus('success');
-      setSearchStatus(appliedSearchQuery
-        ? result.data.entries.length > 0 || append ? 'results' : 'no-results'
-        : 'idle');
-      return true;
-    } catch {
-      if (requestSequenceRef.current !== requestSequence) return false;
-      if (!append) {
-        setEntryLoadStatus('error');
-        setEntryLoadError('无法读取本地文章。');
-        setHasMoreEntries(false);
-        if (appliedSearchQuery) setSearchStatus('error');
-      }
-      return false;
-    } finally {
-      if (requestSequenceRef.current === requestSequence) {
-        setLoadingEntries(false);
-      }
-    }
-  }, [appliedSearchQuery, entryFilter, searchFeedId, tagFilter]);
-
-  useEffect(() => {
-    void loadFeeds();
-    void loadEntryStats();
-    void loadTagCount();
-  }, [loadEntryStats, loadFeeds, loadTagCount]);
-
   useEffect(() => {
     saveAiPreferences(window.localStorage, aiPreferences);
   }, [aiPreferences]);
@@ -413,31 +261,6 @@ export const App = () => {
   }, [readerPreferences]);
 
   useEffect(() => {
-    if (!normalizedInput) {
-      setAppliedSearchQuery('');
-      setSearchAllFeeds(false);
-      setSearchStatus('idle');
-      return;
-    }
-
-    if (normalizedInput === appliedSearchQuery) return;
-    const timer = window.setTimeout(() => {
-      setAppliedSearchQuery(normalizedInput);
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [appliedSearchQuery, normalizedInput]);
-
-  useEffect(() => {
-    setEntries([]);
-    setEntriesCursor(undefined);
-    setHasMoreEntries(true);
-    setSelectedEntryId(null);
-    setSelectedEntry(null);
-    setCopiedOriginalEntryId(null);
-    void requestEntries(undefined, false);
-  }, [requestEntries]);
-
-useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
@@ -450,14 +273,14 @@ useEffect(() => {
 
       if (event.key !== 'Escape') return;
       if (searchFocused) {
-        if (normalizedInput) {
+        if (normalizedSearchInput) {
           setSearchInput('');
         } else {
           setSearchFocused(false);
         }
       } else if (isReadingFocus) {
         setIsReadingFocus(false);
-      } else if (normalizedInput) {
+      } else if (hasSearchInput) {
         setSearchInput('');
       } else {
         setSidebarOpen(false);
@@ -466,7 +289,7 @@ useEffect(() => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isReadingFocus, normalizedInput, searchFocused]);
+  }, [hasSearchInput, isReadingFocus, setSearchInput]);
 
   useEffect(() => {
     if (!readerFeedback) return;
@@ -480,163 +303,12 @@ useEffect(() => {
     return () => window.clearTimeout(timer);
   }, [copiedOriginalEntryId]);
 
-  const reloadLocalData = useCallback(async () => {
-    await Promise.all([
-      loadFeeds(false),
-      requestEntries(undefined, false),
-      loadEntryStats(),
-    ]);
-  }, [loadEntryStats, loadFeeds, requestEntries]);
-
-  const handleSyncAll = useCallback(async () => {
-    setLoadingFeeds(true);
-    try {
-      const syncResult = await window.shaleAPI.feed.sync();
-      if (!syncResult.ok) {
-        setReaderFeedback(syncResult.error.message);
-        return false;
-      }
-      await Promise.all([
-        loadFeeds(false),
-        requestEntries(undefined, false),
-        loadEntryStats(),
-      ]);
-      return true;
-    } catch {
-      setReaderFeedback('同步失败，请稍后重试。');
-      return false;
-    } finally {
-      setLoadingFeeds(false);
-    }
-  }, [loadEntryStats, loadFeeds, requestEntries]);
-
-  const handleAddFeed = useCallback(async (url: string) => {
-    const result = await window.shaleAPI.feed.add(url);
-    if (!result.ok) throw new Error(result.error.message);
-    await Promise.all([
-      loadFeeds(false),
-      requestEntries(undefined, false),
-      loadEntryStats(),
-    ]);
-  }, [loadEntryStats, loadFeeds, requestEntries]);
-
   const handleSelectEntry = useCallback((entryId: number) => {
-    const listEntry = entries.find((entry) => entry.id === entryId);
-    if (!listEntry) return;
-
     setActiveView('reader');
-    if (selectedEntryId === entryId) {
-      setSelectedEntryId(null);
-      setSelectedEntry(null);
-      setCopiedOriginalEntryId(null);
-      setReaderFeedback('');
-      return;
-    }
-
-    setSelectedEntryId(entryId);
-    setSelectedEntry(toEntry(listEntry));
+    selectEntry(entryId);
     setCopiedOriginalEntryId(null);
     setReaderFeedback('');
-  }, [entries, selectedEntryId]);
-
-  const handleReadingProgressChange = useCallback(async (
-    entryId: number,
-    readingProgress: number,
-  ) => {
-    try {
-      const result = await window.shaleAPI.entry.updateReadingProgress(
-        entryId,
-        readingProgress,
-      );
-      if (!result.ok) {
-        setReaderFeedback(result.error.message);
-        return;
-      }
-
-      const updated = result.data;
-      setEntries((current) => current.map((item) =>
-        item.id === entryId
-          ? {
-              ...item,
-              readingProgress: updated.readingProgress,
-              isRead: updated.isRead,
-            }
-          : item));
-      setSelectedEntry((current) => current?.id === entryId
-        ? {
-            ...current,
-            readingProgress: updated.readingProgress,
-            isRead: updated.isRead,
-          }
-        : current);
-
-      if (updated.becameRead) {
-        await loadEntryStats();
-      }
-    } catch {
-      setReaderFeedback('未能保存阅读进度。');
-    }
-  }, [loadEntryStats]);
-
-  const handleMarkRead = useCallback(async () => {
-    if (
-      !selectedEntry
-      || selectedEntry.isRead
-      || markingReadEntryId === selectedEntry.id
-    ) {
-      return;
-    }
-
-    const entryId = selectedEntry.id;
-    setMarkingReadEntryId(entryId);
-    try {
-      const result = await window.shaleAPI.entry.markRead([entryId], true);
-      if (!result.ok) throw new Error(result.error.message);
-
-      setEntries((current) => current.map((entry) =>
-        entry.id === entryId
-          ? { ...entry, isRead: true, readingProgress: 1 }
-          : entry));
-      setSelectedEntry((current) => current?.id === entryId
-        ? { ...current, isRead: true, readingProgress: 1 }
-        : current);
-      setReaderFeedback('已标记为已读。');
-      await loadEntryStats();
-    } catch (error) {
-      setReaderFeedback(
-        error instanceof Error ? error.message : '未能将文章标记为已读。',
-      );
-    } finally {
-      setMarkingReadEntryId((current) => current === entryId ? null : current);
-    }
-  }, [loadEntryStats, markingReadEntryId, selectedEntry]);
-
-  const handleToggleStarred = useCallback(async () => {
-    if (!selectedEntry) return;
-    const nextValue = !selectedEntry.isStarred;
-    const entryId = selectedEntry.id;
-    setSelectedEntry((current) => current?.id === entryId
-      ? { ...current, isStarred: nextValue }
-      : current);
-    setEntries((current) => current.map((entry) =>
-      entry.id === entryId ? { ...entry, isStarred: nextValue } : entry));
-
-    try {
-      const result = await window.shaleAPI.entry.markStarred(entryId, nextValue);
-      if (!result.ok) throw new Error(result.error.message);
-      setReaderFeedback(nextValue ? '已收藏到本地。' : '已取消收藏。');
-      if (entryFilter === 'starred' && !nextValue && !appliedSearchQuery) {
-        await requestEntries(undefined, false);
-      }
-    } catch (error) {
-      setSelectedEntry((current) => current?.id === entryId
-        ? { ...current, isStarred: !nextValue }
-        : current);
-      setEntries((current) => current.map((entry) =>
-        entry.id === entryId ? { ...entry, isStarred: !nextValue } : entry));
-      setReaderFeedback(error instanceof Error ? error.message : '未能更新收藏状态。');
-    }
-  }, [appliedSearchQuery, entryFilter, requestEntries, selectedEntry]);
+  }, [selectEntry]);
 
   const handleOpenOriginal = useCallback(async () => {
     if (!selectedEntry?.url) {
@@ -732,76 +404,34 @@ useEffect(() => {
     }
   }, [selectedEntry?.id]);
 
-  const handleLoadMore = useCallback(() => {
-    if (!hasMoreEntries || loadingEntries || !entriesCursor) return;
-    void requestEntries(entriesCursor, true);
-  }, [entriesCursor, hasMoreEntries, loadingEntries, requestEntries]);
-
   const handleSelectTag = useCallback((tagName: string) => {
     setActiveView('reader');
-    setTagFilter({ tagNames: [tagName], matchAll: true });
-    setSelectedFeedId(null);
-    setEntryFilter('all');
-    setSearchInput('');
-    setAppliedSearchQuery('');
-    setSearchStatus('idle');
-    setSelectionMode(false);
-    setSelectedIds(new Set());
-  }, []);
+    selectTag(tagName);
+  }, [selectTag]);
 
   const handleOpenTags = useCallback(() => {
     setActiveView('tags');
-    setTagFilter(null);
-    setSelectedFeedId(null);
-    setEntryFilter('all');
-    setSearchInput('');
-    setAppliedSearchQuery('');
-    setSearchStatus('idle');
+    openTags();
     if (window.innerWidth < 900) setSidebarOpen(false);
-  }, []);
+  }, [openTags]);
 
   const handleSelectFeed = useCallback((feedId: number | null) => {
     setActiveView('reader');
-    setTagFilter(null);
-    setEntryFilter('all');
-    setSearchInput('');
-    setAppliedSearchQuery('');
-    setSearchAllFeeds(false);
-    setSearchStatus('idle');
-    setSelectedFeedId(feedId);
-    setSelectionMode(false);
-    setSelectedIds(new Set());
+    selectFeed(feedId);
     if (window.innerWidth < 900) setSidebarOpen(false);
-  }, []);
+  }, [selectFeed]);
 
   const handleSelectSidebarFilter = useCallback((filter: EntryFilter) => {
     setActiveView('reader');
-    setTagFilter(null);
-    setSearchInput('');
-    setAppliedSearchQuery('');
-    setSearchAllFeeds(false);
-    setSearchStatus('idle');
-    setEntryFilter(filter);
-    setSelectionMode(false);
-    setSelectedIds(new Set());
-    if (filter !== 'all') setSelectedFeedId(null);
+    selectSidebarFilter(filter);
     if (window.innerWidth < 900) setSidebarOpen(false);
-  }, []);
+  }, [selectSidebarFilter]);
 
   const handleEntryListFilter = useCallback((filter: EntryFilter) => {
     setActiveView('reader');
-    setTagFilter(null);
-    setSearchInput('');
-    setAppliedSearchQuery('');
-    setSearchAllFeeds(false);
-    setSearchStatus('idle');
-    setEntryFilter(filter);
-    setSelectionMode(false);
-    setSelectedIds(new Set());
-  }, []);
+    selectEntryListFilter(filter);
+  }, [selectEntryListFilter]);
 
-  const hasNoFeeds = feedLoadStatus === 'success' && feeds.length === 0;
-  const visibleEntries = hasNoFeeds ? [] : entries;
   const selectedFeedName = selectedFeed?.title ?? selectedFeed?.feedURL ?? null;
   const listHeading = getEntryListHeadingPresentation({
     feedName: selectedFeedName,
@@ -944,7 +574,7 @@ useEffect(() => {
               loading={loadingEntries}
               loadStatus={entryLoadStatus}
               loadError={entryLoadError}
-              searchQuery={normalizedInput}
+              searchQuery={normalizedSearchInput}
               searchStatus={effectiveSearchStatus}
               filter={entryFilter}
               onFilterChange={handleEntryListFilter}
@@ -953,18 +583,8 @@ useEffect(() => {
               hasMore={hasNoFeeds ? false : hasMoreEntries}
               selectionMode={selectionMode}
               selectedIds={selectedIds}
-              onSelectionModeChange={(enabled: boolean) => {
-                if (!enabled) setSelectedIds(new Set());
-                setSelectionMode(enabled);
-              }}
-              onSelectionToggle={(entryId: number) => {
-                setSelectedIds((previousIds: Set<number>) => {
-                  const nextIds = new Set(previousIds);
-                  if (nextIds.has(entryId)) nextIds.delete(entryId);
-                  else nextIds.add(entryId);
-                  return nextIds;
-                });
-              }}
+              onSelectionModeChange={setSelectionMode}
+              onSelectionToggle={toggleSelectedId}
             />
           )}
         </section>
@@ -1189,10 +809,10 @@ useEffect(() => {
                 entryCount={visibleEntries.length}
                 onAddFeed={() => setShowAddFeedDialog(true)}
                 onRetryFeeds={() => {
-                  void loadFeeds();
+                  void retryFeeds();
                 }}
                 onRetryEntries={() => {
-                  void requestEntries(undefined, false);
+                  void retryEntries();
                 }}
                 aiPreferences={aiPreferences}
                 aiToolbarTarget={articleAIToolbarTarget}
@@ -1206,8 +826,7 @@ useEffect(() => {
                 selectionMode={selectionMode}
                 selectedIds={selectedIds}
                 onTagsChanged={() => {
-                  void loadEntryStats();
-                  void requestEntries(undefined, false);
+                  void refreshAfterTagsChanged();
                 }}
                 onExportRequest={handleExportRequest}
                 onFeedback={setReaderFeedback}
@@ -1237,7 +856,7 @@ useEffect(() => {
               loading={loadingEntries}
               loadStatus={entryLoadStatus}
               loadError={entryLoadError}
-              searchQuery={normalizedInput}
+              searchQuery={normalizedSearchInput}
               searchStatus={effectiveSearchStatus}
               filter={entryFilter}
               onFilterChange={handleEntryListFilter}
@@ -1246,18 +865,8 @@ useEffect(() => {
               hasMore={hasNoFeeds ? false : hasMoreEntries}
               selectionMode={selectionMode}
               selectedIds={selectedIds}
-              onSelectionModeChange={(enabled: boolean) => {
-                if (!enabled) setSelectedIds(new Set());
-                setSelectionMode(enabled);
-              }}
-              onSelectionToggle={(entryId: number) => {
-                setSelectedIds((previousIds: Set<number>) => {
-                  const nextIds = new Set(previousIds);
-                  if (nextIds.has(entryId)) nextIds.delete(entryId);
-                  else nextIds.add(entryId);
-                  return nextIds;
-                });
-              }}
+              onSelectionModeChange={setSelectionMode}
+              onSelectionToggle={toggleSelectedId}
             />
           )}
         </SearchOverlay>
@@ -1299,7 +908,6 @@ useEffect(() => {
             const result = await exportMultipleEntries(exportEntries);
             if (result.ok) {
               setSelectionMode(false);
-              setSelectedIds(new Set());
               setReaderFeedback('Markdown 文档已成功导出。');
             }
           }}
