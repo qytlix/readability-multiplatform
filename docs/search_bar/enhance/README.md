@@ -167,7 +167,7 @@ export interface EntryQuery {
 | filter | SQL |
 |---|---|
 | `tag:tech`（OR） | `e.id IN (SELECT et.entryId FROM entry_tag et JOIN tag t ON ... WHERE t.name LIKE '%tech%')` |
-| `+tag:tech`（AND） | `e.id IN (SELECT et.entryId FROM entry_tag et JOIN tag t ON ... WHERE t.name = 'tech')` |
+| `+tag:tech`（AND） | `e.id IN (SELECT et.entryId FROM entry_tag et JOIN tag t ON ... WHERE t.name LIKE '%tech%')` |
 | `-tag:news`（NOT） | `NOT EXISTS (SELECT 1 FROM entry_tag et JOIN tag t ON ... WHERE et.entryId = e.id AND t.name LIKE '%news%')` |
 | `feed:xxx` | `f.title LIKE '%xxx%'`（LEFT JOIN feed 已存在） |
 | `-feed:xxx` | `f.title NOT LIKE '%xxx%'` |

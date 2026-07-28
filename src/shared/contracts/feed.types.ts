@@ -80,6 +80,13 @@ export interface SearchFilter {
   field: FilterField;
   operator: FilterOperator;
   value: string;
+  /**
+   * Match mode for tag field.
+   * - `'fuzzy'` or omitted → LIKE with %% (default, for `tag:` syntax)
+   * - `'exact'` → equality (for `tag=` syntax)
+   * Ignored for non-tag fields.
+   */
+  match?: 'fuzzy' | 'exact';
 }
 
 /** Entry 查询参数 */
@@ -88,9 +95,6 @@ export interface EntryQuery {
   isRead?: boolean;
   isStarred?: boolean;
   search?: string;
-  tagNames?: string[];
-  tagFuzzyNames?: string[];
-  matchAll?: boolean;
   filters?: SearchFilter[];
   limit: number;                        // 默认 50
   cursor?: EntryCursor;

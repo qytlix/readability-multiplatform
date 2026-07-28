@@ -502,16 +502,6 @@ function validateEntryQuery(options: EntryQuery): void {
   if (options.search !== undefined && options.search.length > 256) {
     throw new RangeError('Entry search query must not exceed 256 characters.');
   }
-  if (options.tagFuzzyNames !== undefined) {
-    if (!Array.isArray(options.tagFuzzyNames) || options.tagFuzzyNames.length > 50) {
-      throw new RangeError('Entry query tagFuzzyNames must be an array of up to 50 strings.');
-    }
-    for (const name of options.tagFuzzyNames) {
-      if (typeof name !== 'string' || name.length > 100) {
-        throw new RangeError('Entry query tagFuzzyNames entries must be strings up to 100 characters.');
-      }
-    }
-  }
   if (options.filters !== undefined) {
     if (!Array.isArray(options.filters) || options.filters.length > 50) {
       throw new RangeError('Entry query filters must be an array of up to 50 entries.');
@@ -558,101 +548,43 @@ function appendScopeConditions(
     params.push(options.isStarred ? 1 : 0);
   }
 
-  // If structured `filters` is present, use it instead of old tagNames/tagFuzzyNames.
-  // When both exist (transition period), skip the old path to avoid double-filtering.
-  const hasStructuredFilters = !!(options.filters && options.filters.length > 0);
-  const hasTagFilters = hasStructuredFilters
-    && options.filters!.some((f) => f.field === 'tag');
-
-  if (!hasStructuredFilters || !hasTagFilters) {
-    // Tag filter: exact match on tag name(s)
-    if (options.tagNames && options.tagNames.length > 0) {
-      const tagNames = options.tagNames.filter((n) => n.trim().length > 0);
-      if (tagNames.length > 0) {
-        const placeholders = tagNames.map(() => '?').join(', ');
-        const matchAll = options.matchAll !== false; // default AND
-        if (matchAll) {
-          conditions.push(
-            `e.id IN (
-              SELECT et.entryId FROM entry_tag et
-              JOIN tag t ON t.id = et.tagId
-              WHERE t.name IN (${placeholders})
-              GROUP BY et.entryId
-              HAVING COUNT(DISTINCT t.id) = ?
-            )`
-          );
-          params.push(...tagNames, tagNames.length);
-        } else {
-          conditions.push(
-            `e.id IN (
-              SELECT et.entryId FROM entry_tag et
-              JOIN tag t ON t.id = et.tagId
-              WHERE t.name IN (${placeholders})
-            )`
-          );
-          params.push(...tagNames);
-        }
-      }
-    }
-
-    // Tag filter: fuzzy match via LIKE on tag name(s)
-    if (options.tagFuzzyNames && options.tagFuzzyNames.length > 0) {
-      const fuzzyNames = options.tagFuzzyNames.filter((n) => n.trim().length > 0);
-      if (fuzzyNames.length > 0) {
-        const matchAll = options.matchAll !== false; // default AND
-        const esc = " ESCAPE '\\'";
-        const subConditions: string[] = fuzzyNames.map(
-          (name) => `t.name LIKE ?${esc}`
-        );
-        if (matchAll) {
-          // Each fuzzy name must match at least one tag (AND across terms)
-          for (const name of fuzzyNames) {
-            conditions.push(
-              `e.id IN (
-                SELECT et.entryId FROM entry_tag et
-                JOIN tag t ON t.id = et.tagId
-                WHERE t.name LIKE ?
-              )`
-            );
-            params.push(`%${escapeLike(name)}%`);
-          }
-        } else {
-          // Any fuzzy name can match (OR across terms)
-          const likeParams = fuzzyNames.map((name) => `%${escapeLike(name)}%`);
-          conditions.push(
-            `e.id IN (
-              SELECT et.entryId FROM entry_tag et
-              JOIN tag t ON t.id = et.tagId
-              WHERE ${subConditions.join(' OR ')}
-            )`
-          );
-          params.push(...likeParams);
-        }
-      }
-    }
-  }
-
-  // ── Structured filters ────────────────────────────────
+  // ── Structured filters only (old tagNames/tagFuzzyNames/matchAll removed) ──
   if (options.filters && options.filters.length > 0) {
     const esc = " ESCAPE '\\'";
 
     // Collect OR-group filters (same field, operator==='') for batch SQL
     const orGroups = new Map<FilterField, string[]>();
+    // Tag OR fuzzy vs exact need separate groups
+    const tagFuzzyOrValues: string[] = [];
+    const tagExactOrValues: string[] = [];
 
     for (const filter of options.filters) {
       if (filter.operator === '') {
-        const group = orGroups.get(filter.field) || [];
-        group.push(filter.value);
-        orGroups.set(filter.field, group);
+        if (filter.field === 'tag' && filter.match === 'exact') {
+          tagExactOrValues.push(filter.value);
+        } else if (filter.field === 'tag') {
+          tagFuzzyOrValues.push(filter.value);
+        } else {
+          const group = orGroups.get(filter.field) || [];
+          group.push(filter.value);
+          orGroups.set(filter.field, group);
+        }
       } else {
-        // + (AND) and - (NOT) applied individually
         appendSingleFilter(filter, conditions, params, esc);
       }
     }
 
-    // Apply OR groups: same-field, operator==='' filters merged into one OR
+    // Apply OR groups for non-tag fields
     for (const [field, values] of orGroups) {
       appendOrGroupFilter(field, values, conditions, params, esc);
+    }
+    // Apply tag fuzzy OR group
+    if (tagFuzzyOrValues.length > 0) {
+      appendTagOrGroup('fuzzy', tagFuzzyOrValues, conditions, params, esc);
+    }
+    // Apply tag exact OR group
+    if (tagExactOrValues.length > 0) {
+      appendTagOrGroup('exact', tagExactOrValues, conditions, params, esc);
     }
   }
 }
@@ -664,25 +596,26 @@ function appendSingleFilter(
   params: unknown[],
   esc: string,
 ): void {
-  const { field, operator, value } = filter;
+  const { field, operator, value, match } = filter;
 
   switch (field) {
     case 'tag': {
+      const exact = match === 'exact';
       if (operator === '-') {
         conditions.push(`NOT EXISTS (
           SELECT 1 FROM entry_tag et
           JOIN tag t ON t.id = et.tagId
-          WHERE et.entryId = e.id AND t.name LIKE ?${esc}
+          WHERE et.entryId = e.id AND t.name ${exact ? '=' : `LIKE ?${esc}`}
         )`);
-        params.push(`%${escapeLike(value)}%`);
+        params.push(exact ? value : `%${escapeLike(value)}%`);
       } else {
-        // +tag: AND inclusion — fuzzy match via LIKE
+        // +tag: AND inclusion
         conditions.push(`e.id IN (
           SELECT et.entryId FROM entry_tag et
           JOIN tag t ON t.id = et.tagId
-          WHERE t.name LIKE ?${esc}
+          WHERE t.name ${exact ? '=' : `LIKE ?${esc}`}
         )`);
-        params.push(`%${escapeLike(value)}%`);
+        params.push(exact ? value : `%${escapeLike(value)}%`);
       }
       break;
     }
@@ -735,6 +668,33 @@ function appendSingleFilter(
       break;
     }
   }
+}
+
+/**
+ * Apply a tag OR group: same operator === '', all values combined with OR.
+ * Separate path because fuzzy and exact need different SQL.
+ */
+function appendTagOrGroup(
+  mode: 'fuzzy' | 'exact',
+  values: string[],
+  conditions: string[],
+  params: unknown[],
+  esc: string,
+): void {
+  const subConditions = values.map(() =>
+    mode === 'exact' ? 't.name = ?' : `t.name LIKE ?${esc}`
+  );
+  const likeParams = values.map((v) =>
+    mode === 'exact' ? v : `%${escapeLike(v)}%`
+  );
+  conditions.push(
+    `e.id IN (
+      SELECT et.entryId FROM entry_tag et
+      JOIN tag t ON t.id = et.tagId
+      WHERE ${subConditions.join(' OR ')}
+    )`
+  );
+  params.push(...likeParams);
 }
 
 /** Apply an OR group: same field, operator === '', all values combined with OR. */

@@ -4,7 +4,6 @@ import {
   normalizeSearchQuery,
   parseSearchQuery,
   parseSearchTerms,
-  parseTagSearchQuery,
   requiresShortSearchFallback,
   toFts5Query,
 } from '../../../src/shared/search';
@@ -36,14 +35,27 @@ describe('shared search query parsing', () => {
 describe('parseSearchQuery', () => {
   // ── Basic field filters ────────────────────────────────
 
-  it('extracts tag: filter from query', () => {
+  it('extracts tag: filter (fuzzy) from query', () => {
     const result = parseSearchQuery('tag:tech database');
     expect(result.textQuery).toBe('database');
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '', value: 'tech' },
+      { field: 'tag', operator: '', value: 'tech', match: 'fuzzy' },
     ]);
-    expect(result.tagAnyFuzzy).toEqual(['tech']);
-    expect(result.tagAnyExact).toEqual([]);
+  });
+
+  it('extracts tag= filter (exact) from query', () => {
+    const result = parseSearchQuery('tag=tech database');
+    expect(result.textQuery).toBe('database');
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '', value: 'tech', match: 'exact' },
+    ]);
+  });
+
+  it('extracts +tag= (exact, AND) from query', () => {
+    const result = parseSearchQuery('+tag=AI');
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '+', value: 'AI', match: 'exact' },
+    ]);
   });
 
   it('extracts feed: filter from query', () => {
@@ -96,24 +108,18 @@ describe('parseSearchQuery', () => {
 
   // ── +/- operators ──────────────────────────────────────
 
-  it('extracts +tag: (AND) filter', () => {
+  it('extracts +tag: (AND, fuzzy) filter', () => {
     const result = parseSearchQuery('+tag:AI');
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '+', value: 'AI' },
+      { field: 'tag', operator: '+', value: 'AI', match: 'fuzzy' },
     ]);
-    // +tag: should NOT appear in backward compat lists
-    expect(result.tagAnyFuzzy).toEqual([]);
-    expect(result.tagAnyExact).toEqual([]);
   });
 
-  it('extracts -tag: (exclusion) filter', () => {
+  it('extracts -tag: (exclusion, fuzzy) filter', () => {
     const result = parseSearchQuery('-tag:news');
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '-', value: 'news' },
+      { field: 'tag', operator: '-', value: 'news', match: 'fuzzy' },
     ]);
-    // -tag: should NOT appear in backward compat lists
-    expect(result.tagAnyFuzzy).toEqual([]);
-    expect(result.tagAnyExact).toEqual([]);
   });
 
   it('extracts +/- operators for non-tag fields', () => {
@@ -138,55 +144,65 @@ describe('parseSearchQuery', () => {
     ]);
   });
 
-  // ── Quoted values for exact tag match ──────────────────
+  // ── tag= exact with quotes ─────────────────────────────
 
-  it('extracts tag:"Exact Name"', () => {
-    const result = parseSearchQuery('tag:"Machine Learning"');
+  it('extracts tag="quoted" (exact)', () => {
+    const result = parseSearchQuery('tag="Machine Learning"');
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '', value: 'Machine Learning' },
+      { field: 'tag', operator: '', value: 'Machine Learning', match: 'exact' },
     ]);
-    expect(result.tagAnyFuzzy).toEqual([]);
-    expect(result.tagAnyExact).toEqual(['Machine Learning']);
   });
 
-  it('extracts tag:"Exact" with trailing text', () => {
+  it('extracts tag:"quoted" (fuzzy)', () => {
     const result = parseSearchQuery('tag:"AI News" database');
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '', value: 'AI News' },
+      { field: 'tag', operator: '', value: 'AI News', match: 'fuzzy' },
     ]);
     expect(result.textQuery).toBe('database');
-    expect(result.tagAnyExact).toEqual(['AI News']);
+  });
+
+  it('extracts +tag="quoted" (exact, AND)', () => {
+    const result = parseSearchQuery('+tag="Exact Match"');
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '+', value: 'Exact Match', match: 'exact' },
+    ]);
   });
 
   // ── Multiple filters mixed ─────────────────────────────
 
-  it('handles multiple tag: terms (OR)', () => {
+  it('handles multiple tag: terms (OR, fuzzy)', () => {
     const result = parseSearchQuery('tag:tech tag:News');
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '', value: 'tech' },
-      { field: 'tag', operator: '', value: 'News' },
+      { field: 'tag', operator: '', value: 'tech', match: 'fuzzy' },
+      { field: 'tag', operator: '', value: 'News', match: 'fuzzy' },
     ]);
-    expect(result.tagAnyFuzzy).toEqual(['tech', 'News']);
     expect(result.textQuery).toBe('');
   });
 
   it('mixes +tag:, -tag:, tag: and plain text', () => {
     const result = parseSearchQuery('+tag:AI -tag:news tag:tech machine learning');
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '+', value: 'AI' },
-      { field: 'tag', operator: '-', value: 'news' },
-      { field: 'tag', operator: '', value: 'tech' },
+      { field: 'tag', operator: '+', value: 'AI', match: 'fuzzy' },
+      { field: 'tag', operator: '-', value: 'news', match: 'fuzzy' },
+      { field: 'tag', operator: '', value: 'tech', match: 'fuzzy' },
     ]);
     expect(result.textQuery).toBe('machine learning');
-    // Only operator==='' tag entries appear in backward compat
-    expect(result.tagAnyFuzzy).toEqual(['tech']);
-    expect(result.tagAnyExact).toEqual([]);
+  });
+
+  it('mixes tag=, tag:, +/- operators', () => {
+    const result = parseSearchQuery('tag=exact tag:fuzzy +tag=must -tag=exclude');
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '', value: 'exact', match: 'exact' },
+      { field: 'tag', operator: '', value: 'fuzzy', match: 'fuzzy' },
+      { field: 'tag', operator: '+', value: 'must', match: 'exact' },
+      { field: 'tag', operator: '-', value: 'exclude', match: 'exact' },
+    ]);
   });
 
   it('mixes different field filters with plain text', () => {
     const result = parseSearchQuery('tag:tech feed:NYT title:climate author:"John Doe" starred:yes hello');
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '', value: 'tech' },
+      { field: 'tag', operator: '', value: 'tech', match: 'fuzzy' },
       { field: 'feed', operator: '', value: 'NYT' },
       { field: 'title', operator: '', value: 'climate' },
       { field: 'author', operator: '', value: 'John Doe' },
@@ -200,14 +216,14 @@ describe('parseSearchQuery', () => {
   it('returns empty result for empty input', () => {
     const result = parseSearchQuery('');
     expect(result).toEqual({
-      textQuery: '', filters: [], tagAnyFuzzy: [], tagAnyExact: [],
+      textQuery: '', filters: [],
     });
   });
 
   it('returns empty result for whitespace-only input', () => {
     const result = parseSearchQuery('   ');
     expect(result).toEqual({
-      textQuery: '', filters: [], tagAnyFuzzy: [], tagAnyExact: [],
+      textQuery: '', filters: [],
     });
   });
 
@@ -220,6 +236,12 @@ describe('parseSearchQuery', () => {
   it('silently drops dangling filter prefix (tag:)', () => {
     const result = parseSearchQuery('search tag:');
     expect(result.textQuery).toBe('search');
+    expect(result.filters).toEqual([]);
+  });
+
+  it('silently drops dangling tag= prefix', () => {
+    const result = parseSearchQuery('hello tag=');
+    expect(result.textQuery).toBe('hello');
     expect(result.filters).toEqual([]);
   });
 
@@ -239,7 +261,7 @@ describe('parseSearchQuery', () => {
     const result = parseSearchQuery('"plain quoted" tag:tech');
     expect(result.textQuery).toBe('"plain quoted"');
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '', value: 'tech' },
+      { field: 'tag', operator: '', value: 'tech', match: 'fuzzy' },
     ]);
   });
 
@@ -255,7 +277,7 @@ describe('parseSearchQuery', () => {
     const result = parseSearchQuery('tag:tech "unclosed');
     expect(result.textQuery).toBe('"unclosed"');
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '', value: 'tech' },
+      { field: 'tag', operator: '', value: 'tech', match: 'fuzzy' },
     ]);
   });
 
@@ -263,6 +285,12 @@ describe('parseSearchQuery', () => {
     const result = parseSearchQuery('+tag:"unclosed');
     // Unterminated quoted filter prefix goes to textQuery preserving the prefix
     expect(result.textQuery).toBe('"+tag:unclosed"');
+    expect(result.filters).toEqual([]);
+  });
+
+  it('handles unterminated quote after tag= prefix', () => {
+    const result = parseSearchQuery('tag="unclosed');
+    expect(result.textQuery).toBe('"tag=unclosed"');
     expect(result.filters).toEqual([]);
   });
 
@@ -282,109 +310,10 @@ describe('parseSearchQuery', () => {
   });
 
   it('handles field:value with colon in value (e.g. URL)', () => {
-    // 'content:' captures the whole rest including colon — .+ is greedy last $ anchor
+    // (.+)$ is greedy, so content:http://example.com → value = "http://example.com"
     const result = parseSearchQuery('content:http://example.com');
-    // The content value will be "http" because the regex \w+ only matches word chars
-    // and "://" breaks. Let's check what happens:
-    // filterRe is /^([+-])?(\w+):(.+)$/s
-    // For "content:http://example.com": \w+ matches "content", (.*) matches "http"
-    // Wait no - (.+) is greedy. Let me check...
-    // Actually (\w+): matches "content:", then (.+) matches "http://example.com"
-    // So the value should be "http://example.com"
     expect(result.filters).toEqual([
       { field: 'content', operator: '', value: 'http://example.com' },
     ]);
-  });
-});
-
-describe('parseTagSearchQuery', () => {
-  it('extracts fuzzy tag:keyword from query', () => {
-    const result = parseTagSearchQuery('tag:tech database');
-    expect(result).toEqual({
-      textQuery: 'database',
-      tagFuzzyNames: ['tech'],
-      tagExactNames: [],
-    });
-  });
-
-  it('extracts exact tag:"Exact Name" from query', () => {
-    const result = parseTagSearchQuery('tag:"Machine Learning"');
-    expect(result).toEqual({
-      textQuery: '',
-      tagFuzzyNames: [],
-      tagExactNames: ['Machine Learning'],
-    });
-  });
-
-  it('extracts multiple tag: terms', () => {
-    const result = parseTagSearchQuery('tag:tech tag:News');
-    expect(result).toEqual({
-      textQuery: '',
-      tagFuzzyNames: ['tech', 'News'],
-      tagExactNames: [],
-    });
-  });
-
-  it('handles mixed tag: and text terms', () => {
-    const result = parseTagSearchQuery('tag:tech "SQLite migration"');
-    expect(result).toEqual({
-      textQuery: '"SQLite migration"',
-      tagFuzzyNames: ['tech'],
-      tagExactNames: [],
-    });
-  });
-
-  it('handles mixed fuzzy and exact tag terms with text', () => {
-    const result = parseTagSearchQuery('tag:tech tag:"AI News" database');
-    expect(result).toEqual({
-      textQuery: 'database',
-      tagFuzzyNames: ['tech'],
-      tagExactNames: ['AI News'],
-    });
-  });
-
-  it('returns empty result for empty input', () => {
-    const result = parseTagSearchQuery('');
-    expect(result).toEqual({
-      textQuery: '',
-      tagFuzzyNames: [],
-      tagExactNames: [],
-    });
-  });
-
-  it('returns empty result for whitespace-only input', () => {
-    const result = parseTagSearchQuery('   ');
-    expect(result).toEqual({
-      textQuery: '',
-      tagFuzzyNames: [],
-      tagExactNames: [],
-    });
-  });
-
-  it('treats plain text without tag: prefix normally', () => {
-    const result = parseTagSearchQuery('normal search text');
-    expect(result).toEqual({
-      textQuery: 'normal search text',
-      tagFuzzyNames: [],
-      tagExactNames: [],
-    });
-  });
-
-  it('handles tag: at the end of query', () => {
-    const result = parseTagSearchQuery('search tag:');
-    expect(result).toEqual({
-      textQuery: 'search',
-      tagFuzzyNames: [],
-      tagExactNames: [],
-    });
-  });
-
-  it('preserves quoted text that is not a tag search', () => {
-    const result = parseTagSearchQuery('"plain quoted" tag:tech');
-    expect(result).toEqual({
-      textQuery: '"plain quoted"',
-      tagFuzzyNames: ['tech'],
-      tagExactNames: [],
-    });
   });
 });

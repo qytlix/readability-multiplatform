@@ -38,7 +38,7 @@ describe('entry search query', () => {
     });
   });
 
-  it('populates filters from tag: search terms', () => {
+  it('populates filters from tag: (fuzzy) search terms', () => {
     const result = buildEntryQuery({
       selectedFeedId: null,
       filter: 'all',
@@ -47,12 +47,23 @@ describe('entry search query', () => {
     });
     expect(result.search).toBe('database');
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '', value: 'tech' },
-      { field: 'tag', operator: '', value: 'AI News' },
+      { field: 'tag', operator: '', value: 'tech', match: 'fuzzy' },
+      { field: 'tag', operator: '', value: 'AI News', match: 'fuzzy' },
     ]);
-    // Backward compat fields still populated
-    expect(result.tagNames).toEqual(['AI News']);
-    expect(result.tagFuzzyNames).toEqual(['tech']);
+  });
+
+  it('populates filters from tag= (exact) search terms', () => {
+    const result = buildEntryQuery({
+      selectedFeedId: null,
+      filter: 'all',
+      searchQuery: 'tag=tech tag="AI News" database',
+      limit: 30,
+    });
+    expect(result.search).toBe('database');
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '', value: 'tech', match: 'exact' },
+      { field: 'tag', operator: '', value: 'AI News', match: 'exact' },
+    ]);
   });
 
   it('populates filters from +/-/field: search terms', () => {
@@ -64,15 +75,12 @@ describe('entry search query', () => {
     });
     expect(result.search).toBeUndefined();
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '+', value: 'AI' },
-      { field: 'tag', operator: '-', value: 'news' },
+      { field: 'tag', operator: '+', value: 'AI', match: 'fuzzy' },
+      { field: 'tag', operator: '-', value: 'news', match: 'fuzzy' },
       { field: 'feed', operator: '', value: 'NYT' },
       { field: 'title', operator: '', value: 'climate' },
       { field: 'starred', operator: '', value: 'yes' },
     ]);
-    // Only operator==='' tag entries appear in backward compat
-    expect(result.tagNames).toBeUndefined();
-    expect(result.tagFuzzyNames).toBeUndefined();
   });
 
   it('combines sidebar tagFilter with search box filters', () => {
@@ -84,11 +92,22 @@ describe('entry search query', () => {
       limit: 30,
     });
     expect(result.filters).toEqual([
-      { field: 'tag', operator: '', value: 'tech' },
+      { field: 'tag', operator: '', value: 'tech', match: 'fuzzy' },
+      { field: 'tag', operator: '+', value: 'sidebar-tag', match: 'exact' },
     ]);
-    // Sidebar tags go to tagNames (exact), search box tags go to tagFuzzyNames (fuzzy)
-    expect(result.tagNames).toEqual(['sidebar-tag']);
-    expect(result.tagFuzzyNames).toEqual(['tech']);
-    expect(result.matchAll).toBe(true);
+  });
+
+  it('combines sidebar tagFilter (OR) with search box', () => {
+    const result = buildEntryQuery({
+      selectedFeedId: null,
+      filter: 'all',
+      searchQuery: 'tag:tech',
+      tagFilter: { tagNames: ['sidebar-tag'], matchAll: false },
+      limit: 30,
+    });
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '', value: 'tech', match: 'fuzzy' },
+      { field: 'tag', operator: '', value: 'sidebar-tag', match: 'exact' },
+    ]);
   });
 });

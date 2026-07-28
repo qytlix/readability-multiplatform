@@ -73,6 +73,13 @@ export interface SearchFilter {
   field: FilterField;
   operator: FilterOperator;
   value: string;
+  /**
+   * Match mode for tag field.
+   * - `'fuzzy'` or omitted → LIKE with %% (default, for `tag:` syntax)
+   * - `'exact'` → equality (for `tag=` syntax)
+   * Ignored for non-tag fields.
+   */
+  match?: 'fuzzy' | 'exact';
 }
 
 export interface ParsedSearchQuery {
@@ -80,10 +87,6 @@ export interface ParsedSearchQuery {
   textQuery: string;
   /** Structured field filters extracted from the query. */
   filters: SearchFilter[];
-  /** Backward compat: tag names for fuzzy matching (`tag:keyword` → LIKE '%keyword%'), OR semantics. */
-  tagAnyFuzzy: string[];
-  /** Backward compat: tag names for exact matching (`tag:"Exact Name"` → equality), OR semantics. */
-  tagAnyExact: string[];
 }
 
 const FILTER_FIELDS = new Set<FilterField>([
@@ -94,7 +97,8 @@ const FILTER_FIELDS = new Set<FilterField>([
  * Parse a search query into plain text and structured field filters.
  *
  * Supported syntax:
- *   `field:value`       → OR inclusion
+ *   `field:value`       → OR inclusion (fuzzy for tag)
+ *   `field=value`       → OR inclusion, exact match (tag only)
  *   `+field:value`      → AND inclusion (must have)
  *   `-field:value`      → exclusion
  *   `field:"quoted"`    → value with spaces
@@ -104,45 +108,45 @@ const FILTER_FIELDS = new Set<FilterField>([
  *
  * Examples:
  *   `tag:tech database`
- *     → { textQuery: "database", filters: [{ field:'tag', op:'', value:'tech' }] }
+ *     → { textQuery: "database", filters: [{ field:'tag', op:'', value:'tech', match:'fuzzy' }] }
+ *   `tag=tech database`
+ *     → { textQuery: "database", filters: [{ field:'tag', op:'', value:'tech', match:'exact' }] }
  *   `+tag:tech -tag:news starred:yes`
  *     → { textQuery: "", filters: [
- *         { field:'tag', op:'+', value:'tech' },
- *         { field:'tag', op:'-', value:'news' },
+ *         { field:'tag', op:'+', value:'tech', match:'fuzzy' },
+ *         { field:'tag', op:'-', value:'news', match:'fuzzy' },
  *         { field:'starred', op:'', value:'yes' },
  *       ]}
  */
 export const parseSearchQuery = (query: string): ParsedSearchQuery => {
   const normalized = normalizeSearchQuery(query);
   if (!normalized) {
-    return { textQuery: '', filters: [], tagAnyFuzzy: [], tagAnyExact: [] };
+    return { textQuery: '', filters: [] };
   }
 
   const filters: SearchFilter[] = [];
   const textParts: string[] = [];
-  const tagAnyFuzzy: string[] = [];
-  const tagAnyExact: string[] = [];
   let current = '';
   let inQuotes = false;
   /** When we see `tag:"` or `+feed:"`, the prefix is saved here until closing quote. */
   let filterPrefixInQuotes = '';
 
-  /** Pattern to detect `[+-]?fieldname:` at end of current (right before an opening quote). */
-  const prefixRe = /^([+-])?(\w+):$/;
-
   /**
-   * Pattern to detect `[+-]?fieldname:` with nothing after (dangling filter).
-   * Old behavior: silently dropped.
+   * Detect `[+-]?fieldname:` (colon) or `[+-]?fieldname=` (equals) at end of
+   * current buffer (right before an opening quote).
    */
-  const danglingFilterRe = /^([+-])?(\w+):$/;
-  /** Pattern to detect `[+-]?fieldname:value` in a complete token. */
-  const filterRe = /^([+-])?(\w+):(.+)$/s;
+  const prefixRe = /^([+-])?(\w+)[:=]$/;
+
+  /** Dangling `[+-]?field:` or `[+-]?field=` with no value — silently dropped. */
+  const danglingRe = /^([+-])?(\w+)[:=]$/;
+  /** Detect `[+-]?fieldname:value` or `[+-]?fieldname=value` in a complete token. */
+  const filterRe = /^([+-])?(\w+)([:=])(.+)$/s;
 
   const handleToken = (token: string): void => {
     if (!token) return;
 
-    // Dangling filter prefix like `tag:` or `+feed:` with no value — silently drop (backward compat)
-    const danglingMatch = token.match(danglingFilterRe);
+    // Dangling filter prefix like `tag:` or `tag=` with no value — silently drop
+    const danglingMatch = token.match(danglingRe);
     if (danglingMatch && FILTER_FIELDS.has(danglingMatch[2] as FilterField)) {
       return;
     }
@@ -151,13 +155,16 @@ export const parseSearchQuery = (query: string): ParsedSearchQuery => {
     if (match && FILTER_FIELDS.has(match[2] as FilterField)) {
       const operator = (match[1] || '') as FilterOperator;
       const field = match[2] as FilterField;
-      const value = match[3];
+      const separator = match[3]; // ':' or '='
+      const value = match[4];
       if (value) {
-        filters.push({ field, operator, value });
-        // Backward compat: populate tagAnyFuzzy/tagAnyExact for operator==='' tag filters
-        if (field === 'tag' && operator === '') {
-          (value.includes('"') ? tagAnyExact : tagAnyFuzzy).push(value.replace(/"/g, ''));
+        const filter: SearchFilter = { field, operator, value };
+        if (field === 'tag' && separator === '=') {
+          filter.match = 'exact';
+        } else if (field === 'tag') {
+          filter.match = 'fuzzy';
         }
+        filters.push(filter);
       }
     } else {
       textParts.push(token);
@@ -173,18 +180,21 @@ export const parseSearchQuery = (query: string): ParsedSearchQuery => {
         current = '';
 
         if (filterPrefixInQuotes) {
-          // This was [+-]field:"value"
+          // This was [+-]field:"value" or [+-]field="value"
           const prefix = filterPrefixInQuotes;
           filterPrefixInQuotes = '';
           const preMatch = prefix.match(prefixRe);
           if (preMatch && trimmed) {
             const operator = (preMatch[1] || '') as FilterOperator;
             const field = preMatch[2] as FilterField;
-            filters.push({ field, operator, value: trimmed });
-            // Backward compat: tag: with empty operator → exact
-            if (field === 'tag' && operator === '') {
-              tagAnyExact.push(trimmed);
+            const separator = prefix.endsWith('=') ? '=' : ':';
+            const filter: SearchFilter = { field, operator, value: trimmed };
+            if (field === 'tag' && separator === '=') {
+              filter.match = 'exact';
+            } else if (field === 'tag') {
+              filter.match = 'fuzzy';
             }
+            filters.push(filter);
           }
         } else {
           // Non-filter quoted text: preserve as quoted phrase
@@ -200,7 +210,7 @@ export const parseSearchQuery = (query: string): ParsedSearchQuery => {
         filterPrefixInQuotes = '';
 
         if (prefixRe.test(trimmed)) {
-          // This is [+-]field:" — save prefix, value comes inside quotes
+          // This is [+-]field:" or [+-]field=" — save prefix
           filterPrefixInQuotes = trimmed;
         } else if (trimmed) {
           textParts.push(trimmed);
@@ -234,38 +244,5 @@ export const parseSearchQuery = (query: string): ParsedSearchQuery => {
   return {
     textQuery: textParts.join(' '),
     filters,
-    tagAnyFuzzy,
-    tagAnyExact,
-  };
-};
-
-// ── Tag Search Query Parsing (backward compat wrapper) ───
-
-export interface TagSearchResult {
-  /** The remaining text query with `tag:` parts removed. */
-  textQuery: string;
-  /** Tag names for fuzzy matching (`tag:keyword` → LIKE '%keyword%'). */
-  tagFuzzyNames: string[];
-  /** Tag names for exact matching (`tag:"Exact Name"` → equality). */
-  tagExactNames: string[];
-}
-
-/**
- * Parse `tag:keyword` (fuzzy) and `tag:"Exact Name"` (exact) terms from a
- * search query. Returns the cleaned text query and extracted tag names.
- *
- * This is a backward-compatible wrapper around {@link parseSearchQuery}.
- *
- * Examples:
- *   `tag:tech database`       → { textQuery: "database", tagFuzzyNames: ["tech"], tagExactNames: [] }
- *   `tag:"Machine Learning"`  → { textQuery: "", tagFuzzyNames: [], tagExactNames: ["Machine Learning"] }
- *   `tag:tech tag:News`       → { textQuery: "", tagFuzzyNames: ["tech", "News"], tagExactNames: [] }
- */
-export const parseTagSearchQuery = (query: string): TagSearchResult => {
-  const parsed = parseSearchQuery(query);
-  return {
-    textQuery: parsed.textQuery,
-    tagFuzzyNames: parsed.tagAnyFuzzy,
-    tagExactNames: parsed.tagAnyExact,
   };
 };

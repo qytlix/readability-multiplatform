@@ -1,11 +1,7 @@
 import type { EntryQuery } from '../../../shared/contracts/feed.types';
-import {
-  normalizeSearchQuery,
-  parseSearchQuery,
-  parseTagSearchQuery,
-} from '../../../shared/search';
+import { normalizeSearchQuery, parseSearchQuery } from '../../../shared/search';
 
-export { normalizeSearchQuery, parseTagSearchQuery } from '../../../shared/search';
+export { normalizeSearchQuery } from '../../../shared/search';
 
 export type EntryFilter = 'all' | 'unread' | 'starred';
 
@@ -23,6 +19,18 @@ interface EntryQueryInput {
   cursor?: EntryQuery['cursor'];
 }
 
+const toStructuredTagFilters = (
+  tagFilter: TagFilterState | null | undefined,
+): import('../../../shared/search').SearchFilter[] | undefined => {
+  if (!tagFilter || tagFilter.tagNames.length === 0) return undefined;
+  return tagFilter.tagNames.map((name) => ({
+    field: 'tag' as const,
+    operator: (tagFilter.matchAll ? '+' : '') as '+' | '-' | '',
+    value: name,
+    match: 'exact' as const,
+  }));
+};
+
 export const buildEntryQuery = ({
   selectedFeedId,
   filter,
@@ -36,7 +44,7 @@ export const buildEntryQuery = ({
   // Parse all field:... filters from the search query
   const parsed = normalizedSearch
     ? parseSearchQuery(normalizedSearch)
-    : { textQuery: '', filters: [], tagAnyFuzzy: [], tagAnyExact: [] };
+    : { textQuery: '', filters: [] };
   const textQuery = parsed.textQuery || undefined;
 
   const query: EntryQuery = { limit };
@@ -48,35 +56,14 @@ export const buildEntryQuery = ({
   if (filter === 'starred') query.isStarred = true;
   if (textQuery) query.search = textQuery;
 
-  // Populate structured filters (backend will process these)
-  if (parsed.filters.length > 0) {
-    query.filters = parsed.filters;
-  }
-
-  // Combine tag filter from sidebar with tag search from search box
-  // (backward compat via old tagNames/tagFuzzyNames fields)
-  const combinedExact = new Set<string>();
-  const combinedFuzzy = new Set<string>();
-
-  if (tagFilter) {
-    for (const name of tagFilter.tagNames) {
-      combinedExact.add(name);
-    }
-    query.matchAll = tagFilter.matchAll;
-  }
-
-  for (const name of parsed.tagAnyExact) {
-    combinedExact.add(name);
-  }
-  for (const name of parsed.tagAnyFuzzy) {
-    combinedFuzzy.add(name);
-  }
-
-  if (combinedExact.size > 0) {
-    query.tagNames = Array.from(combinedExact);
-  }
-  if (combinedFuzzy.size > 0) {
-    query.tagFuzzyNames = Array.from(combinedFuzzy);
+  // Merge sidebar tagFilter filters with search box filters
+  const sidebarFilters = toStructuredTagFilters(tagFilter);
+  const allFilters = [
+    ...(parsed.filters.length > 0 ? parsed.filters : []),
+    ...(sidebarFilters ?? []),
+  ];
+  if (allFilters.length > 0) {
+    query.filters = allFilters;
   }
 
   return query;
