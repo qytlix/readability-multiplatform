@@ -1,6 +1,7 @@
 import type { EntryQuery } from '../../../shared/contracts/feed.types';
 import {
   normalizeSearchQuery,
+  parseSearchQuery,
   parseTagSearchQuery,
 } from '../../../shared/search';
 
@@ -32,11 +33,11 @@ export const buildEntryQuery = ({
 }: EntryQueryInput): EntryQuery => {
   const normalizedSearch = normalizeSearchQuery(searchQuery);
 
-  // Parse tag:... and tag:"..." terms from the search query
-  const tagParsed = normalizedSearch
-    ? parseTagSearchQuery(normalizedSearch)
-    : { textQuery: '', tagFuzzyNames: [], tagExactNames: [] };
-  const textQuery = tagParsed.textQuery || undefined;
+  // Parse all field:... filters from the search query
+  const parsed = normalizedSearch
+    ? parseSearchQuery(normalizedSearch)
+    : { textQuery: '', filters: [], tagAnyFuzzy: [], tagAnyExact: [] };
+  const textQuery = parsed.textQuery || undefined;
 
   const query: EntryQuery = { limit };
 
@@ -47,7 +48,13 @@ export const buildEntryQuery = ({
   if (filter === 'starred') query.isStarred = true;
   if (textQuery) query.search = textQuery;
 
+  // Populate structured filters (backend will process these)
+  if (parsed.filters.length > 0) {
+    query.filters = parsed.filters;
+  }
+
   // Combine tag filter from sidebar with tag search from search box
+  // (backward compat via old tagNames/tagFuzzyNames fields)
   const combinedExact = new Set<string>();
   const combinedFuzzy = new Set<string>();
 
@@ -58,10 +65,10 @@ export const buildEntryQuery = ({
     query.matchAll = tagFilter.matchAll;
   }
 
-  for (const name of tagParsed.tagExactNames) {
+  for (const name of parsed.tagAnyExact) {
     combinedExact.add(name);
   }
-  for (const name of tagParsed.tagFuzzyNames) {
+  for (const name of parsed.tagAnyFuzzy) {
     combinedFuzzy.add(name);
   }
 

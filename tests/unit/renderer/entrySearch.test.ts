@@ -37,4 +37,58 @@ describe('entry search query', () => {
       cursor: { publishedAt: '2026-07-23T00:00:00.000Z', id: 9 },
     });
   });
+
+  it('populates filters from tag: search terms', () => {
+    const result = buildEntryQuery({
+      selectedFeedId: null,
+      filter: 'all',
+      searchQuery: 'tag:tech tag:"AI News" database',
+      limit: 30,
+    });
+    expect(result.search).toBe('database');
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '', value: 'tech' },
+      { field: 'tag', operator: '', value: 'AI News' },
+    ]);
+    // Backward compat fields still populated
+    expect(result.tagNames).toEqual(['AI News']);
+    expect(result.tagFuzzyNames).toEqual(['tech']);
+  });
+
+  it('populates filters from +/-/field: search terms', () => {
+    const result = buildEntryQuery({
+      selectedFeedId: null,
+      filter: 'all',
+      searchQuery: '+tag:AI -tag:news feed:NYT title:climate starred:yes',
+      limit: 30,
+    });
+    expect(result.search).toBeUndefined();
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '+', value: 'AI' },
+      { field: 'tag', operator: '-', value: 'news' },
+      { field: 'feed', operator: '', value: 'NYT' },
+      { field: 'title', operator: '', value: 'climate' },
+      { field: 'starred', operator: '', value: 'yes' },
+    ]);
+    // Only operator==='' tag entries appear in backward compat
+    expect(result.tagNames).toBeUndefined();
+    expect(result.tagFuzzyNames).toBeUndefined();
+  });
+
+  it('combines sidebar tagFilter with search box filters', () => {
+    const result = buildEntryQuery({
+      selectedFeedId: null,
+      filter: 'all',
+      searchQuery: 'tag:tech',
+      tagFilter: { tagNames: ['sidebar-tag'], matchAll: true },
+      limit: 30,
+    });
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '', value: 'tech' },
+    ]);
+    // Sidebar tags go to tagNames (exact), search box tags go to tagFuzzyNames (fuzzy)
+    expect(result.tagNames).toEqual(['sidebar-tag']);
+    expect(result.tagFuzzyNames).toEqual(['tech']);
+    expect(result.matchAll).toBe(true);
+  });
 });
