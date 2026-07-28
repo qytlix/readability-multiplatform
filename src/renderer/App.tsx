@@ -41,6 +41,7 @@ import {
 import { ExportOptionsDialog } from './features/feeds/ExportOptionsDialog';
 import type { TagFilterState } from './features/search/entrySearch';
 import { TagListPage } from './features/tags/TagListPage';
+import { SearchOverlay } from './features/search/SearchOverlay';
 import './features/tags/TagListPage.css';
 import type { ArticleAvailability } from '../shared/contracts/export.types';
 import {
@@ -121,6 +122,7 @@ export const App = () => {
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
   const [entryFilter, setEntryFilter] = useState<EntryFilter>('all');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [appliedSearchQuery, setAppliedSearchQuery] = useState('');
   const [searchAllFeeds, setSearchAllFeeds] = useState(false);
@@ -435,17 +437,25 @@ export const App = () => {
     void requestEntries(undefined, false);
   }, [requestEntries]);
 
-  useEffect(() => {
+useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
+        if (isReadingFocus) return;
         setSidebarOpen(true);
+        setSearchFocused(true);
         window.setTimeout(() => searchInputRef.current?.focus(), 0);
         return;
       }
 
       if (event.key !== 'Escape') return;
-      if (isReadingFocus) {
+      if (searchFocused) {
+        if (normalizedInput) {
+          setSearchInput('');
+        } else {
+          setSearchFocused(false);
+        }
+      } else if (isReadingFocus) {
         setIsReadingFocus(false);
       } else if (normalizedInput) {
         setSearchInput('');
@@ -456,7 +466,7 @@ export const App = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isReadingFocus, normalizedInput]);
+  }, [isReadingFocus, normalizedInput, searchFocused]);
 
   useEffect(() => {
     if (!readerFeedback) return;
@@ -813,6 +823,9 @@ export const App = () => {
   const selectedSourceTitle = selectedEntryFeed?.title
     ?? selectedEntryFeed?.feedURL
     ?? '';
+  const selectedSearchFeedLabel = selectedFeed
+    ? selectedFeed.title ?? selectedFeed.feedURL
+    : null;
 
   return (
     <div
@@ -820,6 +833,7 @@ export const App = () => {
         'reader-page',
         sidebarOpen ? 'is-sidebar-open' : 'is-sidebar-closed',
         isReadingFocus ? 'is-reading-focus' : '',
+        searchFocused ? 'is-search-active' : '',
         largeType ? 'is-large-type' : '',
         activeView === 'settings' ? 'is-settings-view' : '',
       ].join(' ')}
@@ -881,9 +895,11 @@ export const App = () => {
             selectedFilter={entryFilter}
             searchInput={searchInput}
             searchStatus={effectiveSearchStatus}
+            searchFocused={searchFocused}
             searchAllFeeds={searchAllFeeds}
             searchInputRef={searchInputRef}
             onSearchInputChange={setSearchInput}
+            onSearchFocus={() => setSearchFocused(true)}
             onSearchAllFeedsChange={setSearchAllFeeds}
             onSelectFilter={handleSelectSidebarFilter}
             onSelectFeed={handleSelectFeed}
@@ -920,7 +936,7 @@ export const App = () => {
         >
           {activeView === 'tags' ? (
             <TagListPage onSelectTag={handleSelectTag} />
-          ) : (
+          ) : searchFocused ? null : (
             <EntryList
               entries={visibleEntries}
               selectedEntryId={selectedEntryId}
@@ -1202,6 +1218,49 @@ export const App = () => {
             )}
           </div>
         </main>
+        <SearchOverlay
+          visible={searchFocused}
+          searchInput={searchInput}
+          searchStatus={effectiveSearchStatus}
+          searchAllFeeds={searchAllFeeds}
+          searchInputRef={searchInputRef}
+          onSearchInputChange={setSearchInput}
+          onSearchAllFeedsChange={setSearchAllFeeds}
+          onClose={() => setSearchFocused(false)}
+          selectedSearchFeedLabel={selectedSearchFeedLabel}
+        >
+          {searchFocused && (
+            <EntryList
+              entries={visibleEntries}
+              selectedEntryId={selectedEntryId}
+              heading={listHeading}
+              loading={loadingEntries}
+              loadStatus={entryLoadStatus}
+              loadError={entryLoadError}
+              searchQuery={normalizedInput}
+              searchStatus={effectiveSearchStatus}
+              filter={entryFilter}
+              onFilterChange={handleEntryListFilter}
+              onSelectEntry={handleSelectEntry}
+              onLoadMore={handleLoadMore}
+              hasMore={hasNoFeeds ? false : hasMoreEntries}
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              onSelectionModeChange={(enabled: boolean) => {
+                if (!enabled) setSelectedIds(new Set());
+                setSelectionMode(enabled);
+              }}
+              onSelectionToggle={(entryId: number) => {
+                setSelectedIds((previousIds: Set<number>) => {
+                  const nextIds = new Set(previousIds);
+                  if (nextIds.has(entryId)) nextIds.delete(entryId);
+                  else nextIds.add(entryId);
+                  return nextIds;
+                });
+              }}
+            />
+          )}
+        </SearchOverlay>
       </div>
 
       <div className="annotation-overlay-root" />

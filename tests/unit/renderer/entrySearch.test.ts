@@ -37,4 +37,77 @@ describe('entry search query', () => {
       cursor: { publishedAt: '2026-07-23T00:00:00.000Z', id: 9 },
     });
   });
+
+  it('populates filters from tag: (fuzzy) search terms', () => {
+    const result = buildEntryQuery({
+      selectedFeedId: null,
+      filter: 'all',
+      searchQuery: 'tag:tech tag:"AI News" database',
+      limit: 30,
+    });
+    expect(result.search).toBe('database');
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '', value: 'tech', match: 'fuzzy' },
+      { field: 'tag', operator: '', value: 'AI News', match: 'fuzzy' },
+    ]);
+  });
+
+  it('populates filters from tag= (exact) search terms', () => {
+    const result = buildEntryQuery({
+      selectedFeedId: null,
+      filter: 'all',
+      searchQuery: 'tag=tech tag="AI News" database',
+      limit: 30,
+    });
+    expect(result.search).toBe('database');
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '', value: 'tech', match: 'exact' },
+      { field: 'tag', operator: '', value: 'AI News', match: 'exact' },
+    ]);
+  });
+
+  it('populates filters from +/-/field: search terms', () => {
+    const result = buildEntryQuery({
+      selectedFeedId: null,
+      filter: 'all',
+      searchQuery: '+tag:AI -tag:news feed:NYT title:climate starred:yes',
+      limit: 30,
+    });
+    expect(result.search).toBeUndefined();
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '+', value: 'AI', match: 'fuzzy' },
+      { field: 'tag', operator: '-', value: 'news', match: 'fuzzy' },
+      { field: 'feed', operator: '', value: 'NYT' },
+      { field: 'title', operator: '', value: 'climate' },
+      { field: 'starred', operator: '', value: 'yes' },
+    ]);
+  });
+
+  it('combines sidebar tagFilter with search box filters', () => {
+    const result = buildEntryQuery({
+      selectedFeedId: null,
+      filter: 'all',
+      searchQuery: 'tag:tech',
+      tagFilter: { tagNames: ['sidebar-tag'], matchAll: true },
+      limit: 30,
+    });
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '', value: 'tech', match: 'fuzzy' },
+      { field: 'tag', operator: '+', value: 'sidebar-tag', match: 'exact' },
+    ]);
+  });
+
+  it('combines sidebar tagFilter (OR) with search box', () => {
+    const result = buildEntryQuery({
+      selectedFeedId: null,
+      filter: 'all',
+      searchQuery: 'tag:tech',
+      tagFilter: { tagNames: ['sidebar-tag'], matchAll: false },
+      limit: 30,
+    });
+    expect(result.filters).toEqual([
+      { field: 'tag', operator: '', value: 'tech', match: 'fuzzy' },
+      { field: 'tag', operator: '', value: 'sidebar-tag', match: 'exact' },
+    ]);
+  });
 });

@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, type PingResponse, type ShaleAPI } from '../shared/ipc';
 import type { ExportAPI } from '../shared/domain-api';
 import type { PerArticleOptions } from '../shared/contracts/export.types';
-import type { EntryCursor } from '../shared/contracts/feed.types';
+import type { EntryCursor, SearchFilter } from '../shared/contracts/feed.types';
 import {
   FEED_IPC_CHANNELS,
   type FeedSyncProgress,
@@ -78,8 +78,7 @@ const entryAPI = {
     isRead?: boolean;
     isStarred?: boolean;
     search?: string;
-    tagNames?: string[];
-    matchAll?: boolean;
+    filters?: SearchFilter[];
     limit: number;
     cursor?: EntryCursor;
   }) => ipcRenderer.invoke(FEED_IPC_CHANNELS.entryList, params),

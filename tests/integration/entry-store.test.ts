@@ -456,193 +456,362 @@ describe('EntryStore', () => {
       expect(page2.nextCursor).toBeUndefined();
     });
   });
-  describe('tag search via tagFuzzyNames', () => {
-    let dbTagSearch: ReturnType<typeof buildTestDb>['db'];
-    let entryStoreTag: EntryStore;
-    let feedStoreTag: FeedStore;
-    let tagFeedId: number;
+  describe('structured filters', () => {
+    let dbFilters: ReturnType<typeof buildTestDb>['db'];
+    let entryStoreFilters: EntryStore;
+    let feedStoreFilters: FeedStore;
+    let filtersFeedId: number;
 
     beforeEach(() => {
       const testDb = buildTestDb();
-      dbTagSearch = testDb.db;
-      entryStoreTag = new EntryStore(dbTagSearch);
-      feedStoreTag = new FeedStore(dbTagSearch);
+      dbFilters = testDb.db;
+      entryStoreFilters = new EntryStore(dbFilters);
+      feedStoreFilters = new FeedStore(dbFilters);
 
-      tagFeedId = feedStoreTag.create({
-        title: 'Tag Test Feed',
-        feedURL: 'https://tag-test.example/feed',
-      }).id;
-
-      // Create entries
-      const entry1 = entryStoreTag.createOrUpdate({
-        feedId: tagFeedId,
-        guid: 'tag-entry-1',
-        title: 'Article about Technology',
-      });
-      const entry2 = entryStoreTag.createOrUpdate({
-        feedId: tagFeedId,
-        guid: 'tag-entry-2',
-        title: 'Machine Learning Guide',
-      });
-      const entry3 = entryStoreTag.createOrUpdate({
-        feedId: tagFeedId,
-        guid: 'tag-entry-3',
-        title: 'News Roundup',
-      });
-      const entry4 = entryStoreTag.createOrUpdate({
-        feedId: tagFeedId,
-        guid: 'tag-entry-4',
+      // Create two feeds with different titles
+      const feed1 = feedStoreFilters.create({
         title: 'Tech News',
+        feedURL: 'https://tech.example/feed',
+      });
+      const feed2 = feedStoreFilters.create({
+        title: 'Science Daily',
+        feedURL: 'https://science.example/feed',
       });
 
-      // Create tags
-      dbTagSearch.prepare(
-        'INSERT INTO tag (id, name, color) VALUES (?, ?, ?)',
-      ).run(1, 'Technology', 'hsl(200, 55%, 72%)');
-      dbTagSearch.prepare(
-        'INSERT INTO tag (id, name, color) VALUES (?, ?, ?)',
-      ).run(2, 'Machine Learning', 'hsl(160, 55%, 72%)');
-      dbTagSearch.prepare(
-        'INSERT INTO tag (id, name, color) VALUES (?, ?, ?)',
-      ).run(3, 'News', 'hsl(40, 55%, 72%)');
-      dbTagSearch.prepare(
-        'INSERT INTO tag (id, name, color) VALUES (?, ?, ?)',
-      ).run(4, 'Tech', 'hsl(280, 55%, 72%)');
+      filtersFeedId = feed1.id;
 
-      // Tag entries
-      dbTagSearch.prepare(
-        'INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)',
-      ).run(entry1.id, 1, 'manual', new Date().toISOString());  // Technology -> Article about Technology
-      dbTagSearch.prepare(
-        'INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)',
-      ).run(entry2.id, 2, 'manual', new Date().toISOString());  // Machine Learning -> Machine Learning Guide
-      dbTagSearch.prepare(
-        'INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)',
-      ).run(entry3.id, 3, 'manual', new Date().toISOString());  // News -> News Roundup
-      dbTagSearch.prepare(
-        'INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)',
-      ).run(entry4.id, 1, 'manual', new Date().toISOString());  // Technology -> Tech News
-      dbTagSearch.prepare(
-        'INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)',
-      ).run(entry4.id, 3, 'manual', new Date().toISOString());  // News -> Tech News
-      dbTagSearch.prepare(
-        'INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)',
-      ).run(entry4.id, 4, 'manual', new Date().toISOString());  // Tech -> Tech News
-    });
-
-    it('filters entries by exact tag name', () => {
-      const result = entryStoreTag.query({
-        tagNames: ['Technology'],
-        limit: 50,
+      // Create entries in feed1
+      const e1 = entryStoreFilters.createOrUpdate({
+        feedId: feed1.id,
+        guid: 'f-e1', title: 'New AI Breakthrough', author: 'Alice',
+        publishedAt: '2026-07-14T10:00:00Z',
       });
-      expect(result.entries).toHaveLength(2);
-      expect(result.entries.map((e) => e.title)).toEqual(
-        expect.arrayContaining(['Article about Technology', 'Tech News']),
-      );
+      const e2 = entryStoreFilters.createOrUpdate({
+        feedId: feed1.id,
+        guid: 'f-e2', title: 'Climate Change Report', author: 'Bob',
+        publishedAt: '2026-07-13T10:00:00Z',
+      });
+      const e3 = entryStoreFilters.createOrUpdate({
+        feedId: feed1.id,
+        guid: 'f-e3', title: 'Tech Stocks Rise', author: 'Alice',
+        publishedAt: '2026-07-12T10:00:00Z',
+      });
+      // Mark e3 as starred separately
+      entryStoreFilters.markStarred(e3.id, true);
+      // Create entry in feed2
+      const e4 = entryStoreFilters.createOrUpdate({
+        feedId: feed2.id,
+        guid: 'f-e4', title: 'New Physics Discovery', author: 'Charlie',
+        publishedAt: '2026-07-11T10:00:00Z',
+      });
+
+      // Add content (markdown) for some entries
+      const now = new Date().toISOString();
+      dbFilters.prepare(`
+        INSERT INTO entry_content (entryId, html, cleanedHtml, markdown, pipelineStatus, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(e1.id, '<html>1</html>', '<p>AI</p>', 'Deep learning and neural networks', 'success', now, now);
+      dbFilters.prepare(`
+        INSERT INTO entry_content (entryId, html, cleanedHtml, markdown, pipelineStatus, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(e2.id, '<html>2</html>', '<p>Climate</p>', 'Global temperature rising', 'success', now, now);
+      // e3 and e4 intentionally left without entry_content
+
+      // Create tags for entry 1
+      dbFilters.prepare('INSERT INTO tag (id, name, color) VALUES (?, ?, ?)')
+        .run(1, 'AI', 'hsl(200, 55%, 72%)');
+      dbFilters.prepare('INSERT INTO tag (id, name, color) VALUES (?, ?, ?)')
+        .run(2, 'Technology', 'hsl(160, 55%, 72%)');
+      dbFilters.prepare('INSERT INTO tag (id, name, color) VALUES (?, ?, ?)')
+        .run(3, 'Science', 'hsl(40, 55%, 72%)');
+
+      dbFilters.prepare('INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)')
+        .run(e1.id, 1, 'manual', now); // AI -> e1
+      dbFilters.prepare('INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)')
+        .run(e1.id, 2, 'manual', now); // Technology -> e1
+      dbFilters.prepare('INSERT INTO entry_tag (entryId, tagId, source, createdAt) VALUES (?, ?, ?, ?)')
+        .run(e4.id, 3, 'manual', now); // Science -> e4
     });
 
-    it('filters entries by multiple exact tags (AND)', () => {
-      const result = entryStoreTag.query({
-        tagNames: ['Technology', 'News'],
-        matchAll: true,
+    it('tag: OR filter (operator="") matches entries with any of the tags', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '', value: 'AI' },
+        ],
         limit: 50,
       });
       expect(result.entries).toHaveLength(1);
-      expect(result.entries[0].title).toBe('Tech News');
+      expect(result.entries[0].title).toBe('New AI Breakthrough');
     });
 
-    it('filters entries by multiple exact tags (OR)', () => {
-      const result = entryStoreTag.query({
-        tagNames: ['Technology', 'Machine Learning'],
-        matchAll: false,
+    it('tag: OR with multiple values finds union of entries', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '', value: 'AI' },
+          { field: 'tag', operator: '', value: 'Science' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(2);
+      const titles = result.entries.map((e) => e.title);
+      expect(titles).toContain('New AI Breakthrough');
+      expect(titles).toContain('New Physics Discovery');
+    });
+
+    it('+tag: AND filter requires both tags', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '+', value: 'AI' },
+          { field: 'tag', operator: '+', value: 'Technology' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('New AI Breakthrough');
+    });
+
+    it('+tag: AND filter requires tag (fuzzy)', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '+', value: 'Tech' },
+        ],
+        limit: 50,
+      });
+      // 'Tech' fuzzy-matches tag 'Technology' (e1) and 'Technology' (e1) via LIKE
+      // e1: New AI Breakthrough has both 'AI' and 'Technology'
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('New AI Breakthrough');
+    });
+
+    it('-tag: exclusion filter excludes tagged entries', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '-', value: 'Sci' },
+        ],
+        limit: 50,
+      });
+      // 'Sci' fuzzy-matches 'Science' tag on e4, so only feed1 entries remain
+      expect(result.entries).toHaveLength(3);
+      const titles = result.entries.map((e) => e.title);
+      expect(titles).not.toContain('New Physics Discovery');
+      expect(titles).toContain('New AI Breakthrough');
+      expect(titles).toContain('Climate Change Report');
+      expect(titles).toContain('Tech Stocks Rise');
+    });
+
+    it('feed: OR filter matches feed title substring', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'feed', operator: '', value: 'Science' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('New Physics Discovery');
+    });
+
+    it('title: filter matches title substring', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'title', operator: '', value: 'Climate' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('Climate Change Report');
+    });
+
+    it('content: filter matches markdown body', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'content', operator: '', value: 'neural' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('New AI Breakthrough');
+    });
+
+    it('author: filter matches author', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'author', operator: '', value: 'Alice' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(2);
+      const titles = result.entries.map((e) => e.title);
+      expect(titles).toContain('New AI Breakthrough');
+      expect(titles).toContain('Tech Stocks Rise');
+    });
+
+    it('starred:yes filter returns only starred entries', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'starred', operator: '', value: 'yes' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('Tech Stocks Rise');
+    });
+
+    it('starred:1 filter also works', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'starred', operator: '', value: '1' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('Tech Stocks Rise');
+    });
+
+    it('-starred:yes excludes starred entries', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'starred', operator: '-', value: 'yes' },
+        ],
         limit: 50,
       });
       expect(result.entries).toHaveLength(3);
-      expect(result.entries.map((e) => e.title)).toEqual(
-        expect.arrayContaining([
-          'Article about Technology',
-          'Machine Learning Guide',
-          'Tech News',
-        ]),
-      );
+      expect(result.entries.map((entry) => entry.title)).not.toContain('Tech Stocks Rise');
     });
 
-    it('filters entries by fuzzy tag name (LIKE)', () => {
-      const result = entryStoreTag.query({
-        tagFuzzyNames: ['Tech'],
+    it('-read:no returns only read entries', () => {
+      const readEntry = entryStoreFilters.query({
+        filters: [
+          { field: 'title', operator: '', value: 'Climate' },
+        ],
         limit: 50,
-      });
-      // 'Tech' matches tags 'Technology' (entries 1,4) and 'Tech' (entry 4)
-      expect(result.entries).toHaveLength(2);
-      expect(result.entries.map((e) => e.title)).toEqual(
-        expect.arrayContaining([
-          'Article about Technology',
-          'Tech News',
-        ]),
-      );
-    });
+      }).entries[0];
+      entryStoreFilters.markRead([readEntry.id], true);
 
-    it('filters entries by multiple fuzzy tags (AND)', () => {
-      const result = entryStoreTag.query({
-        tagFuzzyNames: ['Tech', 'News'],
-        matchAll: true,
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'read', operator: '-', value: 'no' },
+        ],
         limit: 50,
       });
       expect(result.entries).toHaveLength(1);
-      expect(result.entries[0].title).toBe('Tech News');
+      expect(result.entries[0].title).toBe('Climate Change Report');
     });
 
-    it('filters entries by multiple fuzzy tags (OR)', () => {
-      const result = entryStoreTag.query({
-        tagFuzzyNames: ['Machine', 'News'],
-        matchAll: false,
-        limit: 50,
-      });
-      expect(result.entries).toHaveLength(3);
-      expect(result.entries.map((e) => e.title)).toEqual(
-        expect.arrayContaining(['Machine Learning Guide', 'News Roundup']),
-      );
-    });
-
-    it('combines exact tagNames and tagFuzzyNames', () => {
-      const result = entryStoreTag.query({
-        tagNames: ['Technology'],
-        tagFuzzyNames: ['News'],
-        matchAll: true,
-        limit: 50,
-      });
-      expect(result.entries).toHaveLength(1);
-      expect(result.entries[0].title).toBe('Tech News');
-    });
-
-    it('returns entries with tags populated when tag filtering', () => {
-      const result = entryStoreTag.query({
-        tagFuzzyNames: ['Tech'],
+    it('combines multiple filter types', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'feed', operator: '', value: 'Tech' },
+          { field: 'author', operator: '', value: 'Alice' },
+        ],
         limit: 50,
       });
       expect(result.entries).toHaveLength(2);
-      for (const entry of result.entries) {
-        expect(entry.tags).toBeDefined();
-        expect(entry.tags!.length).toBeGreaterThanOrEqual(1);
-      }
+      const titles = result.entries.map((e) => e.title);
+      expect(titles).toContain('New AI Breakthrough');
+      expect(titles).toContain('Tech Stocks Rise');
     });
 
-    it('combines tag filter with text search', () => {
-      const result = entryStoreTag.query({
-        search: 'Article',
-        tagFuzzyNames: ['Tech'],
+    it('combines filters with text search', () => {
+      const result = entryStoreFilters.query({
+        search: 'Breakthrough',
+        filters: [
+          { field: 'author', operator: '', value: 'Alice' },
+        ],
         limit: 50,
       });
       expect(result.entries).toHaveLength(1);
-      expect(result.entries[0].title).toBe('Article about Technology');
+      expect(result.entries[0].title).toBe('New AI Breakthrough');
     });
 
-    it('returns no entries when fuzzy tag matches nothing', () => {
-      const result = entryStoreTag.query({
-        tagFuzzyNames: ['NonExistentTag'],
+    it('tag= (exact match) finds only exact tag name', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '', value: 'Technology', match: 'exact' },
+        ],
         limit: 50,
       });
-      expect(result.entries).toHaveLength(0);
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('New AI Breakthrough');
+    });
+
+    it('tag: (fuzzy match) finds tag by substring', () => {
+      // 'Tech' fuzzy-matches 'Technology' tag
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '', value: 'Tech', match: 'fuzzy' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('New AI Breakthrough');
+    });
+
+    it('tag: without match defaults to fuzzy', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '', value: 'Tech' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('New AI Breakthrough');
+    });
+
+    it('ORs repeated boolean filters', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'starred', operator: '', value: 'yes' },
+          { field: 'starred', operator: '', value: 'no' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(4);
+    });
+
+    it('rejects malformed filter objects with RangeError', () => {
+      expect(() => entryStoreFilters.query({
+        filters: [null],
+        limit: 50,
+      } as never)).toThrow(RangeError);
+    });
+
+    it('rejects filter values longer than the documented limit', () => {
+      expect(() => entryStoreFilters.query({
+        filters: [
+          { field: 'title', operator: '', value: 'x'.repeat(101) },
+        ],
+        limit: 50,
+      })).toThrow(RangeError);
+    });
+
+    it('rejects unsupported tag match modes', () => {
+      expect(() => entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '', value: 'AI', match: 'prefix' },
+        ],
+        limit: 50,
+      } as never)).toThrow(RangeError);
+    });
+
+    it('handles empty filters array', () => {
+      const result = entryStoreFilters.query({
+        filters: [],
+        limit: 50,
+      });
+      expect(result.entries.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('returns entries with tags populated when using tag filters', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '', value: 'AI' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      const entry = result.entries[0];
+      expect(entry.tags).toBeDefined();
+      expect(entry.tags!.length).toBeGreaterThanOrEqual(1);
     });
   });
 });

@@ -1,4 +1,4 @@
-import type { EntryCursor, Feed, EntryListItem } from './feed.types';
+import type { EntryCursor, Feed, EntryListItem, SearchFilter } from './feed.types';
 import type { CleanedContent } from './content.types';
 
 // ── Feed IPC ──────────────────────────────────────────────
@@ -57,8 +57,7 @@ export interface EntryListRequest {
   isRead?: boolean;
   isStarred?: boolean;
   search?: string;
-  tagNames?: string[];
-  matchAll?: boolean;
+  filters?: SearchFilter[];
   limit: number;
   cursor?: EntryCursor;
 }

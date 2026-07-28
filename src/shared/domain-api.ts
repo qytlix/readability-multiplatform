@@ -4,6 +4,7 @@ import type {
   EntryStats,
   Feed,
   EntryListItem,
+  SearchFilter,
 } from './contracts/feed.types';
 import type { CleanedContent } from './contracts/content.types';
 import type {
@@ -83,8 +84,7 @@ export interface EntryAPI {
     isRead?: boolean;
     isStarred?: boolean;
     search?: string;
-    tagNames?: string[];
-    matchAll?: boolean;
+    filters?: SearchFilter[];
     limit: number;
     cursor?: EntryCursor;
   }) => Promise<IPCResult<{

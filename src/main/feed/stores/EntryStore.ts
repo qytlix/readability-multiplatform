@@ -8,6 +8,8 @@ import type {
   EntryReadStats,
   EntryStats,
   FeedEntryReadStats,
+  FilterField,
+  SearchFilter,
 } from '../../../shared/contracts/feed.types';
 import type { PipelineStatus } from '../../../shared/contracts/content.types';
 import type { Tag } from '../../../shared/contracts/tag.types';
@@ -483,6 +485,10 @@ export class EntryStore {
   }
 }
 
+const ALLOWED_FILTER_FIELDS: readonly FilterField[] = [
+  'tag', 'feed', 'title', 'content', 'author', 'starred', 'read',
+];
+
 function validateEntryQuery(options: EntryQuery): void {
   if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100) {
     throw new RangeError('Entry query limit must be between 1 and 100.');
@@ -496,13 +502,30 @@ function validateEntryQuery(options: EntryQuery): void {
   if (options.search !== undefined && options.search.length > 256) {
     throw new RangeError('Entry search query must not exceed 256 characters.');
   }
-  if (options.tagFuzzyNames !== undefined) {
-    if (!Array.isArray(options.tagFuzzyNames) || options.tagFuzzyNames.length > 50) {
-      throw new RangeError('Entry query tagFuzzyNames must be an array of up to 50 strings.');
+  if (options.filters !== undefined) {
+    if (!Array.isArray(options.filters) || options.filters.length > 50) {
+      throw new RangeError('Entry query filters must be an array of up to 50 entries.');
     }
-    for (const name of options.tagFuzzyNames) {
-      if (typeof name !== 'string' || name.length > 100) {
-        throw new RangeError('Entry query tagFuzzyNames entries must be strings up to 100 characters.');
+    for (const filter of options.filters) {
+      if (
+        typeof filter !== 'object'
+        || filter === null
+        || !ALLOWED_FILTER_FIELDS.includes(filter.field)
+      ) {
+        throw new RangeError('Entry query filter field is invalid.');
+      }
+      if (typeof filter.value !== 'string' || filter.value.length > 100) {
+        throw new RangeError('Filter value must be a string up to 100 characters.');
+      }
+      if (filter.operator !== '+' && filter.operator !== '-' && filter.operator !== '') {
+        throw new RangeError(`Invalid filter operator: "${filter.operator}".`);
+      }
+      if (
+        filter.match !== undefined
+        && filter.match !== 'fuzzy'
+        && filter.match !== 'exact'
+      ) {
+        throw new RangeError(`Invalid filter match mode: "${filter.match}".`);
       }
     }
   }
@@ -536,71 +559,234 @@ function appendScopeConditions(
     params.push(options.isStarred ? 1 : 0);
   }
 
-  // Tag filter: sub-query on entry_tag via tag name(s)
-  if (options.tagNames && options.tagNames.length > 0) {
-    const tagNames = options.tagNames.filter((n) => n.trim().length > 0);
-    if (tagNames.length > 0) {
-      const placeholders = tagNames.map(() => '?').join(', ');
-      const matchAll = options.matchAll !== false; // default AND
-      if (matchAll) {
-        conditions.push(
-          `e.id IN (
-            SELECT et.entryId FROM entry_tag et
-            JOIN tag t ON t.id = et.tagId
-            WHERE t.name IN (${placeholders})
-            GROUP BY et.entryId
-            HAVING COUNT(DISTINCT t.id) = ?
-          )`
-        );
-        params.push(...tagNames, tagNames.length);
-      } else {
-        conditions.push(
-          `e.id IN (
-            SELECT et.entryId FROM entry_tag et
-            JOIN tag t ON t.id = et.tagId
-            WHERE t.name IN (${placeholders})
-          )`
-        );
-        params.push(...tagNames);
-      }
-    }
-  }
+  // ── Structured filters only (old tagNames/tagFuzzyNames/matchAll removed) ──
+  if (options.filters && options.filters.length > 0) {
+    const esc = " ESCAPE '\\'";
 
-  // Tag filter: fuzzy match via LIKE on tag name(s)
-  if (options.tagFuzzyNames && options.tagFuzzyNames.length > 0) {
-    const fuzzyNames = options.tagFuzzyNames.filter((n) => n.trim().length > 0);
-    if (fuzzyNames.length > 0) {
-      const matchAll = options.matchAll !== false; // default AND
-      const esc = " ESCAPE '\\'";
-      const subConditions: string[] = fuzzyNames.map(
-        (name) => `t.name LIKE ?${esc}`
-      );
-      if (matchAll) {
-        // Each fuzzy name must match at least one tag (AND across terms)
-        for (const name of fuzzyNames) {
-          conditions.push(
-            `e.id IN (
-              SELECT et.entryId FROM entry_tag et
-              JOIN tag t ON t.id = et.tagId
-              WHERE t.name LIKE ?
-            )`
-          );
-          params.push(`%${escapeLike(name)}%`);
+    // Collect OR-group filters (same field, operator==='') for batch SQL
+    const orGroups = new Map<FilterField, string[]>();
+    // Tag OR fuzzy vs exact need separate groups
+    const tagFuzzyOrValues: string[] = [];
+    const tagExactOrValues: string[] = [];
+
+    for (const filter of options.filters) {
+      if (filter.operator === '') {
+        if (filter.field === 'tag' && filter.match === 'exact') {
+          tagExactOrValues.push(filter.value);
+        } else if (filter.field === 'tag') {
+          tagFuzzyOrValues.push(filter.value);
+        } else {
+          const group = orGroups.get(filter.field) || [];
+          group.push(filter.value);
+          orGroups.set(filter.field, group);
         }
       } else {
-        // Any fuzzy name can match (OR across terms)
-        const likeParams = fuzzyNames.map((name) => `%${escapeLike(name)}%`);
-        conditions.push(
-          `e.id IN (
-            SELECT et.entryId FROM entry_tag et
-            JOIN tag t ON t.id = et.tagId
-            WHERE ${subConditions.join(' OR ')}
-          )`
-        );
-        params.push(...likeParams);
+        appendSingleFilter(filter, conditions, params, esc);
       }
     }
+
+    // Apply OR groups for non-tag fields
+    for (const [field, values] of orGroups) {
+      appendOrGroupFilter(field, values, conditions, params, esc);
+    }
+    // Apply tag fuzzy OR group
+    if (tagFuzzyOrValues.length > 0) {
+      appendTagOrGroup('fuzzy', tagFuzzyOrValues, conditions, params, esc);
+    }
+    // Apply tag exact OR group
+    if (tagExactOrValues.length > 0) {
+      appendTagOrGroup('exact', tagExactOrValues, conditions, params, esc);
+    }
   }
+}
+
+/** Apply a single + (AND) or - (NOT) filter. */
+function appendSingleFilter(
+  filter: SearchFilter,
+  conditions: string[],
+  params: unknown[],
+  esc: string,
+): void {
+  const { field, operator, value, match } = filter;
+
+  switch (field) {
+    case 'tag': {
+      const exact = match === 'exact';
+      if (operator === '-') {
+        conditions.push(`NOT EXISTS (
+          SELECT 1 FROM entry_tag et
+          JOIN tag t ON t.id = et.tagId
+          WHERE et.entryId = e.id AND t.name ${exact ? '=' : `LIKE ?${esc}`}
+        )`);
+        params.push(exact ? value : `%${escapeLike(value)}%`);
+      } else {
+        // +tag: AND inclusion
+        conditions.push(`e.id IN (
+          SELECT et.entryId FROM entry_tag et
+          JOIN tag t ON t.id = et.tagId
+          WHERE t.name ${exact ? '=' : `LIKE ?${esc}`}
+        )`);
+        params.push(exact ? value : `%${escapeLike(value)}%`);
+      }
+      break;
+    }
+    case 'feed': {
+      if (operator === '-') {
+        conditions.push(`COALESCE(search_normalize(f.title), '') NOT LIKE ?${esc}`);
+      } else {
+        conditions.push(`search_normalize(f.title) LIKE ?${esc}`);
+      }
+      params.push(`%${escapeLike(value)}%`);
+      break;
+    }
+    case 'title': {
+      if (operator === '-') {
+        conditions.push(`COALESCE(search_normalize(e.title), '') NOT LIKE ?${esc}`);
+      } else {
+        conditions.push(`search_normalize(e.title) LIKE ?${esc}`);
+      }
+      params.push(`%${escapeLike(value)}%`);
+      break;
+    }
+    case 'content': {
+      if (operator === '-') {
+        conditions.push(`(ec.markdown IS NULL OR search_normalize(ec.markdown) NOT LIKE ?${esc})`);
+      } else {
+        conditions.push(`search_normalize(ec.markdown) LIKE ?${esc}`);
+      }
+      params.push(`%${escapeLike(value)}%`);
+      break;
+    }
+    case 'author': {
+      if (operator === '-') {
+        conditions.push(`(e.author IS NULL OR search_normalize(e.author) NOT LIKE ?${esc})`);
+      } else {
+        conditions.push(`search_normalize(e.author) LIKE ?${esc}`);
+      }
+      params.push(`%${escapeLike(value)}%`);
+      break;
+    }
+    case 'starred': {
+      const boolVal = parseBooleanFilterValue(value);
+      if (boolVal === undefined) {
+        conditions.push('0 = 1');
+        break;
+      }
+      conditions.push(`e.isStarred ${operator === '-' ? '!=' : '='} ?`);
+      params.push(boolVal);
+      break;
+    }
+    case 'read': {
+      const boolVal = parseBooleanFilterValue(value);
+      if (boolVal === undefined) {
+        conditions.push('0 = 1');
+        break;
+      }
+      conditions.push(`e.isRead ${operator === '-' ? '!=' : '='} ?`);
+      params.push(boolVal);
+      break;
+    }
+  }
+}
+
+/**
+ * Apply a tag OR group: same operator === '', all values combined with OR.
+ * Separate path because fuzzy and exact need different SQL.
+ */
+function appendTagOrGroup(
+  mode: 'fuzzy' | 'exact',
+  values: string[],
+  conditions: string[],
+  params: unknown[],
+  esc: string,
+): void {
+  const subConditions = values.map(() =>
+    mode === 'exact' ? 't.name = ?' : `t.name LIKE ?${esc}`
+  );
+  const likeParams = values.map((v) =>
+    mode === 'exact' ? v : `%${escapeLike(v)}%`
+  );
+  conditions.push(
+    `e.id IN (
+      SELECT et.entryId FROM entry_tag et
+      JOIN tag t ON t.id = et.tagId
+      WHERE ${subConditions.join(' OR ')}
+    )`
+  );
+  params.push(...likeParams);
+}
+
+/** Apply an OR group: same field, operator === '', all values combined with OR. */
+function appendOrGroupFilter(
+  field: FilterField,
+  values: string[],
+  conditions: string[],
+  params: unknown[],
+  esc: string,
+): void {
+  switch (field) {
+    case 'tag': {
+      // OR across tag values — exact name match (from parser, tag:value is fuzzy via LIKE)
+      const subConditions = values.map(() => `t.name LIKE ?${esc}`);
+      const likeParams = values.map((v) => `%${escapeLike(v)}%`);
+      conditions.push(
+        `e.id IN (
+          SELECT et.entryId FROM entry_tag et
+          JOIN tag t ON t.id = et.tagId
+          WHERE ${subConditions.join(' OR ')}
+        )`
+      );
+      params.push(...likeParams);
+      break;
+    }
+    case 'feed': {
+      const subConditions = values.map(() => `search_normalize(f.title) LIKE ?${esc}`);
+      conditions.push(`(${subConditions.join(' OR ')})`);
+      params.push(...values.map((v) => `%${escapeLike(v)}%`));
+      break;
+    }
+    case 'title': {
+      const subConditions = values.map(() => `search_normalize(e.title) LIKE ?${esc}`);
+      conditions.push(`(${subConditions.join(' OR ')})`);
+      params.push(...values.map((v) => `%${escapeLike(v)}%`));
+      break;
+    }
+    case 'content': {
+      const subConditions = values.map(() => `search_normalize(ec.markdown) LIKE ?${esc}`);
+      conditions.push(`(${subConditions.join(' OR ')})`);
+      params.push(...values.map((v) => `%${escapeLike(v)}%`));
+      break;
+    }
+    case 'author': {
+      const subConditions = values.map(() => `search_normalize(e.author) LIKE ?${esc}`);
+      conditions.push(`(${subConditions.join(' OR ')})`);
+      params.push(...values.map((v) => `%${escapeLike(v)}%`));
+      break;
+    }
+    case 'starred':
+    case 'read': {
+      const booleanValues = Array.from(new Set(
+        values
+          .map(parseBooleanFilterValue)
+          .filter((value): value is number => value !== undefined),
+      ));
+      if (booleanValues.length === 0) {
+        conditions.push('0 = 1');
+        break;
+      }
+      const col = field === 'starred' ? 'e.isStarred' : 'e.isRead';
+      conditions.push(`${col} IN (${booleanValues.map(() => '?').join(', ')})`);
+      params.push(...booleanValues);
+      break;
+    }
+  }
+}
+
+function parseBooleanFilterValue(value: string): number | undefined {
+  const normalized = value.toLocaleLowerCase();
+  if (normalized === 'yes' || normalized === '1') return 1;
+  if (normalized === 'no' || normalized === '0') return 0;
+  return undefined;
 }
 
 function buildSearchSnippet(

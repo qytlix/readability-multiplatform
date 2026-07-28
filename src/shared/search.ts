@@ -61,81 +61,163 @@ export const toFts5Query = (terms: ParsedSearchTerm[]): string =>
     .map((term) => `"${term.value.replace(/"/g, '""')}"`)
     .join(' AND ');
 
-// ── Tag Search Query Parsing ──────────────────────────────
+// ── Generic Search Query Parsing ──────────────────────────
 
-export interface TagSearchResult {
-  /** The remaining text query with `tag:` parts removed. */
-  textQuery: string;
-  /** Tag names for fuzzy matching (`tag:keyword` → LIKE '%keyword%'). */
-  tagFuzzyNames: string[];
-  /** Tag names for exact matching (`tag:"Exact Name"` → equality). */
-  tagExactNames: string[];
+export type FilterField =
+  | 'tag' | 'feed' | 'title' | 'content' | 'author'
+  | 'starred' | 'read';
+
+export type FilterOperator = '+' | '-' | '';
+
+export interface SearchFilter {
+  field: FilterField;
+  operator: FilterOperator;
+  value: string;
+  /**
+   * Match mode for tag field.
+   * - `'fuzzy'` or omitted → LIKE with %% (default, for `tag:` syntax)
+   * - `'exact'` → equality (for `tag=` syntax)
+   * Ignored for non-tag fields.
+   */
+  match?: 'fuzzy' | 'exact';
 }
 
+export interface ParsedSearchQuery {
+  /** The remaining text query with all `field:`, `+field:`, `-field:` parts removed. */
+  textQuery: string;
+  /** Structured field filters extracted from the query. */
+  filters: SearchFilter[];
+}
+
+const FILTER_FIELDS = new Set<FilterField>([
+  'tag', 'feed', 'title', 'content', 'author', 'starred', 'read',
+]);
+
 /**
- * Parse `tag:keyword` (fuzzy) and `tag:"Exact Name"` (exact) terms from a
- * search query. Returns the cleaned text query and extracted tag names.
+ * Parse a search query into plain text and structured field filters.
+ *
+ * Supported syntax:
+ *   `field:value`       → OR inclusion (fuzzy for tag)
+ *   `field=value`       → OR inclusion, exact match (tag only)
+ *   `+field:value`      → AND inclusion (must have)
+ *   `-field:value`      → exclusion
+ *   `field:"quoted"`    → value with spaces
+ *   `"plain phrase"`    → quoted phrase in textQuery
+ *
+ * Supported fields: tag, feed, title, content, author, starred, read
  *
  * Examples:
- *   `tag:tech database`       → { textQuery: "database", tagFuzzyNames: ["tech"], tagExactNames: [] }
- *   `tag:"Machine Learning"`  → { textQuery: "", tagFuzzyNames: [], tagExactNames: ["Machine Learning"] }
- *   `tag:tech tag:News`       → { textQuery: "", tagFuzzyNames: ["tech", "News"], tagExactNames: [] }
+ *   `tag:tech database`
+ *     → { textQuery: "database", filters: [{ field:'tag', op:'', value:'tech', match:'fuzzy' }] }
+ *   `tag=tech database`
+ *     → { textQuery: "database", filters: [{ field:'tag', op:'', value:'tech', match:'exact' }] }
+ *   `+tag:tech -tag:news starred:yes`
+ *     → { textQuery: "", filters: [
+ *         { field:'tag', op:'+', value:'tech', match:'fuzzy' },
+ *         { field:'tag', op:'-', value:'news', match:'fuzzy' },
+ *         { field:'starred', op:'', value:'yes' },
+ *       ]}
  */
-export const parseTagSearchQuery = (query: string): TagSearchResult => {
+export const parseSearchQuery = (query: string): ParsedSearchQuery => {
   const normalized = normalizeSearchQuery(query);
   if (!normalized) {
-    return { textQuery: '', tagFuzzyNames: [], tagExactNames: [] };
+    return { textQuery: '', filters: [] };
   }
 
-  const tagFuzzyNames: string[] = [];
-  const tagExactNames: string[] = [];
+  const filters: SearchFilter[] = [];
   const textParts: string[] = [];
   let current = '';
   let inQuotes = false;
+  /** When we see `tag:"` or `+feed:"`, the prefix is saved here until closing quote. */
+  let filterPrefixInQuotes = '';
 
-  const pushCurrent = (): void => {
-    const trimmed = current.trim();
-    current = '';
-    if (!trimmed) return;
+  /**
+   * Detect `[+-]?fieldname:` (colon) or `[+-]?fieldname=` (equals) at end of
+   * current buffer (right before an opening quote).
+   */
+  const prefixRe = /^([+-])?(\w+)[:=]$/;
 
-    if (trimmed.startsWith('tag:')) {
-      const tagValue = trimmed.slice(4);
-      if (tagValue) {
-        tagFuzzyNames.push(tagValue);
+  /** Dangling `[+-]?field:` or `[+-]?field=` with no value — silently dropped. */
+  const danglingRe = /^([+-])?(\w+)[:=]$/;
+  /** Detect `[+-]?fieldname:value` or `[+-]?fieldname=value` in a complete token. */
+  const filterRe = /^([+-])?(\w+)([:=])(.+)$/s;
+
+  const handleToken = (token: string): void => {
+    if (!token) return;
+
+    // Dangling filter prefix like `tag:` or `tag=` with no value — silently drop
+    const danglingMatch = token.match(danglingRe);
+    if (danglingMatch && FILTER_FIELDS.has(danglingMatch[2] as FilterField)) {
+      return;
+    }
+
+    const match = token.match(filterRe);
+    if (match && FILTER_FIELDS.has(match[2] as FilterField)) {
+      const operator = (match[1] || '') as FilterOperator;
+      const field = match[2] as FilterField;
+      const separator = match[3]; // ':' or '='
+      const value = match[4];
+      if (value) {
+        const filter: SearchFilter = { field, operator, value };
+        if (field === 'tag' && separator === '=') {
+          filter.match = 'exact';
+        } else if (field === 'tag') {
+          filter.match = 'fuzzy';
+        }
+        filters.push(filter);
       }
     } else {
-      textParts.push(trimmed);
+      textParts.push(token);
     }
   };
 
   for (const character of normalized) {
     if (character === '"') {
       if (inQuotes) {
-        // Closing quote: the entire quoted section is in current.
-        // Check if it started with tag: (i.e., we saw tag:" before the quote).
+        // Closing quote
+        inQuotes = false;
         const trimmed = current.trim();
         current = '';
-        inQuotes = false;
 
-        if (trimmed.startsWith('tag:')) {
-          const tagValue = trimmed.slice(4);
-          if (tagValue) {
-            tagExactNames.push(tagValue);
+        if (filterPrefixInQuotes) {
+          // 只有受支持的字段才转为过滤器；未知字段完整保留为全文文本。
+          const prefix = filterPrefixInQuotes;
+          filterPrefixInQuotes = '';
+          const preMatch = prefix.match(prefixRe);
+          if (
+            preMatch
+            && trimmed
+            && FILTER_FIELDS.has(preMatch[2] as FilterField)
+          ) {
+            const operator = (preMatch[1] || '') as FilterOperator;
+            const field = preMatch[2] as FilterField;
+            const separator = prefix.endsWith('=') ? '=' : ':';
+            const filter: SearchFilter = { field, operator, value: trimmed };
+            if (field === 'tag' && separator === '=') {
+              filter.match = 'exact';
+            } else if (field === 'tag') {
+              filter.match = 'fuzzy';
+            }
+            filters.push(filter);
+          } else if (trimmed) {
+            textParts.push(`${prefix}"${trimmed}"`);
           }
         } else {
-          textParts.push(`"${trimmed}"`);
+          // Non-filter quoted text: preserve as quoted phrase
+          if (trimmed) {
+            textParts.push(`"${trimmed}"`);
+          }
         }
       } else {
-        // Opening quote: push any accumulated text that came before the quote.
-        // If current ends with "tag:", strip it and remember we saw a tag:" pattern.
+        // Opening quote
         const trimmed = current.trim();
         current = '';
         inQuotes = true;
+        filterPrefixInQuotes = '';
 
-        if (trimmed.endsWith('tag:')) {
-          // The tag: prefix goes into current so when we close quotes,
-          // current will be "tag:Machine Learning"
-          current = 'tag:';
+        if (prefixRe.test(trimmed)) {
+          // This is [+-]field:" or [+-]field=" — save prefix
+          filterPrefixInQuotes = trimmed;
         } else if (trimmed) {
           textParts.push(trimmed);
         }
@@ -144,23 +226,29 @@ export const parseTagSearchQuery = (query: string): TagSearchResult => {
     }
 
     if (!inQuotes && /\s/u.test(character)) {
-      pushCurrent();
+      handleToken(current.trim());
+      current = '';
       continue;
     }
 
     current += character;
   }
 
+  // End of input
   if (inQuotes) {
     // Unterminated quote: treat as part of the text query
-    textParts.push(`"${current.trim()}"`);
+    const content = current.trim();
+    if (filterPrefixInQuotes) {
+      textParts.push(`"${filterPrefixInQuotes}${content}"`);
+    } else {
+      textParts.push(`"${content}"`);
+    }
   } else {
-    pushCurrent();
+    handleToken(current.trim());
   }
 
   return {
     textQuery: textParts.join(' '),
-    tagFuzzyNames,
-    tagExactNames,
+    filters,
   };
 };
