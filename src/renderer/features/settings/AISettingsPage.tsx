@@ -700,7 +700,9 @@ export const AISettingsPage = ({
                   />
                   <span>
                     <strong>AI 智能上下文</strong>
-                    <small>翻译前分析全文、专业术语和文体，会增加一次或多次模型请求。</small>
+                    <small>
+                      生成新的智能上下文时会额外发起一次或多次模型请求；已有可复用缓存时不会。成功获得的智能上下文会随翻译批次发送，因此会增加这些请求的输入 Token。
+                    </small>
                   </span>
                 </label>
               </div>

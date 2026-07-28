@@ -12,6 +12,7 @@ import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summar
 import { ProviderProfileStore } from '../stores/ProviderProfileStore';
 import { SecretStore } from '../stores/SecretStore';
 import type { TextGenerationProvider } from '../provider/TextGenerationProvider';
+import { normalizeProviderBaseUrl } from '../provider/ProviderEndpoint';
 import {
   elapsedProviderMilliseconds,
   logProviderConfigCompleted,
@@ -449,7 +450,7 @@ function validateProviderRoute(
 
   return {
     providerKind: route.providerKind,
-    baseUrl: parsedUrl.toString().replace(/\/$/, ''),
+    baseUrl: normalizeProviderBaseUrl(route.baseUrl),
     model,
     ...(route.apiKey?.trim() ? { apiKey: route.apiKey.trim() } : {}),
   };

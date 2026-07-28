@@ -221,6 +221,45 @@ describe('ProviderService', () => {
     }
   });
 
+  it('keeps the opaque Translation credential reference on keyless saves and rotates it on replacement', () => {
+    const { databaseManager, service } = createService();
+
+    try {
+      service.save({
+        providerKind: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5.4-mini',
+        apiKey: 'first-key',
+      });
+      const firstReference = new ProviderProfileStore(databaseManager.getDb())
+        .findActiveWithSecret()?.translationApiKeyRef;
+
+      service.save({
+        providerKind: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5.4',
+      });
+      const retainedReference = new ProviderProfileStore(databaseManager.getDb())
+        .findActiveWithSecret()?.translationApiKeyRef;
+
+      service.save({
+        providerKind: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5.4',
+        apiKey: 'replacement-key',
+      });
+      const replacementReference = new ProviderProfileStore(databaseManager.getDb())
+        .findActiveWithSecret()?.translationApiKeyRef;
+
+      expect(firstReference).toMatch(/^[0-9a-f-]{36}$/);
+      expect(retainedReference).toBe(firstReference);
+      expect(replacementReference).toMatch(/^[0-9a-f-]{36}$/);
+      expect(replacementReference).not.toBe(firstReference);
+    } finally {
+      databaseManager.close();
+    }
+  });
+
   it('reloads an explicitly allowed plaintext configuration after reopening the app', async () => {
     const basicTextBackend: SafeStorageBackend = {
       ...encryptedBackend,

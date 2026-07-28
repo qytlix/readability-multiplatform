@@ -19,6 +19,7 @@ export class TranslationContextStore {
         AND targetLanguage = ?
         AND providerProfileId = ?
         AND providerModel = ?
+        AND providerRuntimeIdentity = ?
         AND expertId = ?
         AND expertContentHash = ?
         AND promptVersion = ?
@@ -28,6 +29,7 @@ export class TranslationContextStore {
       identity.targetLanguage,
       identity.providerProfileId,
       identity.providerModel,
+      identity.providerRuntimeIdentity,
       identity.expertId,
       identity.expertContentHash,
       identity.promptVersion,
@@ -48,15 +50,16 @@ export class TranslationContextStore {
     this.db.prepare(`
       INSERT INTO translation_context_cache (
         sourceContentHash, sourceLanguage, targetLanguage,
-        providerProfileId, providerModel, expertId, expertContentHash,
+        providerProfileId, providerModel, providerRuntimeIdentity, expertId, expertContentHash,
         promptVersion, contextJson, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(
         sourceContentHash,
         sourceLanguage,
         targetLanguage,
         providerProfileId,
         providerModel,
+        providerRuntimeIdentity,
         expertId,
         expertContentHash,
         promptVersion
@@ -69,6 +72,7 @@ export class TranslationContextStore {
       identity.targetLanguage,
       identity.providerProfileId,
       identity.providerModel,
+      identity.providerRuntimeIdentity,
       identity.expertId,
       identity.expertContentHash,
       identity.promptVersion,

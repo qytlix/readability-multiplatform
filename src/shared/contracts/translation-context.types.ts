@@ -26,6 +26,8 @@ export interface TranslationContextIdentity {
   targetLanguage: TranslationTargetLanguage;
   providerProfileId: number;
   providerModel: string;
+  /** Opaque identity of the Provider runtime used to generate this context. */
+  providerRuntimeIdentity: string;
   expertId: string;
   expertContentHash: string;
   promptVersion: typeof TRANSLATION_CONTEXT_PROMPT_VERSION;

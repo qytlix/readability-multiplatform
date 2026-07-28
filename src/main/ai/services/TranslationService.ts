@@ -72,6 +72,7 @@ import type {
 } from './TranslationExpertService';
 import {
   buildTranslationContextIdentity,
+  buildTranslationProviderRuntimeIdentity,
   type TranslationContextService,
 } from './TranslationContextService';
 import {
@@ -203,6 +204,7 @@ interface TranslationProviderConfig {
   baseUrl: string;
   model: string;
   apiKey: string;
+  credentialReference: string;
   providerProfileId: number;
   expert: ResolvedTranslationExpert;
   expertInstruction?: string;
@@ -458,6 +460,7 @@ export class TranslationService {
         baseUrl: profile.translationBaseUrl,
         model: profile.translationModel,
         apiKey,
+        credentialReference: profile.translationApiKeyRef,
         providerProfileId: profile.id,
         expert,
         abortController,
@@ -585,6 +588,8 @@ export class TranslationService {
         result,
       );
       if (result.smartContextEnabled) {
+        const activeRunForContext = this.activeRun;
+        if (!activeRunForContext || activeRunForContext.result.id !== result.id) return;
         const contextOutcome = this.contextService
           ? await this.contextService.resolve({
               identity: buildTranslationContextIdentity({
@@ -593,6 +598,11 @@ export class TranslationService {
                 targetLanguage: result.targetLanguage,
                 providerProfileId: providerConfig.providerProfileId,
                 providerModel: providerConfig.model,
+                providerRuntimeIdentity: buildTranslationProviderRuntimeIdentity({
+                  kind: providerConfig.providerKind,
+                  baseUrl: providerConfig.baseUrl,
+                  credentialReference: providerConfig.credentialReference,
+                }),
                 expertId: result.expertId,
                 expertContentHash: result.expertContentHash,
               }),
@@ -606,6 +616,10 @@ export class TranslationService {
                 model: providerConfig.model,
                 apiKey: providerConfig.apiKey,
               },
+              usage: {
+                attemptId: activeRunForContext.attemptId,
+                taskRunId: result.id,
+              },
               signal: providerConfig.abortController.signal,
             })
           : {
@@ -618,12 +632,12 @@ export class TranslationService {
             };
         providerConfig.context = contextOutcome.context;
         this.translationStore.setContextWarning(result.id, contextOutcome.warning);
-        const activeRun = this.activeRun;
+        const activeRunAfterContext = this.activeRun;
         if (
-          activeRun?.result.id === result.id
+          activeRunAfterContext?.result.id === result.id
           && contextOutcome.warning?.code === TRANSLATION_ERROR_CODES.TRANSLATION_CONTEXT_UNAVAILABLE
         ) {
-          activeRun.contextWarningCode = 'TRANSLATION_CONTEXT_UNAVAILABLE';
+          activeRunAfterContext.contextWarningCode = 'TRANSLATION_CONTEXT_UNAVAILABLE';
         }
       }
 

@@ -226,7 +226,11 @@ export function initializeServices(
   );
   summaryService.reconcileInterruptedRuns();
   const expertService = new TranslationExpertService(translationExpertStore);
-  const contextService = new TranslationContextService(translationContextStore, provider);
+  const contextService = new TranslationContextService(
+    translationContextStore,
+    provider,
+    usageRecorder,
+  );
   const translationService = new TranslationService(
     contentStore,
     providerProfileStore,

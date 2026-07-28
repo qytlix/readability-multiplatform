@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { ProviderKind } from '../../../shared/contracts/provider.types';
 import type {
   TranslationContext,
@@ -17,13 +18,25 @@ import {
 import {
   TRANSLATION_ERROR_CODES,
   TranslationError,
+  toTranslationIpcError,
 } from '../../../shared/errors/translation.errors';
-import type { TextGenerationProvider } from '../provider/TextGenerationProvider';
+import type {
+  ProviderTokenUsage,
+  TextGenerationProvider,
+} from '../provider/TextGenerationProvider';
+import { sanitizeProviderTokenUsage } from '../provider/ProviderTokenUsage';
+import { normalizeProviderBaseUrl } from '../provider/ProviderEndpoint';
 import {
   buildSourceLanguageInstruction,
   getTargetLanguageInstruction,
 } from '../provider/TranslationPrompt';
 import type { TranslationContextStore } from '../stores/TranslationContextStore';
+import type { UsageRequestKind } from '../stores/UsageStore';
+import {
+  createProviderRequestId,
+  NoopUsageRecorder,
+  type UsageRecorderPort,
+} from './UsageRecorder';
 
 const CONTEXT_TIMEOUT_MS = 45_000;
 const CONTEXT_CHUNK_CHARACTERS = 6_000;
@@ -44,6 +57,10 @@ export interface TranslationContextRequest {
     model: string;
     apiKey: string;
   };
+  usage: {
+    attemptId: string;
+    taskRunId: number;
+  };
   signal: AbortSignal;
 }
 
@@ -53,10 +70,31 @@ export interface TranslationContextOutcome {
   reused: boolean;
 }
 
+/**
+ * Derives a cache-only identifier from non-secret runtime configuration.
+ * credentialReference is the random opaque SecretStore reference, never key
+ * material. The digest is for a compact cache key, not credential protection.
+ */
+export function buildTranslationProviderRuntimeIdentity(params: {
+  kind: ProviderKind;
+  baseUrl: string;
+  credentialReference: string;
+}): string {
+  return createHash('sha256')
+    .update(JSON.stringify({
+      version: 1,
+      kind: params.kind,
+      baseUrl: normalizeProviderBaseUrl(params.baseUrl),
+      credentialReference: params.credentialReference,
+    }))
+    .digest('hex');
+}
+
 export class TranslationContextService {
   constructor(
     private readonly store: TranslationContextStore,
     private readonly provider: TextGenerationProvider,
+    private readonly usageRecorder: UsageRecorderPort = new NoopUsageRecorder(),
   ) {}
 
   async resolve(request: TranslationContextRequest): Promise<TranslationContextOutcome> {
@@ -84,6 +122,7 @@ export class TranslationContextService {
             buildAnalysisPrompt(request, chunks[0] ?? ''),
             request,
             controller.signal,
+            'context-chunk',
           )
         : await this.generateLongDocumentContext(chunks, request, controller.signal);
       this.store.save(request.identity, context);
@@ -126,12 +165,14 @@ export class TranslationContextService {
         }),
         request,
         signal,
+        'context-chunk',
       ));
     }
     return this.generateContext(
       buildMergePrompt(request, partialContexts),
       request,
       signal,
+      'context-merge',
     );
   }
 
@@ -139,22 +180,52 @@ export class TranslationContextService {
     prompt: string,
     request: TranslationContextRequest,
     signal: AbortSignal,
+    requestKind: Extract<UsageRequestKind, 'context-chunk' | 'context-merge'>,
   ): Promise<TranslationContext> {
-    let output = '';
-    for await (const delta of this.provider.stream({
-      providerKind: request.provider.kind,
-      baseUrl: request.provider.baseUrl,
+    const usageRequest = this.usageRecorder.start({
+      providerRequestId: createProviderRequestId(),
+      attemptId: request.usage.attemptId,
+      taskType: 'translation',
+      taskRunId: request.usage.taskRunId,
+      providerProfileId: request.identity.providerProfileId,
       model: request.provider.model,
-      apiKey: request.provider.apiKey,
-      prompt,
-      signal,
-    })) {
-      output += delta;
-      if (output.length > MAX_CONTEXT_OUTPUT_CHARACTERS) {
-        throw new Error('Smart context output exceeded its size limit.');
+      requestKind,
+    });
+    let usage: ProviderTokenUsage | undefined;
+    let output = '';
+    try {
+      for await (const delta of this.provider.stream({
+        providerKind: request.provider.kind,
+        baseUrl: request.provider.baseUrl,
+        model: request.provider.model,
+        apiKey: request.provider.apiKey,
+        prompt,
+        signal,
+        requestUsage: true,
+        onUsage: (reportedUsage) => {
+          usage = sanitizeProviderTokenUsage(reportedUsage);
+        },
+      })) {
+        output += delta;
+        if (output.length > MAX_CONTEXT_OUTPUT_CHARACTERS) {
+          throw new Error('Smart context output exceeded its size limit.');
+        }
       }
+      const context = parseTranslationContext(output);
+      this.usageRecorder.complete(usageRequest, usage);
+      return context;
+    } catch (error) {
+      if (request.signal.aborted) {
+        this.usageRecorder.interrupt(
+          usageRequest,
+          usage,
+          TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
+        );
+      } else {
+        this.usageRecorder.fail(usageRequest, toTranslationIpcError(error).code, usage);
+      }
+      throw error;
     }
-    return parseTranslationContext(output);
   }
 }
 

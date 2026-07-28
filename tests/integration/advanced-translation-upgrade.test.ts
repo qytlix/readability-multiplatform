@@ -137,6 +137,8 @@ describe('Advanced Translation upgrade and restart hardening', () => {
         { filename: '023_tag_name_case_sensitive' },
         { filename: '024_add_tag_provider_route' },
         { filename: '025_add_entry_ai_tag_generated' },
+        { filename: '026_expand_llm_usage_request_kinds' },
+        { filename: '027_add_translation_context_provider_runtime_identity' },
       ]);
       expect(restarted.getDb().prepare(`
         SELECT name FROM sqlite_master

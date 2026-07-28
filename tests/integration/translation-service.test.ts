@@ -5,9 +5,14 @@ import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileSt
 import { SecretStore, type SafeStorageBackend } from '../../src/main/ai/stores/SecretStore';
 import type { SummaryProvider, SummaryProviderRequest } from '../../src/main/ai/provider/SummaryProvider';
 import { TranslationService } from '../../src/main/ai/services/TranslationService';
-import { TranslationContextService } from '../../src/main/ai/services/TranslationContextService';
+import {
+  buildTranslationContextIdentity,
+  buildTranslationProviderRuntimeIdentity,
+  TranslationContextService,
+} from '../../src/main/ai/services/TranslationContextService';
 import { TranslationExpertService } from '../../src/main/ai/services/TranslationExpertService';
 import { UsageRecorder } from '../../src/main/ai/services/UsageRecorder';
+import { UsageStatisticsService } from '../../src/main/ai/services/UsageStatisticsService';
 import {
   TRANSLATION_LOG_ERROR_CODES,
   TRANSLATION_LOG_EVENTS,
@@ -2283,6 +2288,7 @@ describe('TranslationService', () => {
       async *stream(request): AsyncIterable<string> {
         prompts.push(request.prompt);
         if (request.prompt.startsWith('Analyze untrusted article content')) {
+          request.onUsage?.({ inputTokens: 5, outputTokens: 3, totalTokens: 8 });
           yield JSON.stringify({
             schemaVersion: 1,
             detectedSourceLanguage: 'en',
@@ -2296,6 +2302,7 @@ describe('TranslationService', () => {
           });
           return;
         }
+        request.onUsage?.({ inputTokens: 13, outputTokens: 5, totalTokens: 18 });
         for (const segment of parseBatchPrompt(request.prompt)) {
           yield `${JSON.stringify(toBatchOutput(segment))}\n`;
         }
@@ -2306,9 +2313,12 @@ describe('TranslationService', () => {
       db,
       builtInExpertBundle as BuiltInExpertBundle,
     ));
-    const contextService = new TranslationContextService(
+    const contextUsageStore = new UsageStore(db);
+    const contextUsageRecorder = new UsageRecorder(contextUsageStore);
+    const accountedContextService = new TranslationContextService(
       new TranslationContextStore(db),
       adaptiveProvider,
+      contextUsageRecorder,
     );
     const advancedService = new TranslationService(
       content,
@@ -2319,7 +2329,9 @@ describe('TranslationService', () => {
       undefined,
       undefined,
       expertService,
-      contextService,
+      accountedContextService,
+      undefined,
+      contextUsageRecorder,
     );
     const request = {
       entryId: 1,
@@ -2329,7 +2341,7 @@ describe('TranslationService', () => {
       useSmartContext: true,
     };
 
-    advancedService.generate(request);
+    const started = advancedService.generate(request);
     await vi.waitFor(() => {
       expect(advancedService.getState(request)).toMatchObject({ state: 'succeeded' });
     });
@@ -2350,6 +2362,45 @@ describe('TranslationService', () => {
         contextWarning: undefined,
       },
     });
+    const usageRecords = contextUsageStore.listByTask('translation', started.runId);
+    expect(usageRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        requestKind: 'context-chunk',
+        requestStatus: 'succeeded',
+        inputTokens: 5,
+        outputTokens: 3,
+        totalTokens: 8,
+      }),
+      expect.objectContaining({
+        requestKind: 'batch',
+        requestStatus: 'succeeded',
+        inputTokens: 13,
+        outputTokens: 5,
+        totalTokens: 18,
+      }),
+    ]));
+    expect(new Set(usageRecords.map((record) => record.providerRequestId)).size)
+      .toBe(usageRecords.length);
+    expect(new Set(usageRecords.map((record) => record.attemptId)).size).toBe(1);
+    expect(new UsageStatisticsService(contextUsageStore).getStatistics({
+      startAt: '2020-01-01T00:00:00.000Z',
+      endAt: '2100-01-01T00:00:00.000Z',
+      timeZone: 'UTC',
+      taskType: 'translation',
+    }).totals).toMatchObject({
+      requestCount: 2,
+      tokenTotals: { inputTokens: 18, outputTokens: 8, totalTokens: 26 },
+      attemptCoverage: { knownAttemptCount: 1, unassignedRequestCount: 0 },
+    });
+
+    const cached = advancedService.generate({ ...request, forceNew: true });
+    await vi.waitFor(() => {
+      expect(advancedService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+    expect(prompts.filter((prompt) =>
+      prompt.startsWith('Analyze untrusted article content'))).toHaveLength(1);
+    expect(contextUsageStore.listByTask('translation', cached.runId).map((record) =>
+      record.requestKind)).toEqual(['batch']);
   });
 
   it('continues translation with an observable warning when smart context fails', async () => {
@@ -2422,6 +2473,107 @@ describe('TranslationService', () => {
       contextDegraded: true,
       contextWarningCode: 'TRANSLATION_CONTEXT_UNAVAILABLE',
     });
+  });
+
+  it('uses one Translation Provider snapshot for context cache lookup, generation, and persistence', async () => {
+    const { db } = buildTestDbWithData();
+    const content = new ContentStore(db);
+    content.upsert({
+      entryId: 1,
+      cleanedHtml: '<p>Snapshot context article.</p>',
+      pipelineStatus: 'success',
+    });
+    const profiles = new ProviderProfileStore(db);
+    const original = profiles.saveActive({
+      providerKind: 'openai',
+      baseUrl: 'https://provider.example/v1',
+      model: 'snapshot-model',
+      apiKeyRef: 'snapshot-credential-reference',
+    });
+    memorySecrets.set('snapshot-credential-reference', 'snapshot-api-key');
+    const contextRequests: Array<{ kind: string | undefined; baseUrl: string }> = [];
+    const snapshotProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        if (providerRequest.prompt.startsWith('Analyze untrusted article content')) {
+          contextRequests.push({
+            kind: providerRequest.providerKind,
+            baseUrl: providerRequest.baseUrl,
+          });
+          yield JSON.stringify({
+            schemaVersion: 1,
+            theme: 'Snapshot article.',
+            keyTerms: [],
+            styleGuide: [],
+          });
+          return;
+        }
+        for (const segment of parseBatchPrompt(providerRequest.prompt)) {
+          yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const contextStore = new TranslationContextStore(db);
+    const snapshotService = new TranslationService(
+      content,
+      profiles,
+      new TestSecretStore(),
+      new TranslationStore(db),
+      snapshotProvider,
+      undefined,
+      undefined,
+      undefined,
+      new TranslationContextService(contextStore, snapshotProvider),
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'en' as const,
+      targetLanguage: 'zh-CN' as const,
+      useSmartContext: true,
+    };
+
+    snapshotService.generate(request);
+    profiles.saveActive({
+      providerKind: 'anthropic',
+      baseUrl: 'https://changed.example/v1',
+      model: 'snapshot-model',
+      apiKeyRef: 'changed-credential-reference',
+    });
+    await vi.waitFor(() => {
+      expect(snapshotService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    expect(contextRequests).toEqual([{
+      kind: 'openai',
+      baseUrl: 'https://provider.example/v1',
+    }]);
+    const completedState = snapshotService.getState(request);
+    if (completedState.state !== 'succeeded') throw new Error('Expected completed Translation.');
+    const sourceContentHash = completedState.result.sourceContentHash;
+    const originalIdentity = buildTranslationContextIdentity({
+      sourceContentHash,
+      sourceLanguage: 'en',
+      targetLanguage: 'zh-CN',
+      providerProfileId: original.id,
+      providerModel: 'snapshot-model',
+      providerRuntimeIdentity: buildTranslationProviderRuntimeIdentity({
+        kind: 'openai',
+        baseUrl: 'https://provider.example/v1',
+        credentialReference: 'snapshot-credential-reference',
+      }),
+      expertId: 'none',
+      expertContentHash: 'none',
+    });
+    const changedIdentity = {
+      ...originalIdentity,
+      providerRuntimeIdentity: buildTranslationProviderRuntimeIdentity({
+        kind: 'anthropic',
+        baseUrl: 'https://changed.example/v1',
+        credentialReference: 'changed-credential-reference',
+      }),
+    };
+    expect(contextStore.find(originalIdentity)).toMatchObject({ theme: 'Snapshot article.' });
+    expect(contextStore.find(changedIdentity)).toBeUndefined();
   });
 
   it('permits only one active Translation at a time', () => {

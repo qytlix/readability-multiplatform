@@ -5,6 +5,7 @@ import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileSt
 import { UsageStore } from '../../src/main/ai/stores/UsageStore';
 import { MIGRATION_011 } from '../../src/main/migrations/011_create_llm_usage_events';
 import { MIGRATION_012 } from '../../src/main/migrations/012_add_llm_usage_attempt_id';
+import { MIGRATION_026 } from '../../src/main/migrations/026_expand_llm_usage_request_kinds';
 import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
 
 describe('UsageStore', () => {
@@ -126,7 +127,7 @@ describe('UsageStore', () => {
     ]);
   });
 
-  it('adds attemptId without changing legacy usage rows', () => {
+  it('adds attemptId and context request kinds without changing legacy usage rows', () => {
     const legacyDatabase = new SqliteDatabase(':memory:');
     legacyDatabase.exec('CREATE TABLE ai_provider_profile (id INTEGER PRIMARY KEY)');
     legacyDatabase.exec('INSERT INTO ai_provider_profile (id) VALUES (1)');
@@ -139,12 +140,23 @@ describe('UsageStore', () => {
     `).run('2026-07-01T00:00:00.000Z');
 
     legacyDatabase.exec(MIGRATION_012);
+    legacyDatabase.exec(MIGRATION_026);
 
     const columns = legacyDatabase.prepare('PRAGMA table_info(llm_usage_event)')
       .all() as Array<{ name: string }>;
     expect(columns.map(({ name }) => name)).toContain('attemptId');
     expect(legacyDatabase.prepare('SELECT attemptId FROM llm_usage_event WHERE providerRequestId = 99')
       .get()).toEqual({ attemptId: null });
+    expect(legacyDatabase.prepare(`
+      INSERT INTO llm_usage_event
+        (providerRequestId, attemptId, taskType, taskRunId, providerProfileId, model,
+         requestKind, requestStatus, usageAvailability, startedAt)
+      VALUES (100, 'context-attempt', 'translation', 10, 1, 'context-model',
+              'context-chunk', 'succeeded', 'missing', ?)
+    `).run('2026-07-01T00:01:00.000Z').changes).toBe(1);
+    expect(legacyDatabase.prepare(`
+      SELECT requestKind, attemptId FROM llm_usage_event WHERE providerRequestId = 100
+    `).get()).toEqual({ requestKind: 'context-chunk', attemptId: 'context-attempt' });
     legacyDatabase.close();
   });
 });
