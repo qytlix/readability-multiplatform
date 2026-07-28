@@ -403,4 +403,99 @@ describe('full-screen settings page', () => {
     act(() => root.unmount());
     container.remove();
   });
+
+  it('keeps tag drafts local and rejects shortcut conflicts before saving', async () => {
+    reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        provider: {
+          get: vi.fn().mockResolvedValue({ ok: true, data: null }),
+        },
+        expert: {
+          list: vi.fn().mockResolvedValue({ ok: true, data: { experts: [] } }),
+        },
+        terminology: {
+          list: vi.fn().mockResolvedValue({
+            ok: true,
+            data: { libraries: [], enabledSetHash: 'hash' },
+          }),
+        },
+      } as unknown as typeof window.shaleAPI,
+    });
+
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const onPreferencesChange = vi.fn();
+
+    await act(async () => {
+      root.render(createElement(AISettingsPage, {
+        preferences: DEFAULT_AI_PREFERENCES,
+        onPreferencesChange,
+        onClose: vi.fn(),
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const tagTrigger = container.querySelector<HTMLSelectElement>(
+      '#settings-tag-agent select',
+    );
+    if (!tagTrigger) {
+      throw new Error('Tag Agent settings fixture did not render');
+    }
+    act(() => {
+      tagTrigger.value = 'auto';
+      tagTrigger.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(onPreferencesChange).not.toHaveBeenCalled();
+
+    const shortcutButtons = container.querySelectorAll<HTMLButtonElement>(
+      '#settings-shortcuts .shortcut-recorder',
+    );
+    act(() => shortcutButtons[0].click());
+    act(() => {
+      shortcutButtons[0].dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Z',
+        ctrlKey: true,
+        bubbles: true,
+      }));
+    });
+    expect(container.querySelector('.settings-shortcut-error')?.textContent)
+      .toContain('已分配');
+    expect(onPreferencesChange).not.toHaveBeenCalled();
+
+    act(() => {
+      shortcutButtons[0].dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'K',
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }));
+    });
+    expect(onPreferencesChange).toHaveBeenLastCalledWith({
+      ...DEFAULT_AI_PREFERENCES,
+      fullTranslationShortcut: {
+        key: 'K',
+        ctrlKey: true,
+        altKey: false,
+        shiftKey: true,
+        metaKey: false,
+      },
+    });
+
+    onPreferencesChange.mockClear();
+    const saveButton = container.querySelector<HTMLButtonElement>(
+      '#settings-tag-agent .settings-save-btn',
+    );
+    act(() => saveButton?.click());
+    expect(onPreferencesChange).toHaveBeenCalledWith({
+      ...DEFAULT_AI_PREFERENCES,
+      tagAgentTriggerMode: 'auto',
+    });
+
+    act(() => root.unmount());
+    container.remove();
+  });
 });
