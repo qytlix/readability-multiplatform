@@ -295,6 +295,17 @@
     height 260ms ease;
 }
 
+.sidebar-search-scope.is-search-active {
+  opacity: 0;
+  height: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  transition:
+    opacity 160ms ease,
+    height 260ms ease;
+}
+
 .sidebar-search-scope {
   display: flex;
   min-height: 24px;

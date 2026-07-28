@@ -44,6 +44,7 @@ interface FeedListProps {
   selectedFilter: EntryFilter;
   searchInput: string;
   searchStatus: SearchStatus;
+  searchFocused?: boolean;
   searchAllFeeds?: boolean;
   searchInputRef: RefObject<HTMLInputElement | null>;
   onSearchInputChange: (query: string) => void;
@@ -69,6 +70,7 @@ export const FeedList = ({
   selectedFilter,
   searchInput,
   searchStatus,
+  searchFocused = false,
   searchAllFeeds = false,
   searchInputRef,
   onSearchInputChange,
@@ -313,7 +315,7 @@ export const FeedList = ({
         className="sidebar-selection-indicator"
         aria-hidden="true"
       />
-      <label className="sidebar-search">
+      <label className={"sidebar-search" + (searchFocused ? ' is-search-active' : '')}>
         <SearchIcon />
         <input
           ref={searchInputRef}
@@ -336,7 +338,7 @@ export const FeedList = ({
         )}
       </label>
       {searchInput.trim() && (
-        <div className="sidebar-search-scope">
+        <div className={"sidebar-search-scope" + (searchFocused ? ' is-search-active' : '')}>
           {selectedSearchFeed && onSearchAllFeedsChange
             ? (
                 <button

@@ -121,6 +121,7 @@ export const App = () => {
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
   const [entryFilter, setEntryFilter] = useState<EntryFilter>('all');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [appliedSearchQuery, setAppliedSearchQuery] = useState('');
   const [searchAllFeeds, setSearchAllFeeds] = useState(false);
@@ -440,6 +441,7 @@ export const App = () => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setSidebarOpen(true);
+        setSearchFocused(true);
         window.setTimeout(() => searchInputRef.current?.focus(), 0);
         return;
       }
@@ -447,6 +449,12 @@ export const App = () => {
       if (event.key !== 'Escape') return;
       if (isReadingFocus) {
         setIsReadingFocus(false);
+      } else if (searchFocused) {
+        if (normalizedInput) {
+          setSearchInput('');
+        } else {
+          setSearchFocused(false);
+        }
       } else if (normalizedInput) {
         setSearchInput('');
       } else {
@@ -456,7 +464,7 @@ export const App = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isReadingFocus, normalizedInput]);
+  }, [isReadingFocus, normalizedInput, searchFocused]);
 
   useEffect(() => {
     if (!readerFeedback) return;
@@ -881,6 +889,7 @@ export const App = () => {
             selectedFilter={entryFilter}
             searchInput={searchInput}
             searchStatus={effectiveSearchStatus}
+            searchFocused={searchFocused}
             searchAllFeeds={searchAllFeeds}
             searchInputRef={searchInputRef}
             onSearchInputChange={setSearchInput}
