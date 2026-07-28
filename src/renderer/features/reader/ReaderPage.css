@@ -2,6 +2,7 @@
   --reader-titlebar-height: 48px;
   --reader-sidebar-width: 272px;
   --reader-list-width: clamp(330px, 25vw, 390px);
+  --reader-divider-width: 6px;
   --reader-bg: #111410;
   --reader-panel: #161a16;
   --reader-panel-raised: #1b201b;
@@ -172,7 +173,7 @@
   grid-template-columns:
     var(--reader-sidebar-width)
     var(--reader-list-width)
-    6px
+    var(--reader-divider-width)
     minmax(0, 1fr);
   width: 100%;
   height: 100%;
@@ -180,8 +181,30 @@
   overflow: hidden;
 }
 
+.reader-workspace.is-search-active {
+  --reader-list-width: 0;
+}
+
+.reader-workspace.is-search-active .story-list-pane {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    width 320ms cubic-bezier(0.2, 0.75, 0.2, 1),
+    opacity 200ms ease;
+}
+
+.reader-workspace.is-search-active .reader-list-divider {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0;
+}
+
 .reader-page.is-sidebar-closed .reader-workspace {
-  grid-template-columns: 0 var(--reader-list-width) 6px minmax(0, 1fr);
+  grid-template-columns: 0 var(--reader-list-width) var(--reader-divider-width) minmax(0, 1fr);
 }
 
 .reader-page.is-reading-focus .reader-workspace {
@@ -261,6 +284,17 @@
   color: var(--reader-accent);
 }
 
+.sidebar-search.is-search-active {
+  opacity: 0;
+  pointer-events: none;
+  height: 0;
+  padding: 0;
+  overflow: hidden;
+  transition:
+    opacity 160ms ease,
+    height 260ms ease;
+}
+
 .sidebar-search-scope {
   display: flex;
   min-height: 24px;
@@ -268,6 +302,36 @@
   align-items: center;
   color: var(--reader-text-muted);
   font-size: 10px;
+}
+
+.search-overlay {
+  position: absolute;
+  z-index: 50;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: color-mix(in srgb, var(--reader-bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 260ms ease;
+}
+
+.search-overlay.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.search-overlay-input-row {
+  width: min(600px, 80%);
+  margin-top: clamp(40px, 12vh, 120px);
+}
+
+.search-overlay-results {
+  width: min(600px, 80%);
+  flex: 1;
+  overflow-y: auto;
 }
 
 .sidebar-search-scope button,
@@ -460,8 +524,8 @@
 .reader-list-divider {
   position: relative;
   z-index: 14;
-  width: 6px;
-  min-width: 6px;
+  width: var(--reader-divider-width);
+  min-width: var(--reader-divider-width);
   height: 100%;
   padding: 0;
   border: 0;
@@ -5496,7 +5560,7 @@ body.workspace-is-resizing * {
 @media (max-width: 900px) {
   .reader-workspace,
   .reader-page.is-sidebar-closed .reader-workspace {
-    grid-template-columns: var(--reader-list-width) 6px minmax(0, 1fr);
+    grid-template-columns: var(--reader-list-width) var(--reader-divider-width) minmax(0, 1fr);
   }
 
   .reader-page.is-reading-focus .reader-workspace,
