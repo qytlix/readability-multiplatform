@@ -507,14 +507,25 @@ function validateEntryQuery(options: EntryQuery): void {
       throw new RangeError('Entry query filters must be an array of up to 50 entries.');
     }
     for (const filter of options.filters) {
-      if (!ALLOWED_FILTER_FIELDS.includes(filter.field)) {
-        throw new RangeError(`Invalid filter field: "${filter.field}".`);
+      if (
+        typeof filter !== 'object'
+        || filter === null
+        || !ALLOWED_FILTER_FIELDS.includes(filter.field)
+      ) {
+        throw new RangeError('Entry query filter field is invalid.');
       }
-      if (typeof filter.value !== 'string' || filter.value.length > 200) {
-        throw new RangeError('Filter value must be a string up to 200 characters.');
+      if (typeof filter.value !== 'string' || filter.value.length > 100) {
+        throw new RangeError('Filter value must be a string up to 100 characters.');
       }
       if (filter.operator !== '+' && filter.operator !== '-' && filter.operator !== '') {
         throw new RangeError(`Invalid filter operator: "${filter.operator}".`);
+      }
+      if (
+        filter.match !== undefined
+        && filter.match !== 'fuzzy'
+        && filter.match !== 'exact'
+      ) {
+        throw new RangeError(`Invalid filter match mode: "${filter.match}".`);
       }
     }
   }
@@ -621,7 +632,7 @@ function appendSingleFilter(
     }
     case 'feed': {
       if (operator === '-') {
-        conditions.push(`search_normalize(f.title) NOT LIKE ?${esc}`);
+        conditions.push(`COALESCE(search_normalize(f.title), '') NOT LIKE ?${esc}`);
       } else {
         conditions.push(`search_normalize(f.title) LIKE ?${esc}`);
       }
@@ -630,7 +641,7 @@ function appendSingleFilter(
     }
     case 'title': {
       if (operator === '-') {
-        conditions.push(`search_normalize(e.title) NOT LIKE ?${esc}`);
+        conditions.push(`COALESCE(search_normalize(e.title), '') NOT LIKE ?${esc}`);
       } else {
         conditions.push(`search_normalize(e.title) LIKE ?${esc}`);
       }
@@ -656,14 +667,22 @@ function appendSingleFilter(
       break;
     }
     case 'starred': {
-      const boolVal = (value === 'yes' || value === '1') ? 1 : 0;
-      conditions.push('e.isStarred = ?');
+      const boolVal = parseBooleanFilterValue(value);
+      if (boolVal === undefined) {
+        conditions.push('0 = 1');
+        break;
+      }
+      conditions.push(`e.isStarred ${operator === '-' ? '!=' : '='} ?`);
       params.push(boolVal);
       break;
     }
     case 'read': {
-      const boolVal = (value === 'yes' || value === '1') ? 1 : 0;
-      conditions.push('e.isRead = ?');
+      const boolVal = parseBooleanFilterValue(value);
+      if (boolVal === undefined) {
+        conditions.push('0 = 1');
+        break;
+      }
+      conditions.push(`e.isRead ${operator === '-' ? '!=' : '='} ?`);
       params.push(boolVal);
       break;
     }
@@ -746,23 +765,28 @@ function appendOrGroupFilter(
     }
     case 'starred':
     case 'read': {
-      // OR for scalar boolean fields doesn't make much sense, but handle it:
-      // If any value is 'yes'/'1', it's truthy; otherwise all 'no'/'0' = falsy.
-      const hasYes = values.some((v) => v === 'yes' || v === '1');
-      const hasNo = values.some((v) => v === 'no' || v === '0');
-      if (hasYes && hasNo) {
-        // Contradiction: no rows match
-        conditions.push('1 = 0');
-      } else if (hasYes) {
-        const col = field === 'starred' ? 'e.isStarred' : 'e.isRead';
-        conditions.push(`${col} = 1`);
-      } else {
-        const col = field === 'starred' ? 'e.isStarred' : 'e.isRead';
-        conditions.push(`${col} = 0`);
+      const booleanValues = Array.from(new Set(
+        values
+          .map(parseBooleanFilterValue)
+          .filter((value): value is number => value !== undefined),
+      ));
+      if (booleanValues.length === 0) {
+        conditions.push('0 = 1');
+        break;
       }
+      const col = field === 'starred' ? 'e.isStarred' : 'e.isRead';
+      conditions.push(`${col} IN (${booleanValues.map(() => '?').join(', ')})`);
+      params.push(...booleanValues);
       break;
     }
   }
+}
+
+function parseBooleanFilterValue(value: string): number | undefined {
+  const normalized = value.toLocaleLowerCase();
+  if (normalized === 'yes' || normalized === '1') return 1;
+  if (normalized === 'no' || normalized === '0') return 0;
+  return undefined;
 }
 
 function buildSearchSnippet(

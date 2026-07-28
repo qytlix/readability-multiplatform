@@ -667,6 +667,36 @@ describe('EntryStore', () => {
       expect(result.entries[0].title).toBe('Tech Stocks Rise');
     });
 
+    it('-starred:yes excludes starred entries', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'starred', operator: '-', value: 'yes' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(3);
+      expect(result.entries.map((entry) => entry.title)).not.toContain('Tech Stocks Rise');
+    });
+
+    it('-read:no returns only read entries', () => {
+      const readEntry = entryStoreFilters.query({
+        filters: [
+          { field: 'title', operator: '', value: 'Climate' },
+        ],
+        limit: 50,
+      }).entries[0];
+      entryStoreFilters.markRead([readEntry.id], true);
+
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'read', operator: '-', value: 'no' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('Climate Change Report');
+    });
+
     it('combines multiple filter types', () => {
       const result = entryStoreFilters.query({
         filters: [
@@ -727,7 +757,7 @@ describe('EntryStore', () => {
       expect(result.entries[0].title).toBe('New AI Breakthrough');
     });
 
-    it('returns nothing for contradicting starred/read', () => {
+    it('ORs repeated boolean filters', () => {
       const result = entryStoreFilters.query({
         filters: [
           { field: 'starred', operator: '', value: 'yes' },
@@ -735,7 +765,32 @@ describe('EntryStore', () => {
         ],
         limit: 50,
       });
-      expect(result.entries).toHaveLength(0);
+      expect(result.entries).toHaveLength(4);
+    });
+
+    it('rejects malformed filter objects with RangeError', () => {
+      expect(() => entryStoreFilters.query({
+        filters: [null],
+        limit: 50,
+      } as never)).toThrow(RangeError);
+    });
+
+    it('rejects filter values longer than the documented limit', () => {
+      expect(() => entryStoreFilters.query({
+        filters: [
+          { field: 'title', operator: '', value: 'x'.repeat(101) },
+        ],
+        limit: 50,
+      })).toThrow(RangeError);
+    });
+
+    it('rejects unsupported tag match modes', () => {
+      expect(() => entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '', value: 'AI', match: 'prefix' },
+        ],
+        limit: 50,
+      } as never)).toThrow(RangeError);
     });
 
     it('handles empty filters array', () => {

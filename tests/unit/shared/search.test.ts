@@ -257,6 +257,12 @@ describe('parseSearchQuery', () => {
     expect(result.filters).toEqual([]);
   });
 
+  it('treats a quoted unknown field prefix as plain text', () => {
+    const result = parseSearchQuery('unknown:"quoted value" test');
+    expect(result.textQuery).toBe('unknown:"quoted value" test');
+    expect(result.filters).toEqual([]);
+  });
+
   it('preserves quoted text that is not a filter', () => {
     const result = parseSearchQuery('"plain quoted" tag:tech');
     expect(result.textQuery).toBe('"plain quoted"');

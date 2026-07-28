@@ -180,11 +180,15 @@ export const parseSearchQuery = (query: string): ParsedSearchQuery => {
         current = '';
 
         if (filterPrefixInQuotes) {
-          // This was [+-]field:"value" or [+-]field="value"
+          // 只有受支持的字段才转为过滤器；未知字段完整保留为全文文本。
           const prefix = filterPrefixInQuotes;
           filterPrefixInQuotes = '';
           const preMatch = prefix.match(prefixRe);
-          if (preMatch && trimmed) {
+          if (
+            preMatch
+            && trimmed
+            && FILTER_FIELDS.has(preMatch[2] as FilterField)
+          ) {
             const operator = (preMatch[1] || '') as FilterOperator;
             const field = preMatch[2] as FilterField;
             const separator = prefix.endsWith('=') ? '=' : ':';
@@ -195,6 +199,8 @@ export const parseSearchQuery = (query: string): ParsedSearchQuery => {
               filter.match = 'fuzzy';
             }
             filters.push(filter);
+          } else if (trimmed) {
+            textParts.push(`${prefix}"${trimmed}"`);
           }
         } else {
           // Non-filter quoted text: preserve as quoted phrase
