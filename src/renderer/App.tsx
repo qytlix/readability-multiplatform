@@ -437,10 +437,11 @@ export const App = () => {
     void requestEntries(undefined, false);
   }, [requestEntries]);
 
-  useEffect(() => {
+useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
+        if (isReadingFocus) return;
         setSidebarOpen(true);
         setSearchFocused(true);
         window.setTimeout(() => searchInputRef.current?.focus(), 0);
@@ -448,14 +449,14 @@ export const App = () => {
       }
 
       if (event.key !== 'Escape') return;
-      if (isReadingFocus) {
-        setIsReadingFocus(false);
-      } else if (searchFocused) {
+      if (searchFocused) {
         if (normalizedInput) {
           setSearchInput('');
         } else {
           setSearchFocused(false);
         }
+      } else if (isReadingFocus) {
+        setIsReadingFocus(false);
       } else if (normalizedInput) {
         setSearchInput('');
       } else {
@@ -832,6 +833,7 @@ export const App = () => {
         'reader-page',
         sidebarOpen ? 'is-sidebar-open' : 'is-sidebar-closed',
         isReadingFocus ? 'is-reading-focus' : '',
+        searchFocused ? 'is-search-active' : '',
         largeType ? 'is-large-type' : '',
         activeView === 'settings' ? 'is-settings-view' : '',
       ].join(' ')}
@@ -876,7 +878,7 @@ export const App = () => {
 
       <div
         ref={workspaceRef}
-        className={"reader-workspace" + (searchFocused ? ' is-search-active' : '')}
+        className="reader-workspace"
       >
         <button
           type="button"

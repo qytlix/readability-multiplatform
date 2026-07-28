@@ -182,11 +182,20 @@
   overflow: hidden;
 }
 
-.reader-workspace.is-search-active {
+.reader-page.is-search-active .reader-workspace {
   --reader-list-width: 0;
 }
 
-.reader-workspace.is-search-active .story-list-pane {
+/* Collapse both story-list and divider columns, matching reading-focus pattern */
+.reader-page.is-search-active .reader-workspace {
+  grid-template-columns: var(--reader-sidebar-width) 0 0 minmax(0, 1fr);
+}
+
+.reader-page.is-search-active.is-sidebar-closed .reader-workspace {
+  grid-template-columns: 0 0 0 minmax(0, 1fr);
+}
+
+.reader-page.is-search-active .story-list-pane {
   opacity: 0;
   pointer-events: none;
   transform: translateX(-18px);
@@ -197,7 +206,7 @@
     visibility 0s linear 580ms;
 }
 
-.reader-workspace.is-search-active .reader-list-divider {
+.reader-page.is-search-active .reader-list-divider {
   visibility: hidden;
   pointer-events: none;
 }
@@ -343,6 +352,7 @@
   border-radius: 16px;
   background: color-mix(in srgb, var(--reader-bg) 94%, transparent);
   backdrop-filter: blur(8px);
+  box-shadow: 0 16px 48px var(--reader-shadow);
 }
 
 .search-overlay-inner {
