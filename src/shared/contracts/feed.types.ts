@@ -68,6 +68,20 @@ export interface EntryCursor {
   rank?: number;
 }
 
+// ── Search Filter Types ──────────────────────────────────
+
+export type FilterField =
+  | 'tag' | 'feed' | 'title' | 'content' | 'author'
+  | 'starred' | 'read';
+
+export type FilterOperator = '+' | '-' | '';
+
+export interface SearchFilter {
+  field: FilterField;
+  operator: FilterOperator;
+  value: string;
+}
+
 /** Entry 查询参数 */
 export interface EntryQuery {
   feedId?: number;
@@ -77,6 +91,7 @@ export interface EntryQuery {
   tagNames?: string[];
   tagFuzzyNames?: string[];
   matchAll?: boolean;
+  filters?: SearchFilter[];
   limit: number;                        // 默认 50
   cursor?: EntryCursor;
 }
