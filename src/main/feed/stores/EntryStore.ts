@@ -672,17 +672,17 @@ function appendSingleFilter(
         conditions.push(`NOT EXISTS (
           SELECT 1 FROM entry_tag et
           JOIN tag t ON t.id = et.tagId
-          WHERE et.entryId = e.id AND t.name = ?
+          WHERE et.entryId = e.id AND t.name LIKE ?${esc}
         )`);
-        params.push(value);
+        params.push(`%${escapeLike(value)}%`);
       } else {
-        // +tag: AND inclusion — exact match
+        // +tag: AND inclusion — fuzzy match via LIKE
         conditions.push(`e.id IN (
           SELECT et.entryId FROM entry_tag et
           JOIN tag t ON t.id = et.tagId
-          WHERE t.name = ?
+          WHERE t.name LIKE ?${esc}
         )`);
-        params.push(value);
+        params.push(`%${escapeLike(value)}%`);
       }
       break;
     }

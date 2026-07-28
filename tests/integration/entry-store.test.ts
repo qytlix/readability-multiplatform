@@ -570,14 +570,27 @@ describe('EntryStore', () => {
       expect(result.entries[0].title).toBe('New AI Breakthrough');
     });
 
-    it('-tag: exclusion filter excludes tagged entries', () => {
+    it('+tag: AND filter requires tag (fuzzy)', () => {
       const result = entryStoreFilters.query({
         filters: [
-          { field: 'tag', operator: '-', value: 'Science' },
+          { field: 'tag', operator: '+', value: 'Tech' },
         ],
         limit: 50,
       });
-      // e4 (feed2, New Physics Discovery) has Science tag, so excluded
+      // 'Tech' fuzzy-matches tag 'Technology' (e1) and 'Technology' (e1) via LIKE
+      // e1: New AI Breakthrough has both 'AI' and 'Technology'
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('New AI Breakthrough');
+    });
+
+    it('-tag: exclusion filter excludes tagged entries', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '-', value: 'Sci' },
+        ],
+        limit: 50,
+      });
+      // 'Sci' fuzzy-matches 'Science' tag on e4, so only feed1 entries remain
       expect(result.entries).toHaveLength(3);
       const titles = result.entries.map((e) => e.title);
       expect(titles).not.toContain('New Physics Discovery');
