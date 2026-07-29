@@ -24,6 +24,12 @@ const reactActEnvironment = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean;
 };
 
+async function settle(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 function createResult(status: TranslationResult['status']): TranslationResult {
   return {
     id: 7,
@@ -37,6 +43,7 @@ function createResult(status: TranslationResult['status']): TranslationResult {
     expertId: 'builtin:general',
     expertContentHash: 'builtin:general',
     smartContextEnabled: false,
+    translationVariant: 'standard',
     contextPromptVersion: 'none',
     status,
     ...(status === 'failed' ? {
@@ -1060,6 +1067,77 @@ describe('TranslationPanel failure feedback', () => {
     });
     expect(onContentClick).toHaveBeenCalledTimes(2);
 
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it('keeps a standard fallback visible while immediately starting a selected deep retranslation', async () => {
+    reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    const standard = succeededResult();
+    const deepRunning: TranslationResult = {
+      ...createResult('running'), id: 21, translationVariant: 'deep',
+    };
+    const deepCompleted: TranslationResult = {
+      ...succeededResult(), id: deepRunning.id, translationVariant: 'deep',
+      segments: succeededResult().segments.map((segment) => ({
+        ...segment, translatedHtml: '<p>Deep translation.</p>', translatedText: 'Deep translation.',
+      })),
+    };
+    const generate = vi.fn().mockResolvedValue({
+      ok: true,
+      data: { runId: deepRunning.id, reused: false, result: deepRunning, activeResult: standard },
+    });
+    let eventListener: ((event: TranslationStreamEvent) => void) | undefined;
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: { translation: {
+        get: vi.fn().mockResolvedValue({ ok: true, data: { state: 'succeeded', result: standard } }),
+        generate,
+        prioritize: vi.fn().mockResolvedValue({ ok: true, data: { accepted: true } }),
+        onEvent: vi.fn((listener: (event: TranslationStreamEvent) => void) => {
+          eventListener = listener;
+          return () => undefined;
+        }),
+      } } as unknown as typeof window.shaleAPI,
+    });
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const panelRef = createRef<TranslationPanelHandle>();
+    await act(async () => {
+      root.render(createElement(TranslationPanel, {
+        ref: panelRef, entryId: standard.entryId, isContentReady: true,
+        sourceLanguage: standard.sourceLanguage, targetLanguage: standard.targetLanguage,
+        useTerminology: false, useSmartContext: false, translationMode: 'deep',
+        expertId: standard.expertId,
+        shortcut: { key: 'T', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false },
+        sourceHtml: '<h2>Title</h2><p>First</p><p>Second</p><p>Third</p>', titleTarget: null,
+        isBilingualVisible: true, onContentClick: vi.fn(), onGeneratingChange: vi.fn(),
+        onBilingualChange: vi.fn(), onTitleTranslatingChange: vi.fn(),
+        children: createElement('p', undefined, 'Original article'),
+      }));
+      await settle();
+    });
+    expect(container.textContent).toContain('First translated');
+
+    await act(async () => {
+      await expect(panelRef.current?.requestRetranslation()).resolves.toBe('started');
+      await settle();
+    });
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({
+      translationMode: 'deep', forceNew: true,
+    }));
+    expect(container.textContent).toContain('First translated');
+
+    await act(async () => {
+      eventListener?.({
+        type: 'completed', runId: deepRunning.id, entryId: standard.entryId,
+        sourceLanguage: standard.sourceLanguage, targetLanguage: standard.targetLanguage,
+        result: deepCompleted,
+      });
+      await settle();
+    });
+    expect(container.textContent).toContain('Deep translation.');
     act(() => root.unmount());
     container.remove();
   });

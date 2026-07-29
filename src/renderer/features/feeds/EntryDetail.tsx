@@ -875,20 +875,10 @@ export const EntryDetail = ({
   );
   const currentRetranslationStatus = retranslationStatus
     && retranslationStatus.entryId === entry.id
-    && retranslationStatus.sourceLanguage === aiPreferences.translationSourceLanguage
-    && retranslationStatus.targetLanguage === aiPreferences.translationTargetLanguage
-    && retranslationStatus.useTerminology === aiPreferences.useTerminology
-    && retranslationStatus.useSmartContext === aiPreferences.useSmartContext
-    && retranslationStatus.expertId === aiPreferences.translationExpertId
     ? retranslationStatus
     : null;
   const currentTranslationControlState = translationControlState
     && translationControlState.entryId === entry.id
-    && translationControlState.sourceLanguage === aiPreferences.translationSourceLanguage
-    && translationControlState.targetLanguage === aiPreferences.translationTargetLanguage
-    && translationControlState.useTerminology === aiPreferences.useTerminology
-    && translationControlState.useSmartContext === aiPreferences.useSmartContext
-    && translationControlState.expertId === aiPreferences.translationExpertId
     ? translationControlState
     : null;
   const translationButtonLabel = currentRetranslationStatus?.state === 'running'
@@ -1093,7 +1083,7 @@ export const EntryDetail = ({
             onVisibleChange={handleSummaryVisibleChange}
           />
           <TranslationPanel
-            key={`${entry.id}:${aiPreferences.translationSourceLanguage}:${aiPreferences.translationTargetLanguage}:${aiPreferences.useTerminology}:${aiPreferences.useSmartContext}:${aiPreferences.translationExpertId}`}
+            key={`${entry.id}:${aiPreferences.translationSourceLanguage}:${aiPreferences.translationTargetLanguage}`}
             ref={translationPanelRef}
             entryId={entry.id}
             isContentReady={isTranslationReady}
@@ -1101,6 +1091,7 @@ export const EntryDetail = ({
             targetLanguage={aiPreferences.translationTargetLanguage}
             useTerminology={aiPreferences.useTerminology}
             useSmartContext={aiPreferences.useSmartContext}
+            translationMode={aiPreferences.translationMode}
             expertId={aiPreferences.translationExpertId}
             shortcut={aiPreferences.fullTranslationShortcut}
             sourceHtml={content?.cleanedHtml ?? ''}

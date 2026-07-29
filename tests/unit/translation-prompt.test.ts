@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildTranslationBatchPrompt,
+  buildDeepTranslationReviewPrompt,
+  buildDeepTranslationRewritePrompt,
   buildTranslationPrompt,
   buildTranslationTextSlotCompensationPrompt,
   TRANSLATION_PROMPT_VERSION,
@@ -109,6 +111,7 @@ describe('buildTranslationPrompt', () => {
     expect(prompt).toContain('Keep every HTML element, its order, and its attributes unchanged.');
     expect(prompt).toContain('protected literals such as code, URLs, identifiers, and placeholders');
     expect(prompt).not.toContain('<context-before>');
+    expect(prompt).not.toContain('<adjacent-source-context>');
   });
 
   it('requires context-aware, idiomatic translations and natural headings for the selected target locale', () => {
@@ -232,5 +235,34 @@ describe('buildTranslationPrompt', () => {
     expect(prompt).toContain('Do not move, merge, split, omit, or reorder text between slots.');
     expect(prompt).not.toContain('<source-segment>');
     expect(prompt).not.toContain('"translatedHtml":"<same-root>');
+    expect(prompt).not.toContain('<adjacent-source-context>');
   });
+
+  it('keeps deep review advisory and makes source plus terminology authoritative during rewrite', () => {
+    const segment = {
+      sourceSegmentId: 'seg-1',
+      sourceType: 'paragraph' as const,
+      sourceHtml: '<p>Source fact.</p>',
+      translatedHtml: '<p>Draft wording.</p>',
+      terminologyCandidates: [{
+        conceptId: 'term', sourceId: 'library', sourceTerm: 'Source', targetTerm: '术语',
+      }],
+    };
+    const review = buildDeepTranslationReviewPrompt({
+      sourceLanguage: 'en', targetLanguage: 'zh-CN', segments: [segment],
+    });
+    const rewrite = buildDeepTranslationRewritePrompt({
+      sourceLanguage: 'en', targetLanguage: 'zh-CN', segments: [segment],
+      reviewIssues: [{ sourceSegmentId: 'seg-1', category: 'naturalness', instruction: 'Use a natural collocation.' }],
+    });
+
+    expect(review).toContain('<deep-review-input-ndjson>');
+    expect(review).toContain('draftHtml');
+    expect(review).not.toContain('"translatedHtml":"<same-root>');
+    expect(rewrite).toContain('<deep-rewrite-input-ndjson>');
+    expect(rewrite).toContain('source meaning and applicable terminology candidates override any conflicting issue');
+    expect(rewrite).toContain('Use a natural collocation.');
+    expect(rewrite).toContain('Return NDJSON only');
+  });
+
 });

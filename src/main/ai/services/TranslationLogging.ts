@@ -1,5 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import type { ProviderTokenUsage } from '../provider/SummaryProvider';
+import type { TranslationResultVariant } from '../../../shared/contracts/translation.types';
 import type { ProviderFinishReason } from '../provider/TextGenerationProvider';
 import {
   TRANSLATION_COMPENSATION_PROTOCOLS,
@@ -39,7 +40,15 @@ export const TRANSLATION_INLINE_FAILURE_STAGES = [
   'provider',
   'parse',
 ] as const;
-export const TRANSLATION_PROVIDER_REQUEST_KINDS = ['batch', 'compensation'] as const;
+export const TRANSLATION_PROVIDER_REQUEST_KINDS = [
+  'batch',
+  'compensation',
+  'deep-draft',
+  'deep-review',
+  'deep-rewrite',
+  'deep-draft-compensation',
+  'deep-rewrite-compensation',
+] as const;
 export const TRANSLATION_LOG_TRIGGERS = [
   'initial',
   'resume',
@@ -103,6 +112,7 @@ export interface TranslationRunStartedLogContext {
   taskRunId: number;
   trigger: TranslationLogTrigger;
   previousResultAtStart: TranslationPreviousResultAtStart;
+  translationVariant?: TranslationResultVariant;
 }
 
 /** Aggregate counts for a Translation run; no segment identity or content is included. */
@@ -110,6 +120,9 @@ export interface TranslationRunDiagnosticSummary extends ProviderTokenUsage {
   providerRequestCount: number;
   batchRequestCount: number;
   compensationRequestCount: number;
+  deepDraftRequestCount?: number;
+  deepReviewRequestCount?: number;
+  deepRewriteRequestCount?: number;
   providerRequestSuccessCount: number;
   providerRequestFailureCount: number;
   missingSegmentCount: number;
@@ -118,6 +131,7 @@ export interface TranslationRunDiagnosticSummary extends ProviderTokenUsage {
 
 export interface TranslationRunCompletedLogContext extends TranslationRunDiagnosticSummary {
   taskRunId: number;
+  translationVariant?: TranslationResultVariant;
   trigger: TranslationLogTrigger;
   previousResultOutcome: TranslationPreviousResultOutcome;
   durationMs: number;
@@ -128,6 +142,8 @@ export interface TranslationRunCompletedLogContext extends TranslationRunDiagnos
 
 export interface TranslationRunFailedLogContext extends TranslationRunDiagnosticSummary {
   taskRunId: number;
+  translationVariant?: TranslationResultVariant;
+  deepStage?: 'draft' | 'review' | 'rewrite';
   trigger: TranslationLogTrigger;
   previousResultOutcome: TranslationPreviousResultOutcome;
   durationMs: number;
@@ -140,6 +156,7 @@ export interface TranslationRunFailedLogContext extends TranslationRunDiagnostic
 
 export interface TranslationRunInterruptedLogContext extends TranslationRunDiagnosticSummary {
   taskRunId: number;
+  translationVariant?: TranslationResultVariant;
   trigger: TranslationLogTrigger;
   previousResultOutcome: TranslationPreviousResultOutcome;
   durationMs: number;
@@ -336,6 +353,7 @@ export function logTranslationRunStarted(
   try {
     logger?.info(TRANSLATION_LOG_EVENTS.runStarted, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
+      ...(context.translationVariant ? { translationVariant: context.translationVariant } : {}),
       trigger: context.trigger,
       previousResultAtStart: context.previousResultAtStart,
     });
@@ -362,6 +380,7 @@ export function logTranslationRunCompleted(
   try {
     logger?.info(TRANSLATION_LOG_EVENTS.runCompleted, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
+      ...(context.translationVariant ? { translationVariant: context.translationVariant } : {}),
       durationMs: context.durationMs,
       success: true,
       trigger: context.trigger,
@@ -392,6 +411,8 @@ export function logTranslationRunFailed(
   try {
     logger?.error(TRANSLATION_LOG_EVENTS.runFailed, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
+      ...(context.translationVariant ? { translationVariant: context.translationVariant } : {}),
+      ...(context.deepStage ? { deepStage: context.deepStage } : {}),
       durationMs: context.durationMs,
       success: false,
       stage: context.stage,
@@ -426,6 +447,7 @@ export function logTranslationRunInterrupted(
   try {
     logger?.warn(TRANSLATION_LOG_EVENTS.runInterrupted, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
+      ...(context.translationVariant ? { translationVariant: context.translationVariant } : {}),
       durationMs: context.durationMs,
       success: false,
       stage: 'interrupt',
@@ -557,6 +579,9 @@ function toRunSummaryContext(
     providerRequestCount: context.providerRequestCount,
     batchRequestCount: context.batchRequestCount,
     compensationRequestCount: context.compensationRequestCount,
+    ...(context.deepDraftRequestCount ? { deepDraftRequestCount: context.deepDraftRequestCount } : {}),
+    ...(context.deepReviewRequestCount ? { deepReviewRequestCount: context.deepReviewRequestCount } : {}),
+    ...(context.deepRewriteRequestCount ? { deepRewriteRequestCount: context.deepRewriteRequestCount } : {}),
     providerRequestSuccessCount: context.providerRequestSuccessCount,
     providerRequestFailureCount: context.providerRequestFailureCount,
     missingSegmentCount: context.missingSegmentCount,
@@ -673,6 +698,9 @@ function isValidRunSummary(context: TranslationRunDiagnosticSummary): boolean {
   return isSafeCount(context.providerRequestCount)
     && isSafeCount(context.batchRequestCount)
     && isSafeCount(context.compensationRequestCount)
+    && isSafeCount(context.deepDraftRequestCount ?? 0)
+    && isSafeCount(context.deepReviewRequestCount ?? 0)
+    && isSafeCount(context.deepRewriteRequestCount ?? 0)
     && isSafeCount(context.providerRequestSuccessCount)
     && isSafeCount(context.providerRequestFailureCount)
     && isSafeCount(context.missingSegmentCount)
@@ -684,20 +712,25 @@ function isValidRunLifecycle(context: {
   taskRunId: number;
   trigger: TranslationLogTrigger;
   previousResultOutcome: TranslationPreviousResultOutcome;
+  translationVariant?: TranslationResultVariant;
 }): boolean {
   return isSafeTaskRunId(context.taskRunId)
     && TRANSLATION_LOG_TRIGGERS.includes(context.trigger)
-    && TRANSLATION_PREVIOUS_RESULT_OUTCOMES.includes(context.previousResultOutcome);
+    && TRANSLATION_PREVIOUS_RESULT_OUTCOMES.includes(context.previousResultOutcome)
+    && (context.translationVariant === undefined
+      || ['standard', 'deep', 'legacy-pre-mode'].includes(context.translationVariant));
 }
 
 function isValidRunStartedContext(context: {
   taskRunId: number;
   trigger: TranslationLogTrigger;
   previousResultAtStart: TranslationPreviousResultAtStart;
+  translationVariant?: TranslationResultVariant;
 }): boolean {
   return isSafeTaskRunId(context.taskRunId)
     && TRANSLATION_LOG_TRIGGERS.includes(context.trigger)
-    && TRANSLATION_PREVIOUS_RESULT_AT_START_VALUES.includes(context.previousResultAtStart);
+    && TRANSLATION_PREVIOUS_RESULT_AT_START_VALUES.includes(context.previousResultAtStart)
+    && ['standard', 'deep', 'legacy-pre-mode'].includes(context.translationVariant ?? 'standard');
 }
 
 function isValidContextDegradation(context: {

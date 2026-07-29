@@ -11,7 +11,16 @@ import {
 export const USAGE_TASK_TYPES = ['summary', 'translation'] as const;
 export type UsageTaskType = (typeof USAGE_TASK_TYPES)[number];
 
-export const USAGE_REQUEST_KINDS = ['summary', 'batch', 'compensation'] as const;
+export const USAGE_REQUEST_KINDS = [
+  'summary',
+  'batch',
+  'compensation',
+  'deep-draft',
+  'deep-review',
+  'deep-rewrite',
+  'deep-draft-compensation',
+  'deep-rewrite-compensation',
+] as const;
 export type UsageRequestKind = (typeof USAGE_REQUEST_KINDS)[number];
 
 export const USAGE_REQUEST_STATUSES = [

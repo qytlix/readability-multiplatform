@@ -23,6 +23,7 @@ import type {
   TranslationState,
   TranslationStreamEvent,
 } from '../../shared/contracts/translation.types';
+import { TRANSLATION_MODES } from '../../shared/contracts/translation.types';
 import type {
   TerminologyImportPreview,
   TerminologyLibraryList,
@@ -311,6 +312,9 @@ function isTranslationRequest(value: unknown): value is TranslationGetRequest & 
     && typeof request.targetLanguage === 'string'
     && (request.useTerminology === undefined || typeof request.useTerminology === 'boolean')
     && (request.useSmartContext === undefined || typeof request.useSmartContext === 'boolean')
+    && (request.translationMode === undefined
+      || (typeof request.translationMode === 'string'
+        && TRANSLATION_MODES.includes(request.translationMode as typeof TRANSLATION_MODES[number])))
     && (request.forceNew === undefined || typeof request.forceNew === 'boolean')
     && (request.expertId === undefined || (
       typeof request.expertId === 'string'

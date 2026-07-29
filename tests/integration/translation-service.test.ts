@@ -127,6 +127,15 @@ function parseTextSlotPrompt(prompt: string): TextSlotPromptSlot[] {
     JSON.parse(line) as TextSlotPromptSlot);
 }
 
+function parseDeepRewritePrompt(prompt: string): BatchPromptSegment[] {
+  const serialized = prompt.match(
+    /<deep-rewrite-input-ndjson>\n([\s\S]*?)\n<\/deep-rewrite-input-ndjson>/,
+  )?.[1];
+  if (!serialized) throw new Error('Missing deep rewrite input.');
+  return serialized.split('\n').filter(Boolean).map((line) =>
+    JSON.parse(line) as BatchPromptSegment);
+}
+
 function toBatchOutput(segment: BatchPromptSegment): BatchProviderOutput {
   const translatedHtml = segment.sourceHtml.replace(
     />([^<]*)</g,
@@ -305,6 +314,174 @@ describe('TranslationService', () => {
     expect(provider.maxActiveStreams).toBe(1);
     expect(provider.providerKinds).toEqual(['deepseek']);
     expect(provider.models).toEqual(['translation-model']);
+  });
+
+  it('runs deep batches as draft, review, then rewrite without publishing intermediate output', async () => {
+    const prompts: string[] = [];
+    const sequenceProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        prompts.push(providerRequest.prompt);
+        if (providerRequest.prompt.includes('<deep-review-input-ndjson>')) {
+          yield '{"issues":[]}';
+          return;
+        }
+        const segments = providerRequest.prompt.includes('<deep-rewrite-input-ndjson>')
+          ? parseDeepRewritePrompt(providerRequest.prompt)
+          : parseBatchPrompt(providerRequest.prompt);
+        for (const segment of segments) {
+          yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const deepService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      sequenceProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      new UsageRecorder(usageStore),
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+      translationMode: 'deep' as const,
+    };
+    const emittedTypes: string[] = [];
+    deepService.subscribe((event) => emittedTypes.push(event.type));
+    const started = deepService.generate(request);
+    await vi.waitFor(() => {
+      expect(deepService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    expect(prompts).toHaveLength(3);
+    expect(prompts.every((prompt) => !prompt.includes('<adjacent-source-context>'))).toBe(true);
+    expect(prompts[0]).toContain('<source-segments-ndjson>');
+    expect(prompts[1]).toContain('<deep-review-input-ndjson>');
+    expect(prompts[1]).toContain('draftHtml');
+    expect(prompts[2]).toContain('<deep-rewrite-input-ndjson>');
+    expect(prompts[2]).toContain('reviewIssues');
+    expect(emittedTypes.filter((type) => type === 'segment-completed')).toHaveLength(3);
+    expect(usageStore.listByTask('translation', started.runId).map((record) => record.requestKind))
+      .toEqual(['deep-draft', 'deep-review', 'deep-rewrite']);
+  });
+
+  it('uses the same standard batch prompt for first, middle, last, and single-segment articles', async () => {
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: [
+        '<p>Opening source.</p>',
+        '<p>Boundary before.</p>',
+        '<p>Target relationship.</p>',
+        '<p>Closing source.</p>',
+      ].join(''),
+      markdown: 'Opening source.\n\nBoundary before.\n\nTarget relationship.\n\nClosing source.',
+      pipelineStatus: 'success',
+    });
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+    };
+    const firstRun = service.generate(request);
+    await vi.waitFor(() => {
+      expect(service.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+    expect(provider.prompts).toHaveLength(2);
+    expect(provider.prompts.every((prompt) =>
+      !prompt.includes('<adjacent-source-context>'))).toBe(true);
+    const batchSegments = provider.prompts.flatMap(parseBatchPrompt);
+    expect(batchSegments).toHaveLength(5);
+    expect(batchSegments.map((segment) => segment.sourceHtml)).toEqual(expect.arrayContaining([
+      '<p>Opening source.</p>',
+      '<p>Boundary before.</p>',
+      '<p>Target relationship.</p>',
+      '<p>Closing source.</p>',
+    ]));
+    expect(usageStore.listByTask('translation', firstRun.runId)).toHaveLength(2);
+
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: '<p>Only target source.</p>',
+      markdown: 'Only target source.',
+      pipelineStatus: 'success',
+    });
+    const singleRun = service.generate(request);
+    await vi.waitFor(() => {
+      expect(service.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+    expect(provider.prompts).toHaveLength(3);
+    expect(parseBatchPrompt(provider.prompts.at(-1) ?? '')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceHtml: '<p>Only target source.</p>' }),
+    ]));
+    expect(usageStore.listByTask('translation', singleRun.runId)).toHaveLength(1);
+  });
+
+  it('does not attach adjacent source data to text-slot compensation', async () => {
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: [
+        '<p>First source.</p>',
+        '<p>Second boundary.</p>',
+        '<p>Third target.</p>',
+        '<p>Fourth source.</p>',
+      ].join(''),
+      markdown: 'First source.\n\nSecond boundary.\n\nThird target.\n\nFourth source.',
+      pipelineStatus: 'success',
+    });
+    const prompts: string[] = [];
+    const recoveringProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        prompts.push(providerRequest.prompt);
+        if (providerRequest.prompt.includes('<text-slots-ndjson>')) {
+          for (const slot of parseTextSlotPrompt(providerRequest.prompt)) {
+            yield `${JSON.stringify({
+              textSlotId: slot.textSlotId,
+              translatedText: 'Recovered slot.',
+              appliedTermIds: [],
+            })}\n`;
+          }
+          return;
+        }
+        for (const segment of parseBatchPrompt(providerRequest.prompt)) {
+          const output = toBatchOutput(segment);
+          if (segment.sourceHtml.includes('Third target.')) {
+            output.translatedHtml = '<p><em>Broken structure.</em></p>';
+          }
+          yield `${JSON.stringify(output)}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const recoveringService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      recoveringProvider,
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'fr' as const,
+    };
+
+    recoveringService.generate(request);
+    await vi.waitFor(() => {
+      expect(recoveringService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    const textSlotPrompt = prompts.find((prompt) => prompt.includes('<text-slots-ndjson>'));
+    expect(prompts.every((prompt) => !prompt.includes('<adjacent-source-context>'))).toBe(true);
+    expect(parseTextSlotPrompt(textSlotPrompt ?? '')).toEqual([
+      expect.objectContaining({ sourceText: 'Third target.' }),
+    ]);
   });
 
   it('creates a fresh, usage-tracked run when retranslation is explicitly requested', async () => {

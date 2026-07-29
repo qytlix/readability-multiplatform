@@ -14,6 +14,7 @@ import type {
 import type {
   TranslationSourceLanguage,
   TranslationTargetLanguage,
+  TranslationMode,
 } from '../../../shared/contracts/translation.types';
 import {
   TRANSLATION_TARGET_LANGUAGES,
@@ -702,6 +703,22 @@ export const AISettingsPage = ({
                     <strong>AI 智能上下文</strong>
                     <small>翻译前分析全文、专业术语和文体，会增加一次或多次模型请求。</small>
                   </span>
+                </label>
+                <label className="settings-toggle">
+                  <span>
+                    <strong>深度翻译（实验性）</strong>
+                    <small>通过初译、专业审校和重写生成更自然、准确的译文。会显著增加模型请求、Token 用量和翻译时间。</small>
+                  </span>
+                  <select
+                    value={preferences.translationMode}
+                    onChange={(event) => updatePreferences({
+                      translationMode: event.target.value as TranslationMode,
+                    })}
+                    aria-label="翻译模式"
+                  >
+                    <option value="standard">标准翻译</option>
+                    <option value="deep">深度翻译</option>
+                  </select>
                 </label>
               </div>
             </div>

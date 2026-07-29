@@ -5,10 +5,12 @@ import type {
 import type {
   TranslationSourceLanguage,
   TranslationTargetLanguage,
+  TranslationMode,
 } from '../../../shared/contracts/translation.types';
 import {
   TRANSLATION_SOURCE_LANGUAGES,
   TRANSLATION_TARGET_LANGUAGES,
+  TRANSLATION_MODES,
 } from '../../../shared/contracts/translation.types';
 import { DEFAULT_TRANSLATION_EXPERT_ID } from '../../../shared/contracts/translation-expert.types';
 import {
@@ -30,6 +32,7 @@ export interface AiPreferences {
   translationTargetLanguage: TranslationTargetLanguage;
   useTerminology: boolean;
   useSmartContext: boolean;
+  translationMode: TranslationMode;
   translationExpertId: string;
   /** App-wide acknowledgement for the one-time full Translation settings hint. */
   translationSetupNoticeAcknowledged: boolean;
@@ -53,6 +56,7 @@ export const DEFAULT_AI_PREFERENCES: AiPreferences = {
   translationTargetLanguage: 'zh-CN',
   useTerminology: true,
   useSmartContext: false,
+  translationMode: 'standard',
   translationExpertId: DEFAULT_TRANSLATION_EXPERT_ID,
   translationSetupNoticeAcknowledged: false,
   fullTranslationShortcut: DEFAULT_FULL_TRANSLATION_SHORTCUT,
@@ -129,6 +133,9 @@ export function loadAiPreferences(storage: PreferenceStorage): AiPreferences {
         : DEFAULT_AI_PREFERENCES.translationTargetLanguage,
       useTerminology: candidate.useTerminology !== false,
       useSmartContext: candidate.useSmartContext === true,
+      translationMode: TRANSLATION_MODES.includes(candidate.translationMode as TranslationMode)
+        ? candidate.translationMode as TranslationMode
+        : DEFAULT_AI_PREFERENCES.translationMode,
       translationExpertId: typeof candidate.translationExpertId === 'string'
         && candidate.translationExpertId.length > 0
         && candidate.translationExpertId.length <= 64

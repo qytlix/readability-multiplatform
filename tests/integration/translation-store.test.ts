@@ -175,6 +175,98 @@ describe('TranslationStore', () => {
     )).toBeUndefined();
   });
 
+  it('does not reuse legacy result variants as standard candidates', () => {
+    const createRun = () => translationStore.createRun({
+      entryId: 1,
+      providerProfileId,
+      sourceLanguage: 'en',
+      targetLanguage: 'zh-CN',
+      sourceContentHash: 'variant-hash',
+      segmenterVersion: 'v2',
+      promptVersion: 'translation-v8-target-language-validation',
+      terminologyPackVersion: 'none',
+      segments: [{
+        id: 'seg_0',
+        orderIndex: 0,
+        type: 'paragraph',
+        sourceHtml: '<p>Source</p>',
+        sourceText: 'Source',
+      }],
+    });
+    const legacy = createRun();
+    translationStore.markSegmentSucceeded(
+      legacy.id,
+      'seg_0',
+      '标准译文',
+      '<p>标准译文</p>',
+      [],
+    );
+    translationStore.markRunSucceeded(legacy.id);
+    db.prepare(`
+      UPDATE translation_result SET translationVariant = 'legacy-pre-mode' WHERE id = ?
+    `).run(legacy.id);
+
+    const standard = createRun();
+    translationStore.markRunFailed(standard.id, {
+      code: 'TRANSLATION_PROVIDER_TIMEOUT',
+      message: 'Standard candidate timed out.',
+      retryable: true,
+    });
+
+    expect(translationStore.findCompatibleResult(
+      1, 'en', 'zh-CN', 'variant-hash', 'v2',
+      'translation-v8-target-language-validation', 'none', 'none', 'none', false, 'none',
+    )).toMatchObject({ id: standard.id, translationVariant: 'standard', status: 'failed' });
+    expect(translationStore.findLatestActiveResult(
+      1, 'en', 'zh-CN', 'variant-hash', 'v2',
+    )).toBeUndefined();
+  });
+
+  it('keeps standard and deep active results separate and preserves deep checkpoints on resume', () => {
+    const createRun = (translationVariant: 'standard' | 'deep') => translationStore.createRun({
+      entryId: 1,
+      providerProfileId,
+      sourceLanguage: 'en',
+      targetLanguage: 'zh-CN',
+      sourceContentHash: 'mode-hash',
+      segmenterVersion: 'v2',
+      promptVersion: 'translation-v8-target-language-validation',
+      terminologyPackVersion: 'none',
+      translationVariant,
+      segments: [{
+        id: 'seg_0', orderIndex: 0, type: 'paragraph', sourceHtml: '<p>Source</p>', sourceText: 'Source',
+      }],
+    });
+    const standard = createRun('standard');
+    const deep = createRun('deep');
+    translationStore.saveDeepBatchCheckpoint(deep.id, {
+      batchKey: 'seg_0',
+      stage: 'rewrite',
+      draftJson: '[{"sourceSegmentId":"seg_0"}]',
+      reviewJson: '{"issues":[]}',
+    });
+    translationStore.markRunFailed(deep.id, {
+      code: 'TRANSLATION_INTERRUPTED', message: 'Interrupted.', retryable: true,
+    });
+    translationStore.resumeRun(deep.id, providerProfileId);
+
+    expect(translationStore.findDeepBatchCheckpoint(deep.id, 'seg_0')).toMatchObject({
+      stage: 'rewrite', reviewJson: '{"issues":[]}',
+    });
+    translationStore.markSegmentSucceeded(standard.id, 'seg_0', '标准', '<p>标准</p>', []);
+    translationStore.markRunSucceeded(standard.id);
+    translationStore.markSegmentSucceeded(deep.id, 'seg_0', '深度', '<p>深度</p>', []);
+    translationStore.markRunSucceeded(deep.id);
+
+    expect(translationStore.findLatestActiveResult(
+      1, 'en', 'zh-CN', 'mode-hash', 'v2', 'standard',
+    )?.id).toBe(standard.id);
+    expect(translationStore.findLatestActiveResult(
+      1, 'en', 'zh-CN', 'mode-hash', 'v2', 'deep',
+    )?.id).toBe(deep.id);
+    expect(translationStore.findDeepBatchCheckpoint(deep.id, 'seg_0')).toBeUndefined();
+  });
+
   it('resumes only unfinished segments and preserves completed segment output', () => {
     const run = translationStore.createRun({
       entryId: 1,

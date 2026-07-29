@@ -160,6 +160,7 @@ describe('Translation toolbar continuity', () => {
       useTerminology: true,
       expertId: 'none',
       useSmartContext: false,
+      translationMode: 'standard',
     });
     await render(true);
 
@@ -334,6 +335,7 @@ function createTranslationResult(
     expertId: 'none',
     expertContentHash: 'none',
     smartContextEnabled: false,
+    translationVariant: 'standard',
     contextPromptVersion: 'none',
     status,
     createdAt: '2026-07-25T00:00:00.000Z',
