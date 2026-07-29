@@ -2,6 +2,36 @@
 
 All notable changes to Shale will be documented in this file.
 
+## [0.3.1] - 2026-08-04
+
+### Added
+
+- 标签 Tag 系统：全链路实现，包括数据库迁移、Store/Service/IPC Handler、
+  Preload API、Tag Badge/Input/FloatingWindow 组件、标签筛选与导航、
+  AI 自动标签（AutoTagService + Provider + Panel）、标签颜色主题感知、
+  实时筛选候选标签。
+- 搜索增强：结构化筛选语法（`+tag:`, `-tag:`, `field:`），模糊/精确
+  匹配模式，覆盖层搜索界面，动画过渡，中间面板联动折叠。
+- 结构化日志导出：ExportService 全链路带自定义脚注、批注、安全文件名。
+
+### Changed
+
+- 标签筛选语法统一：`tag=`（精确匹配）、`tag:`（模糊 LIKE），
+  移除旧兼容路径。
+
+### Fixed
+
+- Arch Linux CI 包版本改为从 package.json 动态读取，不再硬编码。
+- Arch Linux 构建产物现在正确包含应用图标。
+- 标签按钮在侧边栏高亮、导航状态同步、刷新 entry list 等交互问题。
+- 搜索覆盖层退出逻辑、网格布局联动、过滤边界情况。
+- 修复 tag 路由集成导致的 CI 测试失败。
+
+### Docs
+
+- 搜索设计文档与实现计划。
+- Tag 系统设计文档。
+
 ## [0.3.0] - 2026-07-27
 
 ### Added
