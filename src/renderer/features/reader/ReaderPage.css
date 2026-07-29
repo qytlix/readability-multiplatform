@@ -6123,15 +6123,107 @@ body.workspace-is-resizing * {
 .export-selection-bar {
   display: flex;
   align-items: center;
-  height: 37px;
+  min-height: 37px;
   padding: 0 22px 0;
   border-bottom: 1px solid var(--reader-line);
   color: var(--reader-text-soft);
   font-size: 12px;
+  gap: 10px;
 }
 
 .export-selection-bar strong {
   color: var(--reader-accent-strong);
+}
+
+.selection-actions {
+  display: flex;
+  min-width: 0;
+  margin-left: auto;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.selection-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.selection-actions button {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid var(--reader-line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--reader-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.selection-actions button:hover:not(:disabled) {
+  border-color: var(--reader-accent);
+  color: var(--reader-accent-strong);
+}
+
+.selection-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.selection-tag-dialog {
+  width: min(420px, calc(100vw - 32px));
+}
+
+.selection-tag-dialog > p,
+.selection-tag-list > p {
+  color: var(--reader-text-soft);
+  font-size: 13px;
+}
+
+.selection-tag-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.selection-tag-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--reader-line);
+  border-radius: 8px;
+  background: var(--reader-panel);
+  color: var(--reader-text);
+}
+
+.selection-tag-list {
+  display: grid;
+  max-height: 280px;
+  margin: 18px 0;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.selection-tag-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--reader-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--reader-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.selection-tag-list button:hover:not(:disabled) {
+  border-color: var(--reader-accent);
+}
+
+.selection-tag-list button > span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
 }
 
 /* ── Multi-article export dialog: pipeline status ── */

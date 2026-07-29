@@ -433,6 +433,18 @@ export class EntryStore {
       .run(isStarred ? 1 : 0, new Date().toISOString(), id);
   }
 
+  markStarredMany(ids: number[], isStarred: boolean): void {
+    if (ids.length === 0) return;
+    const placeholders = ids.map(() => '?').join(',');
+    this.db
+      .prepare(`
+        UPDATE entry
+        SET isStarred = ?, updatedAt = ?
+        WHERE id IN (${placeholders})
+      `)
+      .run(isStarred ? 1 : 0, new Date().toISOString(), ...ids);
+  }
+
   updateContentHash(entryId: number, contentHash: string): void {
     this.db
       .prepare('UPDATE entry SET contentHash = ?, updatedAt = ? WHERE id = ?')

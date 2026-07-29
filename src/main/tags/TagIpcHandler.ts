@@ -8,10 +8,13 @@ import type {
   AutoTagConfirmRequest,
   AutoTagGenerateRequest,
   EntryIdRequest,
+  EntryIdsRequest,
   TagEntryRequest,
+  TagEntriesRequest,
   UntagEntryRequest,
+  UntagEntriesRequest,
+  CreateTagRequest,
 } from '../../shared/contracts/tag.types';
-import type { CreateTagRequest } from '../../shared/contracts/tag.types';
 import type { IPCResult } from '../../shared/contracts/feed.ipc';
 import { TAG_ERROR_CODES, TagError, toTagIpcError } from './shared/tag.errors';
 import type { AutoTagService } from './AutoTagService';
@@ -69,6 +72,41 @@ export function registerTagIpcHandlers(
       () => services.tagService.untagEntry(
         (request as UntagEntryRequest).entryId,
         (request as UntagEntryRequest).tagId,
+      ),
+    ),
+  );
+  ipcMain.handle(
+    TAG_IPC_CHANNELS.listByEntries,
+    (event: IpcMainInvokeEvent, request: unknown) => handle(
+      event,
+      getMainWindow,
+      isEntryIdsRequest(request),
+      () => services.tagService.listByEntries(
+        (request as EntryIdsRequest).entryIds,
+      ),
+    ),
+  );
+  ipcMain.handle(
+    TAG_IPC_CHANNELS.tagEntries,
+    (event: IpcMainInvokeEvent, request: unknown) => handle(
+      event,
+      getMainWindow,
+      isTagEntriesRequest(request),
+      () => services.tagService.tagEntries(
+        (request as TagEntriesRequest).entryIds,
+        (request as TagEntriesRequest).tagName,
+      ),
+    ),
+  );
+  ipcMain.handle(
+    TAG_IPC_CHANNELS.untagEntries,
+    (event: IpcMainInvokeEvent, request: unknown) => handle(
+      event,
+      getMainWindow,
+      isUntagEntriesRequest(request),
+      () => services.tagService.untagEntries(
+        (request as UntagEntriesRequest).entryIds,
+        (request as UntagEntriesRequest).tagId,
       ),
     ),
   );
@@ -237,6 +275,11 @@ function isEntryIdRequest(value: unknown): value is EntryIdRequest {
   return isRecord(value) && isPositiveInteger(value.entryId);
 }
 
+function isEntryIdsRequest(value: unknown): value is EntryIdsRequest {
+  return isRecord(value)
+    && isPositiveIntegerArray(value.entryIds);
+}
+
 function isCreateTagRequest(value: unknown): value is CreateTagRequest {
   return isRecord(value) && typeof value.tagName === 'string';
 }
@@ -251,6 +294,24 @@ function isUntagEntryRequest(value: unknown): value is UntagEntryRequest {
   return isRecord(value)
     && isPositiveInteger(value.entryId)
     && isPositiveInteger(value.tagId);
+}
+
+function isTagEntriesRequest(value: unknown): value is TagEntriesRequest {
+  return isRecord(value)
+    && isPositiveIntegerArray(value.entryIds)
+    && typeof value.tagName === 'string';
+}
+
+function isUntagEntriesRequest(value: unknown): value is UntagEntriesRequest {
+  return isRecord(value)
+    && isPositiveIntegerArray(value.entryIds)
+    && isPositiveInteger(value.tagId);
+}
+
+function isPositiveIntegerArray(value: unknown): value is number[] {
+  return Array.isArray(value)
+    && value.length > 0
+    && value.every(isPositiveInteger);
 }
 
 function isAutoTagGenerateRequest(value: unknown): value is AutoTagGenerateRequest {

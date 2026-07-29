@@ -78,7 +78,7 @@ export interface EntryUpdateReadingProgressRequest {
 }
 
 export interface EntryMarkStarredRequest {
-  id: number;
+  ids: number[];
   isStarred: boolean;
 }
 

@@ -122,6 +122,26 @@ describe('EntryStore', () => {
     });
   });
 
+  describe('markStarredMany', () => {
+    it('updates every selected entry in one operation', () => {
+      const first = entryStore.createOrUpdate({
+        feedId,
+        guid: 'star-one',
+        title: 'First',
+      }).id;
+      const second = entryStore.createOrUpdate({
+        feedId,
+        guid: 'star-two',
+        title: 'Second',
+      }).id;
+
+      entryStore.markStarredMany([first, second], true);
+
+      expect(entryStore.findById(first)?.isStarred).toBe(true);
+      expect(entryStore.findById(second)?.isStarred).toBe(true);
+    });
+  });
+
   describe('query', () => {
     beforeEach(() => {
       // Create entries with different dates
