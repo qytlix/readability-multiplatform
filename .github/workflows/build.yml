@@ -115,9 +115,11 @@ jobs:
           mkdir -p "${pkgdir}/usr/lib/${pkgname}"
           mkdir -p "${pkgdir}/usr/bin"
           mkdir -p "${pkgdir}/usr/share/applications"
+          mkdir -p "${pkgdir}/usr/share/pixmaps"
 
           cp -r out/Shale-linux-x64/* "${pkgdir}/usr/lib/${pkgname}/"
           install -m644 "${{ github.workspace }}/shale.desktop" "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+          install -m644 "${{ github.workspace }}/assets/icons/linux/shale-app-icon-512.png" "${pkgdir}/usr/share/pixmaps/${pkgname}.png"
           ln -sf "/usr/lib/${pkgname}/Shale" "${pkgdir}/usr/bin/${pkgname}"
           chmod 4755 "${pkgdir}/usr/lib/${pkgname}/chrome-sandbox" 2>/dev/null || true
 
