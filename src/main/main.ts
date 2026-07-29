@@ -37,6 +37,10 @@ import { StructuredLogger, type AppInitializationPhase } from './logging/Structu
 import { NormalShutdownCoordinator } from './logging/NormalShutdownCoordinator';
 import { installMainWindowNavigationGuards } from './navigation-guards';
 import { initializePageZoom, installPageZoomInputGuard } from './page-zoom';
+import {
+  createBrandSplashWindow,
+  resolveSplashHtmlPath,
+} from './splash-window';
 
 if (started) {
   app.quit();
@@ -51,6 +55,7 @@ if (env.XDG_SESSION_TYPE === 'wayland' || env.WAYLAND_DISPLAY) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let splashWindow: BrowserWindow | null = null;
 let lifecycleLogger: StructuredLogger | null = null;
 
 const normalShutdownCoordinator = new NormalShutdownCoordinator({
@@ -71,6 +76,32 @@ const linuxWindowIconPath = app.isPackaged
 const terminologyDbPath = app.isPackaged
   ? path.join(process.resourcesPath, 'terminology-libraries.sqlite')
   : path.join(__dirname, '../../resources/terminology/terminology-libraries.sqlite');
+
+const splashHtmlPath = resolveSplashHtmlPath({
+  isPackaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+  moduleDirectory: __dirname,
+});
+
+function closeSplashWindow(): void {
+  const currentSplashWindow = splashWindow;
+  splashWindow = null;
+  if (currentSplashWindow && !currentSplashWindow.isDestroyed()) {
+    currentSplashWindow.close();
+  }
+}
+
+function showSplashWindow(): void {
+  closeSplashWindow();
+  const newSplashWindow = createBrandSplashWindow({
+    htmlPath: splashHtmlPath,
+    linuxIconPath: process.platform === 'linux' ? linuxWindowIconPath : undefined,
+  });
+  splashWindow = newSplashWindow;
+  newSplashWindow.once('closed', () => {
+    if (splashWindow === newSplashWindow) splashWindow = null;
+  });
+}
 
 const createWindow = (): void => {
   const applicationUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
@@ -97,8 +128,10 @@ const createWindow = (): void => {
   initializePageZoom(newMainWindow.webContents, () => {
     if (!newMainWindow.isDestroyed()) {
       newMainWindow.show();
+      closeSplashWindow();
     }
   });
+  newMainWindow.webContents.once('did-fail-load', closeSplashWindow);
 
   newMainWindow.on('closed', () => {
     if (mainWindow === newMainWindow) {
@@ -129,6 +162,7 @@ function elapsedMilliseconds(startedAt: number): number {
 
 async function initializeApplication(): Promise<void> {
   const applicationInitializationStartedAt = performance.now();
+  showSplashWindow();
   const structuredLogDirectory = path.join(app.getPath('logs'), 'structured');
   try {
     lifecycleLogger = new StructuredLogger({
@@ -259,7 +293,11 @@ function getDiagnosticDisplayEnvironment(): DiagnosticDisplayEnvironment {
   };
 }
 
-void app.whenReady().then(initializeApplication);
+void app.whenReady().then(initializeApplication).catch(async () => {
+  closeSplashWindow();
+  await flushLifecycleLogger();
+  app.quit();
+});
 
 app.on('before-quit', (event) => {
   normalShutdownCoordinator.handleBeforeQuit(event);
