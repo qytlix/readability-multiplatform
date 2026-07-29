@@ -107,7 +107,7 @@ jobs:
         run: |
           set -euo pipefail
           pkgname="shale"
-          pkgver="1.0.0"
+          pkgver="$(node -p "require('./package.json').version")"
           pkgrel="1"
           pkgdir="/tmp/pkgroot"
 
