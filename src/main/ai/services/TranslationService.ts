@@ -319,20 +319,18 @@ export class TranslationService {
       source.sourceContentHash,
       source.segmenterVersion,
     );
-    if (pendingProductResult && pendingProductResult.id !== compatibleResult?.id) {
+    if (pendingProductResult) {
       return toState(pendingProductResult, fallbackActiveResult);
     }
-    if (compatibleResult?.status === 'running') {
-      return toState(compatibleResult, activeCompatibleResult ?? fallbackActiveResult);
-    }
-    if (
-      compatibleResult?.status === 'failed'
-      && compatibleResult.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED
-    ) {
-      return toState(compatibleResult, activeCompatibleResult ?? fallbackActiveResult);
-    }
     if (activeCompatibleResult) return toState(activeCompatibleResult);
-    if (compatibleResult) return toState(compatibleResult, fallbackActiveResult);
+    const isHistoricalPendingResult = compatibleResult?.status === 'running'
+      || (
+        compatibleResult?.status === 'failed'
+        && compatibleResult.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED
+      );
+    if (compatibleResult && !isHistoricalPendingResult) {
+      return toState(compatibleResult, fallbackActiveResult);
+    }
     if (fallbackActiveResult) return toState(fallbackActiveResult);
 
     return this.translationStore.findLatestResult(
@@ -405,6 +403,13 @@ export class TranslationService {
       source.sourceContentHash,
       source.segmenterVersion,
     );
+    const latestProductResult = this.translationStore.findLatestProductResult(
+      request.entryId,
+      request.sourceLanguage,
+      request.targetLanguage,
+      source.sourceContentHash,
+      source.segmenterVersion,
+    );
 
     if (this.activeRun) {
       if (
@@ -451,7 +456,9 @@ export class TranslationService {
       ? pendingProductResult?.status === 'failed'
         && pendingProductResult.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED
         ? pendingProductResult
-        : existingResult !== undefined && existingResult.status !== 'succeeded'
+        : existingResult !== undefined
+          && existingResult.id === latestProductResult?.id
+          && existingResult.status !== 'succeeded'
           ? existingResult
           : undefined
       : undefined;

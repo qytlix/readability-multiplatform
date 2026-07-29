@@ -856,6 +856,7 @@ describe('TranslationPanel failure feedback', () => {
       },
     });
     const onRetranslationStatusChange = vi.fn();
+    let eventListener: ((event: TranslationStreamEvent) => void) | undefined;
     Object.defineProperty(window, 'shaleAPI', {
       configurable: true,
       value: {
@@ -871,7 +872,10 @@ describe('TranslationPanel failure feedback', () => {
           generate,
           pause,
           prioritize: vi.fn().mockResolvedValue({ ok: true, data: { accepted: true } }),
-          onEvent: vi.fn(() => () => undefined),
+          onEvent: vi.fn((listener: (event: TranslationStreamEvent) => void) => {
+            eventListener = listener;
+            return () => undefined;
+          }),
         },
       } as unknown as typeof window.shaleAPI,
     });
@@ -934,6 +938,27 @@ describe('TranslationPanel failure feedback', () => {
       runId: replacementResult.id,
       state: 'running',
     }));
+
+    await act(async () => {
+      eventListener?.({
+        type: 'completed',
+        runId: replacementResult.id,
+        entryId: replacementResult.entryId,
+        sourceLanguage: replacementResult.sourceLanguage,
+        targetLanguage: replacementResult.targetLanguage,
+        result: { ...replacementResult, status: 'succeeded' },
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(onRetranslationStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      runId: replacementResult.id,
+      state: 'completed',
+    }));
+    expect(onRetranslationStatusChange).not.toHaveBeenLastCalledWith(expect.objectContaining({
+      state: 'paused',
+    }));
+    expect(container.querySelector('.translation-pause-toast')).toBeNull();
 
     act(() => root.unmount());
     container.remove();

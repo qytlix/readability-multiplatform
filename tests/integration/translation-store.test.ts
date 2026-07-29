@@ -110,6 +110,85 @@ describe('TranslationStore', () => {
     });
   });
 
+  it('does not revive an older paused run after a newer product run succeeds', () => {
+    const createRun = (translationVariant: 'standard' | 'deep') => translationStore.createRun({
+      entryId: 1,
+      providerProfileId,
+      sourceLanguage: 'auto',
+      targetLanguage: 'zh-CN',
+      sourceContentHash: 'canonical-task-hash',
+      segmenterVersion: 'v1',
+      promptVersion: 'translation-v1',
+      terminologyPackVersion: 'none',
+      translationVariant,
+      segments: [{
+        id: 'seg_0', orderIndex: 0, type: 'paragraph',
+        sourceHtml: '<p>Source</p>', sourceText: 'Source',
+      }],
+    });
+    const paused = createRun('deep');
+    translationStore.saveDeepBatchCheckpoint(paused.id, {
+      batchKey: 'seg_0', stage: 'rewrite', draftJson: '[]', reviewJson: '{"issues":[]}',
+    });
+    translationStore.markRunPaused(paused.id, {
+      code: 'TRANSLATION_PAUSED', message: 'Paused.', retryable: true,
+    });
+    const completed = createRun('standard');
+    translationStore.markSegmentSucceeded(completed.id, 'seg_0', '完成', '<p>完成</p>', []);
+    translationStore.markRunSucceeded(completed.id);
+
+    expect(translationStore.findLatestPendingProductResult(
+      1, 'auto', 'zh-CN', 'canonical-task-hash', 'v1',
+    )).toBeUndefined();
+    expect(translationStore.findDeepBatchCheckpoint(paused.id, 'seg_0')).toBeUndefined();
+    expect(translationStore.findLatestActiveProductResult(
+      1, 'auto', 'zh-CN', 'canonical-task-hash', 'v1',
+    )?.id).toBe(completed.id);
+  });
+
+  it('reconciles terminal success over residual pause metadata and checkpoints', () => {
+    const run = translationStore.createRun({
+      entryId: 1,
+      providerProfileId,
+      sourceLanguage: 'auto',
+      targetLanguage: 'zh-CN',
+      sourceContentHash: 'terminal-reconcile-hash',
+      segmenterVersion: 'v1',
+      promptVersion: 'translation-v1',
+      terminologyPackVersion: 'none',
+      translationVariant: 'deep',
+      segments: [{
+        id: 'seg_0', orderIndex: 0, type: 'paragraph',
+        sourceHtml: '<p>Source</p>', sourceText: 'Source',
+      }],
+    });
+    translationStore.markSegmentSucceeded(run.id, 'seg_0', '完成', '<p>完成</p>', []);
+    translationStore.markRunSucceeded(run.id);
+    db.prepare(`
+      UPDATE translation_result
+      SET errorCode = 'TRANSLATION_PAUSED', errorMessage = 'Stale pause',
+          errorRetryable = 1, completedAt = NULL
+      WHERE id = ?
+    `).run(run.id);
+    translationStore.saveDeepBatchCheckpoint(run.id, {
+      batchKey: 'seg_0', stage: 'rewrite', draftJson: '[]', reviewJson: '{"issues":[]}',
+    });
+
+    expect(translationStore.reconcileInterruptedRuns()).toBe(0);
+
+    expect(translationStore.findLatestActiveProductResult(
+      1, 'auto', 'zh-CN', 'terminal-reconcile-hash', 'v1',
+    )).toMatchObject({ id: run.id, status: 'succeeded', error: undefined });
+    expect(translationStore.findDeepBatchCheckpoint(run.id, 'seg_0')).toBeUndefined();
+    expect(db.prepare(`
+      SELECT errorCode, errorMessage, errorRetryable, completedAt
+      FROM translation_result WHERE id = ?
+    `).get(run.id)).toMatchObject({
+      errorCode: null, errorMessage: null, errorRetryable: null,
+      completedAt: expect.any(String),
+    });
+  });
+
   it('persists expert and smart-context identity plus a non-fatal context warning', () => {
     const run = translationStore.createRun({
       entryId: 1,

@@ -5,6 +5,7 @@ import {
   createElement,
   Fragment,
   forwardRef,
+  StrictMode,
   useImperativeHandle,
   type ReactNode,
 } from 'react';
@@ -217,6 +218,52 @@ describe('EntryDetail content refresh', () => {
     expect(fetchAndClean).toHaveBeenCalledWith(entry.id);
     expect(container.textContent).toContain('Newest update');
     expect(container.textContent).not.toContain('ERR_INVALID_URL');
+  });
+
+  it('keeps a real cache miss loading until fetch and clean succeeds', async () => {
+    let resolveFetch!: (value: { ok: true; data: CleanedContent }) => void;
+    const pendingFetch = new Promise<{ ok: true; data: CleanedContent }>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const fetchAndClean = vi.fn(() => pendingFetch);
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        content: {
+          get: vi.fn().mockResolvedValue({ ok: true, data: null }),
+          fetchAndClean,
+        },
+        annotation: { list: vi.fn().mockResolvedValue({ ok: true, data: [] }) },
+      } as unknown as typeof window.shaleAPI,
+    });
+
+    await act(async () => {
+      root.render(createElement(EntryDetail, {
+        entry,
+        contentRefreshVersion: 0,
+        aiViewState: { summaryVisible: false, translationVisible: false },
+        feedLoadStatus: 'success', feedLoadError: '', feedCount: 1,
+        entryLoadStatus: 'success', entryLoadError: '', entryCount: 1,
+        onAddFeed: vi.fn(), onRetryFeeds: vi.fn(), onRetryEntries: vi.fn(),
+        aiPreferences: DEFAULT_AI_PREFERENCES, aiToolbarTarget: null,
+        onAIViewStateChange: vi.fn(),
+        onReadingProgressChange: vi.fn().mockResolvedValue(undefined),
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchAndClean).toHaveBeenCalledWith(entry.id);
+    expect(container.textContent).toContain('Fetching and cleaning article content...');
+
+    await act(async () => {
+      resolveFetch({ ok: true, data: refreshedContent });
+      await pendingFetch;
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Newest update');
+    expect(container.textContent).not.toContain('Fetching and cleaning article content...');
   });
 
   it('shows a Feed preview while the full article loads in the background', async () => {
@@ -438,6 +485,44 @@ describe('EntryDetail content refresh', () => {
     });
     expect(container.textContent).toContain('Earlier update');
     expect(container.textContent).not.toContain('Old request failed');
+  });
+
+  it('restarts cached content restoration when mount effects are replayed for the same entry', async () => {
+    const get = vi.fn().mockResolvedValue({ ok: true, data: cachedContent });
+    const fetchAndClean = vi.fn();
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        content: { get, fetchAndClean },
+        annotation: { list: vi.fn().mockResolvedValue({ ok: true, data: [] }) },
+      } as unknown as typeof window.shaleAPI,
+    });
+
+    await act(async () => {
+      root.render(createElement(
+        StrictMode,
+        null,
+        createElement(EntryDetail, {
+          entry,
+          contentRefreshVersion: 0,
+          aiViewState: { summaryVisible: false, translationVisible: false },
+          feedLoadStatus: 'success', feedLoadError: '', feedCount: 1,
+          entryLoadStatus: 'success', entryLoadError: '', entryCount: 1,
+          onAddFeed: vi.fn(), onRetryFeeds: vi.fn(), onRetryEntries: vi.fn(),
+          aiPreferences: DEFAULT_AI_PREFERENCES, aiToolbarTarget: null,
+          onAIViewStateChange: vi.fn(),
+          onReadingProgressChange: vi.fn().mockResolvedValue(undefined),
+        }),
+      ));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(fetchAndClean).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Earlier update');
+    expect(container.textContent).not.toContain('Fetching and cleaning article content...');
   });
 
   it('reports content unavailable only after content restoration finally fails', async () => {

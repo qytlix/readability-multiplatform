@@ -160,7 +160,6 @@ export const EntryDetail = ({
     useState<ReadingBookTurnMotion | null>(null);
   const [readingJumpTarget, setReadingJumpTarget] =
     useState<'start' | 'end'>('end');
-  const prevEntryId = useRef<number | null>(null);
   const handledRefreshVersionsRef = useRef(new Map<number, number>());
   const handledRetranslationRequestRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -250,7 +249,6 @@ export const EntryDetail = ({
 
   useEffect(() => {
     if (!entry) {
-      prevEntryId.current = null;
       setContent(null);
       setStatus('idle');
       setLinkError('');
@@ -267,9 +265,6 @@ export const EntryDetail = ({
     // Abort any in-flight request for previous entry (P2-#10: race condition fix)
     abortRef.current?.abort();
 
-    // Avoid re-fetching same entry
-    if (prevEntryId.current === entry.id && !forceRefresh) return;
-    prevEntryId.current = entry.id;
     const loadController = new AbortController();
     abortRef.current = loadController;
 

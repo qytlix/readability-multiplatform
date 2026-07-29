@@ -178,6 +178,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         return;
       }
       updateTranslationState(result.data);
+      if (result.data.state !== 'paused') setShowPauseNotice(false);
       if (result.data.state === 'running') {
         activeRunIdRef.current = result.data.result.id;
         setIsGenerating(true);
@@ -230,6 +231,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         }
         updateTranslationState({ state: 'succeeded', result: event.result });
         setIsGenerating(false);
+        setShowPauseNotice(false);
         onBilingualChange(true);
         activeRunIdRef.current = null;
         return;
@@ -270,6 +272,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
           setRetranslationTerminalStatus({ state: 'failed', runId: event.runId });
         }
         setIsGenerating(false);
+        setShowPauseNotice(false);
         activeRunIdRef.current = null;
         void loadState({ preserveFeedback: retranslationFailed });
       }

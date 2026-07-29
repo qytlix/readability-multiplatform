@@ -563,6 +563,85 @@ describe('TranslationService', () => {
     ]);
   });
 
+  it('ignores a superseded paused history after force-new success and restart', async () => {
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+    };
+    const original = service.generate(request);
+    await vi.waitFor(() => {
+      expect(service.getState(request)).toMatchObject({
+        state: 'succeeded', result: { id: original.runId },
+      });
+    });
+    const originalState = service.getState(request);
+    if (originalState.state !== 'succeeded') throw new Error('Expected the original result.');
+    const originalResult = originalState.result;
+    if (originalResult.translationVariant !== 'standard'
+      && originalResult.translationVariant !== 'deep') {
+      throw new Error('Expected a product Translation variant.');
+    }
+    const profile = profileStore.findActiveWithSecret();
+    if (!profile) throw new Error('Expected an active provider profile.');
+    const store = new TranslationStore(database);
+    const pausedHistory = store.createRun({
+      entryId: originalResult.entryId,
+      providerProfileId: profile.id,
+      sourceLanguage: originalResult.sourceLanguage,
+      targetLanguage: originalResult.targetLanguage,
+      sourceContentHash: originalResult.sourceContentHash,
+      segmenterVersion: originalResult.segmenterVersion,
+      promptVersion: originalResult.promptVersion,
+      terminologyPackVersion: originalResult.terminologyPackVersion,
+      expertId: originalResult.expertId,
+      expertContentHash: originalResult.expertContentHash,
+      smartContextEnabled: originalResult.smartContextEnabled,
+      translationVariant: originalResult.translationVariant,
+      contextPromptVersion: originalResult.contextPromptVersion,
+      segments: originalResult.segments.map((segment) => ({
+        id: segment.sourceSegmentId,
+        orderIndex: segment.orderIndex,
+        type: segment.sourceType,
+        sourceHtml: segment.sourceHtml,
+        sourceText: segment.sourceText,
+      })),
+    });
+    store.markRunPaused(pausedHistory.id, {
+      code: TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED,
+      message: 'Historical pause.',
+      retryable: true,
+    });
+
+    const replacement = service.generate({ ...request, forceNew: true });
+    expect(replacement.runId).toBeGreaterThan(pausedHistory.id);
+    await vi.waitFor(() => {
+      expect(service.getState(request)).toMatchObject({
+        state: 'succeeded', result: { id: replacement.runId },
+      });
+    });
+
+    const restartedService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      provider,
+    );
+    restartedService.reconcileInterruptedRuns();
+    expect(restartedService.getState(request)).toMatchObject({
+      state: 'succeeded', result: { id: replacement.runId },
+    });
+    const nextReplacement = restartedService.generate({ ...request, forceNew: true });
+    expect(nextReplacement.reused).toBe(false);
+    expect(nextReplacement.runId).toBeGreaterThan(replacement.runId);
+    await vi.waitFor(() => {
+      expect(restartedService.getState(request)).toMatchObject({
+        state: 'succeeded', result: { id: nextReplacement.runId },
+      });
+    });
+  });
+
   it('keeps API keys and article content out of Translation diagnostics', async () => {
     const apiKeyCanary = 'sk-m6-private-api-key-canary';
     const articleCanary = 'M6_PRIVATE_ARTICLE_BODY_CANARY';

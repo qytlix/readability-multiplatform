@@ -244,16 +244,33 @@ export class TranslationStore {
     sourceContentHash: string,
     segmenterVersion: string,
   ): TranslationResult | undefined {
+    const latest = this.findLatestProductResult(
+      entryId,
+      sourceLanguage,
+      targetLanguage,
+      sourceContentHash,
+      segmenterVersion,
+    );
+    return latest?.status === 'running'
+      || (latest?.status === 'failed'
+        && latest.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED)
+      ? latest
+      : undefined;
+  }
+
+  findLatestProductResult(
+    entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
+    targetLanguage: TranslationTargetLanguage,
+    sourceContentHash: string,
+    segmenterVersion: string,
+  ): TranslationResult | undefined {
     const row = this.db.prepare(`
       SELECT * FROM translation_result
       WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
         AND sourceContentHash = ? AND segmenterVersion = ?
         AND translationVariant IN ('standard', 'deep')
-        AND (
-          status = 'running'
-          OR (status = 'failed' AND errorCode = ?)
-        )
-      ORDER BY updatedAt DESC, id DESC
+      ORDER BY id DESC
       LIMIT 1
     `).get(
       entryId,
@@ -261,7 +278,6 @@ export class TranslationStore {
       targetLanguage,
       sourceContentHash,
       segmenterVersion,
-      TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED,
     ) as TranslationResultRow | undefined;
     return row ? this.toResult(row) : undefined;
   }
@@ -464,8 +480,22 @@ export class TranslationStore {
         WHERE id = ? AND status = 'running'
       `).run(now, now, runId);
       this.db.prepare(`
-        DELETE FROM translation_deep_batch_checkpoint WHERE translationResultId = ?
-      `).run(runId);
+        DELETE FROM translation_deep_batch_checkpoint
+        WHERE translationResultId IN (
+          SELECT id FROM translation_result
+          WHERE id <= ?
+            AND entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
+            AND sourceContentHash = ? AND segmenterVersion = ?
+            AND translationVariant IN ('standard', 'deep')
+        )
+      `).run(
+        runId,
+        run.entryId,
+        run.sourceLanguage,
+        run.targetLanguage,
+        run.sourceContentHash,
+        run.segmenterVersion,
+      );
     });
     activate();
     const result = this.findById(runId);
@@ -523,18 +553,37 @@ export class TranslationStore {
 
   reconcileInterruptedRuns(): number {
     const now = new Date().toISOString();
-    const result = this.db.prepare(`
-      UPDATE translation_result
-      SET status = 'failed', errorCode = ?, errorMessage = ?, errorRetryable = 1,
-          completedAt = ?, updatedAt = ?
-      WHERE status = 'running'
-    `).run(
-      TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
-      'Translation generation was interrupted before completion.',
-      now,
-      now,
-    );
-    return result.changes;
+    const reconcile = this.db.transaction(() => {
+      const interrupted = this.db.prepare(`
+        UPDATE translation_result
+        SET status = 'failed', errorCode = ?, errorMessage = ?, errorRetryable = 1,
+            completedAt = ?, updatedAt = ?
+        WHERE status = 'running'
+      `).run(
+        TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
+        'Translation generation was interrupted before completion.',
+        now,
+        now,
+      );
+      // Older builds could leave pause/error metadata or deep checkpoints on a
+      // row that had already reached success. The terminal status is canonical.
+      this.db.prepare(`
+        UPDATE translation_result
+        SET errorCode = NULL, errorMessage = NULL, errorRetryable = NULL,
+            completedAt = COALESCE(completedAt, updatedAt)
+        WHERE status = 'succeeded'
+          AND (errorCode IS NOT NULL OR errorMessage IS NOT NULL OR errorRetryable IS NOT NULL
+               OR completedAt IS NULL)
+      `).run();
+      this.db.prepare(`
+        DELETE FROM translation_deep_batch_checkpoint
+        WHERE translationResultId IN (
+          SELECT id FROM translation_result WHERE status = 'succeeded'
+        )
+      `).run();
+      return interrupted.changes;
+    });
+    return reconcile();
   }
 
   findDeepBatchCheckpoint(
