@@ -59,17 +59,20 @@ import {
 
 describe('brand splash window', () => {
   it('resolves development and packaged resource paths', () => {
+    const developmentRoot = path.resolve('fixture-app');
+    const moduleDirectory = path.join(developmentRoot, '.vite', 'build');
+    const resourcesPath = path.resolve('fixture-resources');
     expect(resolveSplashHtmlPath({
       isPackaged: false,
-      resourcesPath: 'R:\\resources',
-      moduleDirectory: 'E:\\app\\.vite\\build',
-    })).toBe(path.normalize('E:\\app\\resources\\splash\\splash.html'));
+      resourcesPath,
+      moduleDirectory,
+    })).toBe(path.join(developmentRoot, 'resources', 'splash', 'splash.html'));
 
     expect(resolveSplashHtmlPath({
       isPackaged: true,
-      resourcesPath: 'R:\\resources',
-      moduleDirectory: 'E:\\app\\.vite\\build',
-    })).toBe(path.normalize('R:\\resources\\splash\\splash.html'));
+      resourcesPath,
+      moduleDirectory,
+    })).toBe(path.join(resourcesPath, 'splash', 'splash.html'));
   });
 
   it('uses a frameless local-only window without a taskbar entry', async () => {
