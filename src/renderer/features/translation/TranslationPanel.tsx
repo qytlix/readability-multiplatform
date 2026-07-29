@@ -912,23 +912,10 @@ export function getDisplayedResult(state: TranslationState): TranslationResult |
   if (!candidate || !activeResult || candidate.id === activeResult.id) {
     return activeResult ?? candidate;
   }
-
-  const replacementSegments = new Map(
-    candidate.segments.map((segment) => [segment.sourceSegmentId, segment]),
-  );
-  return {
-    ...activeResult,
-    // The candidate is persisted before its event is emitted. Project every
-    // successful candidate segment over the active result, while failed and
-    // pending candidate segments keep their last known completed translation.
-    status: candidate.status,
-    error: candidate.error,
-    updatedAt: candidate.updatedAt,
-    segments: activeResult.segments.map((activeSegment) => {
-      const replacement = replacementSegments.get(activeSegment.sourceSegmentId);
-      return replacement?.status === 'succeeded' ? replacement : activeSegment;
-    }),
-  };
+  // A candidate is not displayable until the whole run succeeds. This keeps
+  // both same-mode retranslations and cross-mode replacements from mixing a
+  // partial candidate into the last complete result.
+  return activeResult;
 }
 
 export function hasCompleteTranslation(state: TranslationState): boolean {

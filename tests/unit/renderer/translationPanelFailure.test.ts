@@ -550,7 +550,7 @@ describe('TranslationPanel failure feedback', () => {
     container.remove();
   });
 
-  it('projects each persisted replacement segment over the previous Translation only after success', () => {
+  it('keeps the complete previous Translation while replacement segments settle', () => {
     const original = succeededResult();
     const candidate: TranslationResult = {
       ...original,
@@ -578,11 +578,10 @@ describe('TranslationPanel failure feedback', () => {
     };
 
     const afterSuccess = mergeUpdatedSegment(state, persistedReplacement);
-    const progressivelyDisplayed = getDisplayedResult(afterSuccess);
-    expect(progressivelyDisplayed?.segments[1]?.translatedText)
-      .toBe('Newly translated paragraph.');
-    expect(progressivelyDisplayed?.segments[2]?.translatedText)
-      .toBe(original.segments[2]?.translatedText);
+    const displayedAfterSuccess = getDisplayedResult(afterSuccess);
+    expect(displayedAfterSuccess?.id).toBe(original.id);
+    expect(displayedAfterSuccess?.segments[1]?.translatedText)
+      .toBe(original.segments[1]?.translatedText);
 
     const failureCandidate = candidate.segments[2];
     if (!failureCandidate) throw new Error('Expected a second replacement segment.');

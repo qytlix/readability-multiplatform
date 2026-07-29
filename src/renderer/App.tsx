@@ -722,6 +722,7 @@ useEffect(() => {
     entryId: number,
     result: 'started' | 'content-unavailable' | 'no-translation' | 'active' | 'failed',
   ): void => {
+    setRetranslationRequest((current) => current?.entryId === entryId ? null : current);
     if (selectedEntry?.id !== entryId) return;
     if (result === 'content-unavailable') {
       setRetranslationNotice('当前文章尚未拉取成功');

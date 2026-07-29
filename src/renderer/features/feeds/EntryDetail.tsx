@@ -265,26 +265,26 @@ export const EntryDetail = ({
     }
 
     // Abort any in-flight request for previous entry (P2-#10: race condition fix)
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
+    abortRef.current?.abort();
 
     // Avoid re-fetching same entry
     if (prevEntryId.current === entry.id && !forceRefresh) return;
     prevEntryId.current = entry.id;
+    const loadController = new AbortController();
+    abortRef.current = loadController;
 
     const loadContent = async () => {
       setContent(null);
       setStatus('loading');
       setError('');
       setLinkError('');
-      abortRef.current = new AbortController();
       let showingPreview = false;
 
       try {
         // First check if content already exists
         if (!forceRefresh) {
           const existingResult = await window.shaleAPI.content.get(entry.id);
+          if (loadController.signal.aborted) return;
           if (!existingResult.ok) {
             // IPC-level error (not "no content")
             setStatus('error');
@@ -309,6 +309,7 @@ export const EntryDetail = ({
 
         // No existing content (null) — fetch and clean
         const fetchResult = await window.shaleAPI.content.fetchAndClean(entry.id);
+        if (loadController.signal.aborted) return;
         if (!fetchResult.ok) {
           const message = fetchResult.error?.message ?? 'Failed to fetch content';
           if (showingPreview) return;
@@ -336,6 +337,7 @@ export const EntryDetail = ({
           onContentRefreshComplete?.(entry.id, { ok: true });
         }
       } catch (err: unknown) {
+        if (loadController.signal.aborted) return;
         // Ignore abort errors
         if (err instanceof Error && err.name === 'AbortError') return;
         if (showingPreview) return;
@@ -352,10 +354,10 @@ export const EntryDetail = ({
     loadContent();
 
     return () => {
-      // Cleanup: abort in-flight request on unmount
-      if (abortRef.current) {
-        abortRef.current.abort();
-      }
+      // The IPC promise itself may not be cancellable, so every continuation
+      // above also checks this load-local signal before mutating Renderer state.
+      loadController.abort();
+      if (abortRef.current === loadController) abortRef.current = null;
     };
   }, [
     contentRefreshVersion,
@@ -404,6 +406,10 @@ export const EntryDetail = ({
     ) {
       return;
     }
+    // A request is actionable only after content restoration reaches a terminal
+    // state. Consuming it during remount's idle/loading window creates a false
+    // "content unavailable" result for articles already persisted locally.
+    if (status === 'idle' || status === 'loading') return;
     handledRetranslationRequestRef.current = retranslationRequest.version;
     const requestRetranslation = async (): Promise<void> => {
       const result = !isTranslationReady
@@ -418,6 +424,7 @@ export const EntryDetail = ({
     isTranslationReady,
     onRetranslationRequestComplete,
     retranslationRequest,
+    status,
   ]);
 
   useEffect(() => () => {
