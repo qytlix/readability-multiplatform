@@ -23,6 +23,11 @@ interface TagFloatingWindowProps {
   maxCandidates?: number;
   /** Max number of existing-tag suggestions to show (default 10). */
   tagSuggestionMaxCount?: number;
+  autoTrigger?: boolean;
+  confirmMode?: 'manual' | 'auto';
+  silent?: boolean;
+  onAutoConfirmed?: (count: number) => void;
+  onFeedback?: (message: string) => void;
 }
 
 type LoadState = 'loading' | 'loaded' | 'error';
@@ -35,6 +40,11 @@ export const TagFloatingWindow = ({
   onTagsChanged,
   maxCandidates,
   tagSuggestionMaxCount = 10,
+  autoTrigger = false,
+  confirmMode = 'manual',
+  silent = false,
+  onAutoConfirmed,
+  onFeedback,
 }: TagFloatingWindowProps) => {
   const [tags, setTags] = useState<Tag[]>([]);
   const [availableTags, setAvailableTags] = useState<TagWithCount[]>([]);
@@ -224,7 +234,9 @@ export const TagFloatingWindow = ({
       ref={windowRef}
       className="tag-floating-window"
       style={
-        position
+        silent
+          ? { display: 'none' }
+          : position
           ? { position: 'fixed', top: position.top, right: position.right }
           : undefined
       }
@@ -238,8 +250,11 @@ export const TagFloatingWindow = ({
       <AutoTagPanel
         entryId={entryId}
         onTagsChanged={onTagsChanged}
-        autoTrigger
+        autoTrigger={autoTrigger}
         maxCandidates={maxCandidates}
+        confirmMode={confirmMode}
+        onAutoConfirmed={onAutoConfirmed}
+        onFeedback={onFeedback}
       />
       {duplicateWarning && (
         <p className="tag-floating-warning" role="alert">{duplicateWarning}</p>
