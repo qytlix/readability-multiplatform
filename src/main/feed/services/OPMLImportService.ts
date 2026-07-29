@@ -10,6 +10,8 @@ import {
   OPML_LOG_ERROR_CODES,
   type OPMLOperationLogger,
 } from './OPMLLogging';
+import type { SuspectedFeedDuplicate } from '../../../shared/contracts/feed.ipc';
+import type { FeedService } from './FeedService';
 
 export interface OPMLOutline {
   title?: string;
@@ -25,6 +27,7 @@ export interface OPMLImportResult {
   skipCount: number;
   failures: Array<{ title?: string; xmlUrl?: string; error: string }>;
   totalFound: number;
+  suspectedDuplicates?: SuspectedFeedDuplicate[];
 }
 
 export type OPMLFileReader = (
@@ -129,6 +132,7 @@ export class OPMLImportService {
     feedStore: FeedStore,
     private readonly logger?: OPMLOperationLogger,
     private readonly readOPMLFile: OPMLFileReader = readFile,
+    private readonly feedService?: FeedService,
   ) {
     this.feedStore = feedStore;
   }
@@ -139,6 +143,7 @@ export class OPMLImportService {
   async importFromFile(
     filePath: string,
     mode: 'merge' | 'replace',
+    suspectedDuplicatePolicy: 'warn' | 'keep' | 'skip' = 'warn',
   ): Promise<OPMLImportResult> {
     const startedAt = performance.now();
     let xml: string;
@@ -151,7 +156,11 @@ export class OPMLImportService {
     }
 
     try {
-      const result = await this.importFromContent(xml, mode);
+      const result = await this.importFromContent(
+        xml,
+        mode,
+        suspectedDuplicatePolicy,
+      );
       logOPMLImportCompleted(this.logger, {
         durationMs: elapsedOPMLMilliseconds(startedAt),
         count: result.totalFound,
@@ -173,7 +182,11 @@ export class OPMLImportService {
    * @param mode - 'merge' appends new feeds, skips duplicates
    *               'replace' removes feeds not in OPML, adds new ones
    */
-  async importFromContent(xml: string, mode: 'merge' | 'replace'): Promise<OPMLImportResult> {
+  async importFromContent(
+    xml: string,
+    mode: 'merge' | 'replace',
+    suspectedDuplicatePolicy: 'warn' | 'keep' | 'skip' = 'warn',
+  ): Promise<OPMLImportResult> {
     // Validate basic XML structure
     if (!xml.trim().startsWith('<?xml') && !xml.trim().startsWith('<opml')) {
       throw createFeedError('OPML_INVALID', 'File does not appear to be valid OPML XML', false);
@@ -208,23 +221,25 @@ export class OPMLImportService {
     }
 
     if (mode === 'replace') {
-      return this.importReplace(feedsToImport);
+      return this.importReplace(feedsToImport, suspectedDuplicatePolicy);
     }
 
-    return this.importMerge(feedsToImport);
+    return this.importMerge(feedsToImport, suspectedDuplicatePolicy);
   }
 
   /**
    * Merge mode: add new feeds, skip duplicates.
    */
-  private importMerge(
+  private async importMerge(
     feedsToImport: Array<{ title?: string; xmlUrl: string; htmlUrl?: string }>,
-  ): OPMLImportResult {
+    suspectedDuplicatePolicy: 'warn' | 'keep' | 'skip',
+  ): Promise<OPMLImportResult> {
     const result: OPMLImportResult = {
       successCount: 0,
       skipCount: 0,
       failures: [],
       totalFound: feedsToImport.length,
+      suspectedDuplicates: [],
     };
 
     for (const feed of feedsToImport) {
@@ -262,12 +277,29 @@ export class OPMLImportService {
           continue;
         }
 
-        // Create feed record (without syncing)
-        this.feedStore.create({
-          title: feed.title,
-          feedURL: feed.xmlUrl,
-          siteURL: feed.htmlUrl,
-        });
+        if (this.feedService) {
+          try {
+            await this.feedService.addFeed(feed.xmlUrl, {
+              allowSuspectedDuplicate: suspectedDuplicatePolicy === 'keep',
+            });
+          } catch (error) {
+            const suspected = getSuspectedDuplicate(error);
+            if (suspected) {
+              if (suspectedDuplicatePolicy === 'warn') {
+                result.suspectedDuplicates?.push(suspected);
+              }
+              result.skipCount++;
+              continue;
+            }
+            throw error;
+          }
+        } else {
+          this.feedStore.create({
+            title: feed.title,
+            feedURL: feed.xmlUrl,
+            siteURL: feed.htmlUrl,
+          });
+        }
 
         result.successCount++;
       } catch (error) {
@@ -286,9 +318,30 @@ export class OPMLImportService {
    * Replace mode: add all OPML feeds, then remove feeds not in OPML.
    * Uses FeedStore.deleteAllExcept for efficient batch deletion.
    */
-  private importReplace(
+  private async importReplace(
     feedsToImport: Array<{ title?: string; xmlUrl: string; htmlUrl?: string }>,
-  ): OPMLImportResult {
+    suspectedDuplicatePolicy: 'warn' | 'keep' | 'skip',
+  ): Promise<OPMLImportResult> {
+    if (this.feedService) {
+      const result = await this.importMerge(
+        feedsToImport,
+        suspectedDuplicatePolicy,
+      );
+      if (
+        suspectedDuplicatePolicy !== 'warn'
+        || !result.suspectedDuplicates?.length
+      ) {
+        const retainedKeys = new Set(feedsToImport.flatMap((feed) => {
+          try {
+            return [normalizeFeedURL(feed.xmlUrl)];
+          } catch {
+            return [];
+          }
+        }));
+        this.feedStore.deleteAllExcept(retainedKeys);
+      }
+      return result;
+    }
     const result: OPMLImportResult = {
       successCount: 0,
       skipCount: 0,
@@ -381,6 +434,19 @@ export class OPMLImportService {
       errorCode: OPML_LOG_ERROR_CODES.importProcessFailed,
     };
   }
+}
+
+function getSuspectedDuplicate(error: unknown): SuspectedFeedDuplicate | undefined {
+  if (
+    !error
+    || typeof error !== 'object'
+    || !('code' in error)
+    || error.code !== 'FEED_SUSPECTED_DUPLICATE'
+    || !('details' in error)
+  ) {
+    return undefined;
+  }
+  return error.details as SuspectedFeedDuplicate;
 }
 
 function getErrorCode(error: unknown): string | undefined {

@@ -224,8 +224,13 @@ export const FeedList = ({
   const handleOPMLImport = useCallback(async (
     filePath: string,
     mode: 'merge' | 'replace',
+    suspectedDuplicatePolicy: 'warn' | 'keep' | 'skip' = 'warn',
   ) => {
-    const result = await window.shaleAPI.opml.import(filePath, mode);
+    const result = await window.shaleAPI.opml.import(
+      filePath,
+      mode,
+      suspectedDuplicatePolicy,
+    );
     if (!result.ok) throw new Error(result.error.message);
     await onRefresh();
     return result.data;

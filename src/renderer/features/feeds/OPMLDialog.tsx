@@ -16,7 +16,11 @@ import {
 } from '../reader/ReaderIcons';
 
 interface OPMLDialogProps {
-  onImport: (filePath: string, mode: 'merge' | 'replace') => Promise<OPMLImportResult>;
+  onImport: (
+    filePath: string,
+    mode: 'merge' | 'replace',
+    suspectedDuplicatePolicy?: 'warn' | 'keep' | 'skip',
+  ) => Promise<OPMLImportResult>;
   onExport: (filePath: string) => Promise<void>;
   onClose: () => void;
 }
@@ -35,6 +39,7 @@ export const OPMLDialog = ({ onImport, onExport, onClose }: OPMLDialogProps) => 
   const [importStatus, setImportStatus] = useState<'idle' | 'importing' | 'success' | 'error'>('idle');
   const [importResult, setImportResult] = useState<OPMLImportResult | null>(null);
   const [importError, setImportError] = useState('');
+  const [lastImportPath, setLastImportPath] = useState('');
   const [exportStatus, setExportStatus] = useState<'idle' | 'exporting' | 'success' | 'error'>('idle');
   const [exportError, setExportError] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -97,6 +102,7 @@ export const OPMLDialog = ({ onImport, onExport, onClose }: OPMLDialogProps) => 
     if (dialogResult.canceled || dialogResult.filePaths.length === 0) return;
 
     const filePath = dialogResult.filePaths[0];
+    setLastImportPath(filePath);
 
     setImportStatus('importing');
     setImportError('');
@@ -108,6 +114,21 @@ export const OPMLDialog = ({ onImport, onExport, onClose }: OPMLDialogProps) => 
     } catch (error: unknown) {
       setImportStatus('error');
       setImportError(getErrorMessage(error, '导入失败，请检查文件后重试。'));
+    }
+  };
+
+  const resolveSuspectedDuplicates = async (
+    policy: 'keep' | 'skip',
+  ): Promise<void> => {
+    if (!lastImportPath) return;
+    setImportStatus('importing');
+    try {
+      const result = await onImport(lastImportPath, mode, policy);
+      setImportResult(result);
+      setImportStatus('success');
+    } catch (error: unknown) {
+      setImportStatus('error');
+      setImportError(getErrorMessage(error, '无法处理疑似重复订阅。'));
     }
   };
 
@@ -267,6 +288,35 @@ export const OPMLDialog = ({ onImport, onExport, onClose }: OPMLDialogProps) => 
                         </li>
                       ))}
                     </ul>
+                  )}
+                  {Boolean(importResult.suspectedDuplicates?.length) && (
+                    <div className="opml-duplicate-warning">
+                      <strong>
+                        发现 {importResult.suspectedDuplicates?.length} 个疑似重复订阅
+                      </strong>
+                      <ul>
+                        {importResult.suspectedDuplicates?.map((warning) => (
+                          <li key={warning.candidate.feedURL}>
+                            {warning.candidate.title ?? warning.candidate.feedURL}
+                            {'：'}{warning.reason}
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="opml-duplicate-actions">
+                        <button
+                          type="button"
+                          onClick={() => void resolveSuspectedDuplicates('skip')}
+                        >
+                          跳过这些订阅
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void resolveSuspectedDuplicates('keep')}
+                        >
+                          全部保留
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>

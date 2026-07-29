@@ -27,6 +27,18 @@ const MOCK_FEED_XML = `<?xml version="1.0" encoding="UTF-8"?>
   </item>
 </channel></rss>`;
 
+const OVERLAPPING_FEED_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>Overlapping Blog</title>
+  <link>https://overlap.example.com</link>
+  ${Array.from({ length: 10 }, (_, index) => `
+    <item>
+      <guid>overlap-${index}</guid>
+      <title>Post ${index}</title>
+      <link>https://overlap.example.com/posts/${index}</link>
+    </item>`).join('')}
+</channel></rss>`;
+
 function mockFetch(status: number, body: string, headers?: Record<string, string>) {
   return vi.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
@@ -139,6 +151,30 @@ describe('FeedService', () => {
           }),
         }),
       ]);
+    });
+
+    it('warns before adding a different URL with highly overlapping entries', async () => {
+      global.fetch = mockFetch(200, OVERLAPPING_FEED_XML);
+      await service.addFeed('https://overlap.example.com/rss.xml');
+
+      global.fetch = mockFetch(200, OVERLAPPING_FEED_XML);
+      await expect(
+        service.addFeed('https://overlap.example.com/atom.xml'),
+      ).rejects.toMatchObject({
+        code: 'FEED_SUSPECTED_DUPLICATE',
+        details: {
+          overlapCount: 10,
+          existing: { feedURL: 'https://overlap.example.com/rss.xml' },
+        },
+      });
+      expect(await service.getFeeds()).toHaveLength(1);
+
+      global.fetch = mockFetch(200, OVERLAPPING_FEED_XML);
+      await expect(service.addFeed(
+        'https://overlap.example.com/atom.xml',
+        { allowSuspectedDuplicate: true },
+      )).resolves.toBeDefined();
+      expect(await service.getFeeds()).toHaveLength(2);
     });
 
     it('should reject feed fetch failure', async () => {

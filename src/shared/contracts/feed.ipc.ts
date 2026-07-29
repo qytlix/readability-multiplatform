@@ -5,6 +5,15 @@ import type { CleanedContent } from './content.types';
 
 export interface FeedAddRequest {
   url: string;
+  allowSuspectedDuplicate?: boolean;
+}
+
+export interface SuspectedFeedDuplicate {
+  candidate: { title?: string; feedURL: string };
+  existing: { id: number; title?: string; feedURL: string };
+  overlapCount: number;
+  comparedCount: number;
+  reason: string;
 }
 
 export interface FeedAddResponse {
@@ -100,6 +109,7 @@ export type IPCResult<T> =
 export interface OPMLImportRequest {
   filePath: string;
   mode: 'merge' | 'replace';
+  suspectedDuplicatePolicy?: 'warn' | 'keep' | 'skip';
 }
 
 export interface OPMLImportResult {
@@ -107,6 +117,7 @@ export interface OPMLImportResult {
   skipCount: number;
   failures: Array<{ title?: string; xmlUrl?: string; error: string }>;
   totalFound: number;
+  suspectedDuplicates?: SuspectedFeedDuplicate[];
 }
 
 export interface OPMLExportRequest {

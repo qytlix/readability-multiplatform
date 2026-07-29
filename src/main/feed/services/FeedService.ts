@@ -15,6 +15,7 @@ import {
   logFeedOperation,
   type FeedOperationLogger,
 } from './FeedLogging';
+import { FeedDuplicateDetector } from './FeedDuplicateDetector';
 
 export interface SyncResult {
   feed: Feed;
@@ -26,6 +27,7 @@ export class FeedService {
   private feedStore: FeedStore;
   private entryStore: EntryStore;
   private parser: IFeedParserAdapter;
+  private duplicateDetector: FeedDuplicateDetector;
 
   constructor(
     feedStore: FeedStore,
@@ -36,12 +38,16 @@ export class FeedService {
     this.feedStore = feedStore;
     this.entryStore = entryStore;
     this.parser = parser ?? new FeedParserAdapter();
+    this.duplicateDetector = new FeedDuplicateDetector(entryStore);
   }
 
   /**
    * Add a feed by URL: fetch, parse, persist, and sync entries.
    */
-  async addFeed(url: string): Promise<{ feed: Feed; entries: EntryListItem[] }> {
+  async addFeed(
+    url: string,
+    options: { allowSuspectedDuplicate?: boolean } = {},
+  ): Promise<{ feed: Feed; entries: EntryListItem[] }> {
     const startedAt = performance.now();
     try {
       // 1. Validate URL
@@ -97,6 +103,26 @@ export class FeedService {
           'FEED_PARSE_FAILED',
           error instanceof Error ? error.message : 'Failed to parse feed',
           false,
+        );
+      }
+
+      const existingFeeds = typeof this.feedStore.findAll === 'function'
+        ? this.feedStore.findAll()
+        : [];
+      const suspectedDuplicate = this.duplicateDetector.findSuspectedDuplicate(
+        {
+          title: parsed.title,
+          feedURL: url,
+          entries: parsed.entries,
+        },
+        existingFeeds,
+      );
+      if (suspectedDuplicate && !options.allowSuspectedDuplicate) {
+        throw createFeedError(
+          'FEED_SUSPECTED_DUPLICATE',
+          suspectedDuplicate.reason,
+          false,
+          suspectedDuplicate,
         );
       }
 
