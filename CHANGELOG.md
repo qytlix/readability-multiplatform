@@ -2,7 +2,7 @@
 
 All notable changes to Shale will be documented in this file.
 
-## [0.3.1] - 2026-08-04
+## [0.3.1] - 2026-07-29
 
 ### Added
 
