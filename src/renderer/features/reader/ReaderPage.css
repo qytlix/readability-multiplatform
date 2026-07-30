@@ -4437,6 +4437,22 @@ body.workspace-is-resizing * {
   font-weight: 600;
 }
 
+.provider-route-settings .provider-capability-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+}
+
+.provider-settings-embedded .provider-capability-option input,
+.provider-settings-dialog .provider-capability-option input {
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--reader-accent);
+}
+
 .provider-settings-embedded label span,
 .provider-settings-dialog label span {
   color: #778175;

@@ -70,5 +70,9 @@ describe('ProviderSettings model routing fields', () => {
     expect(markup).toContain('value="translation-model"');
     expect(markup).toContain('value="deepseek"');
     expect(markup).toContain('value="https://api.deepseek.com"');
+    expect(markup).toContain('AI 问答');
+    expect(markup).toContain('问答模型');
+    expect(markup).toContain('该模型支持图片输入');
+    expect(markup).toContain('name="chat-provider-api-key"');
   });
 });
