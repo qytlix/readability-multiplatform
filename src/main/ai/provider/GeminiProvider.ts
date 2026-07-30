@@ -1,5 +1,6 @@
 import type {
   TextGenerationConnectionRequest,
+  TextGenerationImageConnectionRequest,
   TextGenerationProvider,
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
@@ -71,6 +72,44 @@ export class GeminiProvider implements TextGenerationProvider {
           method: 'POST',
           headers: buildHeaders(request.apiKey),
           body: JSON.stringify(buildBody({ prompt: 'Reply with OK.' }, 1)),
+        },
+        scope,
+      );
+      await response.body?.cancel();
+    } finally {
+      scope.dispose();
+    }
+  }
+
+  async testImageConnection(
+    request: TextGenerationImageConnectionRequest,
+  ): Promise<void> {
+    const scope = createProviderAbortScope();
+    try {
+      const response = await fetchProviderResponse(
+        buildGenerateContentUrl(
+          request.baseUrl,
+          request.model,
+          'generateContent',
+          false,
+        ),
+        {
+          method: 'POST',
+          headers: buildHeaders(request.apiKey),
+          body: JSON.stringify(buildBody({
+            prompt: '',
+            messages: [{
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  mimeType: request.mimeType,
+                  bytes: request.bytes,
+                },
+                { type: 'text', text: 'Reply with OK if you can inspect this image.' },
+              ],
+            }],
+          }, 1)),
         },
         scope,
       );

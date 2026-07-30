@@ -1,6 +1,7 @@
 import type {
   ProviderTokenUsage,
   TextGenerationConnectionRequest,
+  TextGenerationImageConnectionRequest,
   TextGenerationProvider,
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
@@ -85,6 +86,45 @@ export class OpenAICompatibleProvider implements TextGenerationProvider {
             stream: false,
             max_tokens: 1,
             messages: [{ role: 'user', content: 'Reply with OK.' }],
+          }),
+        },
+        scope,
+      );
+      await response.body?.cancel();
+    } finally {
+      scope.dispose();
+    }
+  }
+
+  async testImageConnection(
+    request: TextGenerationImageConnectionRequest,
+  ): Promise<void> {
+    const scope = createProviderAbortScope();
+    try {
+      const response = await fetchProviderResponse(
+        buildCompletionUrl(request.baseUrl),
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${request.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: request.model,
+            stream: false,
+            max_tokens: 1,
+            messages: [{
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Reply with OK if you can inspect this image.' },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${request.mimeType};base64,${Buffer.from(request.bytes).toString('base64')}`,
+                  },
+                },
+              ],
+            }],
           }),
         },
         scope,

@@ -236,6 +236,55 @@ describe('ProviderService', () => {
     }
   });
 
+  it('tests image capability with an in-memory one-pixel image', async () => {
+    const { databaseManager, service, requestProvider } = createService();
+    const testImageConnection = vi.fn().mockResolvedValue(undefined);
+    requestProvider.testImageConnection = testImageConnection;
+
+    try {
+      service.save({
+        summary: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'summary-model',
+          apiKey: 'sk-shared',
+        },
+        translation: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'translation-model',
+          apiKey: 'sk-shared',
+        },
+        tag: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'tag-model',
+          apiKey: 'sk-shared',
+        },
+        chat: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'vision-model',
+          apiKey: 'sk-shared',
+          supportsImages: true,
+        },
+      });
+
+      await expect(service.testChatImageCapability()).resolves.toEqual({
+        ok: true,
+        message: 'The AI Chat model accepted image input.',
+      });
+      expect(testImageConnection).toHaveBeenCalledOnce();
+      expect(testImageConnection).toHaveBeenCalledWith(expect.objectContaining({
+        model: 'vision-model',
+        mimeType: 'image/png',
+        bytes: expect.any(Uint8Array),
+      }));
+    } finally {
+      databaseManager.close();
+    }
+  });
+
   it('reuses identical secrets across task routes and retains referenced secrets', () => {
     const { databaseManager, service, profileStore } = createService();
 

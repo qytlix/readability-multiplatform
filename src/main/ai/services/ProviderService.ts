@@ -9,6 +9,7 @@ import {
   type SaveProviderRequest,
 } from '../../../shared/contracts/provider.types';
 import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summary.errors';
+import { CHAT_ERROR_CODES, ChatError } from '../../../shared/errors/chat.errors';
 import { ProviderProfileStore } from '../stores/ProviderProfileStore';
 import { SecretStore } from '../stores/SecretStore';
 import type { TextGenerationProvider } from '../provider/TextGenerationProvider';
@@ -24,6 +25,11 @@ import {
   type ProviderConnectionStage,
   type ProviderOperationLogger,
 } from './ProviderLogging';
+
+const ONE_PIXEL_PNG = Uint8Array.from(Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+));
 
 export class ProviderService {
   constructor(
@@ -355,6 +361,57 @@ export class ProviderService {
       });
       throw error;
     }
+  }
+
+  async testChatImageCapability(): Promise<ProviderConnectionTestResult> {
+    const profile = this.profileStore.findActiveWithSecret();
+    if (!profile) {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_PROVIDER_NOT_CONFIGURED,
+        'Configure an AI Chat provider before testing image input.',
+        false,
+      );
+    }
+    if (!profile.chatSupportsImages) {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_IMAGE_UNSUPPORTED,
+        'Enable image input for the Chat model before testing it.',
+        false,
+      );
+    }
+    if (!this.provider.testImageConnection) {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_IMAGE_UNSUPPORTED,
+        'The configured Provider adapter cannot test image input.',
+        false,
+      );
+    }
+    try {
+      await this.provider.testImageConnection({
+        providerKind: profile.chatProviderKind,
+        baseUrl: profile.chatBaseUrl,
+        model: profile.chatModel,
+        apiKey: this.secretStore.read(profile.chatApiKeyRef),
+        mimeType: 'image/png',
+        bytes: ONE_PIXEL_PNG,
+      });
+    } catch (error) {
+      if (
+        error instanceof SummaryError
+        && error.code === SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_REQUEST_FAILED
+      ) {
+        throw new ChatError(
+          CHAT_ERROR_CODES.CHAT_IMAGE_UNSUPPORTED,
+          'The configured Chat model rejected image input.',
+          false,
+        );
+      }
+      throw error;
+    }
+    return {
+      ok: true,
+      message: 'The AI Chat model accepted image input.',
+    };
   }
 
   private toPublicProfile(profile: NonNullable<ReturnType<ProviderProfileStore['findActiveWithSecret']>>): ProviderProfile {

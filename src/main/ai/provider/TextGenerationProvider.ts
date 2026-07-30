@@ -154,6 +154,12 @@ export type TextGenerationConnectionRequest = Omit<
   | 'onFinishReason'
 >;
 
+export interface TextGenerationImageConnectionRequest
+  extends TextGenerationConnectionRequest {
+  mimeType: 'image/png' | 'image/jpeg';
+  bytes: Uint8Array;
+}
+
 export function normalizeProviderFinishReason(value: unknown): ProviderFinishReason | undefined {
   if (typeof value !== 'string') return undefined;
   const normalized = value.trim().toLowerCase();
@@ -171,4 +177,7 @@ export function normalizeProviderFinishReason(value: unknown): ProviderFinishRea
 export interface TextGenerationProvider {
   stream(request: TextGenerationProviderRequest): AsyncIterable<string>;
   testConnection(request: TextGenerationConnectionRequest): Promise<void>;
+  testImageConnection?(
+    request: TextGenerationImageConnectionRequest,
+  ): Promise<void>;
 }

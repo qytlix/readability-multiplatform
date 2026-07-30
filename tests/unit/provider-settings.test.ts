@@ -75,5 +75,6 @@ describe('ProviderSettings model routing fields', () => {
     expect(markup).toContain('该模型支持图片输入');
     expect(markup).toContain('name="chat-provider-api-key"');
     expect(markup).toContain('测试问答连接');
+    expect(markup).toContain('测试图片能力');
   });
 });

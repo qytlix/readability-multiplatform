@@ -17,6 +17,7 @@ export const SUMMARY_IPC_CHANNELS = {
   providerSave: 'provider:save',
   providerTest: 'provider:test',
   providerTestChat: 'provider:test-chat',
+  providerTestChatImage: 'provider:test-chat-image',
   summaryGet: 'summary:get',
   summaryGenerate: 'summary:generate',
   summaryStream: 'summary:stream',
@@ -27,6 +28,7 @@ export interface ProviderAPI {
   save: (request: SaveProviderRequest) => Promise<IPCResult<ProviderProfile>>;
   test: () => Promise<IPCResult<ProviderConnectionTestResult>>;
   testChat: () => Promise<IPCResult<ProviderConnectionTestResult>>;
+  testChatImage: () => Promise<IPCResult<ProviderConnectionTestResult>>;
 }
 
 export interface SummaryAPI {

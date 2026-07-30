@@ -21,6 +21,7 @@ import {
   SummaryError,
   toSummaryIpcError,
 } from '../../shared/errors/summary.errors';
+import { toChatIpcError } from '../../shared/errors/chat.errors';
 import type { SummaryServices } from '../services';
 
 type GetMainWindow = () => BrowserWindow | null;
@@ -73,6 +74,18 @@ export function registerSummaryIpcHandlers(
         return success(await providerService.testChatConnection());
       } catch (error) {
         return failure(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    SUMMARY_IPC_CHANNELS.providerTestChatImage,
+    async (event: IpcMainInvokeEvent): Promise<IPCResult<ProviderConnectionTestResult>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
+      try {
+        return success(await providerService.testChatImageCapability());
+      } catch (error) {
+        return { ok: false, error: toChatIpcError(error) };
       }
     },
   );

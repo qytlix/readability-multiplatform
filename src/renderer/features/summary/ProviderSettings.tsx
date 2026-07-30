@@ -204,6 +204,22 @@ export const ProviderSettings = ({
     }
   };
 
+  const testChatImageCapability = async (): Promise<void> => {
+    setSaving(true);
+    setStatus('');
+    setStatusTone('neutral');
+    try {
+      const result = await window.shaleAPI.provider.testChatImage();
+      setStatus(result.ok ? result.data.message : result.error.message);
+      setStatusTone(result.ok ? 'success' : 'error');
+    } catch {
+      setStatus('无法测试 AI 问答模型的图片能力。');
+      setStatusTone('error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     await save();
@@ -617,6 +633,18 @@ export const ProviderSettings = ({
             disabled={saving || !hasChatApiKey || hasUnsavedProfileChanges}
           >
             测试问答连接
+          </button>
+          <button
+            type="button"
+            onClick={() => void testChatImageCapability()}
+            disabled={
+              saving
+              || !hasChatApiKey
+              || !chatSupportsImages
+              || hasUnsavedProfileChanges
+            }
+          >
+            测试图片能力
           </button>
           <button
             type="button"

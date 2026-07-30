@@ -1,5 +1,6 @@
 import type {
   TextGenerationConnectionRequest,
+  TextGenerationImageConnectionRequest,
   TextGenerationProvider,
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
@@ -72,6 +73,43 @@ export class AnthropicProvider implements TextGenerationProvider {
             model: request.model,
             max_tokens: 1,
             messages: [{ role: 'user', content: 'Reply with OK.' }],
+          }),
+        },
+        scope,
+      );
+      await response.body?.cancel();
+    } finally {
+      scope.dispose();
+    }
+  }
+
+  async testImageConnection(
+    request: TextGenerationImageConnectionRequest,
+  ): Promise<void> {
+    const scope = createProviderAbortScope();
+    try {
+      const response = await fetchProviderResponse(
+        buildMessagesUrl(request.baseUrl),
+        {
+          method: 'POST',
+          headers: buildHeaders(request.apiKey),
+          body: JSON.stringify({
+            model: request.model,
+            max_tokens: 1,
+            messages: [{
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: request.mimeType,
+                    data: Buffer.from(request.bytes).toString('base64'),
+                  },
+                },
+                { type: 'text', text: 'Reply with OK if you can inspect this image.' },
+              ],
+            }],
           }),
         },
         scope,
