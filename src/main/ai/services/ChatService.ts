@@ -50,6 +50,16 @@ import {
   DEFAULT_CHAT_CONTEXT_WINDOW_TOKENS,
   DEFAULT_CHAT_RESPONSE_RESERVE_TOKENS,
 } from './ArticleContextBudget';
+import {
+  elapsedChatMilliseconds,
+  logChatRecoveryCompleted,
+  logChatRunCompleted,
+  logChatRunFailed,
+  logChatRunInterrupted,
+  logChatRunStarted,
+  type ChatOperationLogger,
+} from './ChatLogging';
+import { performance } from 'node:perf_hooks';
 
 export interface ChatContentLookup {
   findByEntry(entryId: number): CleanedContent | undefined;
@@ -68,6 +78,7 @@ interface ActiveChatRun {
   entryId: number;
   abortController: AbortController;
   usageHandle: UsageRequestHandle;
+  startedAt: number;
 }
 
 export class ChatService {
@@ -84,6 +95,7 @@ export class ChatService {
     private readonly provider: TextGenerationProvider,
     private readonly attachmentLoader?: ChatAttachmentContentLoader,
     private readonly usageRecorder: UsageRecorderPort = new NoopUsageRecorder(),
+    private readonly logger?: ChatOperationLogger,
   ) {}
 
   subscribe(listener: (event: ChatStreamEvent) => void): () => void {
@@ -213,7 +225,9 @@ export class ChatService {
         entryId: request.entryId,
         abortController,
         usageHandle,
+        startedAt: performance.now(),
       };
+      logChatRunStarted(this.logger, created.run.id);
       this.emit({
         type: 'started',
         runId: created.run.id,
@@ -372,7 +386,9 @@ export class ChatService {
         entryId: thread.entryId,
         abortController,
         usageHandle,
+        startedAt: performance.now(),
       };
+      logChatRunStarted(this.logger, retried.run.id);
       this.emit({
         type: 'started',
         runId: retried.run.id,
@@ -415,7 +431,13 @@ export class ChatService {
   }
 
   reconcileInterruptedRuns(): number {
-    return this.chatStore.reconcileInterruptedRuns();
+    const startedAt = performance.now();
+    const count = this.chatStore.reconcileInterruptedRuns();
+    logChatRecoveryCompleted(this.logger, {
+      durationMs: elapsedChatMilliseconds(startedAt),
+      count,
+    });
+    return count;
   }
 
   private interruptActiveRun(): void {
@@ -440,6 +462,11 @@ export class ChatService {
       entryId: active.entryId,
       messageId: active.run.assistantMessageId,
       error,
+    });
+    logChatRunInterrupted(this.logger, {
+      taskRunId: active.run.id,
+      durationMs: elapsedChatMilliseconds(active.startedAt),
+      errorCode: CHAT_ERROR_CODES.CHAT_INTERRUPTED,
     });
     this.activeRun = null;
   }
@@ -536,6 +563,12 @@ export class ChatService {
         messageId: run.assistantMessageId,
         message,
       });
+      logChatRunCompleted(this.logger, {
+        taskRunId: run.id,
+        durationMs: elapsedChatMilliseconds(
+          this.activeRun?.startedAt ?? performance.now(),
+        ),
+      });
     } catch (error) {
       if (this.activeRun?.run.id !== run.id) return;
       const failure = toChatIpcError(error);
@@ -548,6 +581,15 @@ export class ChatService {
         entryId,
         messageId: run.assistantMessageId,
         error: failure,
+      });
+      logChatRunFailed(this.logger, {
+        taskRunId: run.id,
+        durationMs: elapsedChatMilliseconds(
+          this.activeRun?.startedAt ?? performance.now(),
+        ),
+        errorCode: failure.code as (
+          typeof CHAT_ERROR_CODES
+        )[keyof typeof CHAT_ERROR_CODES],
       });
     } finally {
       if (this.activeRun?.run.id === run.id) this.activeRun = null;

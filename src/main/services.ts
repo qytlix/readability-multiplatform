@@ -47,6 +47,11 @@ import { TagStore } from './tags/TagStore';
 import { TagService } from './tags/TagService';
 import { AutoTagService } from './tags/AutoTagService';
 import { ChatService } from './ai/services/ChatService';
+import { ChatStore } from './ai/stores/ChatStore';
+import { ArticleContextCacheStore } from './ai/stores/ArticleContextCacheStore';
+import { ArticleContextService } from './ai/services/ArticleContextService';
+import { ProviderArticleSegmentAnalyzer } from './ai/services/ProviderArticleSegmentAnalyzer';
+import type { ChatOperationLogger } from './ai/services/ChatLogging';
 
 // ── Service Interfaces ──────────────────────────────────
 
@@ -211,6 +216,8 @@ export function initializeServices(
     builtInExpertBundle as BuiltInExpertBundle,
   );
   const usageStore = new UsageStore(dbManager.getDb());
+  const chatStore = new ChatStore(dbManager.getDb());
+  const articleContextCacheStore = new ArticleContextCacheStore(dbManager.getDb());
   const usageRecorder = new UsageRecorder(usageStore, operationLogger);
   const usageStatisticsService = new UsageStatisticsService(usageStore);
   usageRecorder.reconcileInterruptedRunning();
@@ -220,6 +227,28 @@ export function initializeServices(
     safeStorage,
   );
   const provider = new ProviderRegistry();
+  const chatLogger = operationLogger as unknown as ChatOperationLogger;
+  const articleSegmentAnalyzer = new ProviderArticleSegmentAnalyzer(
+    providerProfileStore,
+    secretStore,
+    provider,
+  );
+  const articleContextService = new ArticleContextService(
+    articleContextCacheStore,
+    articleSegmentAnalyzer,
+  );
+  const chatService = new ChatService(
+    contentStore,
+    providerProfileStore,
+    secretStore,
+    chatStore,
+    articleContextService,
+    provider,
+    undefined,
+    usageRecorder,
+    chatLogger,
+  );
+  chatService.reconcileInterruptedRuns();
   const terminologyStore = terminologyDbPath && existsSync(terminologyDbPath)
     ? new TerminologyStore(terminologyDbPath, dbManager.getDb())
     : null;
@@ -297,5 +326,6 @@ export function initializeServices(
   annotationServicesSingleton = { annotationService };
   tagServicesSingleton = { tagService, tagStore, autoTagService };
   usageServicesSingleton = { usageStatisticsService };
+  chatServicesSingleton = { chatService };
   return feedServicesSingleton;
 }
