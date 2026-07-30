@@ -188,6 +188,54 @@ describe('ProviderService', () => {
     }
   });
 
+  it('tests only the configured Chat route on demand', async () => {
+    const { databaseManager, service, requestProvider } = createService();
+
+    try {
+      service.save({
+        summary: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'summary-model',
+          apiKey: 'sk-summary',
+        },
+        translation: {
+          providerKind: 'deepseek',
+          baseUrl: 'https://api.deepseek.com',
+          model: 'translation-model',
+          apiKey: 'sk-translation',
+        },
+        tag: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'tag-model',
+          apiKey: 'sk-tag',
+        },
+        chat: {
+          providerKind: 'anthropic',
+          baseUrl: 'https://api.anthropic.com',
+          model: 'claude-chat-model',
+          apiKey: 'sk-chat',
+          supportsImages: true,
+        },
+      });
+
+      await expect(service.testChatConnection()).resolves.toEqual({
+        ok: true,
+        message: 'AI Chat Provider connection succeeded.',
+      });
+      expect(requestProvider.testConnection).toHaveBeenCalledTimes(1);
+      expect(requestProvider.testConnection).toHaveBeenCalledWith({
+        providerKind: 'anthropic',
+        baseUrl: 'https://api.anthropic.com',
+        model: 'claude-chat-model',
+        apiKey: 'sk-chat',
+      });
+    } finally {
+      databaseManager.close();
+    }
+  });
+
   it('reuses identical secrets across task routes and retains referenced secrets', () => {
     const { databaseManager, service, profileStore } = createService();
 

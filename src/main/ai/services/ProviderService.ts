@@ -312,6 +312,51 @@ export class ProviderService {
     }
   }
 
+  async testChatConnection(): Promise<ProviderConnectionTestResult> {
+    const startedAt = performance.now();
+    let stage: ProviderConnectionStage = 'profile';
+    let providerId: number | undefined;
+    try {
+      const profile = this.profileStore.findActiveWithSecret();
+      if (!profile) {
+        throw new SummaryError(
+          SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_NOT_CONFIGURED,
+          'Configure an AI Chat provider before testing the connection.',
+          false,
+        );
+      }
+      providerId = profile.id;
+      stage = 'key';
+      const apiKey = this.secretStore.read(profile.chatApiKeyRef);
+      stage = 'request';
+      await this.provider.testConnection({
+        providerKind: profile.chatProviderKind,
+        baseUrl: profile.chatBaseUrl,
+        model: profile.chatModel,
+        apiKey,
+      });
+      const result: ProviderConnectionTestResult = {
+        ok: true,
+        message: 'AI Chat Provider connection succeeded.',
+      };
+      logProviderConnectionCompleted(this.logger, {
+        providerId,
+        durationMs: elapsedProviderMilliseconds(startedAt),
+        success: true,
+      });
+      return result;
+    } catch (error) {
+      logProviderConnectionFailed(this.logger, {
+        durationMs: elapsedProviderMilliseconds(startedAt),
+        success: false,
+        stage,
+        errorCode: toConnectionErrorCode(stage, error),
+        ...(providerId === undefined ? {} : { providerId }),
+      });
+      throw error;
+    }
+  }
+
   private toPublicProfile(profile: NonNullable<ReturnType<ProviderProfileStore['findActiveWithSecret']>>): ProviderProfile {
     return {
       id: profile.id,

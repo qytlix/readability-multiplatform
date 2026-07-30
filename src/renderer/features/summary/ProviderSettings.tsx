@@ -188,6 +188,22 @@ export const ProviderSettings = ({
     }
   };
 
+  const testChatConnection = async (): Promise<void> => {
+    setSaving(true);
+    setStatus('');
+    setStatusTone('neutral');
+    try {
+      const result = await window.shaleAPI.provider.testChat();
+      setStatus(result.ok ? result.data.message : result.error.message);
+      setStatusTone(result.ok ? 'success' : 'error');
+    } catch {
+      setStatus('无法测试 AI 问答模型连接。');
+      setStatusTone('error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     await save();
@@ -595,6 +611,13 @@ export const ProviderSettings = ({
           </p>
         )}
         <footer className="provider-settings-actions">
+          <button
+            type="button"
+            onClick={() => void testChatConnection()}
+            disabled={saving || !hasChatApiKey || hasUnsavedProfileChanges}
+          >
+            测试问答连接
+          </button>
           <button
             type="button"
             onClick={() => void testConnection()}
