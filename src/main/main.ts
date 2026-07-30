@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import {
   getSummaryService,
+  getChatAttachmentService,
   getChatService,
   getInlineTranslationService,
   getTranslationService,
@@ -61,6 +62,7 @@ const normalShutdownCoordinator = new NormalShutdownCoordinator({
     getSyncScheduler()?.stop();
     getSummaryService()?.abortActiveRun();
     getChatService()?.abortActiveRun();
+    getChatAttachmentService()?.stopCleanupSchedule();
     getInlineTranslationService()?.close();
     getTranslationService()?.close();
   },

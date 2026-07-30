@@ -320,6 +320,36 @@ export class ChatStore {
     return result.changes === 1;
   }
 
+  listExpiredDraftAttachments(expiresAt: string): StoredChatAttachment[] {
+    const rows = this.db.prepare(`
+      SELECT attachment.* FROM ai_chat_attachment AS attachment
+      LEFT JOIN ai_chat_message_attachment AS linked
+        ON linked.attachmentId = attachment.id
+      WHERE attachment.expiresAt IS NOT NULL
+        AND attachment.expiresAt <= ?
+        AND linked.attachmentId IS NULL
+      ORDER BY attachment.expiresAt ASC, attachment.id ASC
+    `).all(expiresAt) as ChatAttachmentRow[];
+    return rows.map(toStoredChatAttachment);
+  }
+
+  deleteExpiredDraftAttachment(
+    attachmentId: number,
+    expiresAt: string,
+  ): boolean {
+    const result = this.db.prepare(`
+      DELETE FROM ai_chat_attachment
+      WHERE id = ?
+        AND expiresAt IS NOT NULL
+        AND expiresAt <= ?
+        AND NOT EXISTS (
+          SELECT 1 FROM ai_chat_message_attachment
+          WHERE attachmentId = ai_chat_attachment.id
+        )
+    `).run(attachmentId, expiresAt);
+    return result.changes === 1;
+  }
+
   createRunWithMessages(params: CreateChatRunParams): CreatedChatRun {
     const now = new Date().toISOString();
     const persist = this.db.transaction(() => {

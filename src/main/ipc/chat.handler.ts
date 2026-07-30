@@ -1,9 +1,17 @@
-import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import {
+  dialog,
+  ipcMain,
+  type BrowserWindow,
+  type IpcMainInvokeEvent,
+} from 'electron';
 import {
   CHAT_IPC_CHANNELS,
 } from '../../shared/contracts/chat.ipc';
 import type { IPCResult } from '../../shared/contracts/feed.ipc';
 import type {
+  ChatAttachmentPickResponse,
+  ChatAttachmentRemoveRequest,
+  ChatAttachmentRemoveResponse,
   ChatCancelRequest,
   ChatGetRequest,
   ChatRetryRequest,
@@ -18,12 +26,14 @@ import {
   toChatIpcError,
 } from '../../shared/errors/chat.errors';
 import type { ChatService } from '../ai/services/ChatService';
+import type { ChatAttachmentService } from '../ai/services/ChatAttachmentService';
 
 type GetMainWindow = () => BrowserWindow | null;
 
 export function registerChatIpcHandlers(
   getMainWindow: GetMainWindow,
   chatService: ChatService,
+  attachmentService: ChatAttachmentService,
 ): () => void {
   ipcMain.handle(
     CHAT_IPC_CHANNELS.get,
@@ -72,6 +82,77 @@ export function registerChatIpcHandlers(
       if (!isRunRequest(request)) return invalidRequest();
       try {
         return { ok: true, data: await chatService.retry(request) };
+      } catch (error) {
+        return { ok: false, error: toChatIpcError(error) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    CHAT_IPC_CHANNELS.attachmentPick,
+    async (
+      event,
+      request: unknown,
+    ): Promise<IPCResult<ChatAttachmentPickResponse>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
+      if (!isChatGetRequest(request)) return invalidRequest();
+      const mainWindow = getMainWindow();
+      if (!mainWindow) return unauthorized();
+      try {
+        const picked = await dialog.showOpenDialog(mainWindow, {
+          title: '选择问答附件',
+          properties: ['openFile', 'multiSelections'],
+          filters: [
+            {
+              name: '文章问答附件',
+              extensions: [
+                'txt',
+                'md',
+                'markdown',
+                'csv',
+                'json',
+                'html',
+                'htm',
+                'pdf',
+              ],
+            },
+          ],
+        });
+        if (picked.canceled || picked.filePaths.length === 0) {
+          return {
+            ok: true,
+            data: { canceled: true, attachments: [], failures: [] },
+          };
+        }
+        return {
+          ok: true,
+          data: await attachmentService.importFiles(
+            request.entryId,
+            picked.filePaths,
+          ),
+        };
+      } catch (error) {
+        return { ok: false, error: toChatIpcError(error) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    CHAT_IPC_CHANNELS.attachmentRemove,
+    (
+      event,
+      request: unknown,
+    ): IPCResult<ChatAttachmentRemoveResponse> => {
+      if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
+      if (!isAttachmentRemoveRequest(request)) return invalidRequest();
+      try {
+        return {
+          ok: true,
+          data: attachmentService.removeDraftAttachment(
+            request.entryId,
+            request.attachmentId,
+          ),
+        };
       } catch (error) {
         return { ok: false, error: toChatIpcError(error) };
       }
@@ -148,6 +229,14 @@ function isRunRequest(
   value: unknown,
 ): value is ChatCancelRequest & ChatRetryRequest {
   return isRecord(value) && isPositiveInteger(value.runId);
+}
+
+function isAttachmentRemoveRequest(
+  value: unknown,
+): value is ChatAttachmentRemoveRequest {
+  return isRecord(value)
+    && isPositiveInteger(value.entryId)
+    && isPositiveInteger(value.attachmentId);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

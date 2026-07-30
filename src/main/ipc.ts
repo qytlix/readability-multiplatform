@@ -174,7 +174,11 @@ export function registerIpcHandlers(
 
   const chatServices = getChatServices();
   if (chatServices) {
-    registerChatIpcHandlers(getMainWindow, chatServices.chatService);
+    registerChatIpcHandlers(
+      getMainWindow,
+      chatServices.chatService,
+      chatServices.attachmentService,
+    );
   }
 
   const annotationServices = getAnnotationServices();

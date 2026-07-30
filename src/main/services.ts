@@ -52,6 +52,7 @@ import { ArticleContextCacheStore } from './ai/stores/ArticleContextCacheStore';
 import { ArticleContextService } from './ai/services/ArticleContextService';
 import { ProviderArticleSegmentAnalyzer } from './ai/services/ProviderArticleSegmentAnalyzer';
 import type { ChatOperationLogger } from './ai/services/ChatLogging';
+import { ChatAttachmentService } from './ai/services/ChatAttachmentService';
 
 // ── Service Interfaces ──────────────────────────────────
 
@@ -85,6 +86,7 @@ export interface UsageServices {
 
 export interface ChatServices {
   chatService: ChatService;
+  attachmentService: ChatAttachmentService;
 }
 
 export interface AnnotationServices {
@@ -141,6 +143,10 @@ export function getChatServices(): ChatServices | null {
 /** Returns the Article Chat runtime for application shutdown cleanup. */
 export function getChatService(): ChatService | null {
   return chatServicesSingleton?.chatService ?? null;
+}
+
+export function getChatAttachmentService(): ChatAttachmentService | null {
+  return chatServicesSingleton?.attachmentService ?? null;
 }
 
 export function getAnnotationServices(): AnnotationServices | null {
@@ -249,6 +255,8 @@ export function initializeServices(
     chatLogger,
   );
   chatService.reconcileInterruptedRuns();
+  const attachmentService = new ChatAttachmentService(chatService, chatStore);
+  attachmentService.startCleanupSchedule();
   const terminologyStore = terminologyDbPath && existsSync(terminologyDbPath)
     ? new TerminologyStore(terminologyDbPath, dbManager.getDb())
     : null;
@@ -326,6 +334,6 @@ export function initializeServices(
   annotationServicesSingleton = { annotationService };
   tagServicesSingleton = { tagService, tagStore, autoTagService };
   usageServicesSingleton = { usageStatisticsService };
-  chatServicesSingleton = { chatService };
+  chatServicesSingleton = { chatService, attachmentService };
   return feedServicesSingleton;
 }
