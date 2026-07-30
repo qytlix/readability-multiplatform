@@ -15,11 +15,16 @@ describe('Article Chat structured logging', () => {
 
     logChatRunStarted(logger, 7);
     logChatRunCompleted(logger, { taskRunId: 7, durationMs: 22 });
-    logChatRunFailed(logger, {
+    const unsafeFailureContext = {
       taskRunId: 8,
       durationMs: 30,
-      errorCode: 'CHAT_NETWORK_ERROR',
-    });
+      errorCode: 'CHAT_NETWORK_ERROR' as const,
+      question: 'QUESTION_CANARY',
+      selection: 'SELECTION_CANARY',
+      attachmentPath: 'C:\\private\\ATTACHMENT_CANARY.png',
+      apiKey: 'sk-SECRET_CANARY',
+    };
+    logChatRunFailed(logger, unsafeFailureContext);
 
     const serialized = JSON.stringify({
       info: logger.info.mock.calls,
@@ -30,10 +35,24 @@ describe('Article Chat structured logging', () => {
     expect(serialized).not.toContain('article');
     expect(serialized).not.toContain('attachment');
     expect(serialized).not.toContain('secret');
+    expect(serialized).not.toContain('QUESTION_CANARY');
+    expect(serialized).not.toContain('SELECTION_CANARY');
+    expect(serialized).not.toContain('ATTACHMENT_CANARY');
+    expect(serialized).not.toContain('SECRET_CANARY');
     expect(logger.info).toHaveBeenCalledWith(
       'chat.run.started',
       'chat.run',
       { taskRunId: 7 },
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      'chat.run.failed',
+      'chat.run',
+      {
+        taskRunId: 8,
+        durationMs: 30,
+        errorCode: 'CHAT_NETWORK_ERROR',
+        success: false,
+      },
     );
   });
 });

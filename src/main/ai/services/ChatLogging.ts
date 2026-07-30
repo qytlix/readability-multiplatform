@@ -73,7 +73,8 @@ export function logChatRunCompleted(
   if (!isSafeId(context.taskRunId) || !isSafeCount(context.durationMs)) return;
   try {
     logger?.info(CHAT_LOG_EVENTS.runCompleted, CHAT_RUN_COMPONENT, {
-      ...context,
+      taskRunId: context.taskRunId,
+      durationMs: context.durationMs,
       success: true,
     });
   } catch {
@@ -88,7 +89,9 @@ export function logChatRunFailed(
   if (!isSafeId(context.taskRunId) || !isSafeCount(context.durationMs)) return;
   try {
     logger?.error(CHAT_LOG_EVENTS.runFailed, CHAT_RUN_COMPONENT, {
-      ...context,
+      taskRunId: context.taskRunId,
+      durationMs: context.durationMs,
+      errorCode: context.errorCode,
       success: false,
     });
   } catch {
@@ -103,7 +106,9 @@ export function logChatRunInterrupted(
   if (!isSafeId(context.taskRunId) || !isSafeCount(context.durationMs)) return;
   try {
     logger?.warn(CHAT_LOG_EVENTS.runInterrupted, CHAT_RUN_COMPONENT, {
-      ...context,
+      taskRunId: context.taskRunId,
+      durationMs: context.durationMs,
+      errorCode: context.errorCode,
       success: false,
     });
   } catch {
@@ -117,7 +122,10 @@ export function logChatRecoveryCompleted(
 ): void {
   if (!isSafeCount(context.durationMs) || !isSafeCount(context.count)) return;
   try {
-    logger?.info(CHAT_LOG_EVENTS.recoveryCompleted, CHAT_RECOVERY_COMPONENT, context);
+    logger?.info(CHAT_LOG_EVENTS.recoveryCompleted, CHAT_RECOVERY_COMPONENT, {
+      durationMs: context.durationMs,
+      count: context.count,
+    });
   } catch {
     // Observability must never change Chat recovery.
   }
