@@ -268,7 +268,7 @@ export const App = () => {
     if (!articleChatOpen) openArticleChat();
   }, [articleChatOpen, openArticleChat, selectedEntry]);
 
-  const consumeArticleChatSelection = useCallback((requestId: number): void => {
+  const clearArticleChatSelection = useCallback((requestId: number): void => {
     setArticleChatSelectionRequest((current) => (
       current?.requestId === requestId ? undefined : current
     ));
@@ -974,7 +974,7 @@ useEffect(() => {
             onClose={closeArticleChat}
             onActiveRunChange={setActiveArticleChatRun}
             selectionRequest={articleChatSelectionRequest}
-            onSelectionConsumed={consumeArticleChatSelection}
+            onSelectionCleared={clearArticleChatSelection}
           />
         )}
         <button

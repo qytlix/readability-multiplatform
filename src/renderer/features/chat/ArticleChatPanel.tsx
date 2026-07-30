@@ -16,7 +16,7 @@ interface ArticleChatPanelProps {
     activeRun: { entryId: number; runId: number } | null,
   ) => void;
   selectionRequest?: ArticleChatSelectionRequest;
-  onSelectionConsumed: (requestId: number) => void;
+  onSelectionCleared: (requestId: number) => void;
 }
 
 const CONTEXT_MODE_LABELS: Record<ChatContextMode, string> = {
@@ -40,7 +40,7 @@ export const ArticleChatPanel = ({
   onClose,
   onActiveRunChange,
   selectionRequest,
-  onSelectionConsumed,
+  onSelectionCleared,
 }: ArticleChatPanelProps) => {
   const session = useArticleChatSession(entryId, true);
   const [draft, setDraft] = useState('');
@@ -75,10 +75,16 @@ export const ArticleChatPanel = ({
     if (sent) {
       setDraft('');
       if (pendingSelection) {
-        onSelectionConsumed(pendingSelection.requestId);
+        onSelectionCleared(pendingSelection.requestId);
         setPendingSelection(null);
       }
     }
+  };
+
+  const removePendingSelection = (): void => {
+    if (!pendingSelection) return;
+    onSelectionCleared(pendingSelection.requestId);
+    setPendingSelection(null);
   };
 
   return (
@@ -185,11 +191,6 @@ export const ArticleChatPanel = ({
           </div>
         )}
       </div>
-      {pendingSelection && (
-        <blockquote className="article-chat-pending-selection">
-          {pendingSelection.selection.text}
-        </blockquote>
-      )}
       <ArticleChatComposer
         entryId={entryId}
         value={draft}
@@ -198,9 +199,12 @@ export const ArticleChatPanel = ({
         disabled={session.loadStatus !== 'success'}
         errorMessage={session.actionErrorMessage}
         attachments={session.state?.draftAttachments ?? []}
+        selection={pendingSelection?.selection}
+        selectionFocusRequestId={pendingSelection?.requestId}
         onChange={setDraft}
         onSend={handleSend}
         onStop={() => void session.stop()}
+        onRemoveSelection={removePendingSelection}
         onPickAttachments={() => void session.pickAttachments()}
         onRemoveAttachment={(attachmentId) => {
           void session.removeAttachment(attachmentId);

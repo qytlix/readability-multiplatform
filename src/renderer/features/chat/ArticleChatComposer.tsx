@@ -1,10 +1,14 @@
 import {
+  useEffect,
   useRef,
   type CompositionEvent,
   type ClipboardEvent,
   type KeyboardEvent,
 } from 'react';
-import type { ChatAttachment } from '../../../shared/contracts/chat.types';
+import type {
+  ChatAttachment,
+  ChatSelectionContext,
+} from '../../../shared/contracts/chat.types';
 import { getChatComposerKeyAction } from './chatComposerKeyboard';
 import {
   createChatClipboardPastePlan,
@@ -21,9 +25,12 @@ interface ArticleChatComposerProps {
   disabled: boolean;
   errorMessage: string;
   attachments: ChatAttachment[];
+  selection?: ChatSelectionContext;
+  selectionFocusRequestId?: number;
   onChange: (value: string) => void;
   onSend: () => void | Promise<void>;
   onStop: () => void | Promise<void>;
+  onRemoveSelection: () => void;
   onPickAttachments: () => void | Promise<void>;
   onRemoveAttachment: (attachmentId: number) => void | Promise<void>;
   onPasteImages: (
@@ -39,14 +46,23 @@ export const ArticleChatComposer = ({
   disabled,
   errorMessage,
   attachments,
+  selection,
+  selectionFocusRequestId,
   onChange,
   onSend,
   onStop,
+  onRemoveSelection,
   onPickAttachments,
   onRemoveAttachment,
   onPasteImages,
 }: ArticleChatComposerProps) => {
   const composingRef = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (selectionFocusRequestId === undefined) return;
+    textareaRef.current?.focus();
+  }, [selectionFocusRequestId]);
 
   const handleComposition = (
     event: CompositionEvent<HTMLTextAreaElement>,
@@ -83,6 +99,20 @@ export const ArticleChatComposer = ({
 
   return (
     <div className="article-chat-composer">
+      {selection && (
+        <div className="article-chat-selection-chip">
+          <span>引用选区</span>
+          <q title={selection.text}>{selection.text}</q>
+          <button
+            type="button"
+            aria-label="移除选区引用"
+            disabled={running || busy}
+            onClick={onRemoveSelection}
+          >
+            ×
+          </button>
+        </div>
+      )}
       {attachments.length > 0 && (
         <div className="article-chat-attachment-chips" aria-label="待发送附件">
           {attachments.map((attachment) => (
@@ -128,6 +158,7 @@ export const ArticleChatComposer = ({
           +
         </button>
         <textarea
+          ref={textareaRef}
           value={value}
           rows={1}
           maxLength={20_000}
