@@ -7,6 +7,7 @@ import {
   removeSourceDecorativeGraphics,
   removeUntranslatableIcons,
 } from './ContentGraphics';
+import { normalizeReaderImages } from './ContentImages';
 
 export const CONTENT_CLEANER_VERSION = 6;
 
@@ -218,68 +219,6 @@ function removeReaderProtectionClasses(container: HTMLDivElement): void {
   }
 }
 
-function normalizeReaderImages(
-  container: HTMLDivElement,
-  baseUrl: string,
-): void {
-  for (const image of container.querySelectorAll('img')) {
-    const lazyCandidate = image.getAttribute('data-src')
-      ?? image.getAttribute('data-original')
-      ?? image.getAttribute('data-lazy-src');
-    const sourceCandidate = image.getAttribute('src');
-    const srcset = image.getAttribute('data-srcset')
-      ?? image.getAttribute('srcset');
-    const normalizedSrcset = srcset
-      ? normalizeImageSrcset(srcset, baseUrl)
-      : null;
-    if (normalizedSrcset) image.setAttribute('srcset', normalizedSrcset);
-    else image.removeAttribute('srcset');
-
-    const resolvedLazyCandidate = lazyCandidate
-      ? resolveSafeMediaUrl(lazyCandidate, baseUrl)
-      : null;
-    const resolvedSourceCandidate = (
-      sourceCandidate
-      && !isPlaceholderImageUrl(sourceCandidate, baseUrl)
-    )
-      ? resolveSafeMediaUrl(sourceCandidate, baseUrl)
-      : null;
-    const resolvedCandidate = resolvedLazyCandidate ?? resolvedSourceCandidate;
-    if (resolvedCandidate) image.setAttribute('src', resolvedCandidate);
-    else image.removeAttribute('src');
-
-    if (!image.hasAttribute('src') && !image.hasAttribute('srcset')) {
-      image.remove();
-      continue;
-    }
-
-    image.removeAttribute('data-src');
-    image.removeAttribute('data-original');
-    image.removeAttribute('data-lazy-src');
-    image.removeAttribute('data-srcset');
-  }
-
-  for (const source of container.querySelectorAll('picture source')) {
-    const srcset = source.getAttribute('srcset')
-      ?? source.getAttribute('data-srcset');
-    if (srcset) {
-      const normalized = normalizeImageSrcset(srcset, baseUrl);
-      if (normalized) source.setAttribute('srcset', normalized);
-      else source.removeAttribute('srcset');
-    }
-    source.removeAttribute('data-srcset');
-  }
-}
-
-function isPlaceholderImageUrl(candidate: string, baseUrl: string): boolean {
-  const resolved = resolveSafeMediaUrl(candidate, baseUrl);
-  if (!resolved) return false;
-  const pathname = new URL(resolved).pathname.toLocaleLowerCase();
-  const filename = pathname.split('/').pop() ?? '';
-  return /^(?:img|image)[-_]placeholder(?:[.@_-]|$)/.test(filename)
-    || /^placeholder(?:[.@_-]|$)/.test(filename);
-}
-
 /**
  * Publisher styles are intentionally removed from cleaned content. Preserve a
  * small, stable semantic hook for compact author cards so avatar images do not
@@ -344,30 +283,6 @@ function findDirectChildContaining(
     (child) => child.contains(descendant),
   );
   return directChild ? directChild as HTMLElement : null;
-}
-
-function normalizeImageSrcset(
-  value: string,
-  baseUrl: string,
-): string | null {
-  const candidates = value
-    .split(',')
-    .map((candidate) => {
-      const [urlCandidate, descriptor, ...extra] = candidate.trim().split(/\s+/);
-      if (
-        !urlCandidate
-        || extra.length > 0
-        || (descriptor && !/^(?:\d+w|\d+(?:\.\d+)?x)$/.test(descriptor))
-      ) {
-        return null;
-      }
-      const resolved = resolveSafeMediaUrl(urlCandidate, baseUrl);
-      return resolved
-        ? `${resolved}${descriptor ? ` ${descriptor}` : ''}`
-        : null;
-    })
-    .filter((candidate): candidate is string => Boolean(candidate));
-  return candidates.length > 0 ? candidates.join(', ') : null;
 }
 
 function normalizeReaderMedia(

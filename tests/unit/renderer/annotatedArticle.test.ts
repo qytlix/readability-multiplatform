@@ -52,6 +52,7 @@ function setup(initialAnnotations: EntryAnnotation[] = []) {
   vi.stubGlobal('NodeFilter', dom.window.NodeFilter);
   vi.stubGlobal('Element', dom.window.Element);
   vi.stubGlobal('HTMLElement', dom.window.HTMLElement);
+  vi.stubGlobal('HTMLImageElement', dom.window.HTMLImageElement);
   vi.stubGlobal('MouseEvent', dom.window.MouseEvent);
   vi.stubGlobal('KeyboardEvent', dom.window.KeyboardEvent);
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -111,6 +112,34 @@ function setup(initialAnnotations: EntryAnnotation[] = []) {
 }
 
 describe('AnnotatedArticle', () => {
+  it('replaces a failed article image with a bounded text fallback', async () => {
+    const fixture = setup();
+    await act(async () => {
+      root?.render(createElement(AnnotatedArticle, {
+        entryId: 1,
+        sourceHtml: '<p>Before</p><img src="https://example.test/missing.jpg" alt="Diagram"><p>After</p>',
+        toolbarTarget: fixture.toolbar,
+        onClick: () => undefined,
+      }));
+      await Promise.resolve();
+    });
+
+    const image = fixture.mount.querySelector<HTMLImageElement>('img');
+    const currentDom = dom;
+    if (!image || !currentDom) throw new Error('Article image did not render.');
+    await act(async () => {
+      image.dispatchEvent(new currentDom.window.Event('error', {
+        bubbles: false,
+      }));
+    });
+
+    expect(fixture.mount.querySelector('img')).toBeNull();
+    expect(fixture.mount.querySelector('.reader-image-fallback')?.textContent)
+      .toBe('图片无法加载：Diagram');
+    expect(fixture.mount.textContent).toContain('Before');
+    expect(fixture.mount.textContent).toContain('After');
+  });
+
   it('chooses a color, creates a highlight, opens its editor, and deletes it', async () => {
     const fixture = setup();
     await act(async () => {

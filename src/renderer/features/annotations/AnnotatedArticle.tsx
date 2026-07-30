@@ -7,6 +7,7 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent,
+  type SyntheticEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -122,6 +123,23 @@ export const AnnotatedArticle = ({
     () => applyAnnotationHighlights(sourceHtml, annotations),
     [annotations, sourceHtml],
   );
+
+  const handleArticleResourceError = (
+    event: SyntheticEvent<HTMLDivElement>,
+  ): void => {
+    const target = event.target;
+    if (!(target instanceof Element) || target.tagName !== 'IMG') return;
+    const image = target as HTMLImageElement;
+    const alt = image.getAttribute('alt')?.trim();
+    if (!alt) {
+      image.remove();
+      return;
+    }
+    const fallback = document.createElement('span');
+    fallback.className = 'reader-image-fallback';
+    fallback.textContent = `图片无法加载：${alt}`;
+    image.replaceWith(fallback);
+  };
 
   const activeAnnotation = popover
     ? annotations.find((annotation) => annotation.id === popover.annotationId)
@@ -509,6 +527,7 @@ export const AnnotatedArticle = ({
         data-inline-translation-root
         dangerouslySetInnerHTML={{ __html: highlightedHtml }}
         onClick={onClick}
+        onErrorCapture={handleArticleResourceError}
         onMouseUp={handleMouseUp}
         onContextMenu={handleContextMenu}
         onMouseOver={handleMouseOver}
