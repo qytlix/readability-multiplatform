@@ -37,6 +37,54 @@ describe('OpenAICompatibleProvider', () => {
     );
   });
 
+  it('maps system, multi-turn text, and image content parts', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      'data: {"choices":[{"delta":{"content":"Seen."}}]}\n\n',
+      { status: 200 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const chunks: string[] = [];
+    for await (const chunk of new OpenAICompatibleProvider().stream({
+      ...request(),
+      prompt: '',
+      systemInstruction: 'Use the article.',
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'First question' }] },
+        { role: 'assistant', content: [{ type: 'text', text: 'First answer' }] },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'What is in this image?' },
+            {
+              type: 'image',
+              mimeType: 'image/png',
+              bytes: new Uint8Array([1, 2, 3]),
+            },
+          ],
+        },
+      ],
+    })) chunks.push(chunk);
+
+    expect(chunks).toEqual(['Seen.']);
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body)).messages).toEqual([
+      { role: 'system', content: 'Use the article.' },
+      { role: 'user', content: [{ type: 'text', text: 'First question' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'First answer' }] },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'What is in this image?' },
+          {
+            type: 'image_url',
+            image_url: { url: 'data:image/png;base64,AQID' },
+          },
+        ],
+      },
+    ]);
+  });
+
   it('handles split SSE chunks and ignores keepalive comments', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(streamingResponse([
       ': OPENROUTER PROCESSING\n',

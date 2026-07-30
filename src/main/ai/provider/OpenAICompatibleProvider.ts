@@ -5,7 +5,11 @@ import type {
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
 import { normalizeProviderFinishReason } from './TextGenerationProvider';
-import { getLegacyProviderPrompt } from './TextGenerationProvider';
+import {
+  validateProviderConversation,
+  type ProviderContentPart,
+  type ProviderMessage,
+} from './TextGenerationProvider';
 import { normalizeProviderTokenUsage } from './ProviderTokenUsage';
 import {
   createProviderAbortScope,
@@ -18,6 +22,7 @@ import {
 /** OpenAI Chat Completions adapter shared by OpenAI, DeepSeek, and OpenRouter. */
 export class OpenAICompatibleProvider implements TextGenerationProvider {
   async *stream(request: TextGenerationProviderRequest): AsyncIterable<string> {
+    const messages = buildOpenAIMessages(request);
     const scope = createProviderAbortScope(request.signal);
     let receivedFirstDelta = false;
     let latestUsage: ProviderTokenUsage | undefined;
@@ -34,7 +39,7 @@ export class OpenAICompatibleProvider implements TextGenerationProvider {
             model: request.model,
             stream: true,
             ...(request.requestUsage ? { stream_options: { include_usage: true } } : {}),
-            messages: [{ role: 'user', content: getLegacyProviderPrompt(request) }],
+            messages,
           }),
         },
         scope,
@@ -89,6 +94,43 @@ export class OpenAICompatibleProvider implements TextGenerationProvider {
       scope.dispose();
     }
   }
+}
+
+function buildOpenAIMessages(
+  request: TextGenerationProviderRequest,
+): Array<Record<string, unknown>> {
+  const conversation = validateProviderConversation(request);
+  if (request.messages === undefined) {
+    return [{
+      role: 'user',
+      content: conversation.messages[0]?.content[0]?.type === 'text'
+        ? conversation.messages[0].content[0].text
+        : '',
+    }];
+  }
+  return [
+    ...(conversation.systemInstruction
+      ? [{ role: 'system', content: conversation.systemInstruction }]
+      : []),
+    ...conversation.messages.map(mapOpenAIMessage),
+  ];
+}
+
+function mapOpenAIMessage(message: ProviderMessage): Record<string, unknown> {
+  return {
+    role: message.role,
+    content: message.content.map(mapOpenAIContentPart),
+  };
+}
+
+function mapOpenAIContentPart(part: ProviderContentPart): Record<string, unknown> {
+  if (part.type === 'text') return { type: 'text', text: part.text };
+  return {
+    type: 'image_url',
+    image_url: {
+      url: `data:${part.mimeType};base64,${Buffer.from(part.bytes).toString('base64')}`,
+    },
+  };
 }
 
 function buildCompletionUrl(baseUrl: string): string {
