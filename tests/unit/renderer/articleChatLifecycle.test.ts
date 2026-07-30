@@ -8,7 +8,10 @@ import {
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatState } from '../../../src/shared/contracts/chat.types';
-import { useArticleChatSession } from '../../../src/renderer/features/chat/useArticleChatSession';
+import {
+  useArticleChatSession,
+  type ArticleChatSession,
+} from '../../../src/renderer/features/chat/useArticleChatSession';
 import { ChatImageAttachmentPreview } from '../../../src/renderer/features/chat/ChatImageAttachmentPreview';
 
 const reactActEnvironment = globalThis as typeof globalThis & {
@@ -30,8 +33,64 @@ const idleState: ChatState = {
   draftAttachments: [],
 };
 
-const SessionHarness = ({ children }: { children?: ReactNode }) => {
-  useArticleChatSession(7, true);
+const failedState: ChatState = {
+  state: 'failed',
+  thread: idleState.thread,
+  draftAttachments: [],
+  messages: [{
+    id: 10,
+    threadId: 3,
+    role: 'user',
+    content: 'Explain the full article.',
+    status: 'completed',
+    articleContextMode: 'article-map',
+    articleContentHash: 'hash',
+    attachments: [],
+    createdAt: '2026-07-30T00:00:00.000Z',
+    updatedAt: '2026-07-30T00:00:00.000Z',
+  }, {
+    id: 11,
+    threadId: 3,
+    role: 'assistant',
+    content: '',
+    status: 'failed',
+    articleContextMode: 'article-map',
+    articleContentHash: 'hash',
+    attachments: [],
+    createdAt: '2026-07-30T00:00:00.000Z',
+    updatedAt: '2026-07-30T00:00:00.000Z',
+  }],
+  run: {
+    id: 12,
+    threadId: 3,
+    userMessageId: 10,
+    assistantMessageId: 11,
+    providerProfileId: 2,
+    providerKind: 'openai',
+    model: 'chat-model',
+    status: 'failed',
+    promptVersion: 'article-chat-v1',
+    contextMode: 'article-map',
+    inputContentHash: 'reserved-input',
+    error: {
+      code: 'CHAT_CONTEXT_TOO_LARGE',
+      message: 'The required context does not fit.',
+      retryable: false,
+    },
+    createdAt: '2026-07-30T00:00:00.000Z',
+    completedAt: '2026-07-30T00:00:01.000Z',
+  },
+};
+
+const SessionHarness = ({
+  children,
+  onSession,
+}: {
+  children?: ReactNode;
+  onSession?: (session: ArticleChatSession) => void;
+}) => {
+  const session = useArticleChatSession(7, true);
+  onSession?.(session);
   return children ?? null;
 };
 
@@ -88,6 +147,42 @@ describe('Article Chat renderer lifecycle', () => {
     act(() => root.unmount());
     expect(removeListener).toHaveBeenCalledTimes(1);
     root = createRoot(container);
+  });
+
+  it('reloads a durable failed run after send preparation fails', async () => {
+    vi.mocked(window.shaleAPI.chat.get)
+      .mockResolvedValueOnce({ ok: true, data: idleState })
+      .mockResolvedValueOnce({ ok: true, data: failedState });
+    vi.mocked(window.shaleAPI.chat.send).mockResolvedValue({
+      ok: false,
+      error: {
+        code: 'CHAT_CONTEXT_TOO_LARGE',
+        message: 'The required context does not fit.',
+        retryable: false,
+      },
+    });
+    let session: ArticleChatSession | undefined;
+    await act(async () => {
+      root.render(createElement(SessionHarness, {
+        onSession: (current) => {
+          session = current;
+        },
+      }));
+      await settle();
+    });
+
+    let sent = true;
+    await act(async () => {
+      sent = await session?.sendQuestion('Explain the full article.') ?? true;
+      await settle();
+    });
+
+    expect(sent).toBe(false);
+    expect(window.shaleAPI.chat.get).toHaveBeenCalledTimes(2);
+    expect(session?.state).toEqual(failedState);
+    expect(session?.actionErrorMessage).toBe(
+      'The required context does not fit.',
+    );
   });
 
   it('revokes a normalized image preview URL on unmount', async () => {

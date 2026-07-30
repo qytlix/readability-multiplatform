@@ -141,6 +141,10 @@ export const useArticleChatSession = (
       });
       if (!result.ok) {
         setActionErrorMessage(result.error.message);
+        // Context preparation can fail after the Main process reserves and
+        // persists the run. Reload so the visible failure/retry state matches
+        // the durable conversation immediately.
+        await reload();
         return false;
       }
       await reload();

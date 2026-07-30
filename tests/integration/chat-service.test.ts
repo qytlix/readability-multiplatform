@@ -67,7 +67,11 @@ describe('ChatService', () => {
       testConnection: () => Promise.resolve(),
     };
     const chatStore = new ChatStore(db);
-    const prepare = vi.fn(async () => ({
+    const prepare = vi.fn(async (
+      request: PrepareArticleContextRequest,
+    ) => {
+      void request;
+      return {
       mode: 'full' as const,
       systemInstruction: 'You are Shale Article Guide.',
       articleReference: '<article-context>Article body</article-context>',
@@ -75,7 +79,8 @@ describe('ChatService', () => {
       estimatedPromptTokens: 20,
       cacheHit: false,
       relatedSegmentIds: [],
-    }));
+      };
+    });
     const startUsage = vi.fn((
       params: StartUsageRequestParams,
     ): UsageRequestHandle => ({
