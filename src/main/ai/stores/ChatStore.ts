@@ -56,6 +56,22 @@ interface ChatRunRow {
   completedAt: string | null;
 }
 
+interface ChatAttachmentRow {
+  id: number;
+  threadId: number;
+  kind: ChatAttachment['kind'];
+  displayName: string;
+  mimeType: string;
+  byteSize: number;
+  textContent: string | null;
+  contentHash: string;
+  storageKey: string | null;
+  width: number | null;
+  height: number | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
 export interface CreateChatMessageParams {
   threadId: number;
   role: ChatMessageRole;
@@ -83,6 +99,33 @@ export interface CreatedChatRun {
   run: ChatRun;
   userMessage: ChatMessage;
   assistantMessage: ChatMessage;
+}
+
+export interface CreateTextChatAttachmentParams {
+  threadId: number;
+  displayName: string;
+  mimeType: string;
+  byteSize: number;
+  textContent: string;
+  contentHash: string;
+  expiresAt: string;
+}
+
+export interface CreateImageChatAttachmentParams {
+  threadId: number;
+  displayName: string;
+  mimeType: 'image/png' | 'image/jpeg';
+  byteSize: number;
+  contentHash: string;
+  storageKey: string;
+  width: number;
+  height: number;
+  expiresAt: string;
+}
+
+export interface StoredChatAttachment extends ChatAttachment {
+  textContent?: string;
+  storageKey?: string;
 }
 
 export class ChatStore {
@@ -179,13 +222,102 @@ export class ChatStore {
       WHERE threadId = ?
       ORDER BY createdAt ASC, id ASC
     `).all(threadId) as ChatMessageRow[];
-    return rows.map((row) => toChatMessage(row, []));
+    return rows.map((row) => toChatMessage(
+      row,
+      this.listAttachmentsForMessage(row.id),
+    ));
   }
 
   findMessageById(messageId: number): ChatMessage | undefined {
     const row = this.db.prepare('SELECT * FROM ai_chat_message WHERE id = ?')
       .get(messageId) as ChatMessageRow | undefined;
-    return row ? toChatMessage(row, []) : undefined;
+    return row
+      ? toChatMessage(row, this.listAttachmentsForMessage(row.id))
+      : undefined;
+  }
+
+  createTextAttachment(
+    params: CreateTextChatAttachmentParams,
+  ): ChatAttachment {
+    return this.insertAttachment({
+      ...params,
+      kind: 'text',
+      storageKey: null,
+      width: null,
+      height: null,
+    });
+  }
+
+  createImageAttachment(
+    params: CreateImageChatAttachmentParams,
+  ): ChatAttachment {
+    return this.insertAttachment({
+      ...params,
+      kind: 'image',
+      textContent: null,
+    });
+  }
+
+  findStoredAttachment(attachmentId: number): StoredChatAttachment | undefined {
+    const row = this.db.prepare('SELECT * FROM ai_chat_attachment WHERE id = ?')
+      .get(attachmentId) as ChatAttachmentRow | undefined;
+    return row ? toStoredChatAttachment(row) : undefined;
+  }
+
+  listDraftAttachments(threadId: number): ChatAttachment[] {
+    const rows = this.db.prepare(`
+      SELECT attachment.* FROM ai_chat_attachment AS attachment
+      LEFT JOIN ai_chat_message_attachment AS linked
+        ON linked.attachmentId = attachment.id
+      WHERE attachment.threadId = ? AND linked.attachmentId IS NULL
+      ORDER BY attachment.createdAt ASC, attachment.id ASC
+    `).all(threadId) as ChatAttachmentRow[];
+    return rows.map(toPublicChatAttachment);
+  }
+
+  linkAttachments(messageId: number, attachmentIds: readonly number[]): void {
+    if (attachmentIds.length > 5) {
+      throw new Error('A Chat message can contain at most five attachments.');
+    }
+    if (new Set(attachmentIds).size !== attachmentIds.length) {
+      throw new Error('A Chat message cannot contain duplicate attachment IDs.');
+    }
+    const message = this.db.prepare(
+      'SELECT threadId FROM ai_chat_message WHERE id = ?',
+    ).get(messageId) as { threadId: number } | undefined;
+    if (!message) throw new Error('Chat message was not found.');
+
+    const persist = this.db.transaction(() => {
+      for (const [orderIndex, attachmentId] of attachmentIds.entries()) {
+        const attachment = this.db.prepare(`
+          SELECT threadId FROM ai_chat_attachment WHERE id = ?
+        `).get(attachmentId) as { threadId: number } | undefined;
+        if (!attachment || attachment.threadId !== message.threadId) {
+          throw new Error('Chat attachment does not belong to this conversation.');
+        }
+        this.db.prepare(`
+          INSERT INTO ai_chat_message_attachment
+            (messageId, attachmentId, orderIndex)
+          VALUES (?, ?, ?)
+        `).run(messageId, attachmentId, orderIndex);
+        this.db.prepare(`
+          UPDATE ai_chat_attachment SET expiresAt = NULL WHERE id = ?
+        `).run(attachmentId);
+      }
+    });
+    persist();
+  }
+
+  deleteDraftAttachment(attachmentId: number, threadId: number): boolean {
+    const result = this.db.prepare(`
+      DELETE FROM ai_chat_attachment
+      WHERE id = ? AND threadId = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM ai_chat_message_attachment
+          WHERE attachmentId = ai_chat_attachment.id
+        )
+    `).run(attachmentId, threadId);
+    return result.changes === 1;
   }
 
   createRunWithMessages(params: CreateChatRunParams): CreatedChatRun {
@@ -401,6 +533,56 @@ export class ChatStore {
     return Number(result.lastInsertRowid);
   }
 
+  private insertAttachment(
+    params: (
+      CreateTextChatAttachmentParams
+      & {
+        kind: 'text';
+        storageKey: null;
+        width: null;
+        height: null;
+      }
+    ) | (
+      CreateImageChatAttachmentParams
+      & { kind: 'image'; textContent: null }
+    ),
+  ): ChatAttachment {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      INSERT INTO ai_chat_attachment
+        (threadId, kind, displayName, mimeType, byteSize, textContent,
+         contentHash, storageKey, width, height, expiresAt, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      params.threadId,
+      params.kind,
+      params.displayName,
+      params.mimeType,
+      params.byteSize,
+      params.textContent,
+      params.contentHash,
+      params.storageKey,
+      params.width,
+      params.height,
+      params.expiresAt,
+      now,
+    );
+    const stored = this.findStoredAttachment(Number(result.lastInsertRowid));
+    if (!stored) throw new Error('Chat attachment was not persisted.');
+    return omitStoredContent(stored);
+  }
+
+  private listAttachmentsForMessage(messageId: number): ChatAttachment[] {
+    const rows = this.db.prepare(`
+      SELECT attachment.*
+      FROM ai_chat_message_attachment AS linked
+      JOIN ai_chat_attachment AS attachment ON attachment.id = linked.attachmentId
+      WHERE linked.messageId = ?
+      ORDER BY linked.orderIndex ASC
+    `).all(messageId) as ChatAttachmentRow[];
+    return rows.map(toPublicChatAttachment);
+  }
+
   private touchThread(threadId: number, updatedAt: string): void {
     this.db.prepare('UPDATE ai_chat_thread SET updatedAt = ? WHERE id = ?')
       .run(updatedAt, threadId);
@@ -463,6 +645,36 @@ function toChatRun(row: ChatRunRow): ChatRun {
     createdAt: row.createdAt,
     ...(row.completedAt ? { completedAt: row.completedAt } : {}),
   };
+}
+
+function toPublicChatAttachment(row: ChatAttachmentRow): ChatAttachment {
+  return {
+    id: row.id,
+    threadId: row.threadId,
+    kind: row.kind,
+    displayName: row.displayName,
+    mimeType: row.mimeType,
+    byteSize: row.byteSize,
+    contentHash: row.contentHash,
+    ...(row.width === null ? {} : { width: row.width }),
+    ...(row.height === null ? {} : { height: row.height }),
+    ...(row.expiresAt === null ? {} : { expiresAt: row.expiresAt }),
+    createdAt: row.createdAt,
+  };
+}
+
+function toStoredChatAttachment(row: ChatAttachmentRow): StoredChatAttachment {
+  return {
+    ...toPublicChatAttachment(row),
+    ...(row.textContent === null ? {} : { textContent: row.textContent }),
+    ...(row.storageKey === null ? {} : { storageKey: row.storageKey }),
+  };
+}
+
+function omitStoredContent(attachment: StoredChatAttachment): ChatAttachment {
+  const { textContent: _textContent, storageKey: _storageKey, ...publicAttachment } =
+    attachment;
+  return publicAttachment;
 }
 
 function parseSelection(

@@ -95,6 +95,96 @@ describe('ChatStore threads and messages', () => {
     expect(store.listMessages(thread.id)).toHaveLength(2);
   });
 
+  it('links ordered attachment metadata without exposing stored content', () => {
+    const thread = store.findOrCreateThread(1, 'content-a', 'article-chat-v1');
+    const first = store.createTextAttachment({
+      threadId: thread.id,
+      displayName: 'notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 12,
+      textContent: '# private',
+      contentHash: 'text-hash',
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+    const second = store.createImageAttachment({
+      threadId: thread.id,
+      displayName: 'chart.png',
+      mimeType: 'image/png',
+      byteSize: 3,
+      contentHash: 'image-hash',
+      storageKey: 'image-hash.png',
+      width: 10,
+      height: 20,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+    const created = store.createRunWithMessages({
+      threadId: thread.id,
+      question: 'Compare these.',
+      providerProfileId: providerId,
+      providerKind: 'openai',
+      model: 'example-model',
+      promptVersion: 'article-chat-v1',
+      contextMode: 'full',
+      articleContentHash: 'content-a',
+      inputContentHash: 'input-a',
+    });
+
+    store.linkAttachments(created.userMessage.id, [second.id, first.id]);
+
+    const message = store.findMessageById(created.userMessage.id);
+    expect(message?.attachments.map(({ id }) => id)).toEqual([second.id, first.id]);
+    expect(message?.attachments[0]).not.toHaveProperty('storageKey');
+    expect(message?.attachments[1]).not.toHaveProperty('textContent');
+    expect(store.findStoredAttachment(first.id)).toMatchObject({
+      textContent: '# private',
+    });
+    expect(store.listDraftAttachments(thread.id)).toEqual([]);
+  });
+
+  it('rejects cross-thread attachment references and protects linked rows', () => {
+    const firstThread = store.findOrCreateThread(1, 'content-a', 'article-chat-v1');
+    const secondThread = store.findOrCreateThread(1, 'content-b', 'article-chat-v1');
+    const attachment = store.createTextAttachment({
+      threadId: secondThread.id,
+      displayName: 'other.txt',
+      mimeType: 'text/plain',
+      byteSize: 5,
+      textContent: 'other',
+      contentHash: 'other-hash',
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+    const created = store.createRunWithMessages({
+      threadId: firstThread.id,
+      question: 'Unsafe reference?',
+      providerProfileId: providerId,
+      providerKind: 'openai',
+      model: 'example-model',
+      promptVersion: 'article-chat-v1',
+      contextMode: 'full',
+      articleContentHash: 'content-a',
+      inputContentHash: 'input-a',
+    });
+
+    expect(() => store.linkAttachments(
+      created.userMessage.id,
+      [attachment.id],
+    )).toThrow('does not belong');
+    expect(store.deleteDraftAttachment(attachment.id, firstThread.id)).toBe(false);
+
+    store.linkAttachments(
+      store.createMessage({
+        threadId: secondThread.id,
+        role: 'user',
+        content: 'Use it.',
+        status: 'completed',
+        articleContextMode: 'full',
+        articleContentHash: 'content-b',
+      }).id,
+      [attachment.id],
+    );
+    expect(store.deleteDraftAttachment(attachment.id, secondThread.id)).toBe(false);
+  });
+
   it('reuses a thread for the same content hash and isolates changed content', () => {
     const first = store.findOrCreateThread(1, 'content-a', 'article-chat-v1');
     const reused = store.findOrCreateThread(1, 'content-a', 'article-chat-v1');
