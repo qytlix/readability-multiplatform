@@ -61,6 +61,20 @@ preserves all existing migrations and user data.
 The completion run includes focused tests, the full test suite, lint,
 typecheck, and packaging on the available host.
 
+### Completion run — 2026-07-30, Windows 11 x64
+
+- `npm test`: 155 test files and 1168 tests passed;
+- `npm run typecheck`: passed;
+- `npm run lint`: passed with 0 errors and 123 existing warnings;
+- `npm run verify:chat-image`: passed;
+- `npm run package`: passed;
+- `npm run verify:chat-package`: passed and confirmed the executable, Main and
+  Preload bundles, PDF.js runtime, unpacked SQLite addon, terminology database,
+  and Article Chat production markers.
+
+Vitest emitted worker-termination timeout notices for 11 files after all tests
+had passed. The process exited successfully without a failed or skipped test.
+
 ## Human verification
 
 Human observation remains required on Windows 11 and native Wayland for:
@@ -104,4 +118,4 @@ error codes.
 | CHAT-07 | Passed | Review required | Native picker, content-sniffed text/HTML/PDF extraction, draft expiry, partial failure and attachment chips |
 | CHAT-08 | Passed | Review required | Signature-checked normalization, content-addressed storage, production image loader, clipboard paste and previews |
 | CHAT-09 | Passed | Review required | Local and bilingual Reader selection mapping, bounded structured context, action menu, removable composer quote and persisted selection questions |
-| CHAT-10 | Not started | Not started | Integration and release |
+| CHAT-10 | Passed | Review required | Durable map/answer usage attribution, visible preparation failures, privacy allowlist, restart recovery and Windows x64 package verification |

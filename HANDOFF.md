@@ -5,14 +5,15 @@
 - Date: 2026-07-30
 - Branch: `cyj-aichat`
 - Base: `origin/cyj-aichat` at `e490720`
-- Stop point: `CHAT-05` completed; `CHAT-06` has not started
-- Local branch state before this handoff commit: 31 commits ahead of
-  `origin/cyj-aichat`
+- Completion point: `CHAT-00` through `CHAT-10` are implemented and
+  automatically verified
+- The feature branch remains local and has not been pushed
 - Scope interpretation: every `CHAT-00` through `CHAT-10` work package is a
   milestone and must contain at least five single-purpose commits
 
-This handoff intentionally stops at the backend/runtime boundary requested by
-the owner. There is no Article Chat panel or Reader entry point yet.
+The original handoff stopped at the backend/runtime boundary. The continuation
+now delivers the Reader UI, file and image attachments, selection questions,
+usage/recovery hardening, and Windows packaging verification.
 
 ## 2. Completed milestones and commits
 
@@ -65,6 +66,47 @@ the owner. There is no Article Chat panel or Reader entry point yet.
 5. `905e610` `feat(chat): assemble runtime and shutdown cleanup`
 6. `5d3cba3` `test(chat): update cross-feature regression gates`
 
+### CHAT-06 — Reader layout and base conversation UI
+
+1. `57fa264` `feat(chat): preserve reader column layout`
+2. `94708c3` `feat(chat): add reader chat entry point`
+3. `b411bd7` `feat(chat): render persisted article conversation`
+4. `4ae947f` `feat(chat): send stop and retry answers`
+5. `7af19d4` `test(chat): harden renderer chat lifecycle`
+
+### CHAT-07 — text, HTML, and PDF attachments
+
+1. `ea8f9c8` `feat(chat): define file attachment IPC`
+2. `fc43026` `feat(chat): extract safe text attachments`
+3. `e42b508` `feat(chat): extract selectable PDF text`
+4. `59f56bc` `feat(chat): import and expire file attachments`
+5. `05389e7` `feat(chat): manage file attachment chips`
+
+### CHAT-08 — image attachments and clipboard input
+
+1. `68238c6` `feat(chat): normalize safe image inputs`
+2. `b47bba7` `feat(chat): store normalized images by content`
+3. `d6ed277` `feat(chat): import persisted image attachments`
+4. `43a7f7d` `feat(chat): paste and preview chat images`
+5. `af690df` `test(chat): verify multimodal image delivery`
+
+### CHAT-09 — Reader selection questions
+
+1. `2ef02d4` `feat(chat): map reader selection context`
+2. `c27361a` `feat(chat): show reader selection action`
+3. `47013ae` `feat(chat): route reader selections to questions`
+4. `555a444` `feat(chat): compose questions from selections`
+5. `d2ce075` `test(chat): harden selection question boundaries`
+
+### CHAT-10 — integration and release hardening
+
+1. `979b77a` `feat(chat): record article map analysis usage`
+2. `992af0e` `feat(chat): attribute map usage to durable runs`
+3. `a0a8aea` `fix(chat): surface context preparation failures`
+4. `ee4ca2f` `fix(chat): whitelist lifecycle diagnostics`
+5. `cc24d41` `test(chat): verify packaged runtime assets`
+6. `4d8320d` `test(chat): recover durable runs after restart`
+
 ## 3. Delivered architecture
 
 ### Provider and security
@@ -116,52 +158,49 @@ The restricted Preload API now exposes:
 - `chat.cancel`
 - `chat.retry`
 - `chat.onEvent`
+- `chat.pickAttachments`
+- `chat.removeAttachment`
 
 Main validates every request and verifies the sender before calling
 `ChatService`.
 
 ## 4. Verification completed
 
-Run on Windows in this workspace:
+Completion run on Windows 11 x64 in this workspace:
 
 - `npm run typecheck`: passed
-- `npm run lint`: passed with 0 errors and 123 pre-existing warnings
-- `npm test`: 140 test files passed, 1091 tests passed
+- `npm run lint`: passed with 0 errors and 123 existing warnings
+- `npm test`: 155 test files passed, 1168 tests passed
+- `npm run verify:chat-image`: passed
+- `npm run package`: passed
+- `npm run verify:chat-package`: passed
 - `git diff --check`: passed
 
-The full test process exited successfully. Vitest printed one worker-termination
-timeout notice after completion for `feed-service.test.ts`; it did not fail or
-skip a test.
+The full test process exited successfully. Vitest printed worker-termination
+timeout notices after completion for 11 test files; they did not fail or skip
+tests.
 
 Focused Chat coverage includes migrations, stores, transactions, context
 selection, prompt boundaries, history compression, Provider mappings,
 capability checks, streaming persistence, busy-state isolation, cancellation,
-late output, retry, restart recovery, IPC validation, safe logging, and service
-assembly.
+late output, retry, attachment validation, Reader layout, clipboard/selection
+behavior, restart recovery, IPC validation, safe logging, service assembly,
+and packaged runtime assets.
 
-## 5. Deliberately not implemented
+## 5. Remaining human verification
 
-These belong to later milestones and must not be mistaken for regressions:
+Automated implementation and Windows packaging are complete. The following
+acceptance work still requires a human and is not claimed as completed:
 
-- `CHAT-06`: Reader button, four-state column layout, Chat panel, message UI,
-  composer, stop/retry controls, and layout restoration.
-- `CHAT-07`: native file picker, text/HTML/PDF extraction, attachment chips,
-  limits, expiry, and cleanup.
-- `CHAT-08`: image normalization/storage, clipboard images, preview, and the
-  production `ChatAttachmentContentLoader`.
-- `CHAT-09`: Reader and bilingual selection menus and selection-question UI.
-- `CHAT-10`: end-to-end integration, packaging, Windows/Wayland human
-  verification, and real Provider smoke tests.
+- visual and interaction smoke testing at the documented widths on Windows 11;
+- native Wayland layout, picker, clipboard, shutdown, and restart smoke tests;
+- real text-only and image-capable Provider tests using owner-supplied keys;
+- human review of Preload/IPC, migrations, secret handling, prompt boundaries,
+  diagnostics, attachment storage, and Provider serialization.
 
-The schema already supports text/image attachment metadata, but there is no
-attachment import service. `ChatService` therefore has no production image
-loader yet and will reject actual image sending until `CHAT-08`.
-
-The usage ledger distinguishes `chat-answer` and `chat-segment-analysis`.
-Final answers are recorded now. Per-segment article-map token usage is not yet
-attributed to a persisted Chat run because map preparation currently occurs
-before run creation; resolve that lifecycle ordering before final `CHAT-10`
-usage acceptance.
+Per-segment article-map usage and final-answer usage now share one durable Chat
+run and attempt identity. Context-preparation failures are persisted and become
+visible after the Renderer reloads state.
 
 ## 6. Required human review
 
@@ -174,23 +213,16 @@ Before accepting these milestones, a human should review:
 - prompt-injection boundaries and the no-silent-truncation policy.
 - structured logs and diagnostic output for privacy.
 
-No real API key was used, no external Provider call was made, and no
-Windows/Wayland GUI or packaging smoke test was performed in this handoff.
+No real API key was used and no external Provider call was made. Windows x64
+automated packaging passed; Windows GUI and native Wayland observation remain
+human acceptance items.
 
 ## 7. Recommended next work
 
-Start `CHAT-06` from this branch and keep at least five single-purpose commits.
-A safe sequence is:
-
-1. define and test the four-column layout state model and snapshot restoration;
-2. add the Reader toolbar Chat entry point without remounting `EntryDetail`;
-3. build the panel shell and persisted-message rendering;
-4. connect composer send/stop/retry behavior to the existing Preload API;
-5. add event filtering, listener cleanup, IME/keyboard tests, and responsive
-   layout regression tests.
-
-Do not start file/image attachment behavior until the base composer and panel
-lifecycle are stable.
+Proceed with human acceptance and review. Record Windows/Wayland observations
+and real Provider results in `docs/ai/article-chat-verification.md`. Fix only
+verified defects on this feature branch, then open the owner-approved PR; do
+not treat automated GUI assertions as a substitute for human observation.
 
 ## 8. Repository note
 
