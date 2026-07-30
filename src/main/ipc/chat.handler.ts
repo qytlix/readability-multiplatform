@@ -8,21 +8,22 @@ import {
   CHAT_IPC_CHANNELS,
 } from '../../shared/contracts/chat.ipc';
 import type { IPCResult } from '../../shared/contracts/feed.ipc';
-import type {
-  ChatAttachmentPickResponse,
-  ChatAttachmentPreviewRequest,
-  ChatAttachmentPreviewResponse,
-  ChatAttachmentRemoveRequest,
-  ChatAttachmentRemoveResponse,
-  ChatClipboardImageImportRequest,
-  ChatClipboardImageImportResponse,
-  ChatCancelRequest,
-  ChatGetRequest,
-  ChatRetryRequest,
-  ChatRunResponse,
-  ChatSelectionContext,
-  ChatSendRequest,
-  ChatState,
+import {
+  CHAT_SELECTION_LIMITS,
+  type ChatAttachmentPickResponse,
+  type ChatAttachmentPreviewRequest,
+  type ChatAttachmentPreviewResponse,
+  type ChatAttachmentRemoveRequest,
+  type ChatAttachmentRemoveResponse,
+  type ChatClipboardImageImportRequest,
+  type ChatClipboardImageImportResponse,
+  type ChatCancelRequest,
+  type ChatGetRequest,
+  type ChatRetryRequest,
+  type ChatRunResponse,
+  type ChatSelectionContext,
+  type ChatSendRequest,
+  type ChatState,
 } from '../../shared/contracts/chat.types';
 import {
   CHAT_ERROR_CODES,
@@ -268,14 +269,17 @@ function isSelection(
     && value.entryId === entryId
     && typeof value.text === 'string'
     && Boolean(value.text.trim())
+    && value.text.length <= CHAT_SELECTION_LIMITS.textCharacters
     && typeof value.paragraphContext === 'string'
     && Boolean(value.paragraphContext.trim())
+    && value.paragraphContext.length
+      <= CHAT_SELECTION_LIMITS.paragraphCharacters
     && (
       value.segmentId === undefined
       || (
         typeof value.segmentId === 'string'
         && Boolean(value.segmentId.trim())
-        && value.segmentId.length <= 512
+        && value.segmentId.length <= CHAT_SELECTION_LIMITS.segmentIdCharacters
       )
     )
   );

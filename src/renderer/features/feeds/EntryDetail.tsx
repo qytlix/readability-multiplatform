@@ -1244,7 +1244,7 @@ export const EntryDetail = ({
           useTerminology={aiPreferences.useTerminology}
           expertId={aiPreferences.translationExpertId}
         />
-        {onArticleChatSelection && (
+        {isArticleChatReady && onArticleChatSelection && (
           <ArticleChatSelectionMenu
             entryId={entry.id}
             containerRef={scrollContainerRef}

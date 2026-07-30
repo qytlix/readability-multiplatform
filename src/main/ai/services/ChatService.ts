@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { CleanedContent } from '../../../shared/contracts/content.types';
 import {
   CHAT_PROMPT_VERSION,
+  CHAT_SELECTION_LIMITS,
   type ChatCancelRequest,
   type ChatGetRequest,
   type ChatRun,
@@ -671,7 +672,18 @@ function validateSendRequest(request: ChatSendRequest): void {
       && (
         request.selection.entryId !== request.entryId
         || !request.selection.text.trim()
+        || request.selection.text.length > CHAT_SELECTION_LIMITS.textCharacters
         || !request.selection.paragraphContext.trim()
+        || request.selection.paragraphContext.length
+          > CHAT_SELECTION_LIMITS.paragraphCharacters
+        || (
+          request.selection.segmentId !== undefined
+          && (
+            !request.selection.segmentId.trim()
+            || request.selection.segmentId.length
+              > CHAT_SELECTION_LIMITS.segmentIdCharacters
+          )
+        )
       )
     )
   ) {

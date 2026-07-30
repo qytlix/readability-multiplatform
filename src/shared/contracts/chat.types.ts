@@ -2,6 +2,11 @@ import type { ShaleError } from './feed.ipc';
 import type { ProviderKind } from './provider.types';
 
 export const CHAT_PROMPT_VERSION = 'article-chat-v1';
+export const CHAT_SELECTION_LIMITS = {
+  textCharacters: 20_000,
+  paragraphCharacters: 40_000,
+  segmentIdCharacters: 512,
+} as const;
 export const CHAT_CONTEXT_MODES = [
   'full',
   'history-compressed',

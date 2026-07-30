@@ -1,4 +1,7 @@
-import type { ChatSelectionContext } from '../../../shared/contracts/chat.types';
+import {
+  CHAT_SELECTION_LIMITS,
+  type ChatSelectionContext,
+} from '../../../shared/contracts/chat.types';
 
 const ARTICLE_CHAT_SELECTION_ROOT = [
   '[data-inline-translation-root]',
@@ -69,15 +72,24 @@ export function getArticleChatSelectionTarget(
   }
 
   const text = normalizeSelectionText(selection.toString());
-  if (!text) return null;
+  if (!text || text.length > CHAT_SELECTION_LIMITS.textCharacters) return null;
 
   const contextBlock = startElement.closest<HTMLElement>(ARTICLE_CHAT_CONTEXT_BLOCK)
     ?? startElement.closest<HTMLElement>('.translation-bilingual-target')
     ?? startElement.closest<HTMLElement>('[data-segment-id]');
   const paragraphContext = normalizeSelectionText(contextBlock?.textContent ?? '');
-  if (!paragraphContext) return null;
+  if (
+    !paragraphContext
+    || paragraphContext.length > CHAT_SELECTION_LIMITS.paragraphCharacters
+  ) {
+    return null;
+  }
 
-  const segmentId = findSelectionSegmentId(startElement);
+  const rawSegmentId = findSelectionSegmentId(startElement);
+  const segmentId = rawSegmentId
+    && rawSegmentId.length <= CHAT_SELECTION_LIMITS.segmentIdCharacters
+    ? rawSegmentId
+    : undefined;
   return {
     selection: {
       entryId,

@@ -170,6 +170,31 @@ describe('Article Chat IPC handler', () => {
     expect(service.send).not.toHaveBeenCalled();
   });
 
+  it('rejects over-limit selection context before the service boundary', async () => {
+    const { mainWindow, event } = createAuthorizedWindow();
+    const { service } = createService();
+    registerChatIpcHandlers(
+      () => mainWindow,
+      service,
+      createAttachmentService(),
+    );
+
+    await expect(invoke(CHAT_IPC_CHANNELS.send, event, {
+      entryId: 7,
+      question: 'Explain this selection.',
+      selection: {
+        entryId: 7,
+        text: 'x'.repeat(20_001),
+        paragraphContext: 'Paragraph context.',
+      },
+      attachmentIds: [],
+    })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'CHAT_INVALID_REQUEST' },
+    });
+    expect(service.send).not.toHaveBeenCalled();
+  });
+
   it('forwards identity-rich stream events only to the live main window', () => {
     const { mainWindow, send } = createAuthorizedWindow();
     const { service, emit } = createService();

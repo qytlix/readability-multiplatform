@@ -1,6 +1,7 @@
 import { JSDOM } from 'jsdom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getArticleChatSelectionTarget } from '../../../src/renderer/features/chat/articleChatSelection';
+import { CHAT_SELECTION_LIMITS } from '../../../src/shared/contracts/chat.types';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -99,6 +100,17 @@ describe('Article Chat Reader selections', () => {
     selection.addRange(range);
 
     expect(getArticleChatSelectionTarget(selection, container, 42)).toBeNull();
+  });
+
+  it('rejects an over-limit selection instead of truncating it', () => {
+    const selectedText = 'x'.repeat(CHAT_SELECTION_LIMITS.textCharacters + 1);
+    const fixture = createSelectionFixture(`
+      <div data-inline-translation-root>
+        <p><span id="selection">${selectedText}</span></p>
+      </div>
+    `);
+
+    expect(resolveSelection(fixture)).toBeNull();
   });
 });
 

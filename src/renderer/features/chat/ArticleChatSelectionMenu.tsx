@@ -27,13 +27,17 @@ export const ArticleChatSelectionMenu = ({
   const menuRef = useRef<HTMLElement>(null);
   const captureTimerRef = useRef<number | null>(null);
 
-  const close = useCallback((): void => {
+  const clearCaptureTimer = useCallback((): void => {
     if (captureTimerRef.current !== null) {
       window.clearTimeout(captureTimerRef.current);
       captureTimerRef.current = null;
     }
-    setTarget(null);
   }, []);
+
+  const close = useCallback((): void => {
+    clearCaptureTimer();
+    setTarget(null);
+  }, [clearCaptureTimer]);
 
   useEffect(() => {
     close();
@@ -85,9 +89,9 @@ export const ArticleChatSelectionMenu = ({
       document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
       window.removeEventListener('resize', close);
       window.removeEventListener('keydown', closeOnEscape);
-      close();
+      clearCaptureTimer();
     };
-  }, [close, containerRef, entryId]);
+  }, [clearCaptureTimer, close, containerRef, entryId]);
 
   if (!target) return null;
 

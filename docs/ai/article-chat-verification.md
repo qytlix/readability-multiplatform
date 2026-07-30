@@ -103,5 +103,5 @@ error codes.
 | CHAT-06 | Passed | Review required | Four-state layout restoration, Reader entry, persisted messages, composer, event isolation and responsive panel |
 | CHAT-07 | Passed | Review required | Native picker, content-sniffed text/HTML/PDF extraction, draft expiry, partial failure and attachment chips |
 | CHAT-08 | Passed | Review required | Signature-checked normalization, content-addressed storage, production image loader, clipboard paste and previews |
-| CHAT-09 | Not started | Not started | Selection questions |
+| CHAT-09 | Passed | Review required | Local and bilingual Reader selection mapping, bounded structured context, action menu, removable composer quote and persisted selection questions |
 | CHAT-10 | Not started | Not started | Integration and release |
