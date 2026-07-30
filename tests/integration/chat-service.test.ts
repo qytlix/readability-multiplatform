@@ -162,4 +162,128 @@ describe('ChatService', () => {
     })).rejects.toMatchObject({ code: 'CHAT_BUSY' });
     release?.();
   });
+
+  it('cancels an active run and ignores late Provider output', async () => {
+    const harness = createChatServiceHarness(async function* () {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      yield 'late';
+    });
+    const events: string[] = [];
+    harness.service.subscribe((event) => events.push(event.type));
+    const response = await harness.service.send({
+      entryId: 1,
+      question: 'cancel me',
+      attachmentIds: [],
+    });
+
+    harness.service.cancel({ runId: response.runId });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(events).toEqual(['started', 'interrupted']);
+    expect(harness.chatStore.findRunById(response.runId)?.status).toBe('interrupted');
+    expect(harness.chatStore.findMessageById(response.assistantMessageId)).toMatchObject({
+      status: 'interrupted',
+      content: '',
+    });
+  });
+
+  it('retries a failed run without duplicating the user message', async () => {
+    let attempt = 0;
+    const harness = createChatServiceHarness(async function* () {
+      attempt += 1;
+      if (attempt === 1) throw new Error('provider failed');
+      yield 'recovered';
+    });
+    const failedEvent = new Promise<void>((resolve) => {
+      harness.service.subscribe((event) => {
+        if (event.type === 'failed') resolve();
+      });
+    });
+    const first = await harness.service.send({
+      entryId: 1,
+      question: 'retry me',
+      attachmentIds: [],
+    });
+    await failedEvent;
+    expect(harness.chatStore.findRunById(first.runId)?.status).toBe('failed');
+
+    const completedEvent = new Promise<void>((resolve) => {
+      harness.service.subscribe((event) => {
+        if (event.type === 'completed') resolve();
+      });
+    });
+    const retried = await harness.service.retry({ runId: first.runId });
+    await completedEvent;
+
+    expect(retried).toMatchObject({ runId: first.runId, reused: true });
+    expect(harness.chatStore.listMessages(retried.threadId)).toMatchObject([
+      { role: 'user', content: 'retry me' },
+      { role: 'assistant', content: 'recovered', status: 'completed' },
+    ]);
+  });
+
+  it('interrupts the active run when the current article changes', async () => {
+    const harness = createChatServiceHarness(async function* () {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      yield 'late';
+    });
+    const response = await harness.service.send({
+      entryId: 1,
+      question: 'switch article',
+      attachmentIds: [],
+    });
+
+    harness.service.handleEntryChange(2);
+
+    expect(harness.chatStore.findRunById(response.runId)?.status).toBe('interrupted');
+  });
 });
+
+function createChatServiceHarness(
+  stream: TextGenerationProvider['stream'],
+): {
+  service: ChatService;
+  chatStore: ChatStore;
+} {
+  const { db } = buildTestDbWithData();
+  const contentStore = new ContentStore(db);
+  contentStore.upsert({
+    entryId: 1,
+    markdown: 'Article body',
+    sourceContentHash: 'article-hash',
+    pipelineStatus: 'success',
+  });
+  const profileStore = new ProviderProfileStore(db);
+  profileStore.saveActive({
+    providerKind: 'openai',
+    baseUrl: 'https://provider.test/v1',
+    model: 'chat-model',
+    apiKeyRef: 'chat-key',
+  });
+  const provider: TextGenerationProvider = {
+    stream,
+    async testConnection() {},
+  };
+  const chatStore = new ChatStore(db);
+  return {
+    chatStore,
+    service: new ChatService(
+      contentStore,
+      profileStore,
+      { read: () => 'secret' },
+      chatStore,
+      {
+        prepare: async () => ({
+          mode: 'full',
+          systemInstruction: 'system',
+          articleReference: 'article',
+          historyReference: '',
+          estimatedPromptTokens: 2,
+          cacheHit: false,
+          relatedSegmentIds: [],
+        }),
+      },
+      provider,
+    ),
+  };
+}
