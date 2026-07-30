@@ -4,7 +4,11 @@ import type {
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
 import { normalizeProviderFinishReason } from './TextGenerationProvider';
-import { getLegacyProviderPrompt } from './TextGenerationProvider';
+import {
+  validateProviderConversation,
+  type ProviderContentPart,
+  type ProviderMessage,
+} from './TextGenerationProvider';
 import {
   createProviderAbortScope,
   fetchProviderResponse,
@@ -29,7 +33,7 @@ export class GeminiProvider implements TextGenerationProvider {
         {
           method: 'POST',
           headers: buildHeaders(request.apiKey),
-          body: JSON.stringify(buildBody(getLegacyProviderPrompt(request), 4_096)),
+          body: JSON.stringify(buildBody(request, 4_096)),
         },
         scope,
       );
@@ -66,7 +70,7 @@ export class GeminiProvider implements TextGenerationProvider {
         {
           method: 'POST',
           headers: buildHeaders(request.apiKey),
-          body: JSON.stringify(buildBody('Reply with OK.', 1)),
+          body: JSON.stringify(buildBody({ prompt: 'Reply with OK.' }, 1)),
         },
         scope,
       );
@@ -84,13 +88,37 @@ function buildHeaders(apiKey: string): Record<string, string> {
   };
 }
 
-function buildBody(prompt: string, maxOutputTokens: number): Record<string, unknown> {
+function buildBody(
+  request: Pick<
+    TextGenerationProviderRequest,
+    'prompt' | 'systemInstruction' | 'messages'
+  >,
+  maxOutputTokens: number,
+): Record<string, unknown> {
+  const conversation = validateProviderConversation(request);
   return {
-    contents: [{
-      role: 'user',
-      parts: [{ text: prompt }],
-    }],
+    ...(conversation.systemInstruction
+      ? { systemInstruction: { parts: [{ text: conversation.systemInstruction }] } }
+      : {}),
+    contents: conversation.messages.map(mapGeminiMessage),
     generationConfig: { maxOutputTokens },
+  };
+}
+
+function mapGeminiMessage(message: ProviderMessage): Record<string, unknown> {
+  return {
+    role: message.role === 'assistant' ? 'model' : 'user',
+    parts: message.content.map(mapGeminiContentPart),
+  };
+}
+
+function mapGeminiContentPart(part: ProviderContentPart): Record<string, unknown> {
+  if (part.type === 'text') return { text: part.text };
+  return {
+    inlineData: {
+      mimeType: part.mimeType,
+      data: Buffer.from(part.bytes).toString('base64'),
+    },
   };
 }
 
