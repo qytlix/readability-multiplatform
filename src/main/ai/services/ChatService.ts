@@ -110,19 +110,27 @@ export class ChatService {
       CHAT_PROMPT_VERSION,
     );
     const messages = this.chatStore.listMessages(thread.id);
+    const draftAttachments = this.chatStore.listDraftAttachments(thread.id);
     const latestRun = this.chatStore.findLatestRunForThread(thread.id);
     if (latestRun?.status === 'running') {
-      return { state: 'running', thread, messages, run: latestRun };
+      return {
+        state: 'running',
+        thread,
+        messages,
+        draftAttachments,
+        run: latestRun,
+      };
     }
     if (latestRun?.status === 'failed' || latestRun?.status === 'interrupted') {
       return {
         state: latestRun.status,
         thread,
         messages,
+        draftAttachments,
         run: latestRun,
       };
     }
-    return { state: 'idle', thread, messages };
+    return { state: 'idle', thread, messages, draftAttachments };
   }
 
   async send(request: ChatSendRequest): Promise<ChatRunResponse> {

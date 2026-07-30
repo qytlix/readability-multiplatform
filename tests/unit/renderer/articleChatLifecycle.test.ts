@@ -26,6 +26,7 @@ const idleState: ChatState = {
     updatedAt: '2026-07-30T00:00:00.000Z',
   },
   messages: [],
+  draftAttachments: [],
 };
 
 const SessionHarness = ({ children }: { children?: ReactNode }) => {

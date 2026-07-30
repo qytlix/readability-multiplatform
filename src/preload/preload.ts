@@ -21,7 +21,11 @@ import { ANNOTATION_IPC_CHANNELS } from '../shared/contracts/annotation.ipc';
 import { TAG_IPC_CHANNELS } from '../shared/contracts/tag.ipc';
 import { EXPORT_IPC_CHANNELS } from '../shared/contracts/export.ipc';
 import { CHAT_IPC_CHANNELS } from '../shared/contracts/chat.ipc';
-import type { ChatStreamEvent } from '../shared/contracts/chat.types';
+import type {
+  ChatAttachmentPickRequest,
+  ChatAttachmentRemoveRequest,
+  ChatStreamEvent,
+} from '../shared/contracts/chat.types';
 import type { CleanProgressEvent } from '../shared/contracts/export.ipc';
 import type {
   AnnotationIdRequest,
@@ -176,6 +180,10 @@ const chatAPI = {
     ipcRenderer.invoke(CHAT_IPC_CHANNELS.cancel, request),
   retry: (request: { runId: number }) =>
     ipcRenderer.invoke(CHAT_IPC_CHANNELS.retry, request),
+  pickAttachments: (request: ChatAttachmentPickRequest) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.attachmentPick, request),
+  removeAttachment: (request: ChatAttachmentRemoveRequest) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.attachmentRemove, request),
   onEvent: (listener: (event: ChatStreamEvent) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

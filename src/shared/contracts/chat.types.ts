@@ -93,17 +93,24 @@ export interface ChatRun {
 }
 
 export type ChatState =
-  | { state: 'idle'; thread: ChatThread; messages: ChatMessage[] }
+  | {
+      state: 'idle';
+      thread: ChatThread;
+      messages: ChatMessage[];
+      draftAttachments: ChatAttachment[];
+    }
   | {
       state: 'running';
       thread: ChatThread;
       messages: ChatMessage[];
+      draftAttachments: ChatAttachment[];
       run: ChatRun;
     }
   | {
       state: 'failed' | 'interrupted';
       thread: ChatThread;
       messages: ChatMessage[];
+      draftAttachments: ChatAttachment[];
       run: ChatRun;
     };
 
@@ -124,6 +131,30 @@ export interface ChatRetryRequest {
 
 export interface ChatCancelRequest {
   runId: number;
+}
+
+export interface ChatAttachmentPickRequest {
+  entryId: number;
+}
+
+export interface ChatAttachmentImportFailure {
+  displayName: string;
+  error: ShaleError;
+}
+
+export interface ChatAttachmentPickResponse {
+  canceled: boolean;
+  attachments: ChatAttachment[];
+  failures: ChatAttachmentImportFailure[];
+}
+
+export interface ChatAttachmentRemoveRequest {
+  entryId: number;
+  attachmentId: number;
+}
+
+export interface ChatAttachmentRemoveResponse {
+  removed: boolean;
 }
 
 export interface ChatRunResponse {
@@ -147,4 +178,3 @@ export type ChatStreamEvent =
   | (ChatStreamEventBase & { type: 'completed'; message: ChatMessage })
   | (ChatStreamEventBase & { type: 'failed'; error: ShaleError })
   | (ChatStreamEventBase & { type: 'interrupted'; error: ShaleError });
-

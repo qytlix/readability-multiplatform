@@ -30,6 +30,7 @@ const runningState: Extract<ChatState, { state: 'running' }> = {
     updatedAt: '2026-07-30T00:00:00.000Z',
   },
   messages: [assistantMessage],
+  draftAttachments: [],
   run: {
     id: 9,
     threadId: 3,

@@ -68,6 +68,7 @@ export const applyChatStreamEvent = (
     return {
       state: 'idle',
       thread: state.thread,
+      draftAttachments: state.draftAttachments,
       messages: updateMessage(
         state.messages,
         event.messageId,
@@ -80,6 +81,7 @@ export const applyChatStreamEvent = (
   return {
     state: terminalStatus,
     thread: state.thread,
+    draftAttachments: state.draftAttachments,
     messages: updateMessage(
       state.messages,
       event.messageId,

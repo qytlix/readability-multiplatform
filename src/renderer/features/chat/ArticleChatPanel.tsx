@@ -43,7 +43,9 @@ export const ArticleChatPanel = ({
     ? session.state.run.contextMode
     : getCurrentContextMode(session.state?.messages ?? []);
   const running = session.state?.state === 'running';
-  const activeRunId = running ? session.state.run.id : null;
+  const activeRunId = session.state?.state === 'running'
+    ? session.state.run.id
+    : null;
   const busy = session.actionStatus !== 'idle';
 
   useEffect(() => {

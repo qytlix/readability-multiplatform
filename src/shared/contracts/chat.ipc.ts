@@ -1,5 +1,9 @@
 import type { IPCResult } from './feed.ipc';
 import type {
+  ChatAttachmentPickRequest,
+  ChatAttachmentPickResponse,
+  ChatAttachmentRemoveRequest,
+  ChatAttachmentRemoveResponse,
   ChatCancelRequest,
   ChatGetRequest,
   ChatRetryRequest,
@@ -14,6 +18,8 @@ export const CHAT_IPC_CHANNELS = {
   send: 'chat:send',
   cancel: 'chat:cancel',
   retry: 'chat:retry',
+  attachmentPick: 'chat:attachment-pick',
+  attachmentRemove: 'chat:attachment-remove',
   stream: 'chat:stream',
 } as const;
 
@@ -22,5 +28,11 @@ export interface ChatAPI {
   send(request: ChatSendRequest): Promise<IPCResult<ChatRunResponse>>;
   cancel(request: ChatCancelRequest): Promise<IPCResult<void>>;
   retry(request: ChatRetryRequest): Promise<IPCResult<ChatRunResponse>>;
+  pickAttachments(
+    request: ChatAttachmentPickRequest,
+  ): Promise<IPCResult<ChatAttachmentPickResponse>>;
+  removeAttachment(
+    request: ChatAttachmentRemoveRequest,
+  ): Promise<IPCResult<ChatAttachmentRemoveResponse>>;
   onEvent(listener: (event: ChatStreamEvent) => void): () => void;
 }
