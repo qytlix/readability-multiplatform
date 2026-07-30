@@ -6,6 +6,7 @@ import type { DiagnosticsAPI } from './contracts/diagnostics.ipc';
 import type { UsageAPI } from './contracts/usage.ipc';
 import type { AnnotationAPI } from './contracts/annotation.ipc';
 import type { TagAPI } from './contracts/tag.ipc';
+import type { ChatAPI } from './contracts/chat.ipc';
 import type {
   ExportAPI,
   FeedAPI,
@@ -58,4 +59,5 @@ export interface ShaleAPI {
   annotation: AnnotationAPI;
   export: ExportAPI;
   tag: TagAPI;
+  chat: ChatAPI;
 }

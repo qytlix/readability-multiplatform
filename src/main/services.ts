@@ -46,6 +46,7 @@ import { AnnotationService } from './annotations/AnnotationService';
 import { TagStore } from './tags/TagStore';
 import { TagService } from './tags/TagService';
 import { AutoTagService } from './tags/AutoTagService';
+import { ChatService } from './ai/services/ChatService';
 
 // ── Service Interfaces ──────────────────────────────────
 
@@ -77,6 +78,10 @@ export interface UsageServices {
   usageStatisticsService: UsageStatisticsService;
 }
 
+export interface ChatServices {
+  chatService: ChatService;
+}
+
 export interface AnnotationServices {
   annotationService: AnnotationService;
 }
@@ -102,6 +107,7 @@ let translationServicesSingleton: TranslationServices | null = null;
 let annotationServicesSingleton: AnnotationServices | null = null;
 let tagServicesSingleton: TagServices | null = null;
 let usageServicesSingleton: UsageServices | null = null;
+let chatServicesSingleton: ChatServices | null = null;
 
 /** Returns the feed services singleton (null before initializeServices). */
 export function getFeedServices(): FeedServices | null {
@@ -121,6 +127,15 @@ export function getTranslationServices(): TranslationServices | null {
 /** Returns the read-only usage statistics service (null before initializeServices). */
 export function getUsageServices(): UsageServices | null {
   return usageServicesSingleton;
+}
+
+export function getChatServices(): ChatServices | null {
+  return chatServicesSingleton;
+}
+
+/** Returns the Article Chat runtime for application shutdown cleanup. */
+export function getChatService(): ChatService | null {
+  return chatServicesSingleton?.chatService ?? null;
 }
 
 export function getAnnotationServices(): AnnotationServices | null {
