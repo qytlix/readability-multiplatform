@@ -350,6 +350,15 @@ export class ChatStore {
     return result.changes === 1;
   }
 
+  countImageStorageReferences(storageKey: string): number {
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM ai_chat_attachment
+      WHERE kind = 'image' AND storageKey = ?
+    `).get(storageKey) as { count: number };
+    return row.count;
+  }
+
   createRunWithMessages(params: CreateChatRunParams): CreatedChatRun {
     const now = new Date().toISOString();
     const persist = this.db.transaction(() => {

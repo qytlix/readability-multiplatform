@@ -24,6 +24,7 @@ import { CHAT_IPC_CHANNELS } from '../shared/contracts/chat.ipc';
 import type {
   ChatAttachmentPickRequest,
   ChatAttachmentRemoveRequest,
+  ChatClipboardImageImportRequest,
   ChatStreamEvent,
 } from '../shared/contracts/chat.types';
 import type { CleanProgressEvent } from '../shared/contracts/export.ipc';
@@ -184,6 +185,11 @@ const chatAPI = {
     ipcRenderer.invoke(CHAT_IPC_CHANNELS.attachmentPick, request),
   removeAttachment: (request: ChatAttachmentRemoveRequest) =>
     ipcRenderer.invoke(CHAT_IPC_CHANNELS.attachmentRemove, request),
+  importClipboardImage: (request: ChatClipboardImageImportRequest) =>
+    ipcRenderer.invoke(
+      CHAT_IPC_CHANNELS.attachmentImportClipboardImage,
+      request,
+    ),
   onEvent: (listener: (event: ChatStreamEvent) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

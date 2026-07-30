@@ -83,6 +83,18 @@ function createAttachmentService(): ChatAttachmentService {
       failures: [],
     })),
     removeDraftAttachment: vi.fn(() => ({ removed: true })),
+    importClipboardImage: vi.fn(() => ({
+      id: 31,
+      threadId: 3,
+      kind: 'image',
+      displayName: 'pasted-image-hash.png',
+      mimeType: 'image/png',
+      byteSize: 4,
+      contentHash: 'hash',
+      width: 2,
+      height: 2,
+      createdAt: '2026-07-30T00:00:00.000Z',
+    })),
   } as unknown as ChatAttachmentService;
 }
 
@@ -223,5 +235,47 @@ describe('Article Chat IPC handler', () => {
       event,
       { entryId: 7 },
     ))).not.toContain('C:\\private');
+  });
+
+  it('accepts bounded clipboard bytes without accepting a source path', () => {
+    const { mainWindow, event } = createAuthorizedWindow();
+    const { service } = createService();
+    const attachmentService = createAttachmentService();
+    registerChatIpcHandlers(
+      () => mainWindow,
+      service,
+      attachmentService,
+    );
+    const request = {
+      entryId: 7,
+      bytes: Uint8Array.from([1, 2, 3, 4]),
+      suggestedDisplayName: 'clipboard.png',
+      declaredMimeType: 'image/png',
+    };
+
+    expect(invoke(
+      CHAT_IPC_CHANNELS.attachmentImportClipboardImage,
+      event,
+      request,
+    )).toEqual({
+      ok: true,
+      data: {
+        attachment: expect.objectContaining({ kind: 'image' }),
+      },
+    });
+    expect(attachmentService.importClipboardImage).toHaveBeenCalledWith(
+      7,
+      request.bytes,
+      'clipboard.png',
+      'image/png',
+    );
+    expect(invoke(
+      CHAT_IPC_CHANNELS.attachmentImportClipboardImage,
+      event,
+      { ...request, bytes: [], sourcePath: 'C:\\private\\image.png' },
+    )).toMatchObject({
+      ok: false,
+      error: { code: 'CHAT_INVALID_REQUEST' },
+    });
   });
 });

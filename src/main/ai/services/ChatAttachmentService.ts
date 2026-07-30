@@ -19,6 +19,11 @@ import {
   extractChatTextAttachment,
 } from './ChatAttachmentTextExtractor';
 import { extractChatPdfAttachment } from './ChatPdfTextExtractor';
+import {
+  normalizeChatImage,
+  type NormalizedChatImage,
+} from './ChatImageNormalizer';
+import { ChatAttachmentStorage } from './ChatAttachmentStorage';
 
 export const CHAT_ATTACHMENT_LIMIT = 5;
 export const CHAT_DRAFT_ATTACHMENT_TTL_MS = 24 * 60 * 60 * 1_000;
@@ -32,6 +37,10 @@ export interface ChatAttachmentFileSystem {
   stat(filePath: string): Promise<{ isFile: boolean; size: number }>;
   readFile(filePath: string): Promise<Uint8Array>;
 }
+
+export type ChatImageNormalizationPort = (
+  sourceBytes: Uint8Array,
+) => NormalizedChatImage;
 
 const defaultFileSystem: ChatAttachmentFileSystem = {
   stat: async (filePath) => {
@@ -49,6 +58,8 @@ export class ChatAttachmentService {
     private readonly chatStore: ChatStore,
     private readonly fileSystem: ChatAttachmentFileSystem = defaultFileSystem,
     private readonly now: () => Date = () => new Date(),
+    private readonly imageStorage?: ChatAttachmentStorage,
+    private readonly imageNormalizer: ChatImageNormalizationPort = normalizeChatImage,
   ) {}
 
   async importFiles(
@@ -111,22 +122,61 @@ export class ChatAttachmentService {
     attachmentId: number,
   ): ChatAttachmentRemoveResponse {
     const state = this.stateLookup.getState({ entryId });
-    return {
-      removed: this.chatStore.deleteDraftAttachment(
-        attachmentId,
-        state.thread.id,
-      ),
-    };
+    const attachment = this.chatStore.findStoredAttachment(attachmentId);
+    const removed = this.chatStore.deleteDraftAttachment(
+      attachmentId,
+      state.thread.id,
+    );
+    if (removed && attachment) this.removeOrphanedImageFile(attachment);
+    return { removed };
+  }
+
+  importClipboardImage(
+    entryId: number,
+    bytes: Uint8Array,
+    suggestedDisplayName: string,
+    declaredMimeType: string,
+  ): ChatAttachment {
+    // These values are untrusted hints only. Naming and type come from the
+    // normalized bytes so clipboard metadata cannot alter persistence.
+    void suggestedDisplayName;
+    void declaredMimeType;
+    const state = this.stateLookup.getState({ entryId });
+    if (state.state === 'running') {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_BUSY,
+        'Wait for the current answer before adding an image.',
+        true,
+      );
+    }
+    if (state.draftAttachments.length >= CHAT_ATTACHMENT_LIMIT) {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_ATTACHMENT_LIMIT_EXCEEDED,
+        `A question can include at most ${CHAT_ATTACHMENT_LIMIT} attachments.`,
+        false,
+      );
+    }
+    const normalized = this.imageNormalizer(bytes);
+    const extension = normalized.mimeType === 'image/png' ? 'png' : 'jpg';
+    return this.persistImage(
+      state.thread.id,
+      `pasted-image-${normalized.contentHash.slice(0, 12)}.${extension}`,
+      normalized,
+    );
   }
 
   cleanupExpiredDrafts(): number {
     const expiresAt = this.now().toISOString();
     const expired = this.chatStore.listExpiredDraftAttachments(expiresAt);
-    return expired.reduce((count, attachment) => (
-      this.chatStore.deleteExpiredDraftAttachment(attachment.id, expiresAt)
-        ? count + 1
-        : count
-    ), 0);
+    return expired.reduce((count, attachment) => {
+      const removed = this.chatStore.deleteExpiredDraftAttachment(
+        attachment.id,
+        expiresAt,
+      );
+      if (!removed) return count;
+      this.removeOrphanedImageFile(attachment);
+      return count + 1;
+    }, 0);
   }
 
   startCleanupSchedule(): void {
@@ -174,6 +224,13 @@ export class ChatAttachmentService {
 
     const bytes = await this.fileSystem.readFile(filePath);
     const type = detectChatAttachmentType(bytes);
+    if (type === 'png' || type === 'jpeg' || type === 'webp') {
+      return this.persistImage(
+        threadId,
+        displayName,
+        this.imageNormalizer(bytes),
+      );
+    }
     const extracted = type === 'pdf'
       ? await extractChatPdfAttachment(bytes)
       : extractChatTextAttachment(bytes);
@@ -189,6 +246,56 @@ export class ChatAttachmentService {
       contentHash: extracted.contentHash,
       expiresAt,
     });
+  }
+
+  private persistImage(
+    threadId: number,
+    displayName: string,
+    image: NormalizedChatImage,
+  ): ChatAttachment {
+    if (!this.imageStorage) {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_IMAGE_UNSUPPORTED,
+        'Image attachment storage is unavailable.',
+        false,
+      );
+    }
+    const storageKey = this.imageStorage.writeImage(image);
+    const expiresAt = new Date(
+      this.now().getTime() + CHAT_DRAFT_ATTACHMENT_TTL_MS,
+    ).toISOString();
+    try {
+      return this.chatStore.createImageAttachment({
+        threadId,
+        displayName,
+        mimeType: image.mimeType,
+        byteSize: image.byteSize,
+        contentHash: image.contentHash,
+        storageKey,
+        width: image.width,
+        height: image.height,
+        expiresAt,
+      });
+    } catch (error) {
+      if (this.chatStore.countImageStorageReferences(storageKey) === 0) {
+        this.imageStorage.removeImage(storageKey);
+      }
+      throw error;
+    }
+  }
+
+  private removeOrphanedImageFile(
+    attachment: { kind: 'text' | 'image'; storageKey?: string },
+  ): void {
+    if (
+      attachment.kind !== 'image'
+      || !attachment.storageKey
+      || !this.imageStorage
+      || this.chatStore.countImageStorageReferences(attachment.storageKey) > 0
+    ) {
+      return;
+    }
+    this.imageStorage.removeImage(attachment.storageKey);
   }
 }
 

@@ -53,6 +53,7 @@ import { ArticleContextService } from './ai/services/ArticleContextService';
 import { ProviderArticleSegmentAnalyzer } from './ai/services/ProviderArticleSegmentAnalyzer';
 import type { ChatOperationLogger } from './ai/services/ChatLogging';
 import { ChatAttachmentService } from './ai/services/ChatAttachmentService';
+import { ChatAttachmentStorage } from './ai/services/ChatAttachmentStorage';
 
 // ── Service Interfaces ──────────────────────────────────
 
@@ -243,6 +244,9 @@ export function initializeServices(
     articleContextCacheStore,
     articleSegmentAnalyzer,
   );
+  const chatAttachmentStorage = new ChatAttachmentStorage(
+    path.join(path.dirname(dbPath ?? '.'), 'chat-attachments'),
+  );
   const chatService = new ChatService(
     contentStore,
     providerProfileStore,
@@ -250,12 +254,18 @@ export function initializeServices(
     chatStore,
     articleContextService,
     provider,
-    undefined,
+    chatAttachmentStorage,
     usageRecorder,
     chatLogger,
   );
   chatService.reconcileInterruptedRuns();
-  const attachmentService = new ChatAttachmentService(chatService, chatStore);
+  const attachmentService = new ChatAttachmentService(
+    chatService,
+    chatStore,
+    undefined,
+    undefined,
+    chatAttachmentStorage,
+  );
   attachmentService.startCleanupSchedule();
   const terminologyStore = terminologyDbPath && existsSync(terminologyDbPath)
     ? new TerminologyStore(terminologyDbPath, dbManager.getDb())

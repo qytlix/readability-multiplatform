@@ -4,6 +4,8 @@ import type {
   ChatAttachmentPickResponse,
   ChatAttachmentRemoveRequest,
   ChatAttachmentRemoveResponse,
+  ChatClipboardImageImportRequest,
+  ChatClipboardImageImportResponse,
   ChatCancelRequest,
   ChatGetRequest,
   ChatRetryRequest,
@@ -20,6 +22,7 @@ export const CHAT_IPC_CHANNELS = {
   retry: 'chat:retry',
   attachmentPick: 'chat:attachment-pick',
   attachmentRemove: 'chat:attachment-remove',
+  attachmentImportClipboardImage: 'chat:attachment-import-clipboard-image',
   stream: 'chat:stream',
 } as const;
 
@@ -34,5 +37,8 @@ export interface ChatAPI {
   removeAttachment(
     request: ChatAttachmentRemoveRequest,
   ): Promise<IPCResult<ChatAttachmentRemoveResponse>>;
+  importClipboardImage(
+    request: ChatClipboardImageImportRequest,
+  ): Promise<IPCResult<ChatClipboardImageImportResponse>>;
   onEvent(listener: (event: ChatStreamEvent) => void): () => void;
 }

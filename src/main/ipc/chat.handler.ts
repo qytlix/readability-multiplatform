@@ -12,6 +12,8 @@ import type {
   ChatAttachmentPickResponse,
   ChatAttachmentRemoveRequest,
   ChatAttachmentRemoveResponse,
+  ChatClipboardImageImportRequest,
+  ChatClipboardImageImportResponse,
   ChatCancelRequest,
   ChatGetRequest,
   ChatRetryRequest,
@@ -114,6 +116,10 @@ export function registerChatIpcHandlers(
                 'html',
                 'htm',
                 'pdf',
+                'png',
+                'jpg',
+                'jpeg',
+                'webp',
               ],
             },
           ],
@@ -152,6 +158,32 @@ export function registerChatIpcHandlers(
             request.entryId,
             request.attachmentId,
           ),
+        };
+      } catch (error) {
+        return { ok: false, error: toChatIpcError(error) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    CHAT_IPC_CHANNELS.attachmentImportClipboardImage,
+    (
+      event,
+      request: unknown,
+    ): IPCResult<ChatClipboardImageImportResponse> => {
+      if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
+      if (!isClipboardImageImportRequest(request)) return invalidRequest();
+      try {
+        return {
+          ok: true,
+          data: {
+            attachment: attachmentService.importClipboardImage(
+              request.entryId,
+              request.bytes,
+              request.suggestedDisplayName,
+              request.declaredMimeType,
+            ),
+          },
         };
       } catch (error) {
         return { ok: false, error: toChatIpcError(error) };
@@ -237,6 +269,20 @@ function isAttachmentRemoveRequest(
   return isRecord(value)
     && isPositiveInteger(value.entryId)
     && isPositiveInteger(value.attachmentId);
+}
+
+function isClipboardImageImportRequest(
+  value: unknown,
+): value is ChatClipboardImageImportRequest {
+  return isRecord(value)
+    && isPositiveInteger(value.entryId)
+    && value.bytes instanceof Uint8Array
+    && value.bytes.length > 0
+    && value.bytes.length <= 10 * 1024 * 1024
+    && typeof value.suggestedDisplayName === 'string'
+    && value.suggestedDisplayName.length <= 180
+    && typeof value.declaredMimeType === 'string'
+    && value.declaredMimeType.length <= 100;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

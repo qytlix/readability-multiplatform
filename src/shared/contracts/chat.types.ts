@@ -157,6 +157,17 @@ export interface ChatAttachmentRemoveResponse {
   removed: boolean;
 }
 
+export interface ChatClipboardImageImportRequest {
+  entryId: number;
+  bytes: Uint8Array;
+  suggestedDisplayName: string;
+  declaredMimeType: string;
+}
+
+export interface ChatClipboardImageImportResponse {
+  attachment: ChatAttachment;
+}
+
 export interface ChatRunResponse {
   runId: number;
   threadId: number;
