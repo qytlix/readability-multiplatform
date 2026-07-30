@@ -9,6 +9,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatState } from '../../../src/shared/contracts/chat.types';
 import { useArticleChatSession } from '../../../src/renderer/features/chat/useArticleChatSession';
+import { ChatImageAttachmentPreview } from '../../../src/renderer/features/chat/ChatImageAttachmentPreview';
 
 const reactActEnvironment = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean;
@@ -50,6 +51,15 @@ describe('Article Chat renderer lifecycle', () => {
           send: vi.fn(),
           cancel: vi.fn(),
           retry: vi.fn(),
+          previewAttachment: vi.fn().mockResolvedValue({
+            ok: true,
+            data: {
+              mimeType: 'image/png',
+              bytes: Uint8Array.from([1, 2, 3]),
+              width: 20,
+              height: 10,
+            },
+          }),
           onEvent: vi.fn(() => removeListener),
         },
         provider: {
@@ -78,6 +88,43 @@ describe('Article Chat renderer lifecycle', () => {
     act(() => root.unmount());
     expect(removeListener).toHaveBeenCalledTimes(1);
     root = createRoot(container);
+  });
+
+  it('revokes a normalized image preview URL on unmount', async () => {
+    const createObjectUrl = vi.fn(() => 'blob:chat-preview');
+    const revokeObjectUrl = vi.fn();
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: createObjectUrl,
+      revokeObjectURL: revokeObjectUrl,
+    });
+    const attachment = {
+      id: 8,
+      threadId: 3,
+      kind: 'image' as const,
+      displayName: 'pasted-image.png',
+      mimeType: 'image/png',
+      byteSize: 3,
+      contentHash: 'hash',
+      width: 20,
+      height: 10,
+      createdAt: '2026-07-30T00:00:00.000Z',
+    };
+
+    await act(async () => {
+      root.render(createElement(ChatImageAttachmentPreview, {
+        entryId: 7,
+        attachment,
+      }));
+      await settle();
+    });
+    expect(container.querySelector('img')?.getAttribute('src'))
+      .toBe('blob:chat-preview');
+
+    act(() => root.unmount());
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:chat-preview');
+    root = createRoot(container);
+    vi.unstubAllGlobals();
   });
 });
 

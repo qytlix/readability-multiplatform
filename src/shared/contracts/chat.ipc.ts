@@ -2,6 +2,8 @@ import type { IPCResult } from './feed.ipc';
 import type {
   ChatAttachmentPickRequest,
   ChatAttachmentPickResponse,
+  ChatAttachmentPreviewRequest,
+  ChatAttachmentPreviewResponse,
   ChatAttachmentRemoveRequest,
   ChatAttachmentRemoveResponse,
   ChatClipboardImageImportRequest,
@@ -23,6 +25,7 @@ export const CHAT_IPC_CHANNELS = {
   attachmentPick: 'chat:attachment-pick',
   attachmentRemove: 'chat:attachment-remove',
   attachmentImportClipboardImage: 'chat:attachment-import-clipboard-image',
+  attachmentPreview: 'chat:attachment-preview',
   stream: 'chat:stream',
 } as const;
 
@@ -40,5 +43,8 @@ export interface ChatAPI {
   importClipboardImage(
     request: ChatClipboardImageImportRequest,
   ): Promise<IPCResult<ChatClipboardImageImportResponse>>;
+  previewAttachment(
+    request: ChatAttachmentPreviewRequest,
+  ): Promise<IPCResult<ChatAttachmentPreviewResponse>>;
   onEvent(listener: (event: ChatStreamEvent) => void): () => void;
 }

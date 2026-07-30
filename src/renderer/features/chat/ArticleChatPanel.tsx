@@ -167,6 +167,7 @@ export const ArticleChatPanel = ({
         )}
       </div>
       <ArticleChatComposer
+        entryId={entryId}
         value={draft}
         running={running}
         busy={busy}
@@ -179,6 +180,9 @@ export const ArticleChatPanel = ({
         onPickAttachments={() => void session.pickAttachments()}
         onRemoveAttachment={(attachmentId) => {
           void session.removeAttachment(attachmentId);
+        }}
+        onPasteImages={(images) => {
+          void session.importClipboardImages(images);
         }}
       />
     </section>

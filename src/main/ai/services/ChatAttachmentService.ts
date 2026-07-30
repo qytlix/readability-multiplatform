@@ -4,6 +4,7 @@ import type {
   ChatAttachment,
   ChatAttachmentImportFailure,
   ChatAttachmentPickResponse,
+  ChatAttachmentPreviewResponse,
   ChatAttachmentRemoveResponse,
   ChatState,
 } from '../../../shared/contracts/chat.types';
@@ -163,6 +164,36 @@ export class ChatAttachmentService {
       `pasted-image-${normalized.contentHash.slice(0, 12)}.${extension}`,
       normalized,
     );
+  }
+
+  previewImage(
+    entryId: number,
+    attachmentId: number,
+  ): ChatAttachmentPreviewResponse {
+    const state = this.stateLookup.getState({ entryId });
+    const attachment = this.chatStore.findStoredAttachment(attachmentId);
+    if (
+      !attachment
+      || attachment.threadId !== state.thread.id
+      || attachment.kind !== 'image'
+      || attachment.width === undefined
+      || attachment.height === undefined
+      || !this.imageStorage
+    ) {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_ATTACHMENT_NOT_FOUND,
+        'The image attachment preview is unavailable.',
+        false,
+      );
+    }
+    return {
+      mimeType: attachment.mimeType === 'image/png'
+        ? 'image/png'
+        : 'image/jpeg',
+      bytes: this.imageStorage.readImage(attachment),
+      width: attachment.width,
+      height: attachment.height,
+    };
   }
 
   cleanupExpiredDrafts(): number {

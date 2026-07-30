@@ -1,13 +1,21 @@
 import {
   useRef,
   type CompositionEvent,
+  type ClipboardEvent,
   type KeyboardEvent,
 } from 'react';
 import type { ChatAttachment } from '../../../shared/contracts/chat.types';
 import { getChatComposerKeyAction } from './chatComposerKeyboard';
+import {
+  createChatClipboardPastePlan,
+  readChatClipboardImages,
+  type ChatClipboardImageInput,
+} from './chatClipboard';
+import { ChatImageAttachmentPreview } from './ChatImageAttachmentPreview';
 
 interface ArticleChatComposerProps {
   value: string;
+  entryId: number;
   running: boolean;
   busy: boolean;
   disabled: boolean;
@@ -18,10 +26,14 @@ interface ArticleChatComposerProps {
   onStop: () => void | Promise<void>;
   onPickAttachments: () => void | Promise<void>;
   onRemoveAttachment: (attachmentId: number) => void | Promise<void>;
+  onPasteImages: (
+    images: ChatClipboardImageInput[],
+  ) => void | Promise<void>;
 }
 
 export const ArticleChatComposer = ({
   value,
+  entryId,
   running,
   busy,
   disabled,
@@ -32,6 +44,7 @@ export const ArticleChatComposer = ({
   onStop,
   onPickAttachments,
   onRemoveAttachment,
+  onPasteImages,
 }: ArticleChatComposerProps) => {
   const composingRef = useRef(false);
 
@@ -53,12 +66,33 @@ export const ArticleChatComposer = ({
     void onSend();
   };
 
+  const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>): void => {
+    if (running || busy || disabled) return;
+    const plan = createChatClipboardPastePlan(
+      event.clipboardData,
+      value,
+      event.currentTarget.selectionStart,
+      event.currentTarget.selectionEnd,
+    );
+    if (!plan.handled) return;
+    event.preventDefault();
+    if (plan.nextValue !== value) onChange(plan.nextValue);
+    void readChatClipboardImages(plan.imageFiles)
+      .then((images) => onPasteImages(images));
+  };
+
   return (
     <div className="article-chat-composer">
       {attachments.length > 0 && (
         <div className="article-chat-attachment-chips" aria-label="待发送附件">
           {attachments.map((attachment) => (
             <span key={attachment.id} className="article-chat-attachment-chip">
+              {attachment.kind === 'image' && (
+                <ChatImageAttachmentPreview
+                  entryId={entryId}
+                  attachment={attachment}
+                />
+              )}
               <span title={attachment.displayName}>{attachment.displayName}</span>
               <small>{formatAttachmentSize(attachment.byteSize)}</small>
               <button
@@ -105,6 +139,7 @@ export const ArticleChatComposer = ({
           onCompositionStart={handleComposition}
           onCompositionUpdate={handleComposition}
           onCompositionEnd={handleComposition}
+          onPaste={handlePaste}
         />
         <button
           type="button"

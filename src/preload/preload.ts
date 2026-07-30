@@ -23,6 +23,7 @@ import { EXPORT_IPC_CHANNELS } from '../shared/contracts/export.ipc';
 import { CHAT_IPC_CHANNELS } from '../shared/contracts/chat.ipc';
 import type {
   ChatAttachmentPickRequest,
+  ChatAttachmentPreviewRequest,
   ChatAttachmentRemoveRequest,
   ChatClipboardImageImportRequest,
   ChatStreamEvent,
@@ -190,6 +191,8 @@ const chatAPI = {
       CHAT_IPC_CHANNELS.attachmentImportClipboardImage,
       request,
     ),
+  previewAttachment: (request: ChatAttachmentPreviewRequest) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.attachmentPreview, request),
   onEvent: (listener: (event: ChatStreamEvent) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

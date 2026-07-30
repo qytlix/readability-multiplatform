@@ -577,7 +577,7 @@
   max-width: 100%;
   min-height: 31px;
   padding: 5px 5px 5px 9px;
-  grid-template-columns: minmax(0, auto) auto auto;
+  grid-template-columns: auto minmax(0, auto) auto auto;
   align-items: center;
   gap: 6px;
   border: 1px solid var(--reader-line);
@@ -585,6 +585,19 @@
   color: var(--reader-text-soft);
   background: var(--reader-hover-soft);
   font-size: 10px;
+}
+
+.article-chat-image-preview,
+.article-chat-image-preview-placeholder {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.article-chat-image-preview-placeholder {
+  background: var(--reader-hover);
 }
 
 .article-chat-attachment-chip > span {

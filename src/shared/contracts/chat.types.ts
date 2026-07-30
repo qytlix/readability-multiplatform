@@ -168,6 +168,18 @@ export interface ChatClipboardImageImportResponse {
   attachment: ChatAttachment;
 }
 
+export interface ChatAttachmentPreviewRequest {
+  entryId: number;
+  attachmentId: number;
+}
+
+export interface ChatAttachmentPreviewResponse {
+  mimeType: 'image/png' | 'image/jpeg';
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+}
+
 export interface ChatRunResponse {
   runId: number;
   threadId: number;

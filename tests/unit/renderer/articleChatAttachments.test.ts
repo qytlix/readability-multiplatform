@@ -6,6 +6,7 @@ import { ArticleChatComposer } from '../../../src/renderer/features/chat/Article
 describe('Article Chat attachment chips', () => {
   it('renders only public attachment metadata with an accessible remove action', () => {
     const html = renderToStaticMarkup(createElement(ArticleChatComposer, {
+      entryId: 1,
       value: 'question',
       running: false,
       busy: false,
@@ -26,6 +27,7 @@ describe('Article Chat attachment chips', () => {
       onStop: vi.fn(),
       onPickAttachments: vi.fn(),
       onRemoveAttachment: vi.fn(),
+      onPasteImages: vi.fn(),
     }));
 
     expect(html).toContain('evidence.pdf');
@@ -47,6 +49,7 @@ describe('Article Chat attachment chips', () => {
       createdAt: '2026-07-30T00:00:00.000Z',
     }));
     const html = renderToStaticMarkup(createElement(ArticleChatComposer, {
+      entryId: 1,
       value: '',
       running: false,
       busy: false,
@@ -58,6 +61,7 @@ describe('Article Chat attachment chips', () => {
       onStop: vi.fn(),
       onPickAttachments: vi.fn(),
       onRemoveAttachment: vi.fn(),
+      onPasteImages: vi.fn(),
     }));
 
     expect(html).toMatch(/aria-label="添加附件"[^>]*disabled=""/u);

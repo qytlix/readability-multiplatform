@@ -95,6 +95,12 @@ function createAttachmentService(): ChatAttachmentService {
       height: 2,
       createdAt: '2026-07-30T00:00:00.000Z',
     })),
+    previewImage: vi.fn(() => ({
+      mimeType: 'image/png',
+      bytes: Uint8Array.from([1, 2, 3]),
+      width: 2,
+      height: 2,
+    })),
   } as unknown as ChatAttachmentService;
 }
 
@@ -273,6 +279,40 @@ describe('Article Chat IPC handler', () => {
       CHAT_IPC_CHANNELS.attachmentImportClipboardImage,
       event,
       { ...request, bytes: [], sourcePath: 'C:\\private\\image.png' },
+    )).toMatchObject({
+      ok: false,
+      error: { code: 'CHAT_INVALID_REQUEST' },
+    });
+  });
+
+  it('returns a normalized preview only for an attachment identity', () => {
+    const { mainWindow, event } = createAuthorizedWindow();
+    const { service } = createService();
+    const attachmentService = createAttachmentService();
+    registerChatIpcHandlers(
+      () => mainWindow,
+      service,
+      attachmentService,
+    );
+
+    expect(invoke(
+      CHAT_IPC_CHANNELS.attachmentPreview,
+      event,
+      { entryId: 7, attachmentId: 31 },
+    )).toMatchObject({
+      ok: true,
+      data: {
+        mimeType: 'image/png',
+        bytes: expect.any(Uint8Array),
+        width: 2,
+        height: 2,
+      },
+    });
+    expect(attachmentService.previewImage).toHaveBeenCalledWith(7, 31);
+    expect(invoke(
+      CHAT_IPC_CHANNELS.attachmentPreview,
+      event,
+      { entryId: 7, attachmentId: '../private' },
     )).toMatchObject({
       ok: false,
       error: { code: 'CHAT_INVALID_REQUEST' },

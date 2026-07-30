@@ -10,6 +10,8 @@ import {
 import type { IPCResult } from '../../shared/contracts/feed.ipc';
 import type {
   ChatAttachmentPickResponse,
+  ChatAttachmentPreviewRequest,
+  ChatAttachmentPreviewResponse,
   ChatAttachmentRemoveRequest,
   ChatAttachmentRemoveResponse,
   ChatClipboardImageImportRequest,
@@ -191,6 +193,28 @@ export function registerChatIpcHandlers(
     },
   );
 
+  ipcMain.handle(
+    CHAT_IPC_CHANNELS.attachmentPreview,
+    (
+      event,
+      request: unknown,
+    ): IPCResult<ChatAttachmentPreviewResponse> => {
+      if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
+      if (!isAttachmentPreviewRequest(request)) return invalidRequest();
+      try {
+        return {
+          ok: true,
+          data: attachmentService.previewImage(
+            request.entryId,
+            request.attachmentId,
+          ),
+        };
+      } catch (error) {
+        return { ok: false, error: toChatIpcError(error) };
+      }
+    },
+  );
+
   return chatService.subscribe((streamEvent) => {
     const mainWindow = getMainWindow();
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -283,6 +307,14 @@ function isClipboardImageImportRequest(
     && value.suggestedDisplayName.length <= 180
     && typeof value.declaredMimeType === 'string'
     && value.declaredMimeType.length <= 100;
+}
+
+function isAttachmentPreviewRequest(
+  value: unknown,
+): value is ChatAttachmentPreviewRequest {
+  return isRecord(value)
+    && isPositiveInteger(value.entryId)
+    && isPositiveInteger(value.attachmentId);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

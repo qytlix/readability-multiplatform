@@ -11,6 +11,7 @@ import type {
   ChatStreamEvent,
 } from '../../../shared/contracts/chat.types';
 import { applyChatStreamEvent } from './articleChatSession';
+import type { ChatClipboardImageInput } from './chatClipboard';
 
 type ChatLoadStatus = 'idle' | 'loading' | 'success' | 'error';
 type ChatActionStatus =
@@ -38,6 +39,9 @@ export interface ArticleChatSession {
   retry: () => Promise<boolean>;
   pickAttachments: () => Promise<boolean>;
   removeAttachment: (attachmentId: number) => Promise<boolean>;
+  importClipboardImages: (
+    images: ChatClipboardImageInput[],
+  ) => Promise<boolean>;
 }
 
 export const useArticleChatSession = (
@@ -250,6 +254,45 @@ export const useArticleChatSession = (
     }
   }, [active, entryId, reload]);
 
+  const importClipboardImages = useCallback(async (
+    images: ChatClipboardImageInput[],
+  ): Promise<boolean> => {
+    if (
+      !active
+      || stateRef.current?.state === 'running'
+      || images.length === 0
+    ) {
+      return false;
+    }
+    setActionStatus('importing');
+    setActionErrorMessage('');
+    let imported = 0;
+    const failures: string[] = [];
+    try {
+      for (const image of images) {
+        const result = await window.shaleAPI.chat.importClipboardImage({
+          entryId,
+          ...image,
+        });
+        if (result.ok) {
+          imported += 1;
+        } else {
+          failures.push(
+            `${image.suggestedDisplayName}：${result.error.message}`,
+          );
+        }
+      }
+      if (failures.length > 0) setActionErrorMessage(failures.join('\n'));
+      if (imported > 0) await reload();
+      return imported > 0;
+    } catch {
+      setActionErrorMessage('无法导入剪贴板图片。');
+      return false;
+    } finally {
+      setActionStatus('idle');
+    }
+  }, [active, entryId, reload]);
+
   return {
     loadStatus,
     state,
@@ -263,5 +306,6 @@ export const useArticleChatSession = (
     retry,
     pickAttachments,
     removeAttachment,
+    importClipboardImages,
   };
 };
