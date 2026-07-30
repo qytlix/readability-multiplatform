@@ -94,15 +94,14 @@ error codes.
 
 | Milestone | Automated | Human | Notes |
 |---|---|---|---|
-| CHAT-00 | In progress | Review required | Contracts and ADR |
-| CHAT-01 | Not started | Not started | Chat Provider route |
-| CHAT-02 | Not started | Not started | Multimodal adapters |
-| CHAT-03 | Not started | Not started | Schema and stores |
-| CHAT-04 | Not started | Not started | Context and compression |
-| CHAT-05 | Not started | Not started | Runtime, IPC, usage |
+| CHAT-00 | Passed | Review required | Contracts, ADR, privacy and verification gates |
+| CHAT-01 | Passed | Review required | Independent Chat Provider route and connection tests |
+| CHAT-02 | Passed | Review required | OpenAI, Anthropic, and Gemini multimodal adapters |
+| CHAT-03 | Passed | Review required | Schema, stores, transactions, recovery, attachment references |
+| CHAT-04 | Passed | Review required | Context budget, compression, cache, and article maps |
+| CHAT-05 | Passed | Review required | Streaming runtime, cancellation, retry, IPC, usage, logging, lifecycle |
 | CHAT-06 | Not started | Not started | Layout and base UI |
 | CHAT-07 | Not started | Not started | Text/PDF attachments |
 | CHAT-08 | Not started | Not started | Images and clipboard |
 | CHAT-09 | Not started | Not started | Selection questions |
 | CHAT-10 | Not started | Not started | Integration and release |
-
