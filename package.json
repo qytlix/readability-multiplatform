@@ -10,6 +10,7 @@
     "start": "electron-forge start",
     "rebuild:native": "electron-rebuild --force --which-module better-sqlite3",
     "verify:native": "node scripts/verify-electron-native.mjs",
+    "verify:chat-image": "electron scripts/verify-chat-native-image.cjs",
     "ensure:native": "node scripts/ensure-electron-native.mjs",
     "postinstall": "npm run rebuild:native && npm run verify:native",
     "prestart": "npm run ensure:native",

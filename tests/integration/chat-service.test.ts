@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileStore';
 import { ChatStore } from '../../src/main/ai/stores/ChatStore';
 import { ChatService } from '../../src/main/ai/services/ChatService';
@@ -237,7 +237,157 @@ describe('ChatService', () => {
 
     expect(harness.chatStore.findRunById(response.runId)?.status).toBe('interrupted');
   });
+
+  it('loads a persisted normalized image into a multimodal Provider request', async () => {
+    const harness = createImageChatHarness(true);
+    const thread = harness.service.getState({ entryId: 1 }).thread;
+    const attachment = harness.chatStore.createImageAttachment({
+      threadId: thread.id,
+      displayName: 'evidence.png',
+      mimeType: 'image/png',
+      byteSize: 3,
+      contentHash: 'image-hash',
+      storageKey: `${'a'.repeat(64)}.png`,
+      width: 20,
+      height: 10,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+    const completed = new Promise<void>((resolve) => {
+      harness.service.subscribe((event) => {
+        if (event.type === 'completed') resolve();
+      });
+    });
+
+    await harness.service.send({
+      entryId: 1,
+      question: 'What does this image show?',
+      attachmentIds: [attachment.id],
+    });
+    await completed;
+
+    expect(harness.readImage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: attachment.id }),
+    );
+    expect(harness.providerStream).toHaveBeenCalledWith(expect.objectContaining({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          content: expect.arrayContaining([
+            {
+              type: 'image',
+              mimeType: 'image/png',
+              bytes: Uint8Array.from([1, 2, 3]),
+            },
+          ]),
+        }),
+      ]),
+    }));
+  });
+
+  it('rejects an image before Provider execution when the Chat model is text-only', async () => {
+    const harness = createImageChatHarness(false);
+    const thread = harness.service.getState({ entryId: 1 }).thread;
+    const attachment = harness.chatStore.createImageAttachment({
+      threadId: thread.id,
+      displayName: 'evidence.jpg',
+      mimeType: 'image/jpeg',
+      byteSize: 3,
+      contentHash: 'image-hash',
+      storageKey: `${'b'.repeat(64)}.jpg`,
+      width: 20,
+      height: 10,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+
+    await expect(harness.service.send({
+      entryId: 1,
+      question: 'Read this image',
+      attachmentIds: [attachment.id],
+    })).rejects.toMatchObject({
+      code: 'CHAT_IMAGE_UNSUPPORTED',
+    });
+    expect(harness.providerStream).not.toHaveBeenCalled();
+    expect(harness.chatStore.listDraftAttachments(thread.id)).toMatchObject([
+      { id: attachment.id },
+    ]);
+  });
 });
+
+function createImageChatHarness(supportsImages: boolean): {
+  service: ChatService;
+  chatStore: ChatStore;
+  providerStream: ReturnType<typeof vi.fn>;
+  readImage: ReturnType<typeof vi.fn>;
+} {
+  const { db } = buildTestDbWithData();
+  const contentStore = new ContentStore(db);
+  contentStore.upsert({
+    entryId: 1,
+    markdown: 'Article body',
+    sourceContentHash: 'article-hash',
+    pipelineStatus: 'success',
+  });
+  const profileStore = new ProviderProfileStore(db);
+  profileStore.saveActive({
+    summary: {
+      providerKind: 'openai',
+      baseUrl: 'https://provider.test/v1',
+      model: 'summary-model',
+      apiKeyRef: 'summary-key',
+    },
+    translation: {
+      providerKind: 'openai',
+      baseUrl: 'https://provider.test/v1',
+      model: 'translation-model',
+      apiKeyRef: 'translation-key',
+    },
+    tag: {
+      providerKind: 'openai',
+      baseUrl: 'https://provider.test/v1',
+      model: 'tag-model',
+      apiKeyRef: 'tag-key',
+    },
+    chat: {
+      providerKind: 'openai',
+      baseUrl: 'https://provider.test/v1',
+      model: 'chat-model',
+      apiKeyRef: 'chat-key',
+      supportsImages,
+    },
+  });
+  const providerStream = vi.fn(async function* () {
+    yield 'Image answer';
+  });
+  const provider: TextGenerationProvider = {
+    stream: providerStream,
+    testConnection: () => Promise.resolve(),
+  };
+  const chatStore = new ChatStore(db);
+  const readImage = vi.fn(() => Uint8Array.from([1, 2, 3]));
+  return {
+    service: new ChatService(
+      contentStore,
+      profileStore,
+      { read: () => 'secret' },
+      chatStore,
+      {
+        prepare: async () => ({
+          mode: 'full',
+          systemInstruction: 'system',
+          articleReference: 'article',
+          historyReference: '',
+          estimatedPromptTokens: 2,
+          cacheHit: false,
+          relatedSegmentIds: [],
+        }),
+      },
+      provider,
+      { readImage },
+    ),
+    chatStore,
+    providerStream,
+    readImage,
+  };
+}
 
 function createChatServiceHarness(
   stream: TextGenerationProvider['stream'],
