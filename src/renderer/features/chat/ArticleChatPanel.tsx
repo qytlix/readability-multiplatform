@@ -55,7 +55,10 @@ export const ArticleChatPanel = ({
   }, [activeRunId, entryId, onActiveRunChange]);
 
   const handleSend = async (): Promise<void> => {
-    const sent = await session.sendQuestion(draft);
+    const sent = await session.sendQuestion(
+      draft,
+      session.state?.draftAttachments.map(({ id }) => id) ?? [],
+    );
     if (sent) setDraft('');
   };
 
@@ -139,6 +142,13 @@ export const ArticleChatPanel = ({
                 <span className="article-chat-streaming">正在组织回答…</span>
               )}
             </div>
+            {message.attachments.length > 0 && (
+              <div className="article-chat-message-attachments">
+                {message.attachments.map((attachment) => (
+                  <span key={attachment.id}>{attachment.displayName}</span>
+                ))}
+              </div>
+            )}
             {message.status === 'failed' && <small>回答失败</small>}
             {message.status === 'interrupted' && <small>回答已停止</small>}
           </article>
@@ -162,9 +172,14 @@ export const ArticleChatPanel = ({
         busy={busy}
         disabled={session.loadStatus !== 'success'}
         errorMessage={session.actionErrorMessage}
+        attachments={session.state?.draftAttachments ?? []}
         onChange={setDraft}
         onSend={handleSend}
         onStop={() => void session.stop()}
+        onPickAttachments={() => void session.pickAttachments()}
+        onRemoveAttachment={(attachmentId) => {
+          void session.removeAttachment(attachmentId);
+        }}
       />
     </section>
   );

@@ -101,7 +101,7 @@ error codes.
 | CHAT-04 | Passed | Review required | Context budget, compression, cache, and article maps |
 | CHAT-05 | Passed | Review required | Streaming runtime, cancellation, retry, IPC, usage, logging, lifecycle |
 | CHAT-06 | Passed | Review required | Four-state layout restoration, Reader entry, persisted messages, composer, event isolation and responsive panel |
-| CHAT-07 | Not started | Not started | Text/PDF attachments |
+| CHAT-07 | Passed | Review required | Native picker, content-sniffed text/HTML/PDF extraction, draft expiry, partial failure and attachment chips |
 | CHAT-08 | Not started | Not started | Images and clipboard |
 | CHAT-09 | Not started | Not started | Selection questions |
 | CHAT-10 | Not started | Not started | Integration and release |

@@ -430,6 +430,25 @@
   font-size: 10px;
 }
 
+.article-chat-message-attachments {
+  display: flex;
+  margin-top: 6px;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.article-chat-message-attachments span {
+  max-width: 180px;
+  padding: 4px 7px;
+  overflow: hidden;
+  border: 1px solid var(--reader-line);
+  border-radius: 999px;
+  color: var(--reader-text-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .article-chat-load-error {
   display: grid;
   min-height: 100%;
@@ -474,7 +493,7 @@
 
 .article-chat-composer-box {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: end;
   gap: 8px;
   padding: 9px 9px 9px 13px;
@@ -507,7 +526,7 @@
   color: var(--reader-text-muted);
 }
 
-.article-chat-composer-box button {
+.article-chat-composer-box button:not(.article-chat-attachment-button) {
   min-width: 48px;
   height: 34px;
   padding: 0 11px;
@@ -529,6 +548,74 @@
   opacity: 0.48;
 }
 
+.article-chat-attachment-button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--reader-line);
+  border-radius: 9px;
+  color: var(--reader-text-soft);
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.article-chat-attachment-button:hover:not(:disabled) {
+  color: var(--reader-text);
+  background: var(--reader-hover);
+}
+
+.article-chat-attachment-chips {
+  display: flex;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.article-chat-attachment-chip {
+  display: grid;
+  max-width: 100%;
+  min-height: 31px;
+  padding: 5px 5px 5px 9px;
+  grid-template-columns: minmax(0, auto) auto auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--reader-line);
+  border-radius: 999px;
+  color: var(--reader-text-soft);
+  background: var(--reader-hover-soft);
+  font-size: 10px;
+}
+
+.article-chat-attachment-chip > span {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.article-chat-attachment-chip small {
+  color: var(--reader-text-muted);
+  font-size: 8px;
+}
+
+.article-chat-attachment-chip button {
+  display: grid;
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--reader-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.article-chat-attachment-chip button:hover:not(:disabled) {
+  color: var(--reader-text);
+  background: var(--reader-hover);
+}
+
 .article-chat-composer-hint {
   margin-top: 6px;
   color: var(--reader-text-muted);
@@ -540,6 +627,7 @@
   margin: 0 2px 8px;
   color: var(--reader-danger-strong);
   font-size: 10px;
+  white-space: pre-line;
 }
 
 .reader-sidebar {

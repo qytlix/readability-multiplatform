@@ -13,7 +13,13 @@ import type {
 import { applyChatStreamEvent } from './articleChatSession';
 
 type ChatLoadStatus = 'idle' | 'loading' | 'success' | 'error';
-type ChatActionStatus = 'idle' | 'sending' | 'stopping' | 'retrying';
+type ChatActionStatus =
+  | 'idle'
+  | 'sending'
+  | 'stopping'
+  | 'retrying'
+  | 'importing'
+  | 'removing';
 
 export interface ArticleChatSession {
   loadStatus: ChatLoadStatus;
@@ -30,6 +36,8 @@ export interface ArticleChatSession {
   ) => Promise<boolean>;
   stop: () => Promise<boolean>;
   retry: () => Promise<boolean>;
+  pickAttachments: () => Promise<boolean>;
+  removeAttachment: (attachmentId: number) => Promise<boolean>;
 }
 
 export const useArticleChatSession = (
@@ -192,6 +200,56 @@ export const useArticleChatSession = (
     }
   }, [active, reload]);
 
+  const pickAttachments = useCallback(async (): Promise<boolean> => {
+    if (!active || stateRef.current?.state === 'running') return false;
+    setActionStatus('importing');
+    setActionErrorMessage('');
+    try {
+      const result = await window.shaleAPI.chat.pickAttachments({ entryId });
+      if (!result.ok) {
+        setActionErrorMessage(result.error.message);
+        return false;
+      }
+      if (result.data.failures.length > 0) {
+        setActionErrorMessage(result.data.failures
+          .map(({ displayName, error }) => `${displayName}：${error.message}`)
+          .join('\n'));
+      }
+      if (!result.data.canceled) await reload();
+      return result.data.attachments.length > 0;
+    } catch {
+      setActionErrorMessage('无法导入所选附件。');
+      return false;
+    } finally {
+      setActionStatus('idle');
+    }
+  }, [active, entryId, reload]);
+
+  const removeAttachment = useCallback(async (
+    attachmentId: number,
+  ): Promise<boolean> => {
+    if (!active || stateRef.current?.state === 'running') return false;
+    setActionStatus('removing');
+    setActionErrorMessage('');
+    try {
+      const result = await window.shaleAPI.chat.removeAttachment({
+        entryId,
+        attachmentId,
+      });
+      if (!result.ok) {
+        setActionErrorMessage(result.error.message);
+        return false;
+      }
+      if (result.data.removed) await reload();
+      return result.data.removed;
+    } catch {
+      setActionErrorMessage('无法移除这个附件。');
+      return false;
+    } finally {
+      setActionStatus('idle');
+    }
+  }, [active, entryId, reload]);
+
   return {
     loadStatus,
     state,
@@ -203,5 +261,7 @@ export const useArticleChatSession = (
     sendQuestion,
     stop,
     retry,
+    pickAttachments,
+    removeAttachment,
   };
 };
