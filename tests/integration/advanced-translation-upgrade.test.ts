@@ -137,6 +137,10 @@ describe('Advanced Translation upgrade and restart hardening', () => {
         { filename: '023_tag_name_case_sensitive' },
         { filename: '024_add_tag_provider_route' },
         { filename: '025_add_entry_ai_tag_generated' },
+        { filename: '026_add_chat_provider_route' },
+        { filename: '027_create_article_chat' },
+        { filename: '028_create_article_context_cache' },
+        { filename: '029_expand_usage_for_chat' },
       ]);
       expect(restarted.getDb().prepare(`
         SELECT name FROM sqlite_master

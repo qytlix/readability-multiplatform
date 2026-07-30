@@ -2,10 +2,8 @@ import { createHash } from 'node:crypto';
 import type { CleanedContent } from '../../../shared/contracts/content.types';
 import {
   CHAT_PROMPT_VERSION,
-  type ChatAttachment,
   type ChatCancelRequest,
   type ChatGetRequest,
-  type ChatMessage,
   type ChatRun,
   type ChatRunResponse,
   type ChatRetryRequest,
@@ -13,7 +11,6 @@ import {
   type ChatState,
   type ChatStreamEvent,
 } from '../../../shared/contracts/chat.types';
-import type { ProviderKind } from '../../../shared/contracts/provider.types';
 import {
   CHAT_ERROR_CODES,
   ChatError,
@@ -44,7 +41,6 @@ import {
 import type {
   ArticleContextService,
   PreparedArticleContext,
-  PrepareArticleContextRequest,
 } from './ArticleContextService';
 import {
   DEFAULT_CHAT_CONTEXT_WINDOW_TOKENS,

@@ -1,14 +1,12 @@
-import type {
-  TextGenerationConnectionRequest,
-  TextGenerationImageConnectionRequest,
-  TextGenerationProvider,
-  TextGenerationProviderRequest,
-} from './TextGenerationProvider';
-import { normalizeProviderFinishReason } from './TextGenerationProvider';
 import {
+  normalizeProviderFinishReason,
   validateProviderConversation,
   type ProviderContentPart,
   type ProviderMessage,
+  type TextGenerationConnectionRequest,
+  type TextGenerationImageConnectionRequest,
+  type TextGenerationProvider,
+  type TextGenerationProviderRequest,
 } from './TextGenerationProvider';
 import {
   createProviderAbortScope,

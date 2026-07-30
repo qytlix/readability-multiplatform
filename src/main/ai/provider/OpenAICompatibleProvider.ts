@@ -1,15 +1,13 @@
-import type {
-  ProviderTokenUsage,
-  TextGenerationConnectionRequest,
-  TextGenerationImageConnectionRequest,
-  TextGenerationProvider,
-  TextGenerationProviderRequest,
-} from './TextGenerationProvider';
-import { normalizeProviderFinishReason } from './TextGenerationProvider';
 import {
+  normalizeProviderFinishReason,
   validateProviderConversation,
   type ProviderContentPart,
   type ProviderMessage,
+  type ProviderTokenUsage,
+  type TextGenerationConnectionRequest,
+  type TextGenerationImageConnectionRequest,
+  type TextGenerationProvider,
+  type TextGenerationProviderRequest,
 } from './TextGenerationProvider';
 import { normalizeProviderTokenUsage } from './ProviderTokenUsage';
 import {

@@ -52,7 +52,7 @@ describe('ChatService', () => {
         yield 'First ';
         yield 'answer.';
       },
-      async testConnection() {},
+      testConnection: () => Promise.resolve(),
     };
     const chatStore = new ChatStore(db);
     const service = new ChatService(
@@ -133,7 +133,7 @@ describe('ChatService', () => {
         });
         yield 'done';
       },
-      async testConnection() {},
+      testConnection: () => Promise.resolve(),
     };
     const service = new ChatService(
       contentStore,
@@ -262,7 +262,7 @@ function createChatServiceHarness(
   });
   const provider: TextGenerationProvider = {
     stream,
-    async testConnection() {},
+    testConnection: () => Promise.resolve(),
   };
   const chatStore = new ChatStore(db);
   return {

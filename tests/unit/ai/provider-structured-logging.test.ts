@@ -321,7 +321,7 @@ describe('ProviderService structured logging', () => {
 
     await expect(successfulService.testConnection()).resolves.toEqual({
       ok: true,
-      message: 'Summary and Translation Provider connections succeeded.',
+      message: 'Three Provider routes succeeded.',
     });
     expect(successfulLogs).toHaveLength(1);
     expect(successfulLogs[0]).toMatchObject({

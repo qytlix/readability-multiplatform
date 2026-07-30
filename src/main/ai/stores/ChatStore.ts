@@ -681,9 +681,21 @@ function toStoredChatAttachment(row: ChatAttachmentRow): StoredChatAttachment {
 }
 
 function omitStoredContent(attachment: StoredChatAttachment): ChatAttachment {
-  const { textContent: _textContent, storageKey: _storageKey, ...publicAttachment } =
-    attachment;
-  return publicAttachment;
+  return {
+    id: attachment.id,
+    threadId: attachment.threadId,
+    kind: attachment.kind,
+    displayName: attachment.displayName,
+    mimeType: attachment.mimeType,
+    byteSize: attachment.byteSize,
+    contentHash: attachment.contentHash,
+    ...(attachment.width === undefined ? {} : { width: attachment.width }),
+    ...(attachment.height === undefined ? {} : { height: attachment.height }),
+    ...(attachment.expiresAt === undefined ? {} : {
+      expiresAt: attachment.expiresAt,
+    }),
+    createdAt: attachment.createdAt,
+  };
 }
 
 function parseSelection(
