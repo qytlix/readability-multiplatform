@@ -149,6 +149,7 @@ interface ActiveTranslationRun {
   batches: TranslationBatchWork[];
   providerRequests: Set<ActiveProviderRequest>;
   finalFailureStage?: TranslationFinalFailureStage;
+  execution?: Promise<void>;
 }
 
 interface TranslationRunDiagnostics {
@@ -270,8 +271,7 @@ export class TranslationService {
     const terminologyPackVersion = this.getTerminologyVersion(request);
     const expert = this.resolveExpert(request.expertId);
     const smartContextEnabled = request.useSmartContext === true;
-    const translationMode = getTranslationMode(request);
-    const compatibleResult = this.translationStore.findCompatibleResult(
+    const compatibleResult = this.translationStore.findCompatibleProductResult(
       request.entryId,
       request.sourceLanguage,
       request.targetLanguage,
@@ -283,21 +283,6 @@ export class TranslationService {
       expert.contentHash,
       smartContextEnabled,
       smartContextEnabled ? TRANSLATION_CONTEXT_PROMPT_VERSION : 'none',
-      translationMode,
-    );
-    const activeCompatibleResult = this.translationStore.findActiveCompatibleResult(
-      request.entryId,
-      request.sourceLanguage,
-      request.targetLanguage,
-      source.sourceContentHash,
-      source.segmenterVersion,
-      TRANSLATION_PROMPT_VERSION,
-      terminologyPackVersion,
-      expert.id,
-      expert.contentHash,
-      smartContextEnabled,
-      smartContextEnabled ? TRANSLATION_CONTEXT_PROMPT_VERSION : 'none',
-      translationMode,
     );
     const fallbackActiveResult = this.translationStore.findLatestActiveProductResult(
       request.entryId,
@@ -316,16 +301,22 @@ export class TranslationService {
     if (pendingProductResult) {
       return toState(pendingProductResult, fallbackActiveResult);
     }
-    if (activeCompatibleResult) return toState(activeCompatibleResult);
     const isHistoricalPendingResult = compatibleResult?.status === 'running'
       || (
         compatibleResult?.status === 'failed'
         && compatibleResult.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED
       );
-    if (compatibleResult && !isHistoricalPendingResult) {
+    if (
+      compatibleResult
+      && compatibleResult.status !== 'succeeded'
+      && !isHistoricalPendingResult
+    ) {
       return toState(compatibleResult, fallbackActiveResult);
     }
     if (fallbackActiveResult) return toState(fallbackActiveResult);
+    if (compatibleResult && !isHistoricalPendingResult) {
+      return toState(compatibleResult, fallbackActiveResult);
+    }
 
     return this.translationStore.findLatestResult(
       request.entryId,
@@ -376,28 +367,27 @@ export class TranslationService {
       smartContextEnabled ? TRANSLATION_CONTEXT_PROMPT_VERSION : 'none',
       translationMode,
     );
-    const activeResult = this.translationStore.findActiveCompatibleResult(
-      request.entryId,
-      request.sourceLanguage,
-      request.targetLanguage,
-      source.sourceContentHash,
-      source.segmenterVersion,
-      TRANSLATION_PROMPT_VERSION,
-      terminologyPackVersion,
-      expert.id,
-      expert.contentHash,
-      smartContextEnabled,
-      smartContextEnabled ? TRANSLATION_CONTEXT_PROMPT_VERSION : 'none',
-      translationMode,
-    );
-    const retainedActiveResult = activeResult
-      ?? this.translationStore.findLatestActiveProductResult(
+    const activeCompatibleProductResult =
+      this.translationStore.findActiveCompatibleProductResult(
         request.entryId,
         request.sourceLanguage,
         request.targetLanguage,
         source.sourceContentHash,
         source.segmenterVersion,
+        TRANSLATION_PROMPT_VERSION,
+        terminologyPackVersion,
+        expert.id,
+        expert.contentHash,
+        smartContextEnabled,
+        smartContextEnabled ? TRANSLATION_CONTEXT_PROMPT_VERSION : 'none',
       );
+    const retainedActiveResult = this.translationStore.findLatestActiveProductResult(
+      request.entryId,
+      request.sourceLanguage,
+      request.targetLanguage,
+      source.sourceContentHash,
+      source.segmenterVersion,
+    );
     const pendingProductResult = this.translationStore.findLatestPendingProductResult(
       request.entryId,
       request.sourceLanguage,
@@ -448,8 +438,12 @@ export class TranslationService {
       );
     }
 
-    if (!request.forceNew && activeResult) {
-      return { runId: activeResult.id, reused: true, result: activeResult };
+    if (!request.forceNew && activeCompatibleProductResult && !pendingProductResult) {
+      return {
+        runId: activeCompatibleProductResult.id,
+        reused: true,
+        result: activeCompatibleProductResult,
+      };
     }
 
     const profile = this.profileStore.findActiveWithSecret();
@@ -544,7 +538,9 @@ export class TranslationService {
     });
     this.executeTimer = setTimeout(() => {
       this.executeTimer = undefined;
-      void this.executeRun(result, {
+      const activeRun = this.activeRun;
+      if (!activeRun || activeRun.result.id !== result.id) return;
+      activeRun.execution = this.executeRun(result, {
         providerKind: profile.translationProviderKind,
         baseUrl: profile.translationBaseUrl,
         model: profile.translationModel,
@@ -609,7 +605,6 @@ export class TranslationService {
         true,
       )),
     );
-    this.logRunInterrupted(activeRun, 'paused');
     this.activeRun = null;
     this.emit({
       type: 'paused',
@@ -619,6 +614,14 @@ export class TranslationService {
       targetLanguage: pausedResult.targetLanguage,
       result: pausedResult,
     });
+    if (activeRun.execution) {
+      void activeRun.execution.then(
+        () => this.logRunInterrupted(activeRun, 'paused'),
+        () => this.logRunInterrupted(activeRun, 'paused'),
+      );
+    } else {
+      this.logRunInterrupted(activeRun, 'paused');
+    }
     return { paused: true, result: pausedResult };
   }
 

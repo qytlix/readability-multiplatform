@@ -78,6 +78,91 @@ describe('TranslationStore', () => {
     )?.id).toBe(run.id);
   });
 
+  it('selects the newest active compatible product result across modes', () => {
+    const createCompletedRun = (translationVariant: 'standard' | 'deep', marker: string) => {
+      const run = translationStore.createRun({
+        entryId: 1,
+        providerProfileId,
+        sourceLanguage: 'auto',
+        targetLanguage: 'zh-CN',
+        sourceContentHash: 'cross-mode-source-hash',
+        segmenterVersion: 'v1',
+        promptVersion: 'translation-v1',
+        terminologyPackVersion: 'test-pack',
+        translationVariant,
+        segments: [{
+          id: 'seg_0',
+          orderIndex: 0,
+          type: 'paragraph',
+          sourceHtml: '<p>Source</p>',
+          sourceText: 'Source',
+        }],
+      });
+      translationStore.markSegmentSucceeded(
+        run.id,
+        'seg_0',
+        marker,
+        `<p>${marker}</p>`,
+        [],
+      );
+      return translationStore.markRunSucceeded(run.id);
+    };
+
+    const standard = createCompletedRun('standard', 'Standard');
+    const deep = createCompletedRun('deep', 'Deep');
+    expect(translationStore.findActiveCompatibleProductResult(
+      1,
+      'auto',
+      'zh-CN',
+      'cross-mode-source-hash',
+      'v1',
+      'translation-v1',
+      'test-pack',
+    )?.id).toBe(deep.id);
+    expect(translationStore.findActiveCompatibleResult(
+      1,
+      'auto',
+      'zh-CN',
+      'cross-mode-source-hash',
+      'v1',
+      'translation-v1',
+      'test-pack',
+      'none',
+      'none',
+      false,
+      'none',
+      'standard',
+    )?.id).toBe(standard.id);
+
+    const newestStandard = createCompletedRun('standard', 'Newest standard');
+    expect(translationStore.findCompatibleProductResult(
+      1,
+      'auto',
+      'zh-CN',
+      'cross-mode-source-hash',
+      'v1',
+      'translation-v1',
+      'test-pack',
+    )?.id).toBe(newestStandard.id);
+    expect(translationStore.findActiveCompatibleProductResult(
+      1,
+      'auto',
+      'zh-CN',
+      'cross-mode-source-hash',
+      'v1',
+      'translation-v1',
+      'test-pack',
+    )?.id).toBe(newestStandard.id);
+    expect(translationStore.findLatestActiveResult(
+      1,
+      'auto',
+      'zh-CN',
+      'cross-mode-source-hash',
+      'v1',
+      'deep',
+    )?.id).toBe(deep.id);
+  });
+
   it('reconciles interrupted Translation runs as retryable failures', () => {
     const run = translationStore.createRun({
       entryId: 1,

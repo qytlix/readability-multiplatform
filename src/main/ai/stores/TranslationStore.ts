@@ -136,6 +136,48 @@ export class TranslationStore {
     return row ? this.toResult(row) : undefined;
   }
 
+  findCompatibleProductResult(
+    entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
+    targetLanguage: TranslationTargetLanguage,
+    sourceContentHash: string,
+    segmenterVersion: string,
+    promptVersion: string,
+    terminologyPackVersion: string,
+    expertId = 'none',
+    expertContentHash = 'none',
+    smartContextEnabled = false,
+    contextPromptVersion = 'none',
+  ): TranslationResult | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM translation_result
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
+        AND sourceContentHash = ? AND segmenterVersion = ?
+        AND promptVersion = ?
+        AND terminologyPackVersion = ?
+        AND expertId = ?
+        AND expertContentHash = ?
+        AND smartContextEnabled = ?
+        AND contextPromptVersion = ?
+        AND translationVariant IN ('standard', 'deep')
+      ORDER BY updatedAt DESC, id DESC
+      LIMIT 1
+    `).get(
+      entryId,
+      sourceLanguage,
+      targetLanguage,
+      sourceContentHash,
+      segmenterVersion,
+      promptVersion,
+      terminologyPackVersion,
+      expertId,
+      expertContentHash,
+      smartContextEnabled ? 1 : 0,
+      contextPromptVersion,
+    ) as TranslationResultRow | undefined;
+    return row ? this.toResult(row) : undefined;
+  }
+
   findActiveCompatibleResult(
     entryId: number,
     sourceLanguage: TranslationSourceLanguage,
@@ -177,6 +219,49 @@ export class TranslationStore {
       smartContextEnabled ? 1 : 0,
       contextPromptVersion,
       translationVariant,
+    ) as TranslationResultRow | undefined;
+    return row ? this.toResult(row) : undefined;
+  }
+
+  findActiveCompatibleProductResult(
+    entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
+    targetLanguage: TranslationTargetLanguage,
+    sourceContentHash: string,
+    segmenterVersion: string,
+    promptVersion: string,
+    terminologyPackVersion: string,
+    expertId = 'none',
+    expertContentHash = 'none',
+    smartContextEnabled = false,
+    contextPromptVersion = 'none',
+  ): TranslationResult | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM translation_result
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
+        AND sourceContentHash = ? AND segmenterVersion = ?
+        AND promptVersion = ?
+        AND terminologyPackVersion = ?
+        AND expertId = ?
+        AND expertContentHash = ?
+        AND smartContextEnabled = ?
+        AND contextPromptVersion = ?
+        AND translationVariant IN ('standard', 'deep')
+        AND status = 'succeeded' AND isActive = 1
+      ORDER BY completedAt DESC, id DESC
+      LIMIT 1
+    `).get(
+      entryId,
+      sourceLanguage,
+      targetLanguage,
+      sourceContentHash,
+      segmenterVersion,
+      promptVersion,
+      terminologyPackVersion,
+      expertId,
+      expertContentHash,
+      smartContextEnabled ? 1 : 0,
+      contextPromptVersion,
     ) as TranslationResultRow | undefined;
     return row ? this.toResult(row) : undefined;
   }
