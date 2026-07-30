@@ -285,6 +285,47 @@ describe('ContentCleaner', () => {
     expect(result.content).not.toContain('Unresolved placeholder');
   });
 
+  it('normalizes the real relative image sample and responsive image variants', () => {
+    const html = fs.readFileSync(
+      path.join(FIXTURES_DIR, 'image-source-variants.html'),
+      'utf-8',
+    );
+    const baseUrl =
+      'https://www.jeffgeerling.com/blog/2026/opnsense-backup-internet-gateway/';
+    const result = cleaner.clean(html, baseUrl);
+    const markdown = new MarkdownConverter().convert(result.content);
+
+    expect(result.documentBaseURL).toBe(baseUrl);
+    expect(result.content).toContain(
+      'src="https://www.jeffgeerling.com/blog/2026/opnsense-backup-internet-gateway/spectrum-cable-modem-online-offline.jpg"',
+    );
+    expect(result.content).toContain(
+      'srcset="https://cdn.example.com/router-640.webp 640w, '
+        + 'https://cdn.example.com/router-1280.webp 1280w"',
+    );
+    expect(result.content).toContain(
+      'src="https://www.jeffgeerling.com/blog/2026/images/router-fallback.jpg"',
+    );
+    expect(result.content).toContain('loading="lazy"');
+    expect(result.content).toContain('decoding="async"');
+    expect(result.content).not.toContain('data-original-src');
+    expect(result.content).not.toContain('data-lazy-srcset');
+    expect(result.content).not.toContain('javascript:');
+    expect(result.content).not.toContain('alt="Unsafe image"');
+    expect(result.content).toContain(
+      'This caption remains readable when its image is invalid.',
+    );
+    expect(markdown).toContain(
+      '![Spectrum Business Cable Modem offline]'
+        + '(https://www.jeffgeerling.com/blog/2026/opnsense-backup-internet-gateway/'
+        + 'spectrum-cable-modem-online-offline.jpg)',
+    );
+    expect(markdown).toContain(
+      '![OPNsense gateway configuration]'
+        + '(https://www.jeffgeerling.com/blog/2026/images/router-fallback.jpg)',
+    );
+  });
+
   it('restores Arc Fusion images from structured article metadata', () => {
     const fusionContent = {
       type: 'story',

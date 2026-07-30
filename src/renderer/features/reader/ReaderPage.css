@@ -2839,6 +2839,18 @@ body.workspace-is-resizing * {
   border-radius: 3px;
 }
 
+.entry-detail-html .reader-image-fallback {
+  display: block;
+  margin: 24px 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--reader-text-muted) 24%, transparent);
+  border-radius: 3px;
+  color: var(--reader-text-muted);
+  font-family: "Segoe UI", "Noto Sans SC", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .entry-detail-html .reader-author-card {
   display: flex;
   margin: 24px 0 34px;
