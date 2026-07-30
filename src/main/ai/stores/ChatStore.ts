@@ -390,6 +390,15 @@ export class ChatStore {
     return row ? toChatRun(row) : undefined;
   }
 
+  findLatestRunForThread(threadId: number): ChatRun | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM ai_chat_run
+      WHERE threadId = ?
+      ORDER BY id DESC LIMIT 1
+    `).get(threadId) as ChatRunRow | undefined;
+    return row ? toChatRun(row) : undefined;
+  }
+
   appendAssistantDelta(runId: number, delta: string): ChatMessage {
     const run = this.findRunById(runId);
     if (!run || run.status !== 'running') {
