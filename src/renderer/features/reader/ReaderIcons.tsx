@@ -51,6 +51,13 @@ export const SummaryIcon = () => (
   </Icon>
 );
 
+export const ChatIcon = () => (
+  <Icon size={18}>
+    <path d="M4 5.5h16v11H9l-5 4z" />
+    <path d="M8 9h8M8 13h5" />
+  </Icon>
+);
+
 export const TranslateIcon = () => (
   <Icon size={19} className="translate-icon">
     <path d="M5 7.5h13" />

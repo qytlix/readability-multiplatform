@@ -53,6 +53,10 @@ describe('ProviderSettings model routing fields', () => {
         tagBaseUrl: 'https://api.openai.com/v1',
         tagModel: 'gpt-5.4-mini',
         hasTagApiKey: true,
+        chatProviderKind: 'openrouter',
+        chatBaseUrl: 'https://openrouter.ai/api/v1',
+        chatModel: 'openai/gpt-5.4-mini',
+        hasChatApiKey: true,
         keyStorageMode: 'secure',
       },
       onSaved: () => undefined,
@@ -65,5 +69,7 @@ describe('ProviderSettings model routing fields', () => {
     expect(markup).toContain('value="translation-model"');
     expect(markup).toContain('value="deepseek"');
     expect(markup).toContain('value="https://api.deepseek.com"');
+    expect(markup).toContain('问答模型');
+    expect(markup).toContain('value="openai/gpt-5.4-mini"');
   });
 });

@@ -11,12 +11,25 @@ export interface ProviderTokenUsage {
   totalTokens?: number;
 }
 
-export interface TextGenerationProviderRequest {
+export interface ProviderMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface TextGenerationProviderRequestBase {
   providerKind?: ProviderKind;
   baseUrl: string;
   model: string;
   apiKey: string;
+  /**
+   * 单轮调用的原始提示词。聊天调用保留空字符串，以兼容现有 Provider
+   * 调用方，同时通过 messages 明确选择多轮协议。
+   */
   prompt: string;
+  /** 多轮聊天使用的系统指令。 */
+  systemInstruction?: string;
+  /** 多轮聊天历史；存在时 Provider 应按消息序列发送。 */
+  messages?: ProviderMessage[];
   signal: AbortSignal;
   /** Requests usage metadata when the Provider supports it; response usage remains optional. */
   requestUsage?: boolean;
@@ -26,9 +39,18 @@ export interface TextGenerationProviderRequest {
   onFinishReason?: (finishReason: ProviderFinishReason) => void;
 }
 
+export type TextGenerationProviderRequest = TextGenerationProviderRequestBase;
+
 export type TextGenerationConnectionRequest = Omit<
   TextGenerationProviderRequest,
-  'prompt' | 'signal' | 'requestUsage' | 'onTiming' | 'onUsage' | 'onFinishReason'
+  | 'prompt'
+  | 'systemInstruction'
+  | 'messages'
+  | 'signal'
+  | 'requestUsage'
+  | 'onTiming'
+  | 'onUsage'
+  | 'onFinishReason'
 >;
 
 export function normalizeProviderFinishReason(value: unknown): ProviderFinishReason | undefined {
@@ -48,4 +70,14 @@ export function normalizeProviderFinishReason(value: unknown): ProviderFinishRea
 export interface TextGenerationProvider {
   stream(request: TextGenerationProviderRequest): AsyncIterable<string>;
   testConnection(request: TextGenerationConnectionRequest): Promise<void>;
+}
+
+export function isConversationRequest(
+  request: TextGenerationProviderRequest,
+): request is TextGenerationProviderRequest & {
+  systemInstruction: string;
+  messages: ProviderMessage[];
+} {
+  return typeof request.systemInstruction === 'string'
+    && Array.isArray(request.messages);
 }

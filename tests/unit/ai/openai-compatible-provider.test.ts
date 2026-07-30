@@ -37,6 +37,33 @@ describe('OpenAICompatibleProvider', () => {
     );
   });
 
+  it('maps article chat system context and ordered messages', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      'data: [DONE]\n\n',
+      { status: 200 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    for await (const chunk of new OpenAICompatibleProvider().stream({
+      ...request(),
+      prompt: '',
+      systemInstruction: 'Only answer from the article.',
+      messages: [
+        { role: 'user', content: 'First question' },
+        { role: 'assistant', content: 'First answer' },
+        { role: 'user', content: 'Follow-up' },
+      ],
+    })) void chunk;
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body)).messages).toEqual([
+      { role: 'system', content: 'Only answer from the article.' },
+      { role: 'user', content: 'First question' },
+      { role: 'assistant', content: 'First answer' },
+      { role: 'user', content: 'Follow-up' },
+    ]);
+  });
+
   it('handles split SSE chunks and ignores keepalive comments', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(streamingResponse([
       ': OPENROUTER PROCESSING\n',

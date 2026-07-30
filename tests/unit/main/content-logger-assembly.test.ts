@@ -98,6 +98,16 @@ vi.mock('../../../src/main/ai/stores/SummaryStore', () => ({
     }
   },
 }));
+vi.mock('../../../src/main/ai/stores/ChatStore', () => ({
+  ChatStore: class {},
+}));
+vi.mock('../../../src/main/ai/services/ChatService', () => ({
+  ChatService: class {
+    reconcileInterruptedRuns(): void {
+      return undefined;
+    }
+  },
+}));
 vi.mock('../../../src/main/ai/services/TranslationService', () => ({
   TranslationService: class {
     constructor(...arguments_: unknown[]) {

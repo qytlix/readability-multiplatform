@@ -2339,6 +2339,111 @@ body.workspace-is-resizing * {
   opacity: 0.35;
 }
 
+.article-chat-panel {
+  width: min(760px, calc(100% - 64px));
+  margin: 0 auto 28px;
+  padding: 18px;
+  border: 1px solid var(--reader-line);
+  border-radius: 12px;
+  background: var(--reader-panel);
+  box-shadow: 0 14px 40px var(--reader-shadow);
+}
+
+.article-chat-header,
+.article-chat-compose {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.article-chat-header {
+  justify-content: space-between;
+}
+
+.article-chat-header h2 {
+  margin: 0;
+  color: var(--reader-accent);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.article-chat-header p,
+.article-chat-empty {
+  margin: 4px 0 0;
+  color: var(--reader-muted);
+  font-size: 12px;
+}
+
+.article-chat-header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.article-chat-header button,
+.article-chat-compose button {
+  padding: 7px 10px;
+  border: 1px solid var(--reader-line);
+  border-radius: 7px;
+  color: var(--reader-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.article-chat-header button:disabled,
+.article-chat-compose button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.article-chat-messages {
+  display: grid;
+  max-height: 360px;
+  margin: 16px 0;
+  padding-right: 4px;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.article-chat-message {
+  max-width: 88%;
+  padding: 10px 12px;
+  border: 1px solid var(--reader-line);
+  border-radius: 10px;
+  background: var(--reader-panel-raised);
+}
+
+.article-chat-message.is-user {
+  justify-self: end;
+  background: color-mix(in srgb, var(--reader-accent) 10%, var(--reader-panel-raised));
+}
+
+.article-chat-message > span,
+.article-chat-message small {
+  color: var(--reader-muted);
+  font-size: 10px;
+}
+
+.article-chat-message p {
+  margin: 4px 0 0;
+  color: var(--reader-text);
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.article-chat-compose textarea {
+  min-width: 0;
+  flex: 1;
+  resize: vertical;
+  padding: 9px 11px;
+  border: 1px solid var(--reader-line);
+  border-radius: 8px;
+  color: var(--reader-text);
+  background: var(--reader-input);
+  font: inherit;
+  line-height: 1.5;
+}
+
 .annotation-toolbar {
   position: relative;
   display: flex;

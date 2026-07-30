@@ -44,6 +44,30 @@ describe('GeminiProvider', () => {
     });
   });
 
+  it('maps article chat system context and assistant turns to Gemini roles', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    for await (const chunk of new GeminiProvider().stream({
+      ...request(),
+      prompt: '',
+      systemInstruction: 'Use only the article.',
+      messages: [
+        { role: 'user', content: 'Question' },
+        { role: 'assistant', content: 'Answer' },
+      ],
+    })) void chunk;
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      systemInstruction: { parts: [{ text: 'Use only the article.' }] },
+      contents: [
+        { role: 'user', parts: [{ text: 'Question' }] },
+        { role: 'model', parts: [{ text: 'Answer' }] },
+      ],
+    });
+  });
+
   it('handles split candidate events and ignores non-text parts', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(streamingResponse([
       'data: {"candidates":[{"content":{"parts":[{"thought":true},',
