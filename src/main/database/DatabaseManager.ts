@@ -33,6 +33,7 @@ import { MIGRATION_023 } from '../migrations/023_tag_name_case_sensitive';
 import { MIGRATION_024 } from '../migrations/024_add_tag_provider_route';
 import { MIGRATION_025 } from '../migrations/025_add_entry_ai_tag_generated';
 import { MIGRATION_026 } from '../migrations/026_add_chat_provider_route';
+import { MIGRATION_027 } from '../migrations/027_create_article_chat';
 
 interface Migration {
   id: string;
@@ -80,6 +81,7 @@ const MIGRATIONS: Migration[] = [
   { id: '024_add_tag_provider_route', sql: MIGRATION_024 },
   { id: '025_add_entry_ai_tag_generated', sql: MIGRATION_025 },
   { id: '026_add_chat_provider_route', sql: MIGRATION_026 },
+  { id: '027_create_article_chat', sql: MIGRATION_027 },
 ];
 
 export class DatabaseManager {
