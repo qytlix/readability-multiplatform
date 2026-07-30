@@ -16,6 +16,7 @@ import type {
   TranslationTerminologyMatch,
 } from '../../../shared/contracts/translation.types';
 import {
+  DEEP_TRANSLATION_MODE,
   LEGACY_TRANSLATION_VARIANT,
   STANDARD_TRANSLATION_MODE,
   TRANSLATION_MODES,
@@ -253,6 +254,7 @@ export class TranslationStore {
     );
     return latest?.status === 'running'
       || (latest?.status === 'failed'
+        && latest.translationVariant === STANDARD_TRANSLATION_MODE
         && latest.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED)
       ? latest
       : undefined;
@@ -353,6 +355,12 @@ export class TranslationStore {
   resumeRun(runId: number, providerProfileId?: number): TranslationResult {
     const now = new Date().toISOString();
     const resume = this.db.transaction(() => {
+      const run = this.db.prepare(`
+        SELECT translationVariant FROM translation_result WHERE id = ?
+      `).get(runId) as Pick<TranslationResultRow, 'translationVariant'> | undefined;
+      if (run?.translationVariant === DEEP_TRANSLATION_MODE) {
+        throw new Error('Deep Translation runs cannot be resumed.');
+      }
       this.db.prepare(`
         UPDATE translation_result
         SET status = 'running', errorCode = NULL, errorMessage = NULL,
@@ -527,18 +535,35 @@ export class TranslationStore {
   ): void {
     const now = new Date().toISOString();
     const persist = this.db.transaction(() => {
-      this.db.prepare(`
+      const run = this.db.prepare(`
+        SELECT translationVariant FROM translation_result WHERE id = ?
+      `).get(runId) as Pick<TranslationResultRow, 'translationVariant'> | undefined;
+      const failed = this.db.prepare(`
         UPDATE translation_result
-        SET status = 'failed', errorCode = ?, errorMessage = ?, errorRetryable = ?,
+        SET status = 'failed', isActive = 0,
+            errorCode = ?, errorMessage = ?, errorRetryable = ?,
             completedAt = ?, updatedAt = ?
         WHERE id = ? AND status = 'running'
       `).run(error.code, error.message, error.retryable ? 1 : 0, now, now, runId);
-      if (sourceSegmentId) {
+      if (failed.changes > 0 && sourceSegmentId) {
         this.db.prepare(`
           UPDATE translation_segment
           SET status = 'failed', errorCode = ?, errorMessage = ?, updatedAt = ?
           WHERE translationResultId = ? AND sourceSegmentId = ? AND status = 'pending'
         `).run(error.code, error.message, now, runId, sourceSegmentId);
+      }
+      if (failed.changes > 0 && run?.translationVariant === DEEP_TRANSLATION_MODE) {
+        this.db.prepare(`
+          UPDATE translation_segment
+          SET status = 'pending', translatedText = NULL, translatedHtml = NULL,
+              terminologyMatchesJson = NULL, errorCode = NULL, errorMessage = NULL,
+              updatedAt = ?
+          WHERE translationResultId = ?
+        `).run(now, runId);
+        this.db.prepare(`
+          DELETE FROM translation_deep_batch_checkpoint
+          WHERE translationResultId = ?
+        `).run(runId);
       }
     });
     persist();
@@ -552,11 +577,48 @@ export class TranslationStore {
   }
 
   reconcileInterruptedRuns(): number {
+    return this.reconcileInterruptedRunsWithDiagnostics().interruptedCount;
+  }
+
+  reconcileInterruptedRunsWithDiagnostics(): {
+    interruptedCount: number;
+    canonicalCorrectionCount: number;
+  } {
     const now = new Date().toISOString();
     const reconcile = this.db.transaction(() => {
+      const failedDeepCorrections = this.db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM translation_result AS result
+        WHERE result.translationVariant = ?
+          AND result.status = 'failed'
+          AND (
+            result.errorCode = ?
+            OR result.isActive != 0
+            OR EXISTS (
+              SELECT 1 FROM translation_deep_batch_checkpoint AS checkpoint
+              WHERE checkpoint.translationResultId = result.id
+            )
+            OR EXISTS (
+              SELECT 1 FROM translation_segment AS segment
+              WHERE segment.translationResultId = result.id
+                AND (
+                  segment.status != 'pending'
+                  OR segment.translatedText IS NOT NULL
+                  OR segment.translatedHtml IS NOT NULL
+                  OR segment.terminologyMatchesJson IS NOT NULL
+                  OR segment.errorCode IS NOT NULL
+                  OR segment.errorMessage IS NOT NULL
+                )
+            )
+          )
+      `).get(
+        DEEP_TRANSLATION_MODE,
+        TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED,
+      ) as { count: number };
       const interrupted = this.db.prepare(`
         UPDATE translation_result
-        SET status = 'failed', errorCode = ?, errorMessage = ?, errorRetryable = 1,
+        SET status = 'failed', isActive = 0,
+            errorCode = ?, errorMessage = ?, errorRetryable = 1,
             completedAt = ?, updatedAt = ?
         WHERE status = 'running'
       `).run(
@@ -564,6 +626,37 @@ export class TranslationStore {
         'Translation generation was interrupted before completion.',
         now,
         now,
+      );
+      const succeededCorrections = this.db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM translation_result AS result
+        WHERE result.status = 'succeeded'
+          AND (
+            result.errorCode IS NOT NULL
+            OR result.errorMessage IS NOT NULL
+            OR result.errorRetryable IS NOT NULL
+            OR result.completedAt IS NULL
+            OR EXISTS (
+              SELECT 1 FROM translation_deep_batch_checkpoint AS checkpoint
+              WHERE checkpoint.translationResultId = result.id
+            )
+          )
+      `).get() as { count: number };
+      this.db.prepare(`
+        UPDATE translation_result
+        SET isActive = 0,
+            errorCode = ?, errorMessage = ?, errorRetryable = 1,
+            completedAt = COALESCE(completedAt, ?), updatedAt = ?
+        WHERE translationVariant = ?
+          AND status = 'failed'
+          AND errorCode = ?
+      `).run(
+        TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
+        'Deep Translation was interrupted and cannot be resumed.',
+        now,
+        now,
+        DEEP_TRANSLATION_MODE,
+        TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED,
       );
       // Older builds could leave pause/error metadata or deep checkpoints on a
       // row that had already reached success. The terminal status is canonical.
@@ -578,10 +671,25 @@ export class TranslationStore {
       this.db.prepare(`
         DELETE FROM translation_deep_batch_checkpoint
         WHERE translationResultId IN (
-          SELECT id FROM translation_result WHERE status = 'succeeded'
+          SELECT id FROM translation_result
+          WHERE status = 'succeeded'
+             OR (status = 'failed' AND translationVariant = ?)
         )
-      `).run();
-      return interrupted.changes;
+      `).run(DEEP_TRANSLATION_MODE);
+      this.db.prepare(`
+        UPDATE translation_segment
+        SET status = 'pending', translatedText = NULL, translatedHtml = NULL,
+            terminologyMatchesJson = NULL, errorCode = NULL, errorMessage = NULL,
+            updatedAt = ?
+        WHERE translationResultId IN (
+          SELECT id FROM translation_result
+          WHERE status = 'failed' AND translationVariant = ?
+        )
+      `).run(now, DEEP_TRANSLATION_MODE);
+      return {
+        interruptedCount: interrupted.changes,
+        canonicalCorrectionCount: succeededCorrections.count + failedDeepCorrections.count,
+      };
     });
     return reconcile();
   }

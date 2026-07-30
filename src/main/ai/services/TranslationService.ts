@@ -85,6 +85,8 @@ import {
 import {
   elapsedTranslationMilliseconds,
   logTranslationRecoveryCompleted,
+  logTranslationCanonicalStateReconciled,
+  logTranslationCreationBlocked,
   logTranslationMissingSegmentsDetected,
   logTranslationProviderRequestFailed,
   logTranslationRunCompleted,
@@ -99,8 +101,11 @@ import {
   type TranslationProviderRequestKind,
   type TranslationProviderResponseDiagnostics,
   type TranslationRunFailureStage,
+  type TranslationFinalFailureStage,
+  type TranslationRunDiagnosticSummary,
   type TranslationStopReason,
 } from './TranslationLogging';
+import type { UsageRequestKind, UsageRequestRecord } from '../stores/UsageStore';
 import {
   TRANSLATION_OUTPUT_REASON_CODES,
   type TranslationOutputFailurePhase,
@@ -143,23 +148,12 @@ interface ActiveTranslationRun {
   priorityRanks: Map<string, number>;
   batches: TranslationBatchWork[];
   providerRequests: Set<ActiveProviderRequest>;
-  deepStage?: 'draft' | 'review' | 'rewrite';
+  finalFailureStage?: TranslationFinalFailureStage;
 }
 
 interface TranslationRunDiagnostics {
-  providerRequestCount: number;
-  batchRequestCount: number;
-  compensationRequestCount: number;
-  deepDraftRequestCount: number;
-  deepReviewRequestCount: number;
-  deepRewriteRequestCount: number;
-  providerRequestSuccessCount: number;
-  providerRequestFailureCount: number;
   missingSegmentCount: number;
   unresolvedMissingSegmentCount: number;
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
 }
 
 interface ActiveProviderRequest {
@@ -344,13 +338,21 @@ export class TranslationService {
 
   reconcileInterruptedRuns(): void {
     const startedAt = performance.now();
-    const count = this.translationStore.reconcileInterruptedRuns();
-    if (count <= 0) return;
-    logTranslationRecoveryCompleted(this.logger, {
-      durationMs: elapsedTranslationMilliseconds(startedAt),
-      count,
-      trigger: 'startup-recovery',
-    });
+    const result = this.translationStore.reconcileInterruptedRunsWithDiagnostics();
+    if (result.interruptedCount > 0) {
+      logTranslationRecoveryCompleted(this.logger, {
+        durationMs: elapsedTranslationMilliseconds(startedAt),
+        count: result.interruptedCount,
+        trigger: 'startup-recovery',
+      });
+    }
+    if (result.canonicalCorrectionCount > 0) {
+      logTranslationCanonicalStateReconciled(this.logger, {
+        count: result.canonicalCorrectionCount,
+        trigger: 'startup-recovery',
+        outcome: 'canonical-state-corrected',
+      });
+    }
   }
 
   generate(request: TranslationGenerateRequest): TranslationGenerateResponse {
@@ -431,6 +433,14 @@ export class TranslationService {
           ...(retainedActiveResult ? { activeResult: retainedActiveResult } : {}),
         };
       }
+      logTranslationCreationBlocked(this.logger, {
+        taskRunId: this.activeRun.result.id,
+        attemptId: this.activeRun.attemptId,
+        translationVariant: this.activeRun.result.translationVariant,
+        trigger: this.activeRun.trigger,
+        outcome: 'blocked',
+        stage: this.activeRun.stopReason === 'paused' ? 'paused' : 'running',
+      });
       throw new TranslationError(
         TRANSLATION_ERROR_CODES.TRANSLATION_BUSY,
         'Another Translation is already being generated. Wait for it to finish before starting another.',
@@ -454,10 +464,12 @@ export class TranslationService {
     const apiKey = this.secretStore.read(profile.translationApiKeyRef);
     const resumableResult = !request.forceNew
       ? pendingProductResult?.status === 'failed'
+        && pendingProductResult.translationVariant === STANDARD_TRANSLATION_MODE
         && pendingProductResult.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED
         ? pendingProductResult
         : existingResult !== undefined
           && existingResult.id === latestProductResult?.id
+          && existingResult.translationVariant === STANDARD_TRANSLATION_MODE
           && existingResult.status !== 'succeeded'
           ? existingResult
           : undefined
@@ -503,6 +515,19 @@ export class TranslationService {
       batches: [],
       providerRequests: new Set(),
     };
+    if (
+      isResuming
+      && resumableResult.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED
+    ) {
+      logTranslationCreationBlocked(this.logger, {
+        taskRunId: result.id,
+        attemptId: this.activeRun.attemptId,
+        translationVariant: result.translationVariant,
+        trigger: 'resume',
+        outcome: 'blocked',
+        stage: 'paused',
+      });
+    }
     this.emit({
       type: 'started',
       runId: result.id,
@@ -512,6 +537,8 @@ export class TranslationService {
     });
     logTranslationRunStarted(this.logger, {
       taskRunId: result.id,
+      attemptId: this.activeRun.attemptId,
+      translationVariant: result.translationVariant,
       trigger,
       previousResultAtStart: retainedActiveResult ? 'retained' : 'none',
     });
@@ -563,6 +590,7 @@ export class TranslationService {
       || activeRun.result.entryId !== request.entryId
       || activeRun.result.sourceLanguage !== request.sourceLanguage
       || activeRun.result.targetLanguage !== request.targetLanguage
+      || activeRun.result.translationVariant === DEEP_TRANSLATION_MODE
     ) {
       return { paused: false };
     }
@@ -643,6 +671,8 @@ export class TranslationService {
         result,
       );
       if (result.smartContextEnabled) {
+        const contextRun = this.activeRun;
+        if (!contextRun || contextRun.result.id !== result.id) return;
         const contextOutcome = this.contextService
           ? await this.contextService.resolve({
               identity: buildTranslationContextIdentity({
@@ -663,6 +693,12 @@ export class TranslationService {
                 baseUrl: providerConfig.baseUrl,
                 model: providerConfig.model,
                 apiKey: providerConfig.apiKey,
+              },
+              usage: {
+                attemptId: contextRun.attemptId,
+                taskRunId: result.id,
+                providerProfileId: providerConfig.providerProfileId,
+                recorder: this.usageRecorder,
               },
               signal: providerConfig.abortController.signal,
             })
@@ -727,8 +763,24 @@ export class TranslationService {
             segmentFailures.push(...await this.processBatch(result, batch, providerConfig));
           } catch (error) {
             if (!failure) {
+              if (this.activeRun?.result.id !== result.id) return;
               failure = { error, sourceSegmentId: batch.segments[0]?.sourceSegmentId };
               providerConfig.abortController.abort();
+              const ipcError = toTranslationIpcError(error);
+              this.translationStore.markRunFailed(
+                result.id,
+                ipcError,
+                batch.segments[0]?.sourceSegmentId,
+              );
+              this.emit({
+                type: 'failed',
+                runId: result.id,
+                entryId: result.entryId,
+                sourceLanguage: result.sourceLanguage,
+                targetLanguage: result.targetLanguage,
+                error: ipcError,
+              });
+              if (this.activeRun?.result.id === result.id) this.activeRun = null;
             }
             return;
           }
@@ -739,25 +791,14 @@ export class TranslationService {
         () => worker(),
       ));
 
-      if (this.activeRun?.result.id !== result.id) return;
       if (failure) {
         const translatedFailure = failure as { error: unknown; sourceSegmentId?: string };
         const ipcError = toTranslationIpcError(translatedFailure.error);
-        this.translationStore.markRunFailed(result.id, ipcError, translatedFailure.sourceSegmentId);
-        const activeRun = this.activeRun;
-        if (activeRun?.result.id === result.id) {
-          this.logRunFailure(activeRun, stage, ipcError.code);
-        }
-        this.emit({
-          type: 'failed',
-          runId: result.id,
-          entryId: result.entryId,
-          sourceLanguage: result.sourceLanguage,
-          targetLanguage: result.targetLanguage,
-          error: ipcError,
-        });
+        this.logRunFailure(active, stage, ipcError.code);
         return;
       }
+
+      if (this.activeRun?.result.id !== result.id) return;
 
       if (segmentFailures.length) {
         const firstFailure = segmentFailures[0];
@@ -1290,6 +1331,7 @@ export class TranslationService {
       }
       logTranslationMissingSegmentsDetected(this.logger, {
         taskRunId: result.id,
+        attemptId: active.attemptId,
         providerRequestId: providerRequest.providerRequestId,
         requestKind: providerRequest.requestKind,
         missingSegmentCount: missingInputs.length,
@@ -1389,7 +1431,7 @@ export class TranslationService {
       ? parseDeepOutputs(checkpoint.draftJson, inputs)
       : undefined;
     if (!drafts) {
-      active.deepStage = 'draft';
+      active.finalFailureStage = 'deep-draft';
       drafts = await this.requestDeepPass(
         result,
         active,
@@ -1411,6 +1453,7 @@ export class TranslationService {
           })),
         }),
       );
+      this.assertDeepRunCanPersist(result, providerConfig);
       this.translationStore.saveDeepBatchCheckpoint(result.id, {
         batchKey,
         stage: 'review',
@@ -1422,7 +1465,7 @@ export class TranslationService {
       ? parseDeepReviewIssues(checkpoint.reviewJson, inputs)
       : undefined;
     if (!reviewIssues) {
-      active.deepStage = 'review';
+      active.finalFailureStage = 'deep-review';
       reviewIssues = await this.requestDeepReview(
         result,
         active,
@@ -1430,6 +1473,7 @@ export class TranslationService {
         drafts,
         providerConfig,
       );
+      this.assertDeepRunCanPersist(result, providerConfig);
       this.translationStore.saveDeepBatchCheckpoint(result.id, {
         batchKey,
         stage: 'rewrite',
@@ -1438,7 +1482,7 @@ export class TranslationService {
       });
     }
 
-    active.deepStage = 'rewrite';
+    active.finalFailureStage = 'deep-rewrite';
     const rewritten = await this.requestDeepPass(
       result,
       active,
@@ -1457,6 +1501,7 @@ export class TranslationService {
       }),
     );
 
+    this.assertDeepRunCanPersist(result, providerConfig);
     for (const output of rewritten) {
       const completedSegment = this.translationStore.markSegmentSucceeded(
         result.id,
@@ -1477,6 +1522,23 @@ export class TranslationService {
     }
     this.translationStore.clearDeepBatchCheckpoint(result.id, batchKey);
     return [];
+  }
+
+  private assertDeepRunCanPersist(
+    result: TranslationResult,
+    providerConfig: TranslationProviderConfig,
+  ): void {
+    if (
+      providerConfig.abortController.signal.aborted
+      || this.activeRun?.result.id !== result.id
+      || this.activeRun.terminalLogRecorded
+    ) {
+      throw new TranslationError(
+        TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
+        'Translation generation was interrupted before completion.',
+        true,
+      );
+    }
   }
 
   private async requestDeepPass(
@@ -1541,6 +1603,7 @@ export class TranslationService {
         providerRequest.responseDiagnostics.outputCharacters += delta.length;
         outputs.push(...parser.append(delta));
       }
+      this.assertDeepRunCanPersist(result, providerConfig);
       outputs.push(...parser.finish());
       const validated = validateDeepBatchOutputs(result, inputs, outputs, providerRequest);
       this.completeProviderRequest(active, providerRequest, usage);
@@ -1585,6 +1648,7 @@ export class TranslationService {
         output += delta;
         providerRequest.responseDiagnostics.outputCharacters += delta.length;
       }
+      this.assertDeepRunCanPersist(result, providerConfig);
       const issues = parseDeepReviewIssues(output, inputs);
       providerRequest.responseDiagnostics.parsedSegmentCount = inputs.length;
       providerRequest.responseDiagnostics.acceptedSegmentCount = inputs.length;
@@ -1647,6 +1711,7 @@ export class TranslationService {
         providerRequest.responseDiagnostics.outputCharacters += delta.length;
         append(parser.append(delta));
       }
+      this.assertDeepRunCanPersist(result, providerConfig);
       append(parser.finish());
       if (values.size !== plan.textSlots.length) {
         throw invalidBatchOutput(
@@ -1746,16 +1811,6 @@ export class TranslationService {
     providerConfig: { providerProfileId: number; model: string },
   ): ActiveProviderRequest {
     const providerRequestId = createProviderRequestId();
-    activeRun.diagnostics.providerRequestCount += 1;
-    if (requestKind === 'batch') {
-      activeRun.diagnostics.batchRequestCount += 1;
-    } else if (requestKind === 'compensation'
-      || requestKind.endsWith('-compensation')) {
-      activeRun.diagnostics.compensationRequestCount += 1;
-    }
-    if (requestKind === 'deep-draft') activeRun.diagnostics.deepDraftRequestCount += 1;
-    if (requestKind === 'deep-review') activeRun.diagnostics.deepReviewRequestCount += 1;
-    if (requestKind === 'deep-rewrite') activeRun.diagnostics.deepRewriteRequestCount += 1;
     const request: ActiveProviderRequest = {
       providerRequestId,
       requestKind,
@@ -1789,8 +1844,6 @@ export class TranslationService {
     const reportedUsage = toSafeProviderTokenUsage(usage);
     this.usageRecorder.complete(request.usageRequest, reportedUsage);
     activeRun.providerRequests.delete(request);
-    this.recordProviderUsage(activeRun.diagnostics, reportedUsage);
-    activeRun.diagnostics.providerRequestSuccessCount += 1;
   }
 
   private failProviderRequest(
@@ -1814,11 +1867,11 @@ export class TranslationService {
       this.usageRecorder.fail(request.usageRequest, ipcError.code, reportedUsage);
     }
     activeRun.providerRequests.delete(request);
-    this.recordProviderUsage(activeRun.diagnostics, reportedUsage);
-    activeRun.diagnostics.providerRequestFailureCount += 1;
     if (isExpectedProviderAbort(activeRun, error, ipcError.code)) return;
+    activeRun.finalFailureStage = request.requestKind;
     logTranslationProviderRequestFailed(this.logger, {
       taskRunId: activeRun.result.id,
+      attemptId: activeRun.attemptId,
       providerRequestId: request.providerRequestId,
       requestKind: request.requestKind,
       segmentCount: request.segmentCount,
@@ -1830,39 +1883,13 @@ export class TranslationService {
     });
   }
 
-  private recordProviderUsage(
-    diagnostics: TranslationRunDiagnostics,
-    usage: ProviderTokenUsage | undefined,
-  ): void {
-    if (!usage) return;
-    if (usage.inputTokens !== undefined) {
-      diagnostics.inputTokens = (diagnostics.inputTokens ?? 0) + usage.inputTokens;
-    }
-    if (usage.outputTokens !== undefined) {
-      diagnostics.outputTokens = (diagnostics.outputTokens ?? 0) + usage.outputTokens;
-    }
-    if (usage.totalTokens !== undefined) {
-      diagnostics.totalTokens = (diagnostics.totalTokens ?? 0) + usage.totalTokens;
-    }
-  }
-
-  private getRunDiagnosticSummary(activeRun: ActiveTranslationRun): TranslationRunDiagnostics {
-    const diagnostics = activeRun.diagnostics;
-    return {
-      providerRequestCount: diagnostics.providerRequestCount,
-      batchRequestCount: diagnostics.batchRequestCount,
-      compensationRequestCount: diagnostics.compensationRequestCount,
-      deepDraftRequestCount: diagnostics.deepDraftRequestCount,
-      deepReviewRequestCount: diagnostics.deepReviewRequestCount,
-      deepRewriteRequestCount: diagnostics.deepRewriteRequestCount,
-      providerRequestSuccessCount: diagnostics.providerRequestSuccessCount,
-      providerRequestFailureCount: diagnostics.providerRequestFailureCount,
-      missingSegmentCount: diagnostics.missingSegmentCount,
-      unresolvedMissingSegmentCount: diagnostics.unresolvedMissingSegmentCount,
-      ...(diagnostics.inputTokens === undefined ? {} : { inputTokens: diagnostics.inputTokens }),
-      ...(diagnostics.outputTokens === undefined ? {} : { outputTokens: diagnostics.outputTokens }),
-      ...(diagnostics.totalTokens === undefined ? {} : { totalTokens: diagnostics.totalTokens }),
-    };
+  private getRunDiagnosticSummary(activeRun: ActiveTranslationRun): TranslationRunDiagnosticSummary {
+    const usageRecords = this.usageRecorder.listByAttempt(
+      'translation',
+      activeRun.result.id,
+      activeRun.attemptId,
+    );
+    return summarizeTranslationUsageAttempt(usageRecords, activeRun.diagnostics);
   }
 
   private logRunCompleted(activeRun: ActiveTranslationRun): void {
@@ -1870,11 +1897,12 @@ export class TranslationService {
     activeRun.terminalLogRecorded = true;
     logTranslationRunCompleted(this.logger, {
       taskRunId: activeRun.result.id,
+      attemptId: activeRun.attemptId,
+      translationVariant: activeRun.result.translationVariant,
       durationMs: elapsedTranslationMilliseconds(activeRun.startedAt),
       success: true,
       trigger: activeRun.trigger,
       previousResultOutcome: this.getPreviousResultOutcome(activeRun, 'completed'),
-      ...this.getTranslationVariantDiagnosticField(activeRun),
       ...this.getContextDegradationFields(activeRun),
       ...this.getRunDiagnosticSummary(activeRun),
     });
@@ -1889,14 +1917,17 @@ export class TranslationService {
     activeRun.terminalLogRecorded = true;
     logTranslationRunFailed(this.logger, {
       taskRunId: activeRun.result.id,
+      attemptId: activeRun.attemptId,
+      translationVariant: activeRun.result.translationVariant,
       durationMs: elapsedTranslationMilliseconds(activeRun.startedAt),
       success: false,
       stage,
+      finalFailureStage: stage === 'persist'
+        ? 'persist'
+        : activeRun.finalFailureStage ?? 'orchestration',
       errorCode: toTranslationRunFailureErrorCode(stage, errorCode),
       trigger: activeRun.trigger,
       previousResultOutcome: this.getPreviousResultOutcome(activeRun, 'retained'),
-      ...this.getTranslationVariantDiagnosticField(activeRun),
-      ...(activeRun.deepStage ? { deepStage: activeRun.deepStage } : {}),
       ...this.getContextDegradationFields(activeRun),
       ...this.getRunDiagnosticSummary(activeRun),
     });
@@ -1910,6 +1941,8 @@ export class TranslationService {
     activeRun.terminalLogRecorded = true;
     logTranslationRunInterrupted(this.logger, {
       taskRunId: activeRun.result.id,
+      attemptId: activeRun.attemptId,
+      translationVariant: activeRun.result.translationVariant,
       durationMs: elapsedTranslationMilliseconds(activeRun.startedAt),
       success: false,
       stage: 'interrupt',
@@ -1917,7 +1950,6 @@ export class TranslationService {
       stopReason,
       trigger: activeRun.trigger,
       previousResultOutcome: this.getPreviousResultOutcome(activeRun, 'retained'),
-      ...this.getTranslationVariantDiagnosticField(activeRun),
       ...this.getContextDegradationFields(activeRun),
       ...this.getRunDiagnosticSummary(activeRun),
     });
@@ -1943,14 +1975,6 @@ export class TranslationService {
           contextDegraded: true,
           contextWarningCode: activeRun.contextWarningCode,
         };
-  }
-
-  private getTranslationVariantDiagnosticField(
-    activeRun: ActiveTranslationRun,
-  ): { translationVariant: 'deep' } | Record<never, never> {
-    return activeRun.result.translationVariant === DEEP_TRANSLATION_MODE
-      ? { translationVariant: DEEP_TRANSLATION_MODE }
-      : {};
   }
 
   close(): void {
@@ -2197,17 +2221,52 @@ function createAdjacentBatches(segments: TranslationSegment[]): TranslationBatch
 
 function createTranslationRunDiagnostics(): TranslationRunDiagnostics {
   return {
-    providerRequestCount: 0,
-    batchRequestCount: 0,
-    compensationRequestCount: 0,
-    deepDraftRequestCount: 0,
-    deepReviewRequestCount: 0,
-    deepRewriteRequestCount: 0,
-    providerRequestSuccessCount: 0,
-    providerRequestFailureCount: 0,
     missingSegmentCount: 0,
     unresolvedMissingSegmentCount: 0,
   };
+}
+
+function summarizeTranslationUsageAttempt(
+  records: UsageRequestRecord[],
+  diagnostics: TranslationRunDiagnostics,
+): TranslationRunDiagnosticSummary {
+  const countKind = (kind: UsageRequestKind): number => records.filter((record) =>
+    record.requestKind === kind).length;
+  const inputTokens = sumReportedTokens(records, 'inputTokens');
+  const outputTokens = sumReportedTokens(records, 'outputTokens');
+  const totalTokens = sumReportedTokens(records, 'totalTokens');
+  return {
+    providerRequestCount: records.length,
+    batchRequestCount: countKind('batch'),
+    compensationRequestCount: countKind('compensation'),
+    translationContextRequestCount: countKind('translation-context'),
+    deepDraftRequestCount: countKind('deep-draft'),
+    deepReviewRequestCount: countKind('deep-review'),
+    deepRewriteRequestCount: countKind('deep-rewrite'),
+    deepDraftCompensationRequestCount: countKind('deep-draft-compensation'),
+    deepRewriteCompensationRequestCount: countKind('deep-rewrite-compensation'),
+    providerRequestSuccessCount: records.filter((record) =>
+      record.requestStatus === 'succeeded').length,
+    providerRequestFailureCount: records.filter((record) =>
+      record.requestStatus === 'failed' || record.requestStatus === 'interrupted').length,
+    missingSegmentCount: diagnostics.missingSegmentCount,
+    unresolvedMissingSegmentCount: diagnostics.unresolvedMissingSegmentCount,
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(totalTokens === undefined ? {} : { totalTokens }),
+  };
+}
+
+function sumReportedTokens(
+  records: UsageRequestRecord[],
+  field: 'inputTokens' | 'outputTokens' | 'totalTokens',
+): number | undefined {
+  let total: number | undefined;
+  for (const record of records) {
+    const value = record[field];
+    if (value !== undefined) total = (total ?? 0) + value;
+  }
+  return total;
 }
 
 function toSafeProviderTokenUsage(
@@ -2526,7 +2585,8 @@ function toState(
   const active = activeResult ? { activeResult } : {};
   if (result.status === 'running') return { state: 'running', result, ...active };
   if (result.status === 'failed') {
-    return result.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED
+    return result.translationVariant === STANDARD_TRANSLATION_MODE
+      && result.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED
       ? { state: 'paused', result, ...active }
       : { state: 'failed', result, ...active };
   }

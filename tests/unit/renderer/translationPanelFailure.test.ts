@@ -237,7 +237,7 @@ describe('TranslationPanel failure feedback', () => {
     const popup = container.querySelector<HTMLElement>('.translation-error-popup');
     expect(popup).not.toBeNull();
     expect(popup?.getAttribute('role')).toBe('alert');
-    expect(popup?.textContent).toContain('Translation paused');
+    expect(popup?.textContent).toContain('Translation failed');
     expect(popup?.textContent)
       .toContain('3 segments remain untranslated.');
     expect(popup?.textContent)
@@ -481,6 +481,165 @@ describe('TranslationPanel failure feedback', () => {
     container.remove();
   });
 
+  it.each([
+    { completedVariant: 'standard' as const, selectedVariant: 'deep' as const },
+    { completedVariant: 'deep' as const, selectedVariant: 'standard' as const },
+  ])('keeps a $completedVariant result displayable after switching to $selectedVariant', async ({
+    completedVariant,
+    selectedVariant,
+  }) => {
+    reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    const completed: TranslationResult = {
+      ...succeededResult(),
+      translationVariant: completedVariant,
+    };
+    const generate = vi.fn();
+    const onBilingualChange = vi.fn();
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        translation: {
+          get: vi.fn().mockResolvedValue({
+            ok: true,
+            data: { state: 'succeeded', result: completed },
+          }),
+          generate,
+          prioritize: vi.fn().mockResolvedValue({ ok: true, data: { accepted: true } }),
+          onEvent: vi.fn(() => () => undefined),
+        },
+      } as unknown as typeof window.shaleAPI,
+    });
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const panelRef = createRef<TranslationPanelHandle>();
+
+    await act(async () => {
+      root.render(createElement(TranslationPanel, {
+        ref: panelRef,
+        entryId: completed.entryId,
+        isContentReady: true,
+        sourceLanguage: completed.sourceLanguage,
+        targetLanguage: completed.targetLanguage,
+        useTerminology: false,
+        useSmartContext: false,
+        translationMode: completedVariant,
+        expertId: completed.expertId,
+        shortcut: { key: 'T', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false },
+        sourceHtml: '<h2>Title</h2><p>First</p><p>Second</p><p>Third</p>',
+        titleTarget: null,
+        isBilingualVisible: true,
+        onContentClick: vi.fn(),
+        onGeneratingChange: vi.fn(),
+        onBilingualChange,
+        onTitleTranslatingChange: vi.fn(),
+        children: createElement('p', undefined, 'Original article'),
+      }));
+      await settle();
+    });
+    expect(container.textContent).toContain('First translated');
+
+    await act(async () => {
+      root.render(createElement(TranslationPanel, {
+        ref: panelRef,
+        entryId: completed.entryId,
+        isContentReady: true,
+        sourceLanguage: completed.sourceLanguage,
+        targetLanguage: completed.targetLanguage,
+        useTerminology: false,
+        useSmartContext: false,
+        translationMode: selectedVariant,
+        expertId: completed.expertId,
+        shortcut: { key: 'T', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false },
+        sourceHtml: '<h2>Title</h2><p>First</p><p>Second</p><p>Third</p>',
+        titleTarget: null,
+        isBilingualVisible: true,
+        onContentClick: vi.fn(),
+        onGeneratingChange: vi.fn(),
+        onBilingualChange,
+        onTitleTranslatingChange: vi.fn(),
+        children: createElement('p', undefined, 'Original article'),
+      }));
+      await settle();
+    });
+    expect(container.textContent).toContain('First translated');
+
+    await act(async () => {
+      panelRef.current?.activate();
+      await settle();
+    });
+    expect(onBilingualChange).toHaveBeenLastCalledWith(false);
+    expect(generate).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it('refreshes canonical state before starting from a stale no-result Renderer state', async () => {
+    reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    const deepRunning: TranslationResult = {
+      ...createResult('running'),
+      id: 41,
+      translationVariant: 'deep',
+    };
+    const get = vi.fn()
+      .mockResolvedValueOnce({ ok: true, data: { state: 'idle' } })
+      .mockResolvedValue({ ok: true, data: { state: 'running', result: deepRunning } });
+    const generate = vi.fn();
+    const pause = vi.fn();
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        translation: {
+          get,
+          generate,
+          pause,
+          prioritize: vi.fn().mockResolvedValue({ ok: true, data: { accepted: true } }),
+          onEvent: vi.fn(() => () => undefined),
+        },
+      } as unknown as typeof window.shaleAPI,
+    });
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const panelRef = createRef<TranslationPanelHandle>();
+
+    await act(async () => {
+      root.render(createElement(TranslationPanel, {
+        ref: panelRef,
+        entryId: deepRunning.entryId,
+        isContentReady: true,
+        sourceLanguage: deepRunning.sourceLanguage,
+        targetLanguage: deepRunning.targetLanguage,
+        useTerminology: false,
+        useSmartContext: false,
+        translationMode: 'standard',
+        expertId: deepRunning.expertId,
+        shortcut: { key: 'T', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false },
+        sourceHtml: '<p>First</p>',
+        titleTarget: null,
+        isBilingualVisible: false,
+        onContentClick: vi.fn(),
+        onGeneratingChange: vi.fn(),
+        onBilingualChange: vi.fn(),
+        onTitleTranslatingChange: vi.fn(),
+        children: createElement('p', undefined, 'Original article'),
+      }));
+      await settle();
+    });
+
+    await act(async () => {
+      panelRef.current?.activate();
+      await settle();
+    });
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(generate).not.toHaveBeenCalled();
+    expect(pause).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
   it('waits for the settings acknowledgement before a new Translation starts', async () => {
     reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
     let allowStart: ((allowed: boolean) => void) | undefined;
@@ -517,6 +676,7 @@ describe('TranslationPanel failure feedback', () => {
         targetLanguage: runningResult.targetLanguage,
         useTerminology: false,
         useSmartContext: false,
+        translationMode: 'deep',
         expertId: runningResult.expertId,
         shortcut: { key: 'T', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false },
         sourceHtml: '<p>First</p>',
@@ -545,6 +705,9 @@ describe('TranslationPanel failure feedback', () => {
       await Promise.resolve();
     });
     expect(generate).toHaveBeenCalledOnce();
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({
+      translationMode: 'deep',
+    }));
 
     act(() => root.unmount());
     container.remove();
@@ -748,12 +911,14 @@ describe('TranslationPanel failure feedback', () => {
     };
     let eventListener: ((event: TranslationStreamEvent) => void) | undefined;
     const onRetranslationStatusChange = vi.fn();
+    const onBilingualChange = vi.fn();
+    const generate = vi.fn();
     Object.defineProperty(window, 'shaleAPI', {
       configurable: true,
       value: {
         translation: {
           get: vi.fn(() => Promise.resolve({ ok: true, data: state })),
-          generate: vi.fn(),
+          generate,
           prioritize: vi.fn().mockResolvedValue({ ok: true, data: { accepted: true } }),
           onEvent: vi.fn((listener: (event: TranslationStreamEvent) => void) => {
             eventListener = listener;
@@ -765,9 +930,11 @@ describe('TranslationPanel failure feedback', () => {
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
+    const panelRef = createRef<TranslationPanelHandle>();
 
     await act(async () => {
       root.render(createElement(TranslationPanel, {
+        ref: panelRef,
         entryId: existingResult.entryId,
         isContentReady: true,
         sourceLanguage: existingResult.sourceLanguage,
@@ -781,7 +948,7 @@ describe('TranslationPanel failure feedback', () => {
         isBilingualVisible: true,
         onContentClick: vi.fn(),
         onGeneratingChange: vi.fn(),
-        onBilingualChange: vi.fn(),
+        onBilingualChange,
         onTitleTranslatingChange: vi.fn(),
         onRetranslationStatusChange,
         children: createElement('p', undefined, 'Original article'),
@@ -820,6 +987,13 @@ describe('TranslationPanel failure feedback', () => {
       popup?.querySelector<HTMLButtonElement>('[aria-label="Dismiss Translation error"]')?.click();
     });
     expect(onRetranslationStatusChange).toHaveBeenLastCalledWith(null);
+
+    await act(async () => {
+      panelRef.current?.activate();
+      await settle();
+    });
+    expect(onBilingualChange).toHaveBeenLastCalledWith(false);
+    expect(generate).not.toHaveBeenCalled();
 
     act(() => root.unmount());
     container.remove();
@@ -959,6 +1133,70 @@ describe('TranslationPanel failure feedback', () => {
       state: 'paused',
     }));
     expect(container.querySelector('.translation-pause-toast')).toBeNull();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it('blocks retranslation with deep-specific semantics while a deep run is active', async () => {
+    reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    const deepRunningResult: TranslationResult = {
+      ...createResult('running'),
+      translationVariant: 'deep',
+    };
+    const generate = vi.fn();
+    const pause = vi.fn();
+    Object.defineProperty(window, 'shaleAPI', {
+      configurable: true,
+      value: {
+        translation: {
+          get: vi.fn().mockResolvedValue({
+            ok: true,
+            data: { state: 'running', result: deepRunningResult },
+          }),
+          generate,
+          pause,
+          prioritize: vi.fn().mockResolvedValue({ ok: true, data: { accepted: true } }),
+          onEvent: vi.fn(() => () => undefined),
+        },
+      } as unknown as typeof window.shaleAPI,
+    });
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const panelRef = createRef<TranslationPanelHandle>();
+
+    await act(async () => {
+      root.render(createElement(TranslationPanel, {
+        ref: panelRef,
+        entryId: deepRunningResult.entryId,
+        isContentReady: true,
+        sourceLanguage: deepRunningResult.sourceLanguage,
+        targetLanguage: deepRunningResult.targetLanguage,
+        useTerminology: false,
+        useSmartContext: false,
+        translationMode: 'standard',
+        expertId: deepRunningResult.expertId,
+        shortcut: { key: 'T', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false },
+        sourceHtml: '<p>First</p>',
+        titleTarget: null,
+        isBilingualVisible: true,
+        onContentClick: vi.fn(),
+        onGeneratingChange: vi.fn(),
+        onBilingualChange: vi.fn(),
+        onTitleTranslatingChange: vi.fn(),
+        children: createElement('p', undefined, 'Original article'),
+      }));
+      await settle();
+    });
+
+    await expect(panelRef.current?.requestRetranslation()).resolves.toBe('active-deep');
+    await act(async () => {
+      panelRef.current?.activate();
+      await settle();
+    });
+    expect(generate).not.toHaveBeenCalled();
+    expect(pause).not.toHaveBeenCalled();
 
     act(() => root.unmount());
     container.remove();

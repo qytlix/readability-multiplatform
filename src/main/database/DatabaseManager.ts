@@ -35,6 +35,7 @@ import { MIGRATION_025 } from '../migrations/025_add_entry_ai_tag_generated';
 import { MIGRATION_026 } from '../migrations/026_add_translation_local_context';
 import { MIGRATION_027 } from '../migrations/027_add_translation_result_variant';
 import { MIGRATION_028 } from '../migrations/028_add_deep_translation_checkpoints';
+import { MIGRATION_029 } from '../migrations/029_add_translation_context_usage_kind';
 
 interface Migration {
   id: string;
@@ -84,6 +85,7 @@ const MIGRATIONS: Migration[] = [
   { id: '026_add_translation_local_context', sql: MIGRATION_026 },
   { id: '027_add_translation_result_variant', sql: MIGRATION_027 },
   { id: '028_add_deep_translation_checkpoints', sql: MIGRATION_028 },
+  { id: '029_add_translation_context_usage_kind', sql: MIGRATION_029 },
 ];
 
 export class DatabaseManager {

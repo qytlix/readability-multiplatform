@@ -21,6 +21,8 @@ export const TRANSLATION_LOG_EVENTS = {
   runFailed: 'translation.run.failed',
   runInterrupted: 'translation.run.interrupted',
   recoveryCompleted: 'translation.recovery.completed',
+  canonicalStateReconciled: 'translation.canonical-state.reconciled',
+  creationBlocked: 'translation.run.creation-blocked',
   providerRequestFailed: 'translation.provider.request.failed',
   missingSegmentsDetected: 'translation.provider.omission.detected',
   inlineFailed: 'translation.inline.failed',
@@ -29,6 +31,7 @@ export const TRANSLATION_LOG_EVENTS = {
 export const TRANSLATION_LOG_COMPONENTS = {
   run: 'translation.run',
   recovery: 'translation.recovery',
+  canonicalState: 'translation.canonical-state',
   providerRequest: 'translation.provider.request',
   providerRecovery: 'translation.provider.recovery',
   inline: 'translation.inline',
@@ -48,6 +51,11 @@ export const TRANSLATION_PROVIDER_REQUEST_KINDS = [
   'deep-rewrite',
   'deep-draft-compensation',
   'deep-rewrite-compensation',
+] as const;
+export const TRANSLATION_FINAL_FAILURE_STAGES = [
+  'orchestration',
+  'persist',
+  ...TRANSLATION_PROVIDER_REQUEST_KINDS,
 ] as const;
 export const TRANSLATION_LOG_TRIGGERS = [
   'initial',
@@ -86,6 +94,7 @@ export const TRANSLATION_INLINE_FAILURE_ERROR_CODES = {
 } as const;
 
 export type TranslationRunFailureStage = (typeof TRANSLATION_RUN_FAILURE_STAGES)[number];
+export type TranslationFinalFailureStage = (typeof TRANSLATION_FINAL_FAILURE_STAGES)[number];
 export type TranslationInlineFailureStage = (typeof TRANSLATION_INLINE_FAILURE_STAGES)[number];
 export type TranslationProviderRequestKind = (
   typeof TRANSLATION_PROVIDER_REQUEST_KINDS
@@ -110,9 +119,10 @@ export type TranslationInlineFailureErrorCode = (
 
 export interface TranslationRunStartedLogContext {
   taskRunId: number;
+  attemptId: string;
   trigger: TranslationLogTrigger;
   previousResultAtStart: TranslationPreviousResultAtStart;
-  translationVariant?: TranslationResultVariant;
+  translationVariant: TranslationResultVariant;
 }
 
 /** Aggregate counts for a Translation run; no segment identity or content is included. */
@@ -120,9 +130,12 @@ export interface TranslationRunDiagnosticSummary extends ProviderTokenUsage {
   providerRequestCount: number;
   batchRequestCount: number;
   compensationRequestCount: number;
+  translationContextRequestCount?: number;
   deepDraftRequestCount?: number;
   deepReviewRequestCount?: number;
   deepRewriteRequestCount?: number;
+  deepDraftCompensationRequestCount?: number;
+  deepRewriteCompensationRequestCount?: number;
   providerRequestSuccessCount: number;
   providerRequestFailureCount: number;
   missingSegmentCount: number;
@@ -131,7 +144,8 @@ export interface TranslationRunDiagnosticSummary extends ProviderTokenUsage {
 
 export interface TranslationRunCompletedLogContext extends TranslationRunDiagnosticSummary {
   taskRunId: number;
-  translationVariant?: TranslationResultVariant;
+  attemptId: string;
+  translationVariant: TranslationResultVariant;
   trigger: TranslationLogTrigger;
   previousResultOutcome: TranslationPreviousResultOutcome;
   durationMs: number;
@@ -142,8 +156,9 @@ export interface TranslationRunCompletedLogContext extends TranslationRunDiagnos
 
 export interface TranslationRunFailedLogContext extends TranslationRunDiagnosticSummary {
   taskRunId: number;
-  translationVariant?: TranslationResultVariant;
-  deepStage?: 'draft' | 'review' | 'rewrite';
+  attemptId: string;
+  translationVariant: TranslationResultVariant;
+  finalFailureStage: TranslationFinalFailureStage;
   trigger: TranslationLogTrigger;
   previousResultOutcome: TranslationPreviousResultOutcome;
   durationMs: number;
@@ -156,7 +171,8 @@ export interface TranslationRunFailedLogContext extends TranslationRunDiagnostic
 
 export interface TranslationRunInterruptedLogContext extends TranslationRunDiagnosticSummary {
   taskRunId: number;
-  translationVariant?: TranslationResultVariant;
+  attemptId: string;
+  translationVariant: TranslationResultVariant;
   trigger: TranslationLogTrigger;
   previousResultOutcome: TranslationPreviousResultOutcome;
   durationMs: number;
@@ -172,6 +188,21 @@ export interface TranslationRecoveryCompletedLogContext {
   durationMs: number;
   count: number;
   trigger: 'startup-recovery';
+}
+
+export interface TranslationCanonicalStateReconciledLogContext {
+  count: number;
+  trigger: 'startup-recovery';
+  outcome: 'canonical-state-corrected';
+}
+
+export interface TranslationCreationBlockedLogContext {
+  taskRunId: number;
+  attemptId: string;
+  translationVariant: TranslationResultVariant;
+  trigger: TranslationLogTrigger;
+  outcome: 'blocked';
+  stage: 'running' | 'paused';
 }
 
 /** Safe, aggregate-only response facts for a single provider request. */
@@ -237,6 +268,7 @@ export interface TranslationProviderResponseDiagnosticLogFields {
 export interface TranslationProviderRequestFailedLogContext
   extends ProviderTokenUsage, TranslationProviderResponseDiagnosticLogFields {
   taskRunId: number;
+  attemptId: string;
   providerRequestId: number;
   requestKind: TranslationProviderRequestKind;
   segmentCount: number;
@@ -249,6 +281,7 @@ export interface TranslationProviderRequestFailedLogContext
 export interface TranslationMissingSegmentsLogContext
   extends TranslationProviderResponseDiagnosticLogFields {
   taskRunId: number;
+  attemptId: string;
   providerRequestId: number;
   requestKind: TranslationProviderRequestKind;
   missingSegmentCount: number;
@@ -305,24 +338,32 @@ export interface TranslationOperationLogger {
     event:
       | typeof TRANSLATION_LOG_EVENTS.runStarted
       | typeof TRANSLATION_LOG_EVENTS.runCompleted
-      | typeof TRANSLATION_LOG_EVENTS.recoveryCompleted,
+      | typeof TRANSLATION_LOG_EVENTS.recoveryCompleted
+      | typeof TRANSLATION_LOG_EVENTS.canonicalStateReconciled,
     component:
       | typeof TRANSLATION_LOG_COMPONENTS.run
       | typeof TRANSLATION_LOG_COMPONENTS.recovery
+      | typeof TRANSLATION_LOG_COMPONENTS.canonicalState
       | typeof TRANSLATION_LOG_COMPONENTS.providerRequest,
     context:
       | TranslationRunStartedLogContext
       | TranslationRunCompletedLogContext
-      | TranslationRecoveryCompletedLogContext,
+      | TranslationRecoveryCompletedLogContext
+      | TranslationCanonicalStateReconciledLogContext,
   ): void;
   warn(
     event:
       | typeof TRANSLATION_LOG_EVENTS.runInterrupted
-      | typeof TRANSLATION_LOG_EVENTS.missingSegmentsDetected,
+      | typeof TRANSLATION_LOG_EVENTS.missingSegmentsDetected
+      | typeof TRANSLATION_LOG_EVENTS.creationBlocked,
     component:
       | typeof TRANSLATION_LOG_COMPONENTS.run
-      | typeof TRANSLATION_LOG_COMPONENTS.providerRecovery,
-    context: TranslationRunInterruptedLogContext | TranslationMissingSegmentsLogContext,
+      | typeof TRANSLATION_LOG_COMPONENTS.providerRecovery
+      | typeof TRANSLATION_LOG_COMPONENTS.canonicalState,
+    context:
+      | TranslationRunInterruptedLogContext
+      | TranslationMissingSegmentsLogContext
+      | TranslationCreationBlockedLogContext,
   ): void;
   error(
     event:
@@ -353,7 +394,8 @@ export function logTranslationRunStarted(
   try {
     logger?.info(TRANSLATION_LOG_EVENTS.runStarted, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
-      ...(context.translationVariant ? { translationVariant: context.translationVariant } : {}),
+      attemptId: context.attemptId,
+      translationVariant: context.translationVariant,
       trigger: context.trigger,
       previousResultAtStart: context.previousResultAtStart,
     });
@@ -380,7 +422,8 @@ export function logTranslationRunCompleted(
   try {
     logger?.info(TRANSLATION_LOG_EVENTS.runCompleted, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
-      ...(context.translationVariant ? { translationVariant: context.translationVariant } : {}),
+      attemptId: context.attemptId,
+      translationVariant: context.translationVariant,
       durationMs: context.durationMs,
       success: true,
       trigger: context.trigger,
@@ -403,6 +446,7 @@ export function logTranslationRunFailed(
     || !isValidRunLifecycle(context)
     || !isValidContextDegradation(context)
     || !isAllowedRunFailure(context.stage, context.errorCode)
+    || !TRANSLATION_FINAL_FAILURE_STAGES.includes(context.finalFailureStage)
     || !isValidRunSummary(context)
   ) {
     return;
@@ -411,8 +455,9 @@ export function logTranslationRunFailed(
   try {
     logger?.error(TRANSLATION_LOG_EVENTS.runFailed, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
-      ...(context.translationVariant ? { translationVariant: context.translationVariant } : {}),
-      ...(context.deepStage ? { deepStage: context.deepStage } : {}),
+      attemptId: context.attemptId,
+      translationVariant: context.translationVariant,
+      finalFailureStage: context.finalFailureStage,
       durationMs: context.durationMs,
       success: false,
       stage: context.stage,
@@ -447,7 +492,8 @@ export function logTranslationRunInterrupted(
   try {
     logger?.warn(TRANSLATION_LOG_EVENTS.runInterrupted, TRANSLATION_LOG_COMPONENTS.run, {
       taskRunId: context.taskRunId,
-      ...(context.translationVariant ? { translationVariant: context.translationVariant } : {}),
+      attemptId: context.attemptId,
+      translationVariant: context.translationVariant,
       durationMs: context.durationMs,
       success: false,
       stage: 'interrupt',
@@ -481,6 +527,51 @@ export function logTranslationRecoveryCompleted(
     });
   } catch {
     // Logging is observational and must not change Translation recovery behavior.
+  }
+}
+
+export function logTranslationCanonicalStateReconciled(
+  logger: TranslationOperationLogger | undefined,
+  context: TranslationCanonicalStateReconciledLogContext,
+): void {
+  if (
+    !isSafePositiveCount(context.count)
+    || context.trigger !== 'startup-recovery'
+    || context.outcome !== 'canonical-state-corrected'
+  ) return;
+
+  try {
+    logger?.info(
+      TRANSLATION_LOG_EVENTS.canonicalStateReconciled,
+      TRANSLATION_LOG_COMPONENTS.canonicalState,
+      context,
+    );
+  } catch {
+    // Logging is observational and must not change Translation recovery behavior.
+  }
+}
+
+export function logTranslationCreationBlocked(
+  logger: TranslationOperationLogger | undefined,
+  context: TranslationCreationBlockedLogContext,
+): void {
+  if (
+    !isSafeTaskRunId(context.taskRunId)
+    || !isSafeAttemptId(context.attemptId)
+    || !TRANSLATION_LOG_TRIGGERS.includes(context.trigger)
+    || !['standard', 'deep', 'legacy-pre-mode'].includes(context.translationVariant)
+    || context.outcome !== 'blocked'
+    || (context.stage !== 'running' && context.stage !== 'paused')
+  ) return;
+
+  try {
+    logger?.warn(
+      TRANSLATION_LOG_EVENTS.creationBlocked,
+      TRANSLATION_LOG_COMPONENTS.canonicalState,
+      context,
+    );
+  } catch {
+    // Logging is observational and must not change Translation task creation.
   }
 }
 
@@ -521,6 +612,7 @@ export function logTranslationMissingSegmentsDetected(
 ): void {
   if (
     !isSafeTaskRunId(context.taskRunId)
+    || !isSafeAttemptId(context.attemptId)
     || !isSafeProviderRequestId(context.providerRequestId)
     || !TRANSLATION_PROVIDER_REQUEST_KINDS.includes(context.requestKind)
     || !isSafePositiveCount(context.missingSegmentCount)
@@ -579,9 +671,12 @@ function toRunSummaryContext(
     providerRequestCount: context.providerRequestCount,
     batchRequestCount: context.batchRequestCount,
     compensationRequestCount: context.compensationRequestCount,
-    ...(context.deepDraftRequestCount ? { deepDraftRequestCount: context.deepDraftRequestCount } : {}),
-    ...(context.deepReviewRequestCount ? { deepReviewRequestCount: context.deepReviewRequestCount } : {}),
-    ...(context.deepRewriteRequestCount ? { deepRewriteRequestCount: context.deepRewriteRequestCount } : {}),
+    translationContextRequestCount: context.translationContextRequestCount ?? 0,
+    deepDraftRequestCount: context.deepDraftRequestCount ?? 0,
+    deepReviewRequestCount: context.deepReviewRequestCount ?? 0,
+    deepRewriteRequestCount: context.deepRewriteRequestCount ?? 0,
+    deepDraftCompensationRequestCount: context.deepDraftCompensationRequestCount ?? 0,
+    deepRewriteCompensationRequestCount: context.deepRewriteCompensationRequestCount ?? 0,
     providerRequestSuccessCount: context.providerRequestSuccessCount,
     providerRequestFailureCount: context.providerRequestFailureCount,
     missingSegmentCount: context.missingSegmentCount,
@@ -698,9 +793,12 @@ function isValidRunSummary(context: TranslationRunDiagnosticSummary): boolean {
   return isSafeCount(context.providerRequestCount)
     && isSafeCount(context.batchRequestCount)
     && isSafeCount(context.compensationRequestCount)
+    && isSafeCount(context.translationContextRequestCount ?? 0)
     && isSafeCount(context.deepDraftRequestCount ?? 0)
     && isSafeCount(context.deepReviewRequestCount ?? 0)
     && isSafeCount(context.deepRewriteRequestCount ?? 0)
+    && isSafeCount(context.deepDraftCompensationRequestCount ?? 0)
+    && isSafeCount(context.deepRewriteCompensationRequestCount ?? 0)
     && isSafeCount(context.providerRequestSuccessCount)
     && isSafeCount(context.providerRequestFailureCount)
     && isSafeCount(context.missingSegmentCount)
@@ -710,27 +808,30 @@ function isValidRunSummary(context: TranslationRunDiagnosticSummary): boolean {
 
 function isValidRunLifecycle(context: {
   taskRunId: number;
+  attemptId: string;
   trigger: TranslationLogTrigger;
   previousResultOutcome: TranslationPreviousResultOutcome;
-  translationVariant?: TranslationResultVariant;
+  translationVariant: TranslationResultVariant;
 }): boolean {
   return isSafeTaskRunId(context.taskRunId)
+    && isSafeAttemptId(context.attemptId)
     && TRANSLATION_LOG_TRIGGERS.includes(context.trigger)
     && TRANSLATION_PREVIOUS_RESULT_OUTCOMES.includes(context.previousResultOutcome)
-    && (context.translationVariant === undefined
-      || ['standard', 'deep', 'legacy-pre-mode'].includes(context.translationVariant));
+    && ['standard', 'deep', 'legacy-pre-mode'].includes(context.translationVariant);
 }
 
 function isValidRunStartedContext(context: {
   taskRunId: number;
+  attemptId: string;
   trigger: TranslationLogTrigger;
   previousResultAtStart: TranslationPreviousResultAtStart;
-  translationVariant?: TranslationResultVariant;
+  translationVariant: TranslationResultVariant;
 }): boolean {
   return isSafeTaskRunId(context.taskRunId)
+    && isSafeAttemptId(context.attemptId)
     && TRANSLATION_LOG_TRIGGERS.includes(context.trigger)
     && TRANSLATION_PREVIOUS_RESULT_AT_START_VALUES.includes(context.previousResultAtStart)
-    && ['standard', 'deep', 'legacy-pre-mode'].includes(context.translationVariant ?? 'standard');
+    && ['standard', 'deep', 'legacy-pre-mode'].includes(context.translationVariant);
 }
 
 function isValidContextDegradation(context: {
@@ -759,11 +860,13 @@ function toContextDegradationFields(context: {
 
 function isValidProviderRequest(context: {
   taskRunId: number;
+  attemptId: string;
   providerRequestId: number;
   requestKind: TranslationProviderRequestKind;
   segmentCount: number;
 }): boolean {
   return isSafeTaskRunId(context.taskRunId)
+    && isSafeAttemptId(context.attemptId)
     && isSafeProviderRequestId(context.providerRequestId)
     && TRANSLATION_PROVIDER_REQUEST_KINDS.includes(context.requestKind)
     && isSafePositiveCount(context.segmentCount);
@@ -872,6 +975,10 @@ function isSafeTaskRunId(value: number): boolean {
 
 function isSafeProviderRequestId(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0;
+}
+
+function isSafeAttemptId(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/.test(value);
 }
 
 function isSafeDuration(value: number): boolean {

@@ -144,6 +144,7 @@ describe('Advanced Translation upgrade and restart hardening', () => {
         { filename: '026_add_translation_local_context' },
         { filename: '027_add_translation_result_variant' },
         { filename: '028_add_deep_translation_checkpoints' },
+        { filename: '029_add_translation_context_usage_kind' },
       ]);
       expect(restarted.getDb().prepare(`
         SELECT name FROM sqlite_master

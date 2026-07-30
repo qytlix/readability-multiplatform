@@ -154,11 +154,15 @@ describe('DiagnosticExportService', () => {
     });
     logTranslationRunStarted(logger, {
       taskRunId: 12,
+      attemptId: 'attempt-12',
+      translationVariant: 'standard',
       trigger: 'initial',
       previousResultAtStart: 'none',
     });
     logTranslationRunCompleted(logger, {
       taskRunId: 12,
+      attemptId: 'attempt-12',
+      translationVariant: 'standard',
       trigger: 'initial',
       previousResultOutcome: 'none',
       durationMs: 34,
@@ -181,6 +185,8 @@ describe('DiagnosticExportService', () => {
         component: 'translation.run',
         context: {
           taskRunId: 12,
+          attemptId: 'attempt-12',
+          translationVariant: 'standard',
           trigger: 'initial',
           previousResultAtStart: 'none',
         },
@@ -190,6 +196,8 @@ describe('DiagnosticExportService', () => {
         component: 'translation.run',
         context: {
           taskRunId: 12,
+          attemptId: 'attempt-12',
+          translationVariant: 'standard',
           durationMs: 34,
           success: true,
           trigger: 'initial',
@@ -197,6 +205,12 @@ describe('DiagnosticExportService', () => {
           providerRequestCount: 0,
           batchRequestCount: 0,
           compensationRequestCount: 0,
+          translationContextRequestCount: 0,
+          deepDraftRequestCount: 0,
+          deepReviewRequestCount: 0,
+          deepRewriteRequestCount: 0,
+          deepDraftCompensationRequestCount: 0,
+          deepRewriteCompensationRequestCount: 0,
           providerRequestSuccessCount: 0,
           providerRequestFailureCount: 0,
           missingSegmentCount: 0,
@@ -215,6 +229,7 @@ describe('DiagnosticExportService', () => {
     });
     logTranslationProviderRequestFailed(logger, {
       taskRunId: 12,
+      attemptId: 'attempt-12',
       providerRequestId: 3,
       requestKind: 'compensation',
       segmentCount: 1,
@@ -234,6 +249,7 @@ describe('DiagnosticExportService', () => {
         component: 'translation.provider.request',
         context: {
           taskRunId: 12,
+          attemptId: 'attempt-12',
           providerRequestId: 3,
           requestKind: 'compensation',
           segmentCount: 1,

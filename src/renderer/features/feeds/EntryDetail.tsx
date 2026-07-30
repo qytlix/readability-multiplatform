@@ -883,17 +883,27 @@ export const EntryDetail = ({
     && translationControlState.entryId === entry.id
     ? translationControlState
     : null;
-  const translationButtonLabel = currentRetranslationStatus?.state === 'running'
-    ? '暂停重新翻译'
-    : currentRetranslationStatus?.state === 'paused'
-      ? '继续重新翻译'
-      : currentTranslationControlState?.state === 'running'
-        ? '暂停翻译'
+  const deepPauseDisabled = (
+    currentRetranslationStatus?.state === 'running'
+    && currentRetranslationStatus.runningVariant === 'deep'
+  ) || (
+    currentTranslationControlState?.state === 'running'
+    && currentTranslationControlState.runningVariant === 'deep'
+  );
+  const deepPauseDisabledMessage = '深度翻译暂不支持暂停，请等待任务完成或失败';
+  const translationButtonLabel = deepPauseDisabled
+    ? deepPauseDisabledMessage
+    : currentRetranslationStatus?.state === 'running'
+      ? '暂停重新翻译'
+      : currentRetranslationStatus?.state === 'paused'
+        ? '继续重新翻译'
+        : currentTranslationControlState?.state === 'running'
+          ? '暂停翻译'
           : currentTranslationControlState?.state === 'paused'
-          ? '继续翻译'
-          : currentTranslationControlState?.hasCompleteTranslation
-            ? aiViewState.translationVisible ? '隐藏译文' : '显示译文'
-            : '翻译或切换双语视图';
+            ? '继续翻译'
+            : currentTranslationControlState?.hasCompleteTranslation
+              ? aiViewState.translationVisible ? '隐藏译文' : '显示译文'
+              : '翻译或切换双语视图';
 
   const activateSummary = (fromFloatingHeader: boolean): void => {
     summaryPanelRef.current?.activate();
@@ -947,7 +957,7 @@ export const EntryDetail = ({
   );
 
   const summaryTooltip = '总结';
-  const translationTooltip = '翻译';
+  const translationTooltip = deepPauseDisabled ? deepPauseDisabledMessage : '翻译';
 
   const aiToolbar = aiToolbarTarget
     ? createPortal(
@@ -978,7 +988,7 @@ export const EntryDetail = ({
             className={aiViewState.translationVisible ? 'is-active' : ''}
             aria-label={translationButtonLabel}
             aria-pressed={aiViewState.translationVisible}
-            disabled={!isTranslationReady}
+            disabled={!isTranslationReady || deepPauseDisabled}
             onClick={activateTranslation}
             aria-busy={isTranslationGenerating}
           >

@@ -5,6 +5,7 @@ import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileSt
 import { UsageStore } from '../../src/main/ai/stores/UsageStore';
 import { MIGRATION_011 } from '../../src/main/migrations/011_create_llm_usage_events';
 import { MIGRATION_012 } from '../../src/main/migrations/012_add_llm_usage_attempt_id';
+import { MIGRATION_029 } from '../../src/main/migrations/029_add_translation_context_usage_kind';
 import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
 
 describe('UsageStore', () => {
@@ -145,6 +146,58 @@ describe('UsageStore', () => {
     expect(columns.map(({ name }) => name)).toContain('attemptId');
     expect(legacyDatabase.prepare('SELECT attemptId FROM llm_usage_event WHERE providerRequestId = 99')
       .get()).toEqual({ attemptId: null });
+    legacyDatabase.close();
+  });
+
+  it('adds the Translation context request kind with a forward-only ledger rebuild', () => {
+    const legacyDatabase = new SqliteDatabase(':memory:');
+    legacyDatabase.exec('PRAGMA foreign_keys = ON');
+    legacyDatabase.exec('CREATE TABLE ai_provider_profile (id INTEGER PRIMARY KEY)');
+    legacyDatabase.exec('INSERT INTO ai_provider_profile (id) VALUES (1)');
+    legacyDatabase.exec(`
+      CREATE TABLE llm_usage_event (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        providerRequestId INTEGER NOT NULL UNIQUE,
+        taskType TEXT NOT NULL CHECK (taskType IN ('summary', 'translation')),
+        taskRunId INTEGER NOT NULL,
+        providerProfileId INTEGER NOT NULL REFERENCES ai_provider_profile(id),
+        model TEXT NOT NULL,
+        requestKind TEXT NOT NULL CHECK (requestKind IN (
+          'summary', 'batch', 'compensation',
+          'deep-draft', 'deep-review', 'deep-rewrite',
+          'deep-draft-compensation', 'deep-rewrite-compensation'
+        )),
+        requestStatus TEXT NOT NULL CHECK (requestStatus IN ('running', 'succeeded', 'failed', 'interrupted')),
+        errorCode TEXT,
+        inputTokens INTEGER,
+        outputTokens INTEGER,
+        totalTokens INTEGER,
+        usageAvailability TEXT NOT NULL,
+        startedAt TEXT NOT NULL,
+        finishedAt TEXT,
+        attemptId TEXT
+      );
+      INSERT INTO llm_usage_event
+        (providerRequestId, taskType, taskRunId, providerProfileId, model,
+         requestKind, requestStatus, usageAvailability, startedAt, attemptId)
+      VALUES (91, 'translation', 9, 1, 'legacy-model', 'deep-draft',
+              'succeeded', 'missing', '2026-07-01T00:00:00.000Z', 'attempt-legacy');
+    `);
+
+    legacyDatabase.exec(MIGRATION_029);
+    const migratedStore = new UsageStore(legacyDatabase);
+    migratedStore.createRunning({
+      providerRequestId: 92,
+      attemptId: 'attempt-context',
+      taskType: 'translation',
+      taskRunId: 9,
+      providerProfileId: 1,
+      model: 'context-model',
+      requestKind: 'translation-context',
+    });
+
+    expect(migratedStore.listByTask('translation', 9).map((record) => record.requestKind))
+      .toEqual(['deep-draft', 'translation-context']);
     legacyDatabase.close();
   });
 });

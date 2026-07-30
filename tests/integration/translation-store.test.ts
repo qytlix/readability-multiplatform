@@ -301,7 +301,7 @@ describe('TranslationStore', () => {
     )).toBeUndefined();
   });
 
-  it('keeps standard and deep active results separate and preserves deep checkpoints on resume', () => {
+  it('keeps standard and deep active results separate while making deep failures terminal', () => {
     const createRun = (translationVariant: 'standard' | 'deep') => translationStore.createRun({
       entryId: 1,
       providerProfileId,
@@ -324,26 +324,124 @@ describe('TranslationStore', () => {
       draftJson: '[{"sourceSegmentId":"seg_0"}]',
       reviewJson: '{"issues":[]}',
     });
+    translationStore.markSegmentSucceeded(deep.id, 'seg_0', '未发布深度候选', '<p>未发布深度候选</p>', []);
     translationStore.markRunFailed(deep.id, {
       code: 'TRANSLATION_INTERRUPTED', message: 'Interrupted.', retryable: true,
     });
-    translationStore.resumeRun(deep.id, providerProfileId);
-
-    expect(translationStore.findDeepBatchCheckpoint(deep.id, 'seg_0')).toMatchObject({
-      stage: 'rewrite', reviewJson: '{"issues":[]}',
-    });
+    expect(translationStore.findDeepBatchCheckpoint(deep.id, 'seg_0')).toBeUndefined();
+    expect(translationStore.findCompatibleResult(
+      1, 'en', 'zh-CN', 'mode-hash', 'v2',
+      'translation-v8-target-language-validation', 'none', 'none', 'none', false, 'none', 'deep',
+    )?.segments).toEqual([
+      expect.objectContaining({ status: 'pending', translatedText: undefined }),
+    ]);
+    expect(() => translationStore.resumeRun(deep.id, providerProfileId))
+      .toThrow('Deep Translation runs cannot be resumed.');
     translationStore.markSegmentSucceeded(standard.id, 'seg_0', '标准', '<p>标准</p>', []);
     translationStore.markRunSucceeded(standard.id);
-    translationStore.markSegmentSucceeded(deep.id, 'seg_0', '深度', '<p>深度</p>', []);
-    translationStore.markRunSucceeded(deep.id);
+    const replacementDeep = createRun('deep');
+    translationStore.markSegmentSucceeded(replacementDeep.id, 'seg_0', '深度', '<p>深度</p>', []);
+    translationStore.markRunSucceeded(replacementDeep.id);
 
     expect(translationStore.findLatestActiveResult(
       1, 'en', 'zh-CN', 'mode-hash', 'v2', 'standard',
     )?.id).toBe(standard.id);
     expect(translationStore.findLatestActiveResult(
       1, 'en', 'zh-CN', 'mode-hash', 'v2', 'deep',
-    )?.id).toBe(deep.id);
+    )?.id).toBe(replacementDeep.id);
     expect(translationStore.findDeepBatchCheckpoint(deep.id, 'seg_0')).toBeUndefined();
+  });
+
+  it('converges a legacy deep pause into a terminal failure and removes its checkpoint', () => {
+    const run = translationStore.createRun({
+      entryId: 1,
+      providerProfileId,
+      sourceLanguage: 'auto',
+      targetLanguage: 'zh-CN',
+      sourceContentHash: 'legacy-deep-pause-hash',
+      segmenterVersion: 'v1',
+      promptVersion: 'translation-v1',
+      terminologyPackVersion: 'none',
+      translationVariant: 'deep',
+      segments: [{
+        id: 'seg_0', orderIndex: 0, type: 'paragraph',
+        sourceHtml: '<p>Source</p>', sourceText: 'Source',
+      }],
+    });
+    translationStore.saveDeepBatchCheckpoint(run.id, {
+      batchKey: 'seg_0', stage: 'review', draftJson: '[]',
+    });
+    translationStore.markRunPaused(run.id, {
+      code: 'TRANSLATION_PAUSED', message: 'Paused by an older build.', retryable: true,
+    });
+    // Recreate the stale checkpoint shape because current terminal writes
+    // already clean it defensively.
+    translationStore.saveDeepBatchCheckpoint(run.id, {
+      batchKey: 'seg_0', stage: 'review', draftJson: '[]',
+    });
+
+    const reconciled = translationStore.reconcileInterruptedRunsWithDiagnostics();
+
+    expect(reconciled).toEqual({ interruptedCount: 0, canonicalCorrectionCount: 1 });
+    expect(translationStore.findLatestPendingProductResult(
+      1, 'auto', 'zh-CN', 'legacy-deep-pause-hash', 'v1',
+    )).toBeUndefined();
+    expect(translationStore.findCompatibleResult(
+      1, 'auto', 'zh-CN', 'legacy-deep-pause-hash', 'v1',
+      'translation-v1', 'none', 'none', 'none', false, 'none', 'deep',
+    )).toMatchObject({
+      id: run.id,
+      status: 'failed',
+      error: { code: 'TRANSLATION_INTERRUPTED', retryable: true },
+    });
+    expect(translationStore.findDeepBatchCheckpoint(run.id, 'seg_0')).toBeUndefined();
+  });
+
+  it('preserves an active deep fallback when a replacement deep candidate fails', () => {
+    const createDeepRun = () => translationStore.createRun({
+      entryId: 1,
+      providerProfileId,
+      sourceLanguage: 'auto',
+      targetLanguage: 'zh-CN',
+      sourceContentHash: 'deep-fallback-hash',
+      segmenterVersion: 'v1',
+      promptVersion: 'translation-v1',
+      terminologyPackVersion: 'none',
+      translationVariant: 'deep',
+      segments: [{
+        id: 'seg_0', orderIndex: 0, type: 'paragraph',
+        sourceHtml: '<p>Source</p>', sourceText: 'Source',
+      }],
+    });
+    const previous = createDeepRun();
+    translationStore.markSegmentSucceeded(
+      previous.id, 'seg_0', '旧深度译文', '<p>旧深度译文</p>', [],
+    );
+    translationStore.markRunSucceeded(previous.id);
+    const candidate = createDeepRun();
+    translationStore.markSegmentSucceeded(
+      candidate.id, 'seg_0', '未发布候选', '<p>未发布候选</p>', [],
+    );
+
+    translationStore.markRunFailed(candidate.id, {
+      code: 'TRANSLATION_PROVIDER_TIMEOUT', message: 'Timed out.', retryable: true,
+    });
+
+    expect(translationStore.findLatestActiveResult(
+      1, 'auto', 'zh-CN', 'deep-fallback-hash', 'v1', 'deep',
+    )).toMatchObject({
+      id: previous.id,
+      status: 'succeeded',
+      segments: [{ translatedText: '旧深度译文', status: 'succeeded' }],
+    });
+    expect(translationStore.findCompatibleResult(
+      1, 'auto', 'zh-CN', 'deep-fallback-hash', 'v1',
+      'translation-v1', 'none', 'none', 'none', false, 'none', 'deep',
+    )).toMatchObject({
+      id: candidate.id,
+      status: 'failed',
+      segments: [{ translatedText: undefined, status: 'pending' }],
+    });
   });
 
   it('resumes only unfinished segments and preserves completed segment output', () => {
