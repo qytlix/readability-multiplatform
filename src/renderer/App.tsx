@@ -48,6 +48,10 @@ import {
   restoreReaderColumnState,
   type ArticleChatLayoutSnapshot,
 } from './features/chat/articleChatLayout';
+import type {
+  ArticleChatSelectionRequest,
+} from './features/chat/articleChatSelection';
+import type { ChatSelectionContext } from '../shared/contracts/chat.types';
 import './features/tags/TagListPage.css';
 import type { ArticleAvailability } from '../shared/contracts/export.types';
 import {
@@ -176,6 +180,8 @@ export const App = () => {
   const [entriesCursor, setEntriesCursor] = useState<EntryQuery['cursor']>();
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
   const [articleChatOpen, setArticleChatOpen] = useState(false);
+  const [articleChatSelectionRequest, setArticleChatSelectionRequest] =
+    useState<ArticleChatSelectionRequest | undefined>();
   const [activeArticleChatRun, setActiveArticleChatRun] = useState<{
     entryId: number;
     runId: number;
@@ -187,6 +193,7 @@ export const App = () => {
   const articlePaneRef = useRef<HTMLElement>(null);
   const articleChatLayoutSnapshotRef =
     useRef<ArticleChatLayoutSnapshot | null>(null);
+  const articleChatSelectionSequenceRef = useRef(0);
   const {
     workspaceRef,
     effectiveWidth: storyListWidth,
@@ -248,6 +255,28 @@ export const App = () => {
     setSidebarOpen(restored.sidebarOpen);
     setIsReadingFocus(restored.readingFocus);
   }, []);
+
+  const openArticleChatForSelection = useCallback((
+    selection: ChatSelectionContext,
+  ): void => {
+    if (!selectedEntry || selection.entryId !== selectedEntry.id) return;
+    articleChatSelectionSequenceRef.current += 1;
+    setArticleChatSelectionRequest({
+      requestId: articleChatSelectionSequenceRef.current,
+      selection,
+    });
+    if (!articleChatOpen) openArticleChat();
+  }, [articleChatOpen, openArticleChat, selectedEntry]);
+
+  const consumeArticleChatSelection = useCallback((requestId: number): void => {
+    setArticleChatSelectionRequest((current) => (
+      current?.requestId === requestId ? undefined : current
+    ));
+  }, []);
+
+  useEffect(() => {
+    setArticleChatSelectionRequest(undefined);
+  }, [selectedEntryId]);
 
   useEffect(() => {
     if (
@@ -944,6 +973,8 @@ useEffect(() => {
             entryTitle={selectedEntry.title ?? 'Untitled'}
             onClose={closeArticleChat}
             onActiveRunChange={setActiveArticleChatRun}
+            selectionRequest={articleChatSelectionRequest}
+            onSelectionConsumed={consumeArticleChatSelection}
           />
         )}
         <button
@@ -1284,6 +1315,7 @@ useEffect(() => {
                 onArticleChatToggle={
                   articleChatOpen ? closeArticleChat : openArticleChat
                 }
+                onArticleChatSelection={openArticleChatForSelection}
               />
             )}
           </div>

@@ -69,6 +69,8 @@ import {
 } from './trustedVideoEmbed';
 import { AnnotatedArticle } from '../annotations/AnnotatedArticle';
 import { TagFloatingWindow } from '../tags/TagFloatingWindow';
+import type { ChatSelectionContext } from '../../../shared/contracts/chat.types';
+import { ArticleChatSelectionMenu } from '../chat/ArticleChatSelectionMenu';
 
 interface EntryDetailProps {
   entry: Entry | null;
@@ -109,6 +111,7 @@ interface EntryDetailProps {
   pageTurnAnimationEnabled?: boolean;
   articleChatOpen?: boolean;
   onArticleChatToggle?: () => void;
+  onArticleChatSelection?: (selection: ChatSelectionContext) => void;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -146,6 +149,7 @@ export const EntryDetail = ({
   pageTurnAnimationEnabled = true,
   articleChatOpen = false,
   onArticleChatToggle,
+  onArticleChatSelection,
 }: EntryDetailProps) => {
   const [content, setContent] = useState<CleanedContent | null>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
@@ -1240,6 +1244,13 @@ export const EntryDetail = ({
           useTerminology={aiPreferences.useTerminology}
           expertId={aiPreferences.translationExpertId}
         />
+        {onArticleChatSelection && (
+          <ArticleChatSelectionMenu
+            entryId={entry.id}
+            containerRef={scrollContainerRef}
+            onAskAI={onArticleChatSelection}
+          />
+        )}
         <ReadingProgressBook
           readingProgress={visibleReadingProgress}
           turnMotion={pageTurnAnimationEnabled ? readingBookTurn : null}

@@ -26,6 +26,11 @@ export interface ArticleChatSelectionTarget {
   rect: DOMRect;
 }
 
+export interface ArticleChatSelectionRequest {
+  requestId: number;
+  selection: ChatSelectionContext;
+}
+
 export function getArticleChatSelectionTarget(
   selection: Selection | null,
   container: HTMLElement,

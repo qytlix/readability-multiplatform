@@ -6,6 +6,7 @@ import type {
 } from '../../../shared/contracts/chat.types';
 import { useArticleChatSession } from './useArticleChatSession';
 import { ArticleChatComposer } from './ArticleChatComposer';
+import type { ArticleChatSelectionRequest } from './articleChatSelection';
 
 interface ArticleChatPanelProps {
   entryId: number;
@@ -14,6 +15,8 @@ interface ArticleChatPanelProps {
   onActiveRunChange: (
     activeRun: { entryId: number; runId: number } | null,
   ) => void;
+  selectionRequest?: ArticleChatSelectionRequest;
+  onSelectionConsumed: (requestId: number) => void;
 }
 
 const CONTEXT_MODE_LABELS: Record<ChatContextMode, string> = {
@@ -36,9 +39,13 @@ export const ArticleChatPanel = ({
   entryTitle,
   onClose,
   onActiveRunChange,
+  selectionRequest,
+  onSelectionConsumed,
 }: ArticleChatPanelProps) => {
   const session = useArticleChatSession(entryId, true);
   const [draft, setDraft] = useState('');
+  const [pendingSelection, setPendingSelection] =
+    useState<ArticleChatSelectionRequest | null>(selectionRequest ?? null);
   const contextMode = session.state?.state === 'running'
     ? session.state.run.contextMode
     : getCurrentContextMode(session.state?.messages ?? []);
@@ -54,12 +61,24 @@ export const ArticleChatPanel = ({
       : null);
   }, [activeRunId, entryId, onActiveRunChange]);
 
+  useEffect(() => {
+    if (selectionRequest?.selection.entryId !== entryId) return;
+    setPendingSelection(selectionRequest);
+  }, [entryId, selectionRequest]);
+
   const handleSend = async (): Promise<void> => {
     const sent = await session.sendQuestion(
       draft,
       session.state?.draftAttachments.map(({ id }) => id) ?? [],
+      pendingSelection?.selection,
     );
-    if (sent) setDraft('');
+    if (sent) {
+      setDraft('');
+      if (pendingSelection) {
+        onSelectionConsumed(pendingSelection.requestId);
+        setPendingSelection(null);
+      }
+    }
   };
 
   return (
@@ -166,6 +185,11 @@ export const ArticleChatPanel = ({
           </div>
         )}
       </div>
+      {pendingSelection && (
+        <blockquote className="article-chat-pending-selection">
+          {pendingSelection.selection.text}
+        </blockquote>
+      )}
       <ArticleChatComposer
         entryId={entryId}
         value={draft}

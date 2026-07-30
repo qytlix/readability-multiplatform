@@ -491,6 +491,20 @@
   background: color-mix(in srgb, var(--reader-panel) 96%, transparent);
 }
 
+.article-chat-pending-selection {
+  margin: 0;
+  padding: 9px 18px;
+  overflow: hidden;
+  border-top: 1px solid var(--reader-line);
+  border-left: 3px solid var(--reader-accent);
+  color: var(--reader-text-muted);
+  background: var(--reader-panel-raised);
+  font-size: 10px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .article-chat-composer-box {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
