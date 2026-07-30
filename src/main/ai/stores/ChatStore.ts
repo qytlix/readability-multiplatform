@@ -7,7 +7,11 @@ import type {
   ChatMessageStatus,
   ChatSelectionContext,
   ChatThread,
+  ChatRun,
 } from '../../../shared/contracts/chat.types';
+import type { ShaleError } from '../../../shared/contracts/feed.ipc';
+import type { ProviderKind } from '../../../shared/contracts/provider.types';
+import { CHAT_ERROR_CODES } from '../../../shared/errors/chat.errors';
 
 interface ChatThreadRow {
   id: number;
@@ -33,6 +37,25 @@ interface ChatMessageRow {
   updatedAt: string;
 }
 
+interface ChatRunRow {
+  id: number;
+  threadId: number;
+  userMessageId: number;
+  assistantMessageId: number;
+  providerProfileId: number;
+  providerKind: ProviderKind;
+  model: string;
+  status: ChatRun['status'];
+  promptVersion: string;
+  contextMode: ChatContextMode;
+  inputContentHash: string;
+  errorCode: string | null;
+  errorMessage: string | null;
+  errorRetryable: number | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
 export interface CreateChatMessageParams {
   threadId: number;
   role: ChatMessageRole;
@@ -41,6 +64,25 @@ export interface CreateChatMessageParams {
   selection?: ChatSelectionContext;
   articleContextMode: ChatContextMode;
   articleContentHash: string;
+}
+
+export interface CreateChatRunParams {
+  threadId: number;
+  question: string;
+  selection?: ChatSelectionContext;
+  providerProfileId: number;
+  providerKind: ProviderKind;
+  model: string;
+  promptVersion: string;
+  contextMode: ChatContextMode;
+  articleContentHash: string;
+  inputContentHash: string;
+}
+
+export interface CreatedChatRun {
+  run: ChatRun;
+  userMessage: ChatMessage;
+  assistantMessage: ChatMessage;
 }
 
 export class ChatStore {
@@ -146,6 +188,219 @@ export class ChatStore {
     return row ? toChatMessage(row, []) : undefined;
   }
 
+  createRunWithMessages(params: CreateChatRunParams): CreatedChatRun {
+    const now = new Date().toISOString();
+    const persist = this.db.transaction(() => {
+      const userMessageId = this.insertMessage({
+        threadId: params.threadId,
+        role: 'user',
+        content: params.question,
+        status: 'completed',
+        selection: params.selection,
+        articleContextMode: params.contextMode,
+        articleContentHash: params.articleContentHash,
+      }, now);
+      const assistantMessageId = this.insertMessage({
+        threadId: params.threadId,
+        role: 'assistant',
+        content: '',
+        status: 'running',
+        articleContextMode: params.contextMode,
+        articleContentHash: params.articleContentHash,
+      }, now);
+      const inserted = this.db.prepare(`
+        INSERT INTO ai_chat_run
+          (threadId, userMessageId, assistantMessageId, providerProfileId,
+           providerKind, model, status, promptVersion, contextMode,
+           inputContentHash, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)
+      `).run(
+        params.threadId,
+        userMessageId,
+        assistantMessageId,
+        params.providerProfileId,
+        params.providerKind,
+        params.model,
+        params.promptVersion,
+        params.contextMode,
+        params.inputContentHash,
+        now,
+      );
+      this.touchThread(params.threadId, now);
+      return {
+        runId: Number(inserted.lastInsertRowid),
+        userMessageId,
+        assistantMessageId,
+      };
+    });
+    const created = persist();
+    const run = this.findRunById(created.runId);
+    const userMessage = this.findMessageById(created.userMessageId);
+    const assistantMessage = this.findMessageById(created.assistantMessageId);
+    if (!run || !userMessage || !assistantMessage) {
+      throw new Error('Chat run transaction did not persist its complete graph.');
+    }
+    return { run, userMessage, assistantMessage };
+  }
+
+  findRunById(runId: number): ChatRun | undefined {
+    const row = this.db.prepare('SELECT * FROM ai_chat_run WHERE id = ?')
+      .get(runId) as ChatRunRow | undefined;
+    return row ? toChatRun(row) : undefined;
+  }
+
+  findRunningRun(): ChatRun | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM ai_chat_run
+      WHERE status = 'running'
+      ORDER BY id DESC LIMIT 1
+    `).get() as ChatRunRow | undefined;
+    return row ? toChatRun(row) : undefined;
+  }
+
+  appendAssistantDelta(runId: number, delta: string): ChatMessage {
+    const run = this.findRunById(runId);
+    if (!run || run.status !== 'running') {
+      throw new Error('Cannot append output to an inactive Chat run.');
+    }
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE ai_chat_message
+      SET content = content || ?, updatedAt = ?
+      WHERE id = ? AND status = 'running'
+    `).run(delta, now, run.assistantMessageId);
+    const message = this.findMessageById(run.assistantMessageId);
+    if (!message) throw new Error('Chat assistant message disappeared.');
+    return message;
+  }
+
+  markRunSucceeded(runId: number): ChatRun {
+    const now = new Date().toISOString();
+    const persist = this.db.transaction(() => {
+      const row = this.db.prepare(
+        'SELECT assistantMessageId FROM ai_chat_run WHERE id = ? AND status = ?',
+      ).get(runId, 'running') as { assistantMessageId: number } | undefined;
+      if (!row) throw new Error('Chat run is not active.');
+      this.db.prepare(`
+        UPDATE ai_chat_message
+        SET status = 'completed', updatedAt = ?
+        WHERE id = ? AND status = 'running'
+      `).run(now, row.assistantMessageId);
+      this.db.prepare(`
+        UPDATE ai_chat_run
+        SET status = 'succeeded', errorCode = NULL, errorMessage = NULL,
+            errorRetryable = NULL, completedAt = ?
+        WHERE id = ? AND status = 'running'
+      `).run(now, runId);
+    });
+    persist();
+    const run = this.findRunById(runId);
+    if (!run) throw new Error('Chat run disappeared after completion.');
+    return run;
+  }
+
+  markRunFailed(
+    runId: number,
+    error: ShaleError,
+    status: 'failed' | 'interrupted' = 'failed',
+  ): ChatRun {
+    const now = new Date().toISOString();
+    const persist = this.db.transaction(() => {
+      const row = this.db.prepare(
+        'SELECT assistantMessageId FROM ai_chat_run WHERE id = ? AND status = ?',
+      ).get(runId, 'running') as { assistantMessageId: number } | undefined;
+      if (!row) throw new Error('Chat run is not active.');
+      this.db.prepare(`
+        UPDATE ai_chat_message SET status = ?, updatedAt = ?
+        WHERE id = ? AND status = 'running'
+      `).run(status, now, row.assistantMessageId);
+      this.db.prepare(`
+        UPDATE ai_chat_run
+        SET status = ?, errorCode = ?, errorMessage = ?, errorRetryable = ?,
+            completedAt = ?
+        WHERE id = ? AND status = 'running'
+      `).run(
+        status,
+        error.code,
+        error.message,
+        error.retryable ? 1 : 0,
+        now,
+        runId,
+      );
+    });
+    persist();
+    const run = this.findRunById(runId);
+    if (!run) throw new Error('Chat run disappeared after failure.');
+    return run;
+  }
+
+  retryRun(runId: number): CreatedChatRun {
+    const existing = this.findRunById(runId);
+    if (!existing || existing.status === 'running' || existing.status === 'succeeded') {
+      throw new Error('Only failed or interrupted Chat runs can be retried.');
+    }
+    const now = new Date().toISOString();
+    const persist = this.db.transaction(() => {
+      this.db.prepare(`
+        UPDATE ai_chat_message
+        SET content = '', status = 'running', updatedAt = ?
+        WHERE id = ?
+      `).run(now, existing.assistantMessageId);
+      this.db.prepare(`
+        UPDATE ai_chat_run
+        SET status = 'running', errorCode = NULL, errorMessage = NULL,
+            errorRetryable = NULL, completedAt = NULL
+        WHERE id = ?
+      `).run(runId);
+    });
+    persist();
+    const run = this.findRunById(runId);
+    const userMessage = this.findMessageById(existing.userMessageId);
+    const assistantMessage = this.findMessageById(existing.assistantMessageId);
+    if (!run || !userMessage || !assistantMessage) {
+      throw new Error('Chat retry did not preserve its message graph.');
+    }
+    return { run, userMessage, assistantMessage };
+  }
+
+  reconcileInterruptedRuns(): number {
+    const rows = this.db.prepare(`
+      SELECT id FROM ai_chat_run WHERE status = 'running'
+    `).all() as Array<{ id: number }>;
+    for (const row of rows) {
+      this.markRunFailed(row.id, {
+        code: CHAT_ERROR_CODES.CHAT_INTERRUPTED,
+        message: 'Article Chat generation was interrupted before completion.',
+        retryable: true,
+      }, 'interrupted');
+    }
+    return rows.length;
+  }
+
+  private insertMessage(
+    params: CreateChatMessageParams,
+    now: string,
+  ): number {
+    const result = this.db.prepare(`
+      INSERT INTO ai_chat_message
+        (threadId, role, content, status, selectedText, selectedContext,
+         articleContextMode, articleContentHash, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      params.threadId,
+      params.role,
+      params.content,
+      params.status,
+      params.selection?.text ?? null,
+      params.selection ? JSON.stringify(params.selection) : null,
+      params.articleContextMode,
+      params.articleContentHash,
+      now,
+      now,
+    );
+    return Number(result.lastInsertRowid);
+  }
+
   private touchThread(threadId: number, updatedAt: string): void {
     this.db.prepare('UPDATE ai_chat_thread SET updatedAt = ? WHERE id = ?')
       .run(updatedAt, threadId);
@@ -184,6 +439,32 @@ function toChatMessage(
   };
 }
 
+function toChatRun(row: ChatRunRow): ChatRun {
+  const error = row.errorCode && row.errorMessage
+    ? {
+        code: row.errorCode,
+        message: row.errorMessage,
+        retryable: row.errorRetryable === 1,
+      }
+    : undefined;
+  return {
+    id: row.id,
+    threadId: row.threadId,
+    userMessageId: row.userMessageId,
+    assistantMessageId: row.assistantMessageId,
+    providerProfileId: row.providerProfileId,
+    providerKind: row.providerKind,
+    model: row.model,
+    status: row.status,
+    promptVersion: row.promptVersion,
+    contextMode: row.contextMode,
+    inputContentHash: row.inputContentHash,
+    ...(error ? { error } : {}),
+    createdAt: row.createdAt,
+    ...(row.completedAt ? { completedAt: row.completedAt } : {}),
+  };
+}
+
 function parseSelection(
   serialized: string | null,
   selectedText: string | null,
@@ -216,4 +497,3 @@ function parseSelection(
     return undefined;
   }
 }
-
