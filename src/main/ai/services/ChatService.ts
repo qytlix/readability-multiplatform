@@ -167,38 +167,7 @@ export class ChatService {
         );
       }
       const history = this.chatStore.listMessages(thread.id);
-      const prepared = await this.contextService.prepare({
-        source: {
-          entryId: request.entryId,
-          title: content.readerTitle,
-          sourceUrl: content.sourceUrl,
-          markdown: content.markdown,
-          sourceContentHash,
-          segments: content.segments ?? [],
-        },
-        history,
-        question: request.question.trim(),
-        selection: request.selection,
-        textAttachments: attachments.flatMap((attachment) => (
-          attachment.kind === 'text' && attachment.textContent !== undefined
-            ? [{
-                id: attachment.id,
-                displayName: attachment.displayName,
-                mimeType: attachment.mimeType,
-                textContent: attachment.textContent,
-              }]
-            : []
-        )),
-        analysisModelFamily: `${profile.chatProviderKind}:${profile.chatModel}`,
-        contextWindowTokens: DEFAULT_CHAT_CONTEXT_WINDOW_TOKENS,
-        responseReserveTokens: DEFAULT_CHAT_RESPONSE_RESERVE_TOKENS,
-      });
-      const inputContentHash = hashChatInput([
-        prepared.articleReference,
-        prepared.historyReference,
-        request.question.trim(),
-        ...attachments.map(({ contentHash }) => contentHash),
-      ].join('\n'));
+      const attemptId = createUsageAttemptId();
       const created = this.chatStore.createRunWithMessages({
         threadId: thread.id,
         question: request.question.trim(),
@@ -207,42 +176,100 @@ export class ChatService {
         providerKind: profile.chatProviderKind,
         model: profile.chatModel,
         promptVersion: CHAT_PROMPT_VERSION,
-        contextMode: prepared.mode,
+        // The run is reserved before article-map Provider work so every
+        // request can be attributed to a durable Chat identity.
+        contextMode: 'article-map',
         articleContentHash: sourceContentHash,
-        inputContentHash,
+        inputContentHash: hashChatInput([
+          sourceContentHash,
+          request.question.trim(),
+          ...attachments.map(({ contentHash }) => contentHash),
+        ].join('\n')),
       });
       this.chatStore.linkAttachments(
         created.userMessage.id,
         request.attachmentIds,
       );
+      let prepared: PreparedArticleContext;
+      try {
+        prepared = await this.contextService.prepare({
+          source: {
+            entryId: request.entryId,
+            title: content.readerTitle,
+            sourceUrl: content.sourceUrl,
+            markdown: content.markdown,
+            sourceContentHash,
+            segments: content.segments ?? [],
+          },
+          history,
+          question: request.question.trim(),
+          selection: request.selection,
+          textAttachments: attachments.flatMap((attachment) => (
+            attachment.kind === 'text' && attachment.textContent !== undefined
+              ? [{
+                  id: attachment.id,
+                  displayName: attachment.displayName,
+                  mimeType: attachment.mimeType,
+                  textContent: attachment.textContent,
+                }]
+              : []
+          )),
+          analysisModelFamily: `${profile.chatProviderKind}:${profile.chatModel}`,
+          analysisUsage: {
+            attemptId,
+            taskRunId: created.run.id,
+            providerProfileId: profile.id,
+            model: profile.chatModel,
+          },
+          contextWindowTokens: DEFAULT_CHAT_CONTEXT_WINDOW_TOKENS,
+          responseReserveTokens: DEFAULT_CHAT_RESPONSE_RESERVE_TOKENS,
+        });
+      } catch (error) {
+        this.chatStore.markRunFailed(
+          created.run.id,
+          toChatIpcError(error),
+        );
+        throw error;
+      }
+      const inputContentHash = hashChatInput([
+        prepared.articleReference,
+        prepared.historyReference,
+        request.question.trim(),
+        ...attachments.map(({ contentHash }) => contentHash),
+      ].join('\n'));
+      const finalizedRun = this.chatStore.finalizeRunContext(
+        created.run.id,
+        prepared.mode,
+        inputContentHash,
+      );
       const abortController = new AbortController();
       const usageHandle = this.usageRecorder.start({
         providerRequestId: createProviderRequestId(),
-        attemptId: createUsageAttemptId(),
+        attemptId,
         taskType: 'chat',
-        taskRunId: created.run.id,
+        taskRunId: finalizedRun.id,
         providerProfileId: profile.id,
         model: profile.chatModel,
         requestKind: 'chat-answer',
       });
       this.activeRun = {
-        run: created.run,
+        run: finalizedRun,
         entryId: request.entryId,
         abortController,
         usageHandle,
         startedAt: performance.now(),
       };
-      logChatRunStarted(this.logger, created.run.id);
+      logChatRunStarted(this.logger, finalizedRun.id);
       this.emit({
         type: 'started',
-        runId: created.run.id,
+        runId: finalizedRun.id,
         threadId: thread.id,
         entryId: request.entryId,
         messageId: created.assistantMessage.id,
         contextMode: prepared.mode,
       });
       void this.executeRun(
-        created.run,
+        finalizedRun,
         request.entryId,
         prepared,
         attachments,
@@ -253,7 +280,7 @@ export class ChatService {
         usageHandle,
       );
       return {
-        runId: created.run.id,
+        runId: finalizedRun.id,
         threadId: thread.id,
         userMessageId: created.userMessage.id,
         assistantMessageId: created.assistantMessage.id,
@@ -349,6 +376,7 @@ export class ChatService {
       }
       const history = this.chatStore.listMessages(thread.id)
         .filter(({ id }) => id < userMessage.id);
+      const attemptId = createUsageAttemptId();
       const prepared = await this.contextService.prepare({
         source: {
           entryId: thread.entryId,
@@ -372,38 +400,55 @@ export class ChatService {
             : []
         )),
         analysisModelFamily: `${profile.chatProviderKind}:${profile.chatModel}`,
+        analysisUsage: {
+          attemptId,
+          taskRunId: previousRun.id,
+          providerProfileId: profile.id,
+          model: profile.chatModel,
+        },
         contextWindowTokens: DEFAULT_CHAT_CONTEXT_WINDOW_TOKENS,
         responseReserveTokens: DEFAULT_CHAT_RESPONSE_RESERVE_TOKENS,
       });
       const retried = this.chatStore.retryRun(request.runId);
+      const inputContentHash = hashChatInput([
+        prepared.articleReference,
+        prepared.historyReference,
+        userMessage.content,
+        ...attachments.map(({ contentHash }) => contentHash),
+      ].join('\n'));
+      const finalizedRun = this.chatStore.finalizeRunContext(
+        retried.run.id,
+        prepared.mode,
+        inputContentHash,
+      );
       const abortController = new AbortController();
       const usageHandle = this.usageRecorder.start({
         providerRequestId: createProviderRequestId(),
-        attemptId: createUsageAttemptId(),
+        attemptId,
         taskType: 'chat',
-        taskRunId: retried.run.id,
+        taskRunId: finalizedRun.id,
         providerProfileId: profile.id,
         model: profile.chatModel,
         requestKind: 'chat-answer',
       });
       this.activeRun = {
-        run: retried.run,
+        run: finalizedRun,
         entryId: thread.entryId,
         abortController,
         usageHandle,
         startedAt: performance.now(),
       };
-      logChatRunStarted(this.logger, retried.run.id);
+      logChatRunStarted(this.logger, finalizedRun.id);
       this.emit({
         type: 'started',
-        runId: retried.run.id,
+        runId: finalizedRun.id,
         threadId: thread.id,
         entryId: thread.entryId,
         messageId: retried.assistantMessage.id,
         contextMode: prepared.mode,
       });
       void this.executeRun(
-        retried.run,
+        finalizedRun,
         thread.entryId,
         prepared,
         attachments,
@@ -414,7 +459,7 @@ export class ChatService {
         usageHandle,
       );
       return {
-        runId: retried.run.id,
+        runId: finalizedRun.id,
         threadId: thread.id,
         userMessageId: retried.userMessage.id,
         assistantMessageId: retried.assistantMessage.id,

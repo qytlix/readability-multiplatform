@@ -5,6 +5,18 @@ import { ChatService } from '../../src/main/ai/services/ChatService';
 import type { TextGenerationProvider } from '../../src/main/ai/provider/TextGenerationProvider';
 import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
 import { ContentStore } from '../../src/main/feed/stores/ContentStore';
+import type {
+  PreparedArticleContext,
+  PrepareArticleContextRequest,
+} from '../../src/main/ai/services/ArticleContextService';
+import type { StartUsageRequestParams } from '../../src/main/ai/stores/UsageStore';
+import type {
+  UsageRequestHandle,
+} from '../../src/main/ai/services/UsageRecorder';
+import {
+  CHAT_ERROR_CODES,
+  ChatError,
+} from '../../src/shared/errors/chat.errors';
 
 describe('ChatService', () => {
   it('streams and persists a content-scoped answer with full event identity', async () => {
@@ -55,23 +67,40 @@ describe('ChatService', () => {
       testConnection: () => Promise.resolve(),
     };
     const chatStore = new ChatStore(db);
+    const prepare = vi.fn(async () => ({
+      mode: 'full' as const,
+      systemInstruction: 'You are Shale Article Guide.',
+      articleReference: '<article-context>Article body</article-context>',
+      historyReference: '',
+      estimatedPromptTokens: 20,
+      cacheHit: false,
+      relatedSegmentIds: [],
+    }));
+    const startUsage = vi.fn((
+      params: StartUsageRequestParams,
+    ): UsageRequestHandle => ({
+      providerRequestId: params.providerRequestId,
+      attemptId: params.attemptId,
+      taskRunId: params.taskRunId,
+      persisted: true,
+      settled: false,
+    }));
+    const usageRecorder = {
+      start: startUsage,
+      complete: vi.fn(),
+      fail: vi.fn(),
+      interrupt: vi.fn(),
+      reconcileInterruptedRunning: vi.fn(),
+    };
     const service = new ChatService(
       contentStore,
       profileStore,
       { read: () => 'secret' },
       chatStore,
-      {
-        prepare: async () => ({
-          mode: 'full',
-          systemInstruction: 'You are Shale Article Guide.',
-          articleReference: '<article-context>Article body</article-context>',
-          historyReference: '',
-          estimatedPromptTokens: 20,
-          cacheHit: false,
-          relatedSegmentIds: [],
-        }),
-      },
+      { prepare },
       provider,
+      undefined,
+      usageRecorder,
     );
     const events: string[] = [];
     const completed = new Promise<void>((resolve) => {
@@ -96,6 +125,17 @@ describe('ChatService', () => {
 
     expect(events).toEqual(['started', 'delta', 'delta', 'completed']);
     expect(chatStore.findRunById(response.runId)?.status).toBe('succeeded');
+    expect(chatStore.findRunById(response.runId)?.contextMode).toBe('full');
+    expect(prepare.mock.calls[0]?.[0].analysisUsage).toMatchObject({
+      taskRunId: response.runId,
+      providerProfileId: expect.any(Number),
+      model: 'chat-model',
+    });
+    expect(startUsage).toHaveBeenCalledWith(expect.objectContaining({
+      attemptId: prepare.mock.calls[0]?.[0].analysisUsage?.attemptId,
+      taskRunId: response.runId,
+      requestKind: 'chat-answer',
+    }));
     expect(chatStore.findMessageById(response.assistantMessageId)).toMatchObject({
       status: 'completed',
       content: 'First answer.',
@@ -310,6 +350,43 @@ describe('ChatService', () => {
       { id: attachment.id },
     ]);
   });
+
+  it('persists a failed reserved run when context preparation fails', async () => {
+    const providerStream = vi.fn(async function* () {
+      yield 'unreachable';
+    });
+    const harness = createChatServiceHarness(
+      providerStream,
+      async () => {
+        throw new ChatError(
+          CHAT_ERROR_CODES.CHAT_CONTEXT_TOO_LARGE,
+          'The required context does not fit.',
+          false,
+        );
+      },
+    );
+
+    await expect(harness.service.send({
+      entryId: 1,
+      question: 'Explain the complete article.',
+      attachmentIds: [],
+    })).rejects.toMatchObject({
+      code: CHAT_ERROR_CODES.CHAT_CONTEXT_TOO_LARGE,
+    });
+
+    expect(providerStream).not.toHaveBeenCalled();
+    expect(harness.service.getState({ entryId: 1 })).toMatchObject({
+      state: 'failed',
+      messages: [
+        { role: 'user', content: 'Explain the complete article.' },
+        { role: 'assistant', status: 'failed' },
+      ],
+      run: {
+        status: 'failed',
+        error: { code: CHAT_ERROR_CODES.CHAT_CONTEXT_TOO_LARGE },
+      },
+    });
+  });
 });
 
 function createImageChatHarness(supportsImages: boolean): {
@@ -391,6 +468,17 @@ function createImageChatHarness(supportsImages: boolean): {
 
 function createChatServiceHarness(
   stream: TextGenerationProvider['stream'],
+  prepare: (
+    request: PrepareArticleContextRequest,
+  ) => Promise<PreparedArticleContext> = async () => ({
+    mode: 'full',
+    systemInstruction: 'system',
+    articleReference: 'article',
+    historyReference: '',
+    estimatedPromptTokens: 2,
+    cacheHit: false,
+    relatedSegmentIds: [],
+  }),
 ): {
   service: ChatService;
   chatStore: ChatStore;
@@ -422,17 +510,7 @@ function createChatServiceHarness(
       profileStore,
       { read: () => 'secret' },
       chatStore,
-      {
-        prepare: async () => ({
-          mode: 'full',
-          systemInstruction: 'system',
-          articleReference: 'article',
-          historyReference: '',
-          estimatedPromptTokens: 2,
-          cacheHit: false,
-          relatedSegmentIds: [],
-        }),
-      },
+      { prepare },
       provider,
     ),
   };

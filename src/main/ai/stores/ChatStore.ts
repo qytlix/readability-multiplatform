@@ -438,6 +438,44 @@ export class ChatStore {
     return row ? toChatRun(row) : undefined;
   }
 
+  finalizeRunContext(
+    runId: number,
+    contextMode: ChatContextMode,
+    inputContentHash: string,
+  ): ChatRun {
+    const now = new Date().toISOString();
+    const persist = this.db.transaction(() => {
+      const row = this.db.prepare(`
+        SELECT userMessageId, assistantMessageId
+        FROM ai_chat_run
+        WHERE id = ? AND status = 'running'
+      `).get(runId) as {
+        userMessageId: number;
+        assistantMessageId: number;
+      } | undefined;
+      if (!row) throw new Error('Chat run is not active.');
+      this.db.prepare(`
+        UPDATE ai_chat_message
+        SET articleContextMode = ?, updatedAt = ?
+        WHERE id IN (?, ?)
+      `).run(
+        contextMode,
+        now,
+        row.userMessageId,
+        row.assistantMessageId,
+      );
+      this.db.prepare(`
+        UPDATE ai_chat_run
+        SET contextMode = ?, inputContentHash = ?
+        WHERE id = ? AND status = 'running'
+      `).run(contextMode, inputContentHash, runId);
+    });
+    persist();
+    const run = this.findRunById(runId);
+    if (!run) throw new Error('Chat run disappeared after context finalization.');
+    return run;
+  }
+
   appendAssistantDelta(runId: number, delta: string): ChatMessage {
     const run = this.findRunById(runId);
     if (!run || run.status !== 'running') {

@@ -46,6 +46,35 @@ describe('ChatStore threads and messages', () => {
     expect(store.listMessages(thread.id)).toHaveLength(2);
   });
 
+  it('finalizes a reserved run with its actual context identity', () => {
+    const thread = store.findOrCreateThread(1, 'content-a', 'article-chat-v1');
+    const created = store.createRunWithMessages({
+      threadId: thread.id,
+      question: 'What is the claim?',
+      providerProfileId: providerId,
+      providerKind: 'openai',
+      model: 'example-model',
+      promptVersion: 'article-chat-v1',
+      contextMode: 'article-map',
+      articleContentHash: 'content-a',
+      inputContentHash: 'pending-input',
+    });
+
+    expect(store.finalizeRunContext(
+      created.run.id,
+      'history-compressed',
+      'final-input',
+    )).toMatchObject({
+      id: created.run.id,
+      contextMode: 'history-compressed',
+      inputContentHash: 'final-input',
+    });
+    expect(store.listMessages(thread.id)).toMatchObject([
+      { articleContextMode: 'history-compressed' },
+      { articleContextMode: 'history-compressed' },
+    ]);
+  });
+
   it('rolls back both messages when run creation violates a foreign key', () => {
     const thread = store.findOrCreateThread(1, 'content-a', 'article-chat-v1');
 
