@@ -412,34 +412,48 @@ describe('ContentCleaner', () => {
     expect(result.content).toContain('<math');
   });
 
-  it('marks linked author avatars without treating article images as avatars', () => {
-    const cleanedHtml = cleaner.cleanStoredHtml(
-      `<div class="publisher-author">
-        <div>
-          <a href="https://example.com/u/kokdemo">
-            <img src="https://example.com/avatars/kokdemo.jpg" alt="kokdemo">
-          </a>
-        </div>
-        <div>
-          <a href="https://example.com/u/kokdemo"><div><p>kokdemo</p></div></a>
-          <p>Author biography</p>
-        </div>
-      </div>
-      <p>
-        <img src="https://example.com/article-photo.jpg" alt="Article photo">
-      </p>`,
+  it('removes a real author profile fixture without deleting article media', () => {
+    const html = fs.readFileSync(
+      path.join(FIXTURES_DIR, 'the-verge-author-profile.html'),
+      'utf-8',
     );
+    const result = cleaner.clean(
+      html,
+      'https://www.theverge.com/tech/example-article',
+    );
+    const markdown = new MarkdownConverter().convert(result.content);
 
-    expect(cleanedHtml).toContain('class="publisher-author reader-author-card"');
-    expect(cleanedHtml).toContain('class="reader-author-avatar"');
-    expect(cleanedHtml).toContain('class="reader-author-name"');
-    expect(cleanedHtml).toContain('class="reader-author-bio"');
-    expect(cleanedHtml).toContain(
-      '<img src="https://example.com/article-photo.jpg" alt="Article photo">',
+    expect(result.byline).toContain('Emma Roth');
+    expect(result.content).not.toContain('is a news writer');
+    expect(result.content).not.toContain('See All by');
+    expect(result.content).not.toContain('avatars/emma-roth.jpg');
+    expect(result.content).toContain('images/courthouse.jpg');
+    expect(result.content).toContain('The courthouse where the case was heard.');
+    expect(markdown).not.toContain('is a news writer');
+    expect(markdown).toContain('![A courthouse exterior]');
+  });
+
+  it('removes author, comment, and share components at the article boundary', () => {
+    const html = fs.readFileSync(
+      path.join(FIXTURES_DIR, 'ars-author-comments.html'),
+      'utf-8',
     );
-    expect(cleanedHtml).not.toContain(
-      'alt="Article photo" class="reader-author-avatar"',
+    const result = cleaner.clean(
+      html,
+      'https://arstechnica.com/tech-policy/example-article/',
     );
+    const markdown = new MarkdownConverter().convert(result.content);
+
+    expect(result.byline).toContain('Nate Anderson');
+    expect(result.content).not.toContain('Photo of Nate Anderson');
+    expect(result.content).not.toContain('Deputy Editor');
+    expect(result.content).not.toContain('301 Comments');
+    expect(result.content).not.toContain('Share article');
+    expect(result.content).toContain('images/account-record.jpg');
+    expect(result.content).toContain('normal article link');
+    expect(result.content).toContain('A normal article image');
+    expect(markdown).not.toContain('301 Comments');
+    expect(markdown).toContain('[normal article link]');
   });
 });
 
