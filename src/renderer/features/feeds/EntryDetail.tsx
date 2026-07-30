@@ -32,7 +32,13 @@ import {
 } from '../translation/TranslationPanel';
 import type { AiPreferences } from '../settings/aiPreferences';
 import { InlineTranslationOverlay } from '../translation/InlineTranslationOverlay';
-import { SummaryIcon, TranslateIcon, ExportIcon, TagIcon } from '../reader/ReaderIcons';
+import {
+  ChatIcon,
+  SummaryIcon,
+  TranslateIcon,
+  ExportIcon,
+  TagIcon,
+} from '../reader/ReaderIcons';
 import { formatArticleDate, getArticleDateLocale } from './articleMetadata';
 import {
   checkAvailability,
@@ -101,6 +107,8 @@ interface EntryDetailProps {
   onExportRequest?: () => void;
   onFeedback?: (message: string) => void;
   pageTurnAnimationEnabled?: boolean;
+  articleChatOpen?: boolean;
+  onArticleChatToggle?: () => void;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -136,6 +144,8 @@ export const EntryDetail = ({
   beforeTranslationStart,
   onTagsChanged,
   pageTurnAnimationEnabled = true,
+  articleChatOpen = false,
+  onArticleChatToggle,
 }: EntryDetailProps) => {
   const [content, setContent] = useState<CleanedContent | null>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
@@ -869,6 +879,9 @@ export const EntryDetail = ({
     && !isPreview
     && !hasArticleVideo
     && Boolean(content?.markdown.trim());
+  const isArticleChatReady = status === 'success'
+    && !isPreview
+    && Boolean(content?.markdown.trim());
   const articleDateLocale = getArticleDateLocale(
     entry.title,
     content?.markdown ?? entry.summary,
@@ -1012,6 +1025,21 @@ export const EntryDetail = ({
             }}
           >
             <TagIcon />
+          </button>
+        </span>
+        <span
+          className="article-action-tooltip"
+          data-tooltip="问答"
+        >
+          <button
+            type="button"
+            className={articleChatOpen ? 'is-active' : ''}
+            aria-label={articleChatOpen ? '关闭 AI 问答' : '打开 AI 问答'}
+            aria-pressed={articleChatOpen}
+            disabled={!isArticleChatReady || !onArticleChatToggle}
+            onClick={onArticleChatToggle}
+          >
+            <ChatIcon />
           </button>
         </span>
         {currentRetranslationStatus && (
