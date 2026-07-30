@@ -5,6 +5,7 @@ import type {
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
 import { normalizeProviderFinishReason } from './TextGenerationProvider';
+import { getLegacyProviderPrompt } from './TextGenerationProvider';
 import { normalizeProviderTokenUsage } from './ProviderTokenUsage';
 import {
   createProviderAbortScope,
@@ -33,7 +34,7 @@ export class OpenAICompatibleProvider implements TextGenerationProvider {
             model: request.model,
             stream: true,
             ...(request.requestUsage ? { stream_options: { include_usage: true } } : {}),
-            messages: [{ role: 'user', content: request.prompt }],
+            messages: [{ role: 'user', content: getLegacyProviderPrompt(request) }],
           }),
         },
         scope,

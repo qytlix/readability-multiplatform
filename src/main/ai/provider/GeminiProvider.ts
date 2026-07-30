@@ -4,6 +4,7 @@ import type {
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
 import { normalizeProviderFinishReason } from './TextGenerationProvider';
+import { getLegacyProviderPrompt } from './TextGenerationProvider';
 import {
   createProviderAbortScope,
   fetchProviderResponse,
@@ -28,7 +29,7 @@ export class GeminiProvider implements TextGenerationProvider {
         {
           method: 'POST',
           headers: buildHeaders(request.apiKey),
-          body: JSON.stringify(buildBody(request.prompt, 4_096)),
+          body: JSON.stringify(buildBody(getLegacyProviderPrompt(request), 4_096)),
         },
         scope,
       );

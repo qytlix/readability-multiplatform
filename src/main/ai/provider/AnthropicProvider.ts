@@ -4,6 +4,7 @@ import type {
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
 import { normalizeProviderFinishReason } from './TextGenerationProvider';
+import { getLegacyProviderPrompt } from './TextGenerationProvider';
 import {
   createProviderAbortScope,
   fetchProviderResponse,
@@ -29,7 +30,7 @@ export class AnthropicProvider implements TextGenerationProvider {
             model: request.model,
             max_tokens: 4_096,
             stream: true,
-            messages: [{ role: 'user', content: request.prompt }],
+            messages: [{ role: 'user', content: getLegacyProviderPrompt(request) }],
           }),
         },
         scope,
