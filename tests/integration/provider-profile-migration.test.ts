@@ -4,6 +4,7 @@ import { MIGRATION_006 } from '../../src/main/migrations/006_create_ai_profiles'
 import { MIGRATION_012 } from '../../src/main/migrations/012_expand_ai_providers';
 import { MIGRATION_020 } from '../../src/main/migrations/020_add_provider_task_models';
 import { MIGRATION_021 } from '../../src/main/migrations/021_add_translation_provider_route';
+import { MIGRATION_026 } from '../../src/main/migrations/026_add_chat_provider_route';
 
 describe('provider profile migration 012', () => {
   it('preserves IDs, secret references, and foreign keys while classifying legacy profiles', () => {
@@ -107,6 +108,52 @@ describe('provider profile migration 021', () => {
         translationBaseUrl: 'https://api.deepseek.com',
         translationModel: 'deepseek-translation',
         translationApiKeyRef: 'secret-ref',
+      });
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('provider profile migration 026', () => {
+  it('inherits the Summary route without enabling image input implicitly', () => {
+    const db = new Database(':memory:');
+    try {
+      db.exec(MIGRATION_006);
+      db.exec(MIGRATION_012);
+      db.exec(MIGRATION_020);
+      db.exec(MIGRATION_021);
+      db.prepare(`
+        INSERT INTO ai_provider_profile
+          (providerKind, providerPreset, baseUrl, model, summaryModel,
+           translationProviderPreset, translationBaseUrl, translationModel,
+           apiKeyRef, translationApiKeyRef, isActive, createdAt, updatedAt)
+        VALUES (
+          'openai-compatible', 'openrouter', ?, ?, ?,
+          'deepseek', ?, ?, 'summary-secret', 'translation-secret', 1, ?, ?
+        )
+      `).run(
+        'https://openrouter.ai/api/v1',
+        'openai/gpt-5.4-mini',
+        'openai/gpt-5.4-mini',
+        'https://api.deepseek.com',
+        'deepseek-v4-flash',
+        'created',
+        'updated',
+      );
+
+      db.transaction(() => db.exec(MIGRATION_026))();
+
+      expect(db.prepare(`
+        SELECT chatProviderPreset, chatBaseUrl, chatModel, chatApiKeyRef,
+               chatSupportsImages
+        FROM ai_provider_profile
+      `).get()).toEqual({
+        chatProviderPreset: 'openrouter',
+        chatBaseUrl: 'https://openrouter.ai/api/v1',
+        chatModel: 'openai/gpt-5.4-mini',
+        chatApiKeyRef: 'summary-secret',
+        chatSupportsImages: 0,
       });
     } finally {
       db.close();
