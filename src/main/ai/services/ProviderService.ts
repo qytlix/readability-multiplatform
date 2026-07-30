@@ -289,6 +289,10 @@ export class ProviderService {
       tagProviderKind: profile.tagProviderKind,
       tagBaseUrl: profile.tagBaseUrl,
       tagModel: profile.tagModel,
+      chatProviderKind: profile.chatProviderKind,
+      chatBaseUrl: profile.chatBaseUrl,
+      chatModel: profile.chatModel,
+      chatSupportsImages: profile.chatSupportsImages,
       isActive: profile.isActive,
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
@@ -297,6 +301,7 @@ export class ProviderService {
       hasSummaryApiKey: this.secretStore.has(profile.apiKeyRef),
       hasTranslationApiKey: this.secretStore.has(profile.translationApiKeyRef),
       hasTagApiKey: this.secretStore.has(profile.tagApiKeyRef),
+      hasChatApiKey: this.secretStore.has(profile.chatApiKeyRef),
     };
   }
 }

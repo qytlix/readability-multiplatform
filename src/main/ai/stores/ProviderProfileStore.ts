@@ -16,6 +16,11 @@ interface ProviderProfileRow {
   apiKeyRef: string;
   translationApiKeyRef: string;
   tagApiKeyRef: string;
+  chatProviderPreset: ProviderKind;
+  chatBaseUrl: string;
+  chatModel: string;
+  chatApiKeyRef: string;
+  chatSupportsImages: number;
   isActive: number;
   createdAt: string;
   updatedAt: string;
@@ -25,6 +30,7 @@ export interface ActiveProviderProfile extends ProviderProfile {
   apiKeyRef: string;
   translationApiKeyRef: string;
   tagApiKeyRef: string;
+  chatApiKeyRef: string;
 }
 
 interface SaveProviderTaskProfileParams {
@@ -38,6 +44,7 @@ export interface SaveProviderProfileParams {
   summary?: SaveProviderTaskProfileParams;
   translation?: SaveProviderTaskProfileParams;
   tag?: SaveProviderTaskProfileParams;
+  chat?: SaveProviderTaskProfileParams & { supportsImages: boolean };
   providerKind?: ProviderKind;
   baseUrl?: string;
   summaryModel?: string;
@@ -68,6 +75,7 @@ export class ProviderProfileStore {
     const { summary, translation } = resolveTaskProfiles(params);
 
     const { tag } = resolveTagProfile(params);
+    const chat = resolveChatProfile(params, summary);
 
     if (existing) {
       this.db
@@ -77,7 +85,10 @@ export class ProviderProfileStore {
               summaryModel = ?, translationProviderPreset = ?,
               translationBaseUrl = ?, translationModel = ?,
               tagProviderPreset = ?, tagBaseUrl = ?, tagModel = ?,
+              chatProviderPreset = ?, chatBaseUrl = ?, chatModel = ?,
+              chatSupportsImages = ?,
               apiKeyRef = ?, translationApiKeyRef = ?, tagApiKeyRef = ?,
+              chatApiKeyRef = ?,
               updatedAt = ?
           WHERE id = ?
         `)
@@ -92,9 +103,14 @@ export class ProviderProfileStore {
           tag.providerKind,
           tag.baseUrl,
           tag.model,
+          chat.providerKind,
+          chat.baseUrl,
+          chat.model,
+          chat.supportsImages ? 1 : 0,
           summary.apiKeyRef,
           translation.apiKeyRef,
           tag.apiKeyRef,
+          chat.apiKeyRef,
           now,
           existing.id,
         );
@@ -110,9 +126,14 @@ export class ProviderProfileStore {
         tagProviderKind: tag.providerKind,
         tagBaseUrl: tag.baseUrl,
         tagModel: tag.model,
+        chatProviderKind: chat.providerKind,
+        chatBaseUrl: chat.baseUrl,
+        chatModel: chat.model,
+        chatSupportsImages: chat.supportsImages,
         apiKeyRef: summary.apiKeyRef,
         translationApiKeyRef: translation.apiKeyRef,
         tagApiKeyRef: tag.apiKeyRef,
+        chatApiKeyRef: chat.apiKeyRef,
         updatedAt: now,
       });
     }
@@ -123,9 +144,13 @@ export class ProviderProfileStore {
           (providerKind, providerPreset, baseUrl, model, summaryModel,
            translationProviderPreset, translationBaseUrl, translationModel,
            tagProviderPreset, tagBaseUrl, tagModel,
-           apiKeyRef, translationApiKeyRef, tagApiKeyRef,
+           chatProviderPreset, chatBaseUrl, chatModel, chatSupportsImages,
+           apiKeyRef, translationApiKeyRef, tagApiKeyRef, chatApiKeyRef,
            isActive, createdAt, updatedAt)
-        VALUES ('openai-compatible', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        VALUES (
+          'openai-compatible', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, 1, ?, ?
+        )
       `)
       .run(
         summary.providerKind,
@@ -138,9 +163,14 @@ export class ProviderProfileStore {
         tag.providerKind,
         tag.baseUrl,
         tag.model,
+        chat.providerKind,
+        chat.baseUrl,
+        chat.model,
+        chat.supportsImages ? 1 : 0,
         summary.apiKeyRef,
         translation.apiKeyRef,
         tag.apiKeyRef,
+        chat.apiKeyRef,
         now,
         now,
       );
@@ -157,6 +187,10 @@ export class ProviderProfileStore {
       tagProviderKind: tag.providerKind,
       tagBaseUrl: tag.baseUrl,
       tagModel: tag.model,
+      chatProviderKind: chat.providerKind,
+      chatBaseUrl: chat.baseUrl,
+      chatModel: chat.model,
+      chatSupportsImages: chat.supportsImages,
       isActive: true,
       createdAt: now,
       updatedAt: now,
@@ -177,9 +211,14 @@ function toActiveProviderProfile(row: ProviderProfileRow): ActiveProviderProfile
     tagProviderKind: row.tagProviderPreset,
     tagBaseUrl: row.tagBaseUrl,
     tagModel: row.tagModel,
+    chatProviderKind: row.chatProviderPreset,
+    chatBaseUrl: row.chatBaseUrl,
+    chatModel: row.chatModel,
+    chatSupportsImages: row.chatSupportsImages === 1,
     apiKeyRef: row.apiKeyRef,
     translationApiKeyRef: row.translationApiKeyRef,
     tagApiKeyRef: row.tagApiKeyRef,
+    chatApiKeyRef: row.chatApiKeyRef,
     isActive: row.isActive === 1,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -199,6 +238,10 @@ function omitSecretReference(profile: ActiveProviderProfile): ProviderProfile {
     tagProviderKind: profile.tagProviderKind,
     tagBaseUrl: profile.tagBaseUrl,
     tagModel: profile.tagModel,
+    chatProviderKind: profile.chatProviderKind,
+    chatBaseUrl: profile.chatBaseUrl,
+    chatModel: profile.chatModel,
+    chatSupportsImages: profile.chatSupportsImages,
     isActive: profile.isActive,
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
@@ -257,5 +300,15 @@ function resolveTagProfile(params: SaveProviderProfileParams): {
       model: 'gpt-5.4-mini',
       apiKeyRef: '',
     },
+  };
+}
+
+function resolveChatProfile(
+  params: SaveProviderProfileParams,
+  summary: SaveProviderTaskProfileParams,
+): SaveProviderTaskProfileParams & { supportsImages: boolean } {
+  return params.chat ?? {
+    ...summary,
+    supportsImages: false,
   };
 }
