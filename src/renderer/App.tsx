@@ -923,6 +923,7 @@ useEffect(() => {
       >
         {articleChatOpen && selectedEntry && (
           <ArticleChatPanel
+            entryId={selectedEntry.id}
             entryTitle={selectedEntry.title ?? 'Untitled'}
             onClose={closeArticleChat}
           />
