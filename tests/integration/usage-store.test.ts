@@ -5,6 +5,7 @@ import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileSt
 import { UsageStore } from '../../src/main/ai/stores/UsageStore';
 import { MIGRATION_011 } from '../../src/main/migrations/011_create_llm_usage_events';
 import { MIGRATION_012 } from '../../src/main/migrations/012_add_llm_usage_attempt_id';
+import { MIGRATION_029 } from '../../src/main/migrations/029_expand_usage_for_chat';
 import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
 
 describe('UsageStore', () => {
@@ -95,6 +96,34 @@ describe('UsageStore', () => {
     ]);
   });
 
+  it('stores Chat answer and context-analysis request kinds', () => {
+    usageStore.createRunning({
+      providerRequestId: 2001,
+      attemptId: 'chat-attempt-1',
+      taskType: 'chat',
+      taskRunId: 81,
+      providerProfileId,
+      model: 'usage-test-model',
+      requestKind: 'chat-answer',
+    });
+    usageStore.finish(2001, 'succeeded', { inputTokens: 30, outputTokens: 10 });
+    usageStore.createRunning({
+      providerRequestId: 2002,
+      attemptId: 'chat-attempt-1',
+      taskType: 'chat',
+      taskRunId: 81,
+      providerProfileId,
+      model: 'usage-test-model',
+      requestKind: 'chat-segment-analysis',
+    });
+    usageStore.finish(2002, 'succeeded', undefined);
+
+    expect(usageStore.listByTask('chat', 81)).toMatchObject([
+      { requestKind: 'chat-answer', inputTokens: 30, outputTokens: 10 },
+      { requestKind: 'chat-segment-analysis', usageAvailability: 'missing' },
+    ]);
+  });
+
   it('recovers abandoned running requests as interrupted without changing recorded tokens', () => {
     usageStore.createRunning({
       providerRequestId: 1004,
@@ -139,6 +168,7 @@ describe('UsageStore', () => {
     `).run('2026-07-01T00:00:00.000Z');
 
     legacyDatabase.exec(MIGRATION_012);
+    legacyDatabase.exec(MIGRATION_029);
 
     const columns = legacyDatabase.prepare('PRAGMA table_info(llm_usage_event)')
       .all() as Array<{ name: string }>;
