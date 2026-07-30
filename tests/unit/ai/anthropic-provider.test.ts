@@ -52,6 +52,30 @@ describe('AnthropicProvider', () => {
     });
   });
 
+  it('maps article chat system context and ordered messages', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    for await (const chunk of new AnthropicProvider().stream({
+      ...request(),
+      prompt: '',
+      systemInstruction: 'Use only the article.',
+      messages: [
+        { role: 'user', content: 'Question' },
+        { role: 'assistant', content: 'Answer' },
+      ],
+    })) void chunk;
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      system: 'Use only the article.',
+      messages: [
+        { role: 'user', content: 'Question' },
+        { role: 'assistant', content: 'Answer' },
+      ],
+    });
+  });
+
   it('handles an event split across transport chunks', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(streamingResponse([
       'event: content_block_delta\n',

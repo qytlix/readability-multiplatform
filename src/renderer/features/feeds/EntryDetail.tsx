@@ -32,7 +32,13 @@ import {
 } from '../translation/TranslationPanel';
 import type { AiPreferences } from '../settings/aiPreferences';
 import { InlineTranslationOverlay } from '../translation/InlineTranslationOverlay';
-import { SummaryIcon, TranslateIcon, ExportIcon, TagIcon } from '../reader/ReaderIcons';
+import {
+  ChatIcon,
+  SummaryIcon,
+  TranslateIcon,
+  ExportIcon,
+  TagIcon,
+} from '../reader/ReaderIcons';
 import { formatArticleDate, getArticleDateLocale } from './articleMetadata';
 import {
   checkAvailability,
@@ -63,6 +69,7 @@ import {
 } from './trustedVideoEmbed';
 import { AnnotatedArticle } from '../annotations/AnnotatedArticle';
 import { TagFloatingWindow } from '../tags/TagFloatingWindow';
+import { ChatPanel } from '../chat/ChatPanel';
 
 interface EntryDetailProps {
   entry: Entry | null;
@@ -150,6 +157,7 @@ export const EntryDetail = ({
   const [isTitleTranslating, setIsTitleTranslating] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showTagWindow, setShowTagWindow] = useState(false);
+  const [showChatPanel, setShowChatPanel] = useState(false);
   const [exportArticleAvail, setExportArticleAvail] = useState<ArticleAvailability | null>(null);
   const [titleTranslationTarget, setTitleTranslationTarget] = useState<HTMLDivElement | null>(null);
   const [isFloatingHeaderVisible, setIsFloatingHeaderVisible] = useState(false);
@@ -182,6 +190,10 @@ export const EntryDetail = ({
   const lastReadingBookSampleAtRef = useRef<number | null>(null);
   const readingBookDirectionRef = useRef<ReadingBookTurnDirection | null>(null);
   const readingBookDistanceRef = useRef(0);
+
+  useEffect(() => {
+    setShowChatPanel(false);
+  }, [entry?.id]);
 
   useEffect(() => {
     if (pageTurnAnimationEnabled) return;
@@ -997,6 +1009,22 @@ export const EntryDetail = ({
         </span>
         <span
           className="article-action-tooltip"
+          data-tooltip="问答"
+        >
+          <button
+            type="button"
+            className={showChatPanel ? 'is-active' : ''}
+            aria-label="针对文章提问"
+            aria-controls="article-chat-panel"
+            aria-expanded={showChatPanel}
+            disabled={!isSummaryReady}
+            onClick={() => setShowChatPanel((current) => !current)}
+          >
+            <ChatIcon />
+          </button>
+        </span>
+        <span
+          className="article-action-tooltip"
           data-tooltip="标签"
         >
           <button
@@ -1094,6 +1122,15 @@ export const EntryDetail = ({
             onGeneratingChange={setIsSummaryGenerating}
             onVisibleChange={handleSummaryVisibleChange}
           />
+          {showChatPanel && (
+            <ChatPanel
+              key={`chat:${entry.id}`}
+              entryId={entry.id}
+              isContentReady={isSummaryReady}
+              isVisible
+              onVisibleChange={setShowChatPanel}
+            />
+          )}
           <TranslationPanel
             key={`${entry.id}:${aiPreferences.translationSourceLanguage}:${aiPreferences.translationTargetLanguage}`}
             ref={translationPanelRef}

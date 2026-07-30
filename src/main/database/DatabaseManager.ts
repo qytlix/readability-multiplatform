@@ -36,6 +36,8 @@ import { MIGRATION_026 } from '../migrations/026_add_translation_local_context';
 import { MIGRATION_027 } from '../migrations/027_add_translation_result_variant';
 import { MIGRATION_028 } from '../migrations/028_add_deep_translation_checkpoints';
 import { MIGRATION_029 } from '../migrations/029_add_translation_context_usage_kind';
+import { MIGRATION_030 } from '../migrations/030_add_chat_provider_route';
+import { MIGRATION_031 } from '../migrations/031_create_article_chat';
 
 interface Migration {
   id: string;
@@ -86,6 +88,8 @@ const MIGRATIONS: Migration[] = [
   { id: '027_add_translation_result_variant', sql: MIGRATION_027 },
   { id: '028_add_deep_translation_checkpoints', sql: MIGRATION_028 },
   { id: '029_add_translation_context_usage_kind', sql: MIGRATION_029 },
+  { id: '030_add_chat_provider_route', sql: MIGRATION_030 },
+  { id: '031_create_article_chat', sql: MIGRATION_031 },
 ];
 
 export class DatabaseManager {

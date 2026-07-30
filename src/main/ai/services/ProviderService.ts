@@ -43,14 +43,25 @@ export class ProviderService {
     let stage: ProviderConfigStage = 'validate';
     const newlyStoredSecretReferences: string[] = [];
     try {
-      const routes = validateProviderRequest(request);
+      const validatedRoutes = validateProviderRequest(request);
       stage = 'profileLookup';
       const existing = this.profileStore.findActiveWithSecret();
+      const routes = {
+        ...validatedRoutes,
+        chat: validatedRoutes.chat ?? (existing
+          ? {
+              providerKind: existing.chatProviderKind,
+              baseUrl: existing.chatBaseUrl,
+              model: existing.chatModel,
+            }
+          : validatedRoutes.summary),
+      };
       stage = 'key';
       const sameCredentialScope = hasSameCredentialScope(routes.summary, routes.translation);
       const summarySuppliedKey = routes.summary.apiKey?.trim();
       const translationSuppliedKey = routes.translation.apiKey?.trim();
       const tagSuppliedKey = routes.tag.apiKey?.trim();
+      const chatSuppliedKey = routes.chat.apiKey?.trim();
       let summaryApiKeyRef = reusableKeyReference(
         existing,
         'summary',
@@ -65,6 +76,11 @@ export class ProviderService {
         existing,
         'tag',
         routes.tag,
+      );
+      let chatApiKeyRef = reusableKeyReference(
+        existing,
+        'chat',
+        routes.chat,
       );
       const secretWrites = new Map<string, string>();
 
@@ -98,11 +114,23 @@ export class ProviderService {
         tagApiKeyRef = '';
       }
 
+      if (chatSuppliedKey) {
+        chatApiKeyRef = randomUUID();
+        secretWrites.set(chatApiKeyRef, chatSuppliedKey);
+      }
+
       if (sameCredentialScope) {
         summaryApiKeyRef ??= translationApiKeyRef;
         translationApiKeyRef ??= summaryApiKeyRef;
       }
-      if (!summaryApiKeyRef || !translationApiKeyRef) {
+      if (!chatApiKeyRef) {
+        if (hasSameCredentialScope(routes.chat, routes.summary)) {
+          chatApiKeyRef = summaryApiKeyRef;
+        } else if (hasSameCredentialScope(routes.chat, routes.translation)) {
+          chatApiKeyRef = translationApiKeyRef;
+        }
+      }
+      if (!summaryApiKeyRef || !translationApiKeyRef || !chatApiKeyRef) {
         throw new SummaryError(
           SUMMARY_ERROR_CODES.SUMMARY_KEY_MISSING,
           'A new API key is required for each Provider whose type or host changed.',
@@ -135,10 +163,26 @@ export class ProviderService {
             model: routes.tag.model,
             apiKeyRef: tagApiKeyRef,
           },
+          chat: {
+            providerKind: routes.chat.providerKind,
+            baseUrl: routes.chat.baseUrl,
+            model: routes.chat.model,
+            apiKeyRef: chatApiKeyRef,
+          },
         });
-        const retainedReferences = new Set([summaryApiKeyRef, translationApiKeyRef, tagApiKeyRef]);
+        const retainedReferences = new Set([
+          summaryApiKeyRef,
+          translationApiKeyRef,
+          tagApiKeyRef,
+          chatApiKeyRef,
+        ]);
         const obsoleteReferences = existing
-          ? new Set([existing.apiKeyRef, existing.translationApiKeyRef, existing.tagApiKeyRef])
+          ? new Set([
+              existing.apiKeyRef,
+              existing.translationApiKeyRef,
+              existing.tagApiKeyRef,
+              existing.chatApiKeyRef,
+            ])
           : new Set<string>();
         for (const reference of obsoleteReferences) {
           if (retainedReferences.has(reference)) continue;
@@ -157,6 +201,7 @@ export class ProviderService {
         const hasSummaryApiKey = this.secretStore.has(summaryApiKeyRef);
         const hasTranslationApiKey = this.secretStore.has(translationApiKeyRef);
         const hasTagApiKey = this.secretStore.has(tagApiKeyRef);
+        const hasChatApiKey = this.secretStore.has(chatApiKeyRef);
         const result: ProviderProfile = {
           ...profile,
           keyStorageMode: this.secretStore.getStorageMode(),
@@ -164,6 +209,7 @@ export class ProviderService {
           hasSummaryApiKey,
           hasTranslationApiKey,
           hasTagApiKey,
+          hasChatApiKey,
         };
         logProviderConfigCompleted(this.logger, {
           providerId: profile.id,
@@ -227,6 +273,12 @@ export class ProviderService {
           model: profile.tagModel,
           apiKeyRef: profile.tagApiKeyRef,
         },
+        {
+          providerKind: profile.chatProviderKind,
+          baseUrl: profile.chatBaseUrl,
+          model: profile.chatModel,
+          apiKeyRef: profile.chatApiKeyRef,
+        },
       ];
       const distinctRoutes = [...new Map(routes.map((route) => [
         [
@@ -253,7 +305,9 @@ export class ProviderService {
         ? 'Provider connection succeeded.'
         : routeCount === 2
           ? 'Summary and Translation Provider connections succeeded.'
-          : 'Summary, Translation and Tag Provider connections succeeded.';
+          : routeCount === 3
+            ? 'Summary, Translation and Tag Provider connections succeeded.'
+            : 'Summary, Translation, Tag and Chat Provider connections succeeded.';
       const result: ProviderConnectionTestResult = {
         ok: true,
         message,
@@ -289,6 +343,9 @@ export class ProviderService {
       tagProviderKind: profile.tagProviderKind,
       tagBaseUrl: profile.tagBaseUrl,
       tagModel: profile.tagModel,
+      chatProviderKind: profile.chatProviderKind,
+      chatBaseUrl: profile.chatBaseUrl,
+      chatModel: profile.chatModel,
       isActive: profile.isActive,
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
@@ -297,6 +354,7 @@ export class ProviderService {
       hasSummaryApiKey: this.secretStore.has(profile.apiKeyRef),
       hasTranslationApiKey: this.secretStore.has(profile.translationApiKeyRef),
       hasTagApiKey: this.secretStore.has(profile.tagApiKeyRef),
+      hasChatApiKey: this.secretStore.has(profile.chatApiKeyRef),
     };
   }
 }
@@ -371,12 +429,16 @@ function validateProviderRequest(request: SaveProviderRequest): {
   summary: ValidatedProviderRoute;
   translation: ValidatedProviderRoute;
   tag: ValidatedProviderRoute;
+  chat?: ValidatedProviderRoute;
 } {
   if ('summary' in request) {
     return {
       summary: validateProviderRoute(request.summary, 'Summary'),
       translation: validateProviderRoute(request.translation, 'Translation'),
       tag: validateProviderRoute(request.tag, 'Tag'),
+      ...(request.chat
+        ? { chat: validateProviderRoute(request.chat, 'Chat') }
+        : {}),
     };
   }
 
@@ -399,12 +461,18 @@ function validateProviderRequest(request: SaveProviderRequest): {
       baseUrl: '',
       model: 'gpt-5.4-mini',
     },
+    chat: validateProviderRoute({
+      providerKind: request.providerKind,
+      baseUrl: request.baseUrl,
+      model: request.summaryModel ?? legacyModel ?? '',
+      ...(request.apiKey ? { apiKey: request.apiKey } : {}),
+    }, 'Chat'),
   };
 }
 
 function validateProviderRoute(
   route: ValidatedProviderRoute,
-  taskLabel: 'Summary' | 'Translation' | 'Tag' | undefined,
+  taskLabel: 'Summary' | 'Translation' | 'Tag' | 'Chat' | undefined,
 ): ValidatedProviderRoute {
   if (!isProviderKind(route.providerKind)) {
     throw new SummaryError(
@@ -457,7 +525,7 @@ function validateProviderRoute(
 
 function validateTaskModel(
   value: string,
-  taskLabel: 'Summary' | 'Translation' | 'Tag' | undefined,
+  taskLabel: 'Summary' | 'Translation' | 'Tag' | 'Chat' | undefined,
   providerKind: ProviderKind,
 ): string {
   const model = value.trim();
@@ -495,7 +563,7 @@ function hasSameCredentialScope(
 
 function reusableKeyReference(
   existing: ReturnType<ProviderProfileStore['findActiveWithSecret']>,
-  task: 'summary' | 'translation' | 'tag',
+  task: 'summary' | 'translation' | 'tag' | 'chat',
   route: ValidatedProviderRoute,
 ): string | undefined {
   if (!existing) return undefined;
@@ -503,12 +571,16 @@ function reusableKeyReference(
     ? existing.providerKind
     : task === 'translation'
       ? existing.translationProviderKind
-      : existing.tagProviderKind;
+      : task === 'tag'
+        ? existing.tagProviderKind
+        : existing.chatProviderKind;
   const existingBaseUrl = task === 'summary'
     ? existing.baseUrl
     : task === 'translation'
       ? existing.translationBaseUrl
-      : existing.tagBaseUrl;
+      : task === 'tag'
+        ? existing.tagBaseUrl
+        : existing.chatBaseUrl;
   if (
     existingKind !== route.providerKind
     || (!existingBaseUrl && route.baseUrl)
@@ -521,5 +593,7 @@ function reusableKeyReference(
     ? existing.apiKeyRef
     : task === 'translation'
       ? existing.translationApiKeyRef
-      : existing.tagApiKeyRef;
+      : task === 'tag'
+        ? existing.tagApiKeyRef
+        : existing.chatApiKeyRef;
 }

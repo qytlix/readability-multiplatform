@@ -1,10 +1,11 @@
-import type {
-  ProviderTokenUsage,
-  TextGenerationConnectionRequest,
-  TextGenerationProvider,
-  TextGenerationProviderRequest,
+import {
+  isConversationRequest,
+  normalizeProviderFinishReason,
+  type ProviderTokenUsage,
+  type TextGenerationConnectionRequest,
+  type TextGenerationProvider,
+  type TextGenerationProviderRequest,
 } from './TextGenerationProvider';
-import { normalizeProviderFinishReason } from './TextGenerationProvider';
 import { normalizeProviderTokenUsage } from './ProviderTokenUsage';
 import {
   createProviderAbortScope,
@@ -33,7 +34,12 @@ export class OpenAICompatibleProvider implements TextGenerationProvider {
             model: request.model,
             stream: true,
             ...(request.requestUsage ? { stream_options: { include_usage: true } } : {}),
-            messages: [{ role: 'user', content: request.prompt }],
+            messages: isConversationRequest(request)
+              ? [
+                  { role: 'system', content: request.systemInstruction },
+                  ...request.messages,
+                ]
+              : [{ role: 'user', content: request.prompt }],
           }),
         },
         scope,

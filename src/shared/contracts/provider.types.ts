@@ -141,6 +141,12 @@ export interface ProviderProfile {
   tagBaseUrl: string;
   /** Model used by Tag generation requests. */
   tagModel: string;
+  /** Provider used by article-grounded Chat requests. */
+  chatProviderKind: ProviderKind;
+  /** Provider base URL used by article-grounded Chat requests. */
+  chatBaseUrl: string;
+  /** Model used by article-grounded Chat requests. */
+  chatModel: string;
   /**
    * Legacy alias retained for compatibility with older callers. It always
    * mirrors summaryModel and must not be used for task routing.
@@ -159,6 +165,8 @@ export interface ProviderProfile {
   hasTranslationApiKey?: boolean;
   /** Whether Main can use the Tag Provider API key. */
   hasTagApiKey?: boolean;
+  /** Whether Main can use the Article Chat Provider API key. */
+  hasChatApiKey?: boolean;
 }
 
 export interface SaveProviderTaskRequest {
@@ -184,6 +192,7 @@ export type SaveProviderRequest =
       summary: SaveProviderTaskRequest;
       translation: SaveProviderTaskRequest;
       tag: SaveProviderTaskRequest;
+      chat?: SaveProviderTaskRequest;
       providerKind?: never;
       baseUrl?: never;
       model?: never;

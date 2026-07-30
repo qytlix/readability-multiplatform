@@ -46,6 +46,14 @@ import type {
   TerminologyLibraryRemoveRequest,
   TerminologyLibrarySetEnabledRequest,
 } from '../shared/contracts/translation-terminology.types';
+import { CHAT_IPC_CHANNELS } from '../shared/contracts/chat.ipc';
+import type {
+  ChatCancelRequest,
+  ChatClearRequest,
+  ChatGetRequest,
+  ChatSendRequest,
+  ChatStreamEvent,
+} from '../shared/contracts/chat.types';
 
 const ping = (): Promise<PingResponse> =>
   ipcRenderer.invoke(IPC_CHANNELS.systemPing);
@@ -276,6 +284,25 @@ const tagAPI = {
     ipcRenderer.invoke(TAG_IPC_CHANNELS.autoTagClearStatus, { entryId }),
 };
 
+const chatAPI = {
+  get: (request: ChatGetRequest) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.get, request),
+  send: (request: ChatSendRequest) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.send, request),
+  cancel: (request: ChatCancelRequest) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.cancel, request),
+  clear: (request: ChatClearRequest) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.clear, request),
+  onEvent: (listener: (event: ChatStreamEvent) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      event: ChatStreamEvent,
+    ) => listener(event);
+    ipcRenderer.on(CHAT_IPC_CHANNELS.stream, handler);
+    return () => ipcRenderer.removeListener(CHAT_IPC_CHANNELS.stream, handler);
+  },
+};
+
 const shaleAPI: ShaleAPI = {
   system: {
     ping,
@@ -296,6 +323,7 @@ const shaleAPI: ShaleAPI = {
   annotation: annotationAPI,
   export: exportAPI,
   tag: tagAPI,
+  chat: chatAPI,
 };
 
 contextBridge.exposeInMainWorld('shaleAPI', shaleAPI);

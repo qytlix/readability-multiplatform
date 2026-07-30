@@ -46,6 +46,8 @@ import { AnnotationService } from './annotations/AnnotationService';
 import { TagStore } from './tags/TagStore';
 import { TagService } from './tags/TagService';
 import { AutoTagService } from './tags/AutoTagService';
+import { ChatStore } from './ai/stores/ChatStore';
+import { ChatService } from './ai/services/ChatService';
 
 // ── Service Interfaces ──────────────────────────────────
 
@@ -64,6 +66,7 @@ export interface FeedServices {
 export interface SummaryServices {
   providerService: ProviderService;
   summaryService: SummaryService;
+  chatService: ChatService;
 }
 
 export interface TranslationServices {
@@ -142,6 +145,11 @@ export function getSummaryService(): SummaryService | null {
   return summaryServicesSingleton?.summaryService ?? null;
 }
 
+/** 返回文章问答运行时，供应用退出时清理。 */
+export function getChatService(): ChatService | null {
+  return summaryServicesSingleton?.chatService ?? null;
+}
+
 /** Returns the persisted Translation runtime for application shutdown cleanup. */
 export function getTranslationService(): TranslationService | null {
   return translationServicesSingleton?.translationService ?? null;
@@ -189,6 +197,7 @@ export function initializeServices(
   );
   const providerProfileStore = new ProviderProfileStore(dbManager.getDb());
   const summaryStore = new SummaryStore(dbManager.getDb());
+  const chatStore = new ChatStore(dbManager.getDb());
   const translationStore = new TranslationStore(dbManager.getDb());
   const translationContextStore = new TranslationContextStore(dbManager.getDb());
   const translationExpertStore = new TranslationExpertStore(
@@ -225,6 +234,14 @@ export function initializeServices(
     usageRecorder,
   );
   summaryService.reconcileInterruptedRuns();
+  const chatService = new ChatService(
+    contentStore,
+    providerProfileStore,
+    secretStore,
+    chatStore,
+    provider,
+  );
+  chatService.reconcileInterruptedRuns();
   const expertService = new TranslationExpertService(translationExpertStore);
   const contextService = new TranslationContextService(translationContextStore, provider);
   const translationService = new TranslationService(
@@ -272,7 +289,7 @@ export function initializeServices(
     opmlImportService: new OPMLImportService(feedStore, operationLogger),
     opmlExportService: new OPMLExportService(feedStore, operationLogger),
   };
-  summaryServicesSingleton = { providerService, summaryService };
+  summaryServicesSingleton = { providerService, summaryService, chatService };
   translationServicesSingleton = {
     translationService,
     inlineTranslationService,

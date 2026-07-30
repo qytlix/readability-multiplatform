@@ -16,6 +16,7 @@ import { registerExternalIpcHandlers } from './ipc/external.handler';
 import {
   registerSummaryIpcHandlers,
 } from './ipc/summary.handler';
+import { registerChatIpcHandlers } from './ipc/chat.handler';
 import {
   registerTranslationIpcHandlers,
 } from './ipc/translation.handler';
@@ -154,6 +155,7 @@ export function registerIpcHandlers(
   const summaryServices = getSummaryServices();
   if (summaryServices) {
     registerSummaryIpcHandlers(getMainWindow, summaryServices);
+    registerChatIpcHandlers(getMainWindow, summaryServices.chatService);
   }
 
   const translationServices = getTranslationServices();

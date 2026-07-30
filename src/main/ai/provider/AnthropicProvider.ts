@@ -1,9 +1,10 @@
-import type {
-  TextGenerationConnectionRequest,
-  TextGenerationProvider,
-  TextGenerationProviderRequest,
+import {
+  isConversationRequest,
+  normalizeProviderFinishReason,
+  type TextGenerationConnectionRequest,
+  type TextGenerationProvider,
+  type TextGenerationProviderRequest,
 } from './TextGenerationProvider';
-import { normalizeProviderFinishReason } from './TextGenerationProvider';
 import {
   createProviderAbortScope,
   fetchProviderResponse,
@@ -29,7 +30,15 @@ export class AnthropicProvider implements TextGenerationProvider {
             model: request.model,
             max_tokens: 4_096,
             stream: true,
-            messages: [{ role: 'user', content: request.prompt }],
+            ...(isConversationRequest(request)
+              ? { system: request.systemInstruction }
+              : {}),
+            messages: isConversationRequest(request)
+              ? request.messages.map((message) => ({
+                  role: message.role,
+                  content: message.content,
+                }))
+              : [{ role: 'user', content: request.prompt }],
           }),
         },
         scope,

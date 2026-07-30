@@ -4,6 +4,8 @@ import { MIGRATION_006 } from '../../src/main/migrations/006_create_ai_profiles'
 import { MIGRATION_012 } from '../../src/main/migrations/012_expand_ai_providers';
 import { MIGRATION_020 } from '../../src/main/migrations/020_add_provider_task_models';
 import { MIGRATION_021 } from '../../src/main/migrations/021_add_translation_provider_route';
+import { MIGRATION_024 } from '../../src/main/migrations/024_add_tag_provider_route';
+import { MIGRATION_030 } from '../../src/main/migrations/030_add_chat_provider_route';
 
 describe('provider profile migration 012', () => {
   it('preserves IDs, secret references, and foreign keys while classifying legacy profiles', () => {
@@ -107,6 +109,50 @@ describe('provider profile migration 021', () => {
         translationBaseUrl: 'https://api.deepseek.com',
         translationModel: 'deepseek-translation',
         translationApiKeyRef: 'secret-ref',
+      });
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('provider profile migration 030', () => {
+  it('copies the Summary route and secret reference to Article Chat', () => {
+    const db = new Database(':memory:');
+    try {
+      db.exec(MIGRATION_006);
+      db.exec(MIGRATION_012);
+      db.exec(MIGRATION_020);
+      db.exec(MIGRATION_021);
+      db.exec(MIGRATION_024);
+      db.prepare(`
+        INSERT INTO ai_provider_profile
+          (providerKind, providerPreset, baseUrl, model, summaryModel,
+           translationProviderPreset, translationBaseUrl, translationModel,
+           tagProviderPreset, tagBaseUrl, tagModel,
+           apiKeyRef, translationApiKeyRef, tagApiKeyRef,
+           isActive, createdAt, updatedAt)
+        VALUES ('openai-compatible', 'openrouter', ?, ?, ?,
+                'deepseek', 'https://api.deepseek.com', 'translation-model',
+                'openai', 'https://api.openai.com/v1', 'tag-model',
+                'summary-secret', 'translation-secret', 'tag-secret',
+                1, 'created', 'updated')
+      `).run(
+        'https://openrouter.ai/api/v1',
+        'legacy-model',
+        'openai/gpt-5.4-mini',
+      );
+
+      db.transaction(() => db.exec(MIGRATION_030))();
+
+      expect(db.prepare(`
+        SELECT chatProviderPreset, chatBaseUrl, chatModel, chatApiKeyRef
+        FROM ai_provider_profile
+      `).get()).toEqual({
+        chatProviderPreset: 'openrouter',
+        chatBaseUrl: 'https://openrouter.ai/api/v1',
+        chatModel: 'openai/gpt-5.4-mini',
+        chatApiKeyRef: 'summary-secret',
       });
     } finally {
       db.close();

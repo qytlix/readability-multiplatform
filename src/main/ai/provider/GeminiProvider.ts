@@ -1,9 +1,10 @@
-import type {
-  TextGenerationConnectionRequest,
-  TextGenerationProvider,
-  TextGenerationProviderRequest,
+import {
+  isConversationRequest,
+  normalizeProviderFinishReason,
+  type TextGenerationConnectionRequest,
+  type TextGenerationProvider,
+  type TextGenerationProviderRequest,
 } from './TextGenerationProvider';
-import { normalizeProviderFinishReason } from './TextGenerationProvider';
 import {
   createProviderAbortScope,
   fetchProviderResponse,
@@ -28,7 +29,13 @@ export class GeminiProvider implements TextGenerationProvider {
         {
           method: 'POST',
           headers: buildHeaders(request.apiKey),
-          body: JSON.stringify(buildBody(request.prompt, 4_096)),
+          body: JSON.stringify(isConversationRequest(request)
+            ? buildConversationBody(
+                request.systemInstruction,
+                request.messages,
+                4_096,
+              )
+            : buildBody(request.prompt, 4_096)),
         },
         scope,
       );
@@ -89,6 +96,23 @@ function buildBody(prompt: string, maxOutputTokens: number): Record<string, unkn
       role: 'user',
       parts: [{ text: prompt }],
     }],
+    generationConfig: { maxOutputTokens },
+  };
+}
+
+function buildConversationBody(
+  systemInstruction: string,
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  maxOutputTokens: number,
+): Record<string, unknown> {
+  return {
+    systemInstruction: {
+      parts: [{ text: systemInstruction }],
+    },
+    contents: messages.map((message) => ({
+      role: message.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: message.content }],
+    })),
     generationConfig: { maxOutputTokens },
   };
 }
