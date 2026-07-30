@@ -37,7 +37,17 @@ export interface ArticleContextSource {
 }
 
 export interface ArticleSegmentAnalyzer {
-  analyze(segment: ContentSegment): Promise<string>;
+  analyze(
+    segment: ContentSegment,
+    usage?: ArticleSegmentAnalysisUsage,
+  ): Promise<string>;
+}
+
+export interface ArticleSegmentAnalysisUsage {
+  attemptId: string;
+  taskRunId: number;
+  providerProfileId: number;
+  model: string;
 }
 
 export interface PrepareArticleContextRequest {
@@ -49,6 +59,7 @@ export interface PrepareArticleContextRequest {
   analysisModelFamily: string;
   contextWindowTokens: number;
   responseReserveTokens: number;
+  analysisUsage?: ArticleSegmentAnalysisUsage;
 }
 
 export interface PreparedArticleContext {
@@ -127,7 +138,10 @@ export class ArticleContextService {
     }
 
     const analyses = cached?.segmentAnalyses
-      ?? await this.analyzeAllSegments(request.source.segments);
+      ?? await this.analyzeAllSegments(
+        request.source.segments,
+        request.analysisUsage,
+      );
     const articleMap = cached?.articleMap ?? formatArticleMap(analyses);
     if (!cached?.articleMap || !cached.segmentAnalyses) {
       this.cacheStore.save({
@@ -176,13 +190,14 @@ export class ArticleContextService {
 
   private async analyzeAllSegments(
     segments: readonly ContentSegment[],
+    usage?: ArticleSegmentAnalysisUsage,
   ): Promise<ArticleSegmentAnalysis[]> {
     const analyses: ArticleSegmentAnalysis[] = [];
     for (const segment of segments) {
       analyses.push({
         segmentId: segment.id,
         orderIndex: segment.orderIndex,
-        analysis: await this.segmentAnalyzer.analyze(segment),
+        analysis: await this.segmentAnalyzer.analyze(segment, usage),
       });
     }
     return analyses;
@@ -232,4 +247,3 @@ function tokenize(text: string): string[] {
     (text.toLocaleLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? []),
   )];
 }
-

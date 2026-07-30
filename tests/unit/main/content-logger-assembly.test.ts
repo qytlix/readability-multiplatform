@@ -131,6 +131,13 @@ vi.mock('../../../src/main/ai/services/ChatService', () => ({
 vi.mock('../../../src/main/ai/stores/ChatStore', () => ({
   ChatStore: class {},
 }));
+vi.mock('../../../src/main/ai/services/ChatAttachmentService', () => ({
+  ChatAttachmentService: class {
+    startCleanupSchedule(): void {
+      return undefined;
+    }
+  },
+}));
 vi.mock('../../../src/main/ai/stores/ArticleContextCacheStore', () => ({
   ArticleContextCacheStore: class {},
 }));

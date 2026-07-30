@@ -88,6 +88,12 @@ describe('ArticleContextService', () => {
       analysisModelFamily: 'mock:model',
       contextWindowTokens: 2_000,
       responseReserveTokens: 500,
+      analysisUsage: {
+        attemptId: 'chat-attempt',
+        taskRunId: 18,
+        providerProfileId: 3,
+        model: 'model',
+      },
     };
 
     const first = await service.prepare(request);
@@ -97,6 +103,10 @@ describe('ArticleContextService', () => {
     expect(first.cacheHit).toBe(false);
     expect(second.cacheHit).toBe(true);
     expect(analyze).toHaveBeenCalledTimes(segments.length);
+    expect(analyze).toHaveBeenCalledWith(
+      segments[0],
+      request.analysisUsage,
+    );
     expect(first.relatedSegmentIds).toEqual(['s-1', 's-2', 's-3', 's-4']);
     expect(first.articleReference).toContain('Analysis for s-4');
     expect(first.articleReference).toContain('Solar battery evidence and data.');

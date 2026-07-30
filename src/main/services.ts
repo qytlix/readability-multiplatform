@@ -239,6 +239,7 @@ export function initializeServices(
     providerProfileStore,
     secretStore,
     provider,
+    usageRecorder,
   );
   const articleContextService = new ArticleContextService(
     articleContextCacheStore,
