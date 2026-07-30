@@ -34,6 +34,7 @@ import { MIGRATION_024 } from '../migrations/024_add_tag_provider_route';
 import { MIGRATION_025 } from '../migrations/025_add_entry_ai_tag_generated';
 import { MIGRATION_026 } from '../migrations/026_add_chat_provider_route';
 import { MIGRATION_027 } from '../migrations/027_create_article_chat';
+import { MIGRATION_028 } from '../migrations/028_create_article_context_cache';
 
 interface Migration {
   id: string;
@@ -82,6 +83,7 @@ const MIGRATIONS: Migration[] = [
   { id: '025_add_entry_ai_tag_generated', sql: MIGRATION_025 },
   { id: '026_add_chat_provider_route', sql: MIGRATION_026 },
   { id: '027_create_article_chat', sql: MIGRATION_027 },
+  { id: '028_create_article_context_cache', sql: MIGRATION_028 },
 ];
 
 export class DatabaseManager {
