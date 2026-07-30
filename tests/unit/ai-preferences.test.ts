@@ -29,6 +29,7 @@ describe('AI preferences', () => {
       translationTargetLanguage: 'zh-HK',
       useTerminology: false,
       useSmartContext: false,
+      translationMode: 'standard',
       translationExpertId: 'none',
       translationSetupNoticeAcknowledged: true,
       fullTranslationShortcut: {
@@ -61,6 +62,7 @@ describe('AI preferences', () => {
       translationTargetLanguage: 'zh-HK',
       useTerminology: false,
       useSmartContext: false,
+      translationMode: 'standard',
       translationExpertId: 'none',
       translationSetupNoticeAcknowledged: true,
       fullTranslationShortcut: {
@@ -142,6 +144,7 @@ describe('AI preferences', () => {
       translationTargetLanguage: 'zh-CN' as const,
       useTerminology: true,
       useSmartContext: false,
+      translationMode: 'standard' as const,
       translationExpertId: 'none',
       translationSetupNoticeAcknowledged: true,
       fullTranslationShortcut: {

@@ -18,12 +18,20 @@ import {
   TRANSLATION_ERROR_CODES,
   TranslationError,
 } from '../../../shared/errors/translation.errors';
-import type { TextGenerationProvider } from '../provider/TextGenerationProvider';
+import type {
+  ProviderTokenUsage,
+  TextGenerationProvider,
+} from '../provider/TextGenerationProvider';
+import { sanitizeProviderTokenUsage } from '../provider/ProviderTokenUsage';
 import {
   buildSourceLanguageInstruction,
   getTargetLanguageInstruction,
 } from '../provider/TranslationPrompt';
 import type { TranslationContextStore } from '../stores/TranslationContextStore';
+import {
+  createProviderRequestId,
+  type UsageRecorderPort,
+} from './UsageRecorder';
 
 const CONTEXT_TIMEOUT_MS = 45_000;
 const CONTEXT_CHUNK_CHARACTERS = 6_000;
@@ -43,6 +51,12 @@ export interface TranslationContextRequest {
     baseUrl: string;
     model: string;
     apiKey: string;
+  };
+  usage: {
+    attemptId: string;
+    taskRunId: number;
+    providerProfileId: number;
+    recorder: UsageRecorderPort;
   };
   signal: AbortSignal;
 }
@@ -140,21 +154,54 @@ export class TranslationContextService {
     request: TranslationContextRequest,
     signal: AbortSignal,
   ): Promise<TranslationContext> {
-    let output = '';
-    for await (const delta of this.provider.stream({
-      providerKind: request.provider.kind,
-      baseUrl: request.provider.baseUrl,
+    const usageRequest = request.usage.recorder.start({
+      providerRequestId: createProviderRequestId(),
+      attemptId: request.usage.attemptId,
+      taskType: 'translation',
+      taskRunId: request.usage.taskRunId,
+      providerProfileId: request.usage.providerProfileId,
       model: request.provider.model,
-      apiKey: request.provider.apiKey,
-      prompt,
-      signal,
-    })) {
-      output += delta;
-      if (output.length > MAX_CONTEXT_OUTPUT_CHARACTERS) {
-        throw new Error('Smart context output exceeded its size limit.');
+      requestKind: 'translation-context',
+    });
+    let usage: ProviderTokenUsage | undefined;
+    let output = '';
+    try {
+      for await (const delta of this.provider.stream({
+        providerKind: request.provider.kind,
+        baseUrl: request.provider.baseUrl,
+        model: request.provider.model,
+        apiKey: request.provider.apiKey,
+        prompt,
+        signal,
+        requestUsage: true,
+        onUsage: (reportedUsage) => {
+          usage = sanitizeProviderTokenUsage(reportedUsage);
+        },
+      })) {
+        output += delta;
+        if (output.length > MAX_CONTEXT_OUTPUT_CHARACTERS) {
+          throw new Error('Smart context output exceeded its size limit.');
+        }
       }
+      const context = parseTranslationContext(output);
+      request.usage.recorder.complete(usageRequest, usage);
+      return context;
+    } catch (error) {
+      if (signal.aborted) {
+        request.usage.recorder.interrupt(
+          usageRequest,
+          usage,
+          TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
+        );
+      } else {
+        request.usage.recorder.fail(
+          usageRequest,
+          TRANSLATION_ERROR_CODES.TRANSLATION_CONTEXT_UNAVAILABLE,
+          usage,
+        );
+      }
+      throw error;
     }
-    return parseTranslationContext(output);
   }
 }
 

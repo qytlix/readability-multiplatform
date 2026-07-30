@@ -22,6 +22,7 @@ import {
   runMigration010,
 } from '../../src/main/migrations/010_create_dedup_key';
 import { MIGRATION_011 } from '../../src/main/migrations/011_create_entry_annotations';
+import { MIGRATION_027 } from '../../src/main/migrations/027_add_translation_result_variant';
 
 interface LegacyMigration {
   id: string;
@@ -73,7 +74,8 @@ describe('Advanced Translation upgrade and restart hardening', () => {
     });
     expect(upgradedDb.prepare(`
       SELECT id, sourceLanguage, targetLanguage, expertId, expertContentHash,
-             smartContextEnabled, contextPromptVersion, status
+             smartContextEnabled, localContextEnabled, translationVariant,
+             contextPromptVersion, status
       FROM translation_result WHERE id = 9
     `).get()).toEqual({
       id: 9,
@@ -82,6 +84,8 @@ describe('Advanced Translation upgrade and restart hardening', () => {
       expertId: 'none',
       expertContentHash: 'none',
       smartContextEnabled: 0,
+      localContextEnabled: 0,
+      translationVariant: 'standard',
       contextPromptVersion: 'none',
       status: 'running',
     });
@@ -137,6 +141,10 @@ describe('Advanced Translation upgrade and restart hardening', () => {
         { filename: '023_tag_name_case_sensitive' },
         { filename: '024_add_tag_provider_route' },
         { filename: '025_add_entry_ai_tag_generated' },
+        { filename: '026_add_translation_local_context' },
+        { filename: '027_add_translation_result_variant' },
+        { filename: '028_add_deep_translation_checkpoints' },
+        { filename: '029_add_translation_context_usage_kind' },
       ]);
       expect(restarted.getDb().prepare(`
         SELECT name FROM sqlite_master
@@ -159,6 +167,27 @@ describe('Advanced Translation upgrade and restart hardening', () => {
     } finally {
       restarted.close();
     }
+  });
+
+  it('preserves retired experimental result identity during the forward variant migration', () => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE translation_result (
+        id INTEGER PRIMARY KEY,
+        localContextEnabled INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO translation_result (id, localContextEnabled) VALUES (1, 0), (2, 1);
+    `);
+
+    db.exec(MIGRATION_027);
+
+    expect(db.prepare(`
+      SELECT id, translationVariant FROM translation_result ORDER BY id
+    `).all()).toEqual([
+      { id: 1, translationVariant: 'standard' },
+      { id: 2, translationVariant: 'legacy-pre-mode' },
+    ]);
+    db.close();
   });
 });
 

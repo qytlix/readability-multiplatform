@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import type { ProviderTokenUsage } from '../provider/ProviderTokenUsage';
+import {
+  getUsageAvailability,
+  sanitizeProviderTokenUsage,
+  type ProviderTokenUsage,
+} from '../provider/ProviderTokenUsage';
 import type {
   StartUsageRequestParams,
+  UsageRequestRecord,
   UsageRequestStatus,
+  UsageTaskType,
 } from '../stores/UsageStore';
 import { UsageStore } from '../stores/UsageStore';
 
@@ -103,6 +109,18 @@ export class UsageRecorder {
     }
   }
 
+  listByAttempt(
+    taskType: UsageTaskType,
+    taskRunId: number,
+    attemptId: string,
+  ): UsageRequestRecord[] {
+    try {
+      return this.usageStore.listByAttempt(taskType, taskRunId, attemptId);
+    } catch {
+      return [];
+    }
+  }
+
   private finish(
     handle: UsageRequestHandle,
     requestStatus: Exclude<UsageRequestStatus, 'running'>,
@@ -136,21 +154,35 @@ export class UsageRecorder {
   }
 }
 
-/** Explicit test seam for services that should not persist usage records. */
+/** Non-persisting in-memory test seam that retains Usage semantics for diagnostics. */
 export class NoopUsageRecorder {
+  private readonly records = new Map<number, UsageRequestRecord>();
+
   start(params: StartUsageRequestParams): UsageRequestHandle {
+    this.records.set(params.providerRequestId, {
+      id: params.providerRequestId,
+      providerRequestId: params.providerRequestId,
+      attemptId: params.attemptId,
+      taskType: params.taskType,
+      taskRunId: params.taskRunId,
+      providerProfileId: params.providerProfileId,
+      model: params.model,
+      requestKind: params.requestKind,
+      requestStatus: 'running',
+      usageAvailability: 'missing',
+      startedAt: new Date().toISOString(),
+    });
     return {
       providerRequestId: params.providerRequestId,
       attemptId: params.attemptId,
       taskRunId: params.taskRunId,
-      persisted: false,
+      persisted: true,
       settled: false,
     };
   }
 
   complete(handle: UsageRequestHandle, usage: ProviderTokenUsage | undefined): void {
-    void handle;
-    void usage;
+    this.finish(handle, 'succeeded', usage);
   }
 
   fail(
@@ -158,9 +190,7 @@ export class NoopUsageRecorder {
     errorCode: string,
     usage: ProviderTokenUsage | undefined,
   ): void {
-    void handle;
-    void errorCode;
-    void usage;
+    this.finish(handle, 'failed', usage, errorCode);
   }
 
   interrupt(
@@ -168,17 +198,47 @@ export class NoopUsageRecorder {
     usage?: ProviderTokenUsage,
     errorCode = 'AI_INTERRUPTED',
   ): void {
-    void handle;
-    void usage;
-    void errorCode;
+    this.finish(handle, 'interrupted', usage, errorCode);
   }
 
   reconcileInterruptedRunning(): number {
     return 0;
   }
+
+  listByAttempt(
+    taskType: UsageTaskType,
+    taskRunId: number,
+    attemptId: string,
+  ): UsageRequestRecord[] {
+    return [...this.records.values()].filter((record) =>
+      record.taskType === taskType
+      && record.taskRunId === taskRunId
+      && record.attemptId === attemptId);
+  }
+
+  private finish(
+    handle: UsageRequestHandle,
+    requestStatus: Exclude<UsageRequestStatus, 'running'>,
+    usage: ProviderTokenUsage | undefined,
+    errorCode?: string,
+  ): void {
+    if (handle.settled) return;
+    handle.settled = true;
+    const record = this.records.get(handle.providerRequestId);
+    if (!record) return;
+    const safeUsage = sanitizeProviderTokenUsage(usage);
+    this.records.set(handle.providerRequestId, {
+      ...record,
+      requestStatus,
+      ...(errorCode ? { errorCode } : {}),
+      ...(safeUsage ?? {}),
+      usageAvailability: getUsageAvailability(safeUsage),
+      finishedAt: new Date().toISOString(),
+    });
+  }
 }
 
 export type UsageRecorderPort = Pick<
   UsageRecorder,
-  'start' | 'complete' | 'fail' | 'interrupt' | 'reconcileInterruptedRunning'
+  'start' | 'complete' | 'fail' | 'interrupt' | 'reconcileInterruptedRunning' | 'listByAttempt'
 >;

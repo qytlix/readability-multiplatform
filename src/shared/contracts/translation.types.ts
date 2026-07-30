@@ -32,6 +32,23 @@ export const TRANSLATION_LANGUAGE_LABELS: Record<TranslationTargetLanguage, stri
 export type TranslationRunStatus = 'running' | 'succeeded' | 'failed';
 export type TranslationSegmentStatus = 'pending' | 'succeeded' | 'failed';
 
+/**
+ * Product translation modes. Only `standard` is executable today; `deep` is
+ * reserved so stored results have an explicit, stable mode identity before it
+ * is introduced.
+ */
+export const TRANSLATION_MODES = ['standard', 'deep'] as const;
+export type TranslationMode = (typeof TRANSLATION_MODES)[number];
+export const STANDARD_TRANSLATION_MODE = 'standard' as const;
+export const DEEP_TRANSLATION_MODE = 'deep' as const;
+
+/**
+ * Results created before mode identity was generalized remain readable, but
+ * cannot be reused as a current product mode.
+ */
+export const LEGACY_TRANSLATION_VARIANT = 'legacy-pre-mode' as const;
+export type TranslationResultVariant = TranslationMode | typeof LEGACY_TRANSLATION_VARIANT;
+
 export interface TranslationSegment {
   sourceSegmentId: string;
   orderIndex: number;
@@ -83,6 +100,8 @@ export interface TranslationResult {
   expertId: string;
   expertContentHash: string;
   smartContextEnabled: boolean;
+  /** Immutable generation identity captured when this run was created. */
+  translationVariant: TranslationResultVariant;
   contextPromptVersion: string;
   contextWarning?: ShaleError;
   status: TranslationRunStatus;
@@ -117,6 +136,8 @@ export interface TranslationGetRequest {
   expertId?: string;
   /** Defaults to false when omitted for backward compatibility. */
   useSmartContext?: boolean;
+  /** Defaults to `standard` when omitted for backward compatibility. */
+  translationMode?: TranslationMode;
 }
 
 export interface TranslationGenerateRequest extends TranslationGetRequest {

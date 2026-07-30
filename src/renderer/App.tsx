@@ -59,7 +59,10 @@ import {
 } from './features/reader/ReaderIcons';
 import { ArticleSyncMenu } from './features/reader/ArticleSyncMenu';
 import { TranslationSetupNoticeDialog } from './features/translation/TranslationSetupNoticeDialog';
-import { TranslationNoticeDialog } from './features/translation/TranslationNoticeDialog';
+import {
+  getRetranslationNoticeMessage,
+  TranslationNoticeDialog,
+} from './features/translation/TranslationNoticeDialog';
 import {
   loadReaderTheme,
   saveReaderTheme,
@@ -720,16 +723,12 @@ useEffect(() => {
 
   const handleRetranslationRequestComplete = useCallback((
     entryId: number,
-    result: 'started' | 'content-unavailable' | 'no-translation' | 'active' | 'failed',
+    result: 'started' | 'content-unavailable' | 'no-translation' | 'active' | 'active-deep' | 'failed',
   ): void => {
+    setRetranslationRequest((current) => current?.entryId === entryId ? null : current);
     if (selectedEntry?.id !== entryId) return;
-    if (result === 'content-unavailable') {
-      setRetranslationNotice('当前文章尚未拉取成功');
-    } else if (result === 'no-translation') {
-      setRetranslationNotice('当前文章还没有翻译');
-    } else if (result === 'active') {
-      setRetranslationNotice('当前文章的翻译任务正在进行，请使用主翻译按钮暂停或继续。');
-    }
+    const notice = getRetranslationNoticeMessage(result);
+    if (notice) setRetranslationNotice(notice);
   }, [selectedEntry?.id]);
 
   const handleLoadMore = useCallback(() => {
