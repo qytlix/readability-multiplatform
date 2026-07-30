@@ -4,6 +4,8 @@ import type {
   ChatMessage,
 } from '../../../shared/contracts/chat.types';
 import { useArticleChatSession } from './useArticleChatSession';
+import { ArticleChatComposer } from './ArticleChatComposer';
+import { useState } from 'react';
 
 interface ArticleChatPanelProps {
   entryId: number;
@@ -32,9 +34,17 @@ export const ArticleChatPanel = ({
   onClose,
 }: ArticleChatPanelProps) => {
   const session = useArticleChatSession(entryId, true);
+  const [draft, setDraft] = useState('');
   const contextMode = session.state?.state === 'running'
     ? session.state.run.contextMode
     : getCurrentContextMode(session.state?.messages ?? []);
+  const running = session.state?.state === 'running';
+  const busy = session.actionStatus !== 'idle';
+
+  const handleSend = async (): Promise<void> => {
+    const sent = await session.sendQuestion(draft);
+    if (sent) setDraft('');
+  };
 
   return (
     <section className="article-chat-panel" aria-label="文章 AI 问答">
@@ -83,9 +93,19 @@ export const ArticleChatPanel = ({
           <div className="article-chat-empty">
             <p>从文章本身开始，而不是从空白对话开始。</p>
             <div className="article-chat-suggestions" aria-label="建议问题">
-              <span>概括作者的核心论点</span>
-              <span>这篇文章最重要的证据是什么？</span>
-              <span>有哪些限制或反例？</span>
+              {[
+                '概括作者的核心论点',
+                '这篇文章最重要的证据是什么？',
+                '有哪些限制或反例？',
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => setDraft(suggestion)}
+                >
+                  {suggestion}
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -110,7 +130,29 @@ export const ArticleChatPanel = ({
             {message.status === 'interrupted' && <small>回答已停止</small>}
           </article>
         ))}
+        {(session.state?.state === 'failed'
+          || session.state?.state === 'interrupted') && (
+          <div className="article-chat-retry">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void session.retry()}
+            >
+              重新回答
+            </button>
+          </div>
+        )}
       </div>
+      <ArticleChatComposer
+        value={draft}
+        running={running}
+        busy={busy}
+        disabled={session.loadStatus !== 'success'}
+        errorMessage={session.actionErrorMessage}
+        onChange={setDraft}
+        onSend={handleSend}
+        onStop={() => void session.stop()}
+      />
     </section>
   );
 };

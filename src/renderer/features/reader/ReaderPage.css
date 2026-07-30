@@ -356,13 +356,21 @@
   gap: 8px;
 }
 
-.article-chat-suggestions span {
+.article-chat-suggestions button {
   padding: 10px 12px;
   border: 1px solid var(--reader-line);
   border-radius: 10px;
   color: var(--reader-text-soft);
   background: var(--reader-hover-soft);
+  cursor: pointer;
   font-size: 11px;
+  text-align: left;
+}
+
+.article-chat-suggestions button:hover {
+  border-color: var(--reader-accent);
+  color: var(--reader-text);
+  background: var(--reader-accent-glow);
 }
 
 .article-chat-message {
@@ -439,6 +447,99 @@
   color: var(--reader-text);
   background: var(--reader-hover);
   cursor: pointer;
+}
+
+.article-chat-retry {
+  display: flex;
+  justify-content: flex-start;
+  margin: -8px 0 20px;
+}
+
+.article-chat-retry button {
+  min-height: 32px;
+  padding: 6px 11px;
+  border: 1px solid var(--reader-line);
+  border-radius: 8px;
+  color: var(--reader-text-soft);
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.article-chat-composer {
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--reader-line);
+  background: color-mix(in srgb, var(--reader-panel) 96%, transparent);
+}
+
+.article-chat-composer-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  padding: 9px 9px 9px 13px;
+  border: 1px solid var(--reader-line);
+  border-radius: 14px;
+  background: var(--reader-input);
+}
+
+.article-chat-composer-box:focus-within {
+  border-color: var(--reader-accent);
+  box-shadow: 0 0 0 3px var(--reader-accent-glow);
+}
+
+.article-chat-composer textarea {
+  max-height: 150px;
+  min-height: 23px;
+  padding: 2px 0;
+  resize: none;
+  border: 0;
+  outline: 0;
+  color: var(--reader-text);
+  background: transparent;
+  field-sizing: content;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.article-chat-composer textarea::placeholder {
+  color: var(--reader-text-muted);
+}
+
+.article-chat-composer-box button {
+  min-width: 48px;
+  height: 34px;
+  padding: 0 11px;
+  border-radius: 9px;
+  color: var(--reader-accent-ink);
+  background: var(--reader-accent-strong);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.article-chat-composer-box button.is-stop {
+  color: var(--reader-danger-ink);
+  background: var(--reader-danger);
+}
+
+.article-chat-composer-box button:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.article-chat-composer-hint {
+  margin-top: 6px;
+  color: var(--reader-text-muted);
+  font-size: 9px;
+  text-align: right;
+}
+
+.article-chat-composer-error {
+  margin: 0 2px 8px;
+  color: var(--reader-danger-strong);
+  font-size: 10px;
 }
 
 .reader-sidebar {

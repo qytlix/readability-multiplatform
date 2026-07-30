@@ -6,19 +6,30 @@ import {
 } from 'react';
 import type { ProviderProfile } from '../../../shared/contracts/provider.types';
 import type {
+  ChatSelectionContext,
   ChatState,
   ChatStreamEvent,
 } from '../../../shared/contracts/chat.types';
 import { applyChatStreamEvent } from './articleChatSession';
 
 type ChatLoadStatus = 'idle' | 'loading' | 'success' | 'error';
+type ChatActionStatus = 'idle' | 'sending' | 'stopping' | 'retrying';
 
 export interface ArticleChatSession {
   loadStatus: ChatLoadStatus;
   state: ChatState | null;
   provider: ProviderProfile | null;
   errorMessage: string;
+  actionStatus: ChatActionStatus;
+  actionErrorMessage: string;
   reload: () => Promise<void>;
+  sendQuestion: (
+    question: string,
+    attachmentIds?: number[],
+    selection?: ChatSelectionContext,
+  ) => Promise<boolean>;
+  stop: () => Promise<boolean>;
+  retry: () => Promise<boolean>;
 }
 
 export const useArticleChatSession = (
@@ -29,6 +40,8 @@ export const useArticleChatSession = (
   const [state, setState] = useState<ChatState | null>(null);
   const [provider, setProvider] = useState<ProviderProfile | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [actionStatus, setActionStatus] = useState<ChatActionStatus>('idle');
+  const [actionErrorMessage, setActionErrorMessage] = useState('');
   const requestVersionRef = useRef(0);
   const stateRef = useRef<ChatState | null>(null);
 
@@ -74,6 +87,8 @@ export const useArticleChatSession = (
       setProvider(null);
       setLoadStatus('idle');
       setErrorMessage('');
+      setActionStatus('idle');
+      setActionErrorMessage('');
       return undefined;
     }
 
@@ -95,11 +110,98 @@ export const useArticleChatSession = (
     };
   }, [active, entryId, reload]);
 
+  const sendQuestion = useCallback(async (
+    question: string,
+    attachmentIds: number[] = [],
+    selection?: ChatSelectionContext,
+  ): Promise<boolean> => {
+    if (!active || stateRef.current?.state === 'running' || !question.trim()) {
+      return false;
+    }
+    setActionStatus('sending');
+    setActionErrorMessage('');
+    try {
+      const result = await window.shaleAPI.chat.send({
+        entryId,
+        question,
+        selection,
+        attachmentIds,
+      });
+      if (!result.ok) {
+        setActionErrorMessage(result.error.message);
+        return false;
+      }
+      await reload();
+      return true;
+    } catch {
+      setActionErrorMessage('问题发送失败，请检查问答模型配置后重试。');
+      return false;
+    } finally {
+      setActionStatus('idle');
+    }
+  }, [active, entryId, reload]);
+
+  const stop = useCallback(async (): Promise<boolean> => {
+    const current = stateRef.current;
+    if (!active || current?.state !== 'running') return false;
+    setActionStatus('stopping');
+    setActionErrorMessage('');
+    try {
+      const result = await window.shaleAPI.chat.cancel({
+        runId: current.run.id,
+      });
+      if (!result.ok) {
+        setActionErrorMessage(result.error.message);
+        return false;
+      }
+      await reload();
+      return true;
+    } catch {
+      setActionErrorMessage('无法停止当前回答，请稍后重试。');
+      return false;
+    } finally {
+      setActionStatus('idle');
+    }
+  }, [active, reload]);
+
+  const retry = useCallback(async (): Promise<boolean> => {
+    const current = stateRef.current;
+    if (
+      !active
+      || (current?.state !== 'failed' && current?.state !== 'interrupted')
+    ) {
+      return false;
+    }
+    setActionStatus('retrying');
+    setActionErrorMessage('');
+    try {
+      const result = await window.shaleAPI.chat.retry({
+        runId: current.run.id,
+      });
+      if (!result.ok) {
+        setActionErrorMessage(result.error.message);
+        return false;
+      }
+      await reload();
+      return true;
+    } catch {
+      setActionErrorMessage('无法重试这次回答，请稍后再试。');
+      return false;
+    } finally {
+      setActionStatus('idle');
+    }
+  }, [active, reload]);
+
   return {
     loadStatus,
     state,
     provider,
     errorMessage,
+    actionStatus,
+    actionErrorMessage,
     reload,
+    sendQuestion,
+    stop,
+    retry,
   };
 };
