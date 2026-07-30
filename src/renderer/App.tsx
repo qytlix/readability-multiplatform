@@ -176,6 +176,10 @@ export const App = () => {
   const [entriesCursor, setEntriesCursor] = useState<EntryQuery['cursor']>();
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
   const [articleChatOpen, setArticleChatOpen] = useState(false);
+  const [activeArticleChatRun, setActiveArticleChatRun] = useState<{
+    entryId: number;
+    runId: number;
+  } | null>(null);
   const requestSequenceRef = useRef(0);
   const translationSetupNoticeResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -244,6 +248,19 @@ export const App = () => {
     setSidebarOpen(restored.sidebarOpen);
     setIsReadingFocus(restored.readingFocus);
   }, []);
+
+  useEffect(() => {
+    if (
+      !activeArticleChatRun
+      || activeArticleChatRun.entryId === selectedEntryId
+    ) {
+      return;
+    }
+
+    const runId = activeArticleChatRun.runId;
+    setActiveArticleChatRun(null);
+    void window.shaleAPI.chat.cancel({ runId });
+  }, [activeArticleChatRun, selectedEntryId]);
 
   useLayoutEffect(() => {
     const previousLayout = layoutSnapshotRef.current;
@@ -926,6 +943,7 @@ useEffect(() => {
             entryId={selectedEntry.id}
             entryTitle={selectedEntry.title ?? 'Untitled'}
             onClose={closeArticleChat}
+            onActiveRunChange={setActiveArticleChatRun}
           />
         )}
         <button

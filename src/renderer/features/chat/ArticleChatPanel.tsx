@@ -1,16 +1,19 @@
 import { CloseIcon } from '../reader/ReaderIcons';
+import { useEffect, useState } from 'react';
 import type {
   ChatContextMode,
   ChatMessage,
 } from '../../../shared/contracts/chat.types';
 import { useArticleChatSession } from './useArticleChatSession';
 import { ArticleChatComposer } from './ArticleChatComposer';
-import { useState } from 'react';
 
 interface ArticleChatPanelProps {
   entryId: number;
   entryTitle: string;
   onClose: () => void;
+  onActiveRunChange: (
+    activeRun: { entryId: number; runId: number } | null,
+  ) => void;
 }
 
 const CONTEXT_MODE_LABELS: Record<ChatContextMode, string> = {
@@ -32,6 +35,7 @@ export const ArticleChatPanel = ({
   entryId,
   entryTitle,
   onClose,
+  onActiveRunChange,
 }: ArticleChatPanelProps) => {
   const session = useArticleChatSession(entryId, true);
   const [draft, setDraft] = useState('');
@@ -39,7 +43,14 @@ export const ArticleChatPanel = ({
     ? session.state.run.contextMode
     : getCurrentContextMode(session.state?.messages ?? []);
   const running = session.state?.state === 'running';
+  const activeRunId = running ? session.state.run.id : null;
   const busy = session.actionStatus !== 'idle';
+
+  useEffect(() => {
+    onActiveRunChange(activeRunId !== null
+      ? { entryId, runId: activeRunId }
+      : null);
+  }, [activeRunId, entryId, onActiveRunChange]);
 
   const handleSend = async (): Promise<void> => {
     const sent = await session.sendQuestion(draft);

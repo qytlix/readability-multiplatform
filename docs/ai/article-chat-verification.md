@@ -100,7 +100,7 @@ error codes.
 | CHAT-03 | Passed | Review required | Schema, stores, transactions, recovery, attachment references |
 | CHAT-04 | Passed | Review required | Context budget, compression, cache, and article maps |
 | CHAT-05 | Passed | Review required | Streaming runtime, cancellation, retry, IPC, usage, logging, lifecycle |
-| CHAT-06 | Not started | Not started | Layout and base UI |
+| CHAT-06 | Passed | Review required | Four-state layout restoration, Reader entry, persisted messages, composer, event isolation and responsive panel |
 | CHAT-07 | Not started | Not started | Text/PDF attachments |
 | CHAT-08 | Not started | Not started | Images and clipboard |
 | CHAT-09 | Not started | Not started | Selection questions |
