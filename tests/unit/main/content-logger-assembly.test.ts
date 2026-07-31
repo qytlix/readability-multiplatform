@@ -17,6 +17,7 @@ const capturedLoggers = vi.hoisted(() => ({
   summary: undefined as unknown,
   translation: undefined as unknown,
   inlineTranslation: undefined as unknown,
+  chat: undefined as unknown,
 }));
 
 vi.mock('electron', () => ({ safeStorage: {} }));
@@ -116,6 +117,36 @@ vi.mock('../../../src/main/ai/services/InlineTranslationService', () => ({
     }
   },
 }));
+vi.mock('../../../src/main/ai/services/ChatService', () => ({
+  ChatService: class {
+    constructor(...arguments_: unknown[]) {
+      capturedLoggers.chat = arguments_[8];
+    }
+
+    reconcileInterruptedRuns(): void {
+      return undefined;
+    }
+  },
+}));
+vi.mock('../../../src/main/ai/stores/ChatStore', () => ({
+  ChatStore: class {},
+}));
+vi.mock('../../../src/main/ai/services/ChatAttachmentService', () => ({
+  ChatAttachmentService: class {
+    startCleanupSchedule(): void {
+      return undefined;
+    }
+  },
+}));
+vi.mock('../../../src/main/ai/stores/ArticleContextCacheStore', () => ({
+  ArticleContextCacheStore: class {},
+}));
+vi.mock('../../../src/main/ai/services/ArticleContextService', () => ({
+  ArticleContextService: class {},
+}));
+vi.mock('../../../src/main/ai/services/ProviderArticleSegmentAnalyzer', () => ({
+  ProviderArticleSegmentAnalyzer: class {},
+}));
 vi.mock('../../../src/main/ai/stores/TranslationStore', () => ({
   TranslationStore: class {
     reconcileInterruptedRuns(): void {
@@ -140,6 +171,7 @@ describe('Operation logger service assembly', () => {
     capturedLoggers.summary = undefined;
     capturedLoggers.translation = undefined;
     capturedLoggers.inlineTranslation = undefined;
+    capturedLoggers.chat = undefined;
   });
 
   it('passes the same Main operation logger to Feed, Content, OPML, Provider, and Translation services', () => {
@@ -164,5 +196,6 @@ describe('Operation logger service assembly', () => {
     expect(capturedLoggers.summary).toBe(operationLogger);
     expect(capturedLoggers.translation).toBe(operationLogger);
     expect(capturedLoggers.inlineTranslation).toBe(operationLogger);
+    expect(capturedLoggers.chat).toBe(operationLogger);
   });
 });

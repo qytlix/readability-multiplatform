@@ -321,8 +321,8 @@ describe('Translation toolbar continuity', () => {
     const aiTooltips = Array.from(toolbarTarget.querySelectorAll<HTMLElement>(
       '.entry-detail-ai-actions > .article-action-tooltip',
     )).map((tooltip) => tooltip.getAttribute('data-tooltip'));
-    expect(aiButtons).toHaveLength(3);
-    expect(aiTooltips).toEqual(['总结', '翻译', '标签']);
+    expect(aiButtons).toHaveLength(4);
+    expect(aiTooltips).toEqual(['总结', '翻译', '标签', '问答']);
     aiButtons.forEach((button) => {
       expect(button.closest('.article-action-tooltip')).not.toBeNull();
       expect(button.hasAttribute('title')).toBe(false);

@@ -1,0 +1,55 @@
+import type { IPCResult } from './feed.ipc';
+import type {
+  ChatAttachmentPickRequest,
+  ChatAttachmentPickResponse,
+  ChatAttachmentPreviewRequest,
+  ChatAttachmentPreviewResponse,
+  ChatAttachmentRemoveRequest,
+  ChatAttachmentRemoveResponse,
+  ChatClipboardImageImportRequest,
+  ChatClipboardImageImportResponse,
+  ChatCancelRequest,
+  ChatGetRequest,
+  ChatRegenerateRequest,
+  ChatRetryRequest,
+  ChatRunResponse,
+  ChatSendRequest,
+  ChatState,
+  ChatStreamEvent,
+} from './chat.types';
+
+export const CHAT_IPC_CHANNELS = {
+  get: 'chat:get',
+  send: 'chat:send',
+  cancel: 'chat:cancel',
+  retry: 'chat:retry',
+  regenerate: 'chat:regenerate',
+  attachmentPick: 'chat:attachment-pick',
+  attachmentRemove: 'chat:attachment-remove',
+  attachmentImportClipboardImage: 'chat:attachment-import-clipboard-image',
+  attachmentPreview: 'chat:attachment-preview',
+  stream: 'chat:stream',
+} as const;
+
+export interface ChatAPI {
+  get(request: ChatGetRequest): Promise<IPCResult<ChatState>>;
+  send(request: ChatSendRequest): Promise<IPCResult<ChatRunResponse>>;
+  cancel(request: ChatCancelRequest): Promise<IPCResult<void>>;
+  retry(request: ChatRetryRequest): Promise<IPCResult<ChatRunResponse>>;
+  regenerate(
+    request: ChatRegenerateRequest,
+  ): Promise<IPCResult<ChatRunResponse>>;
+  pickAttachments(
+    request: ChatAttachmentPickRequest,
+  ): Promise<IPCResult<ChatAttachmentPickResponse>>;
+  removeAttachment(
+    request: ChatAttachmentRemoveRequest,
+  ): Promise<IPCResult<ChatAttachmentRemoveResponse>>;
+  importClipboardImage(
+    request: ChatClipboardImageImportRequest,
+  ): Promise<IPCResult<ChatClipboardImageImportResponse>>;
+  previewAttachment(
+    request: ChatAttachmentPreviewRequest,
+  ): Promise<IPCResult<ChatAttachmentPreviewResponse>>;
+  onEvent(listener: (event: ChatStreamEvent) => void): () => void;
+}

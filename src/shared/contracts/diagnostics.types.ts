@@ -77,6 +77,8 @@ export interface DiagnosticLogContext {
   inputCharacters?: number;
   outputCharacters?: number;
   durationMs?: number;
+  attemptCount?: number;
+  contextMode?: 'full' | 'history-compressed' | 'article-map';
   downloadedImageCount?: number;
   failedImageCount?: number;
   httpStatus?: number;

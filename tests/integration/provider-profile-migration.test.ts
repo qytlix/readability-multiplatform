@@ -1,9 +1,14 @@
 import Database from 'better-sqlite3';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { DatabaseManager } from '../../src/main/database/DatabaseManager';
 import { MIGRATION_006 } from '../../src/main/migrations/006_create_ai_profiles';
 import { MIGRATION_012 } from '../../src/main/migrations/012_expand_ai_providers';
 import { MIGRATION_020 } from '../../src/main/migrations/020_add_provider_task_models';
 import { MIGRATION_021 } from '../../src/main/migrations/021_add_translation_provider_route';
+import { MIGRATION_026 } from '../../src/main/migrations/026_add_chat_provider_route';
 
 describe('provider profile migration 012', () => {
   it('preserves IDs, secret references, and foreign keys while classifying legacy profiles', () => {
@@ -110,6 +115,95 @@ describe('provider profile migration 021', () => {
       });
     } finally {
       db.close();
+    }
+  });
+});
+
+describe('provider profile migration 026', () => {
+  it('inherits the Summary route without enabling image input implicitly', () => {
+    const db = new Database(':memory:');
+    try {
+      db.exec(MIGRATION_006);
+      db.exec(MIGRATION_012);
+      db.exec(MIGRATION_020);
+      db.exec(MIGRATION_021);
+      db.prepare(`
+        INSERT INTO ai_provider_profile
+          (providerKind, providerPreset, baseUrl, model, summaryModel,
+           translationProviderPreset, translationBaseUrl, translationModel,
+           apiKeyRef, translationApiKeyRef, isActive, createdAt, updatedAt)
+        VALUES (
+          'openai-compatible', 'openrouter', ?, ?, ?,
+          'deepseek', ?, ?, 'summary-secret', 'translation-secret', 1, ?, ?
+        )
+      `).run(
+        'https://openrouter.ai/api/v1',
+        'openai/gpt-5.4-mini',
+        'openai/gpt-5.4-mini',
+        'https://api.deepseek.com',
+        'deepseek-v4-flash',
+        'created',
+        'updated',
+      );
+
+      db.transaction(() => db.exec(MIGRATION_026))();
+
+      expect(db.prepare(`
+        SELECT chatProviderPreset, chatBaseUrl, chatModel, chatApiKeyRef,
+               chatSupportsImages
+        FROM ai_provider_profile
+      `).get()).toEqual({
+        chatProviderPreset: 'openrouter',
+        chatBaseUrl: 'https://openrouter.ai/api/v1',
+        chatModel: 'openai/gpt-5.4-mini',
+        chatApiKeyRef: 'summary-secret',
+        chatSupportsImages: 0,
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('recognizes the original 022 migration identity after it was renumbered', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'shale-chat-provider-'));
+    const databasePath = path.join(directory, 'shale.db');
+    const initial = new DatabaseManager(databasePath);
+
+    try {
+      initial.runMigrations();
+      initial.getDb().prepare(`
+        UPDATE _migrations
+        SET filename = '022_add_chat_provider_route'
+        WHERE filename = '026_add_chat_provider_route'
+      `).run();
+    } finally {
+      initial.close();
+    }
+
+    const upgraded = new DatabaseManager(databasePath);
+    try {
+      expect(() => upgraded.runMigrations()).not.toThrow();
+      expect(upgraded.getDb().prepare(`
+        SELECT filename
+        FROM _migrations
+        WHERE filename IN (
+          '022_add_chat_provider_route',
+          '026_add_chat_provider_route'
+        )
+        ORDER BY filename
+      `).all()).toEqual([
+        { filename: '022_add_chat_provider_route' },
+        { filename: '026_add_chat_provider_route' },
+      ]);
+
+      const providerColumns = upgraded.getDb()
+        .pragma('table_info(ai_provider_profile)') as Array<{ name: string }>;
+      const chatColumns = providerColumns.filter(({ name }) =>
+        name.startsWith('chat'));
+      expect(chatColumns).toHaveLength(5);
+    } finally {
+      upgraded.close();
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });

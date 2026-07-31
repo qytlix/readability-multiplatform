@@ -52,6 +52,54 @@ describe('AnthropicProvider', () => {
     });
   });
 
+  it('maps the system instruction and native image source blocks', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response([
+      'event: content_block_delta\n',
+      'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Visible"}}\n\n',
+    ].join(''), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const chunks: string[] = [];
+    for await (const chunk of new AnthropicProvider().stream({
+      ...request(),
+      prompt: '',
+      systemInstruction: 'Use the supplied article.',
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'Earlier question' }] },
+        { role: 'assistant', content: [{ type: 'text', text: 'Earlier answer' }] },
+        {
+          role: 'user',
+          content: [{
+            type: 'image',
+            mimeType: 'image/jpeg',
+            bytes: new Uint8Array([255, 216, 255]),
+          }],
+        },
+      ],
+    })) chunks.push(chunk);
+
+    expect(chunks).toEqual(['Visible']);
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      system: 'Use the supplied article.',
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'Earlier question' }] },
+        { role: 'assistant', content: [{ type: 'text', text: 'Earlier answer' }] },
+        {
+          role: 'user',
+          content: [{
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: 'image/jpeg',
+              data: '/9j/',
+            },
+          }],
+        },
+      ],
+    });
+  });
+
   it('handles an event split across transport chunks', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(streamingResponse([
       'event: content_block_delta\n',

@@ -78,6 +78,7 @@ const CONTEXT_FIELD_TYPES = {
   convertDurationMs: 'number',
   persistDurationMs: 'number',
   attemptCount: 'number',
+  contextMode: 'chat-context-mode',
   downloadedImageCount: 'number',
   failedImageCount: 'number',
   httpStatus: 'number',
@@ -177,6 +178,7 @@ export interface StructuredLogContext {
   convertDurationMs?: number;
   persistDurationMs?: number;
   attemptCount?: number;
+  contextMode?: 'full' | 'history-compressed' | 'article-map';
   downloadedImageCount?: number;
   failedImageCount?: number;
   httpStatus?: number;
@@ -655,6 +657,13 @@ function sanitizeContextValue(
   if (expectedType === 'compensation-protocol') {
     return value === 'text-slots' ? value : undefined;
   }
+  if (expectedType === 'chat-context-mode') {
+    return value === 'full'
+      || value === 'history-compressed'
+      || value === 'article-map'
+      ? value
+      : undefined;
+  }
   if (expectedType === 'boolean') {
     return typeof value === 'boolean' ? value : undefined;
   }
@@ -825,6 +834,18 @@ function assignContextField(
       return;
     case 'durationMs':
       if (typeof value === 'number') context.durationMs = value;
+      return;
+    case 'attemptCount':
+      if (typeof value === 'number') context.attemptCount = value;
+      return;
+    case 'contextMode':
+      if (
+        value === 'full'
+        || value === 'history-compressed'
+        || value === 'article-map'
+      ) {
+        context.contextMode = value;
+      }
       return;
     case 'downloadedImageCount':
       if (typeof value === 'number') context.downloadedImageCount = value;

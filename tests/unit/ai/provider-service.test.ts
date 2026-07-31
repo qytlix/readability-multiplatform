@@ -6,6 +6,7 @@ import { ProviderProfileStore } from '../../../src/main/ai/stores/ProviderProfil
 import { ProviderService } from '../../../src/main/ai/services/ProviderService';
 import { SecretStore, type SafeStorageBackend } from '../../../src/main/ai/stores/SecretStore';
 import type { SummaryProvider } from '../../../src/main/ai/provider/SummaryProvider';
+import type { ProviderModelCatalog } from '../../../src/main/ai/provider/ProviderModelCatalog';
 import { DatabaseManager } from '../../../src/main/database/DatabaseManager';
 
 const temporaryDirectories: string[] = [];
@@ -23,11 +24,15 @@ const encryptedBackend: SafeStorageBackend = {
   getSelectedStorageBackend: () => 'gnome_libsecret',
 };
 
-function createService(backend: SafeStorageBackend = encryptedBackend): {
+function createService(
+  backend: SafeStorageBackend = encryptedBackend,
+  modelCatalog?: ProviderModelCatalog,
+): {
   databaseManager: DatabaseManager;
   databasePath: string;
   service: ProviderService;
   requestProvider: SummaryProvider;
+  profileStore: ProviderProfileStore;
   secretFilePath: string;
 } {
   const directory = mkdtempSync(path.join(tmpdir(), 'shale-provider-test-'));
@@ -42,15 +47,62 @@ function createService(backend: SafeStorageBackend = encryptedBackend): {
     },
     testConnection: vi.fn().mockResolvedValue(undefined),
   };
+  const profileStore = new ProviderProfileStore(databaseManager.getDb());
   const service = new ProviderService(
-    new ProviderProfileStore(databaseManager.getDb()),
+    profileStore,
     new SecretStore(secretFilePath, backend, 'linux'),
     requestProvider,
+    undefined,
+    modelCatalog,
   );
-  return { databaseManager, databasePath, service, requestProvider, secretFilePath };
+  return {
+    databaseManager,
+    databasePath,
+    service,
+    requestProvider,
+    profileStore,
+    secretFilePath,
+  };
 }
 
 describe('ProviderService', () => {
+  it('lists chat models with the saved chat credential without exposing the key', async () => {
+    const modelCatalog = {
+      list: vi.fn().mockResolvedValue([
+        { id: 'gpt-5.4' },
+        { id: 'gpt-5.4-mini' },
+      ]),
+    } as unknown as ProviderModelCatalog;
+    const { databaseManager, service } = createService(
+      encryptedBackend,
+      modelCatalog,
+    );
+
+    try {
+      service.save({
+        providerKind: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5.4-mini',
+        apiKey: 'sk-chat-catalog-key',
+      });
+
+      await expect(service.listChatModels()).resolves.toEqual({
+        providerKind: 'openai',
+        models: [
+          { id: 'gpt-5.4' },
+          { id: 'gpt-5.4-mini' },
+        ],
+      });
+      expect(modelCatalog.list).toHaveBeenCalledWith({
+        providerKind: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        apiKey: 'sk-chat-catalog-key',
+      });
+    } finally {
+      databaseManager.close();
+    }
+  });
+
   it('reloads a securely persisted GPT configuration after reopening the app', async () => {
     const {
       databaseManager,
@@ -174,6 +226,180 @@ describe('ProviderService', () => {
           apiKey: 'sk-translation-key',
         }),
       );
+    } finally {
+      databaseManager.close();
+    }
+  });
+
+  it('tests only the configured Chat route on demand', async () => {
+    const { databaseManager, service, requestProvider } = createService();
+
+    try {
+      service.save({
+        summary: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'summary-model',
+          apiKey: 'sk-summary',
+        },
+        translation: {
+          providerKind: 'deepseek',
+          baseUrl: 'https://api.deepseek.com',
+          model: 'translation-model',
+          apiKey: 'sk-translation',
+        },
+        tag: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'tag-model',
+          apiKey: 'sk-tag',
+        },
+        chat: {
+          providerKind: 'anthropic',
+          baseUrl: 'https://api.anthropic.com',
+          model: 'claude-chat-model',
+          apiKey: 'sk-chat',
+          supportsImages: true,
+        },
+      });
+
+      await expect(service.testChatConnection()).resolves.toEqual({
+        ok: true,
+        message: 'AI Chat Provider connection succeeded.',
+      });
+      expect(requestProvider.testConnection).toHaveBeenCalledTimes(1);
+      expect(requestProvider.testConnection).toHaveBeenCalledWith({
+        providerKind: 'anthropic',
+        baseUrl: 'https://api.anthropic.com',
+        model: 'claude-chat-model',
+        apiKey: 'sk-chat',
+      });
+    } finally {
+      databaseManager.close();
+    }
+  });
+
+  it('tests image capability with an in-memory one-pixel image', async () => {
+    const { databaseManager, service, requestProvider } = createService();
+    const testImageConnection = vi.fn().mockResolvedValue(undefined);
+    requestProvider.testImageConnection = testImageConnection;
+
+    try {
+      service.save({
+        summary: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'summary-model',
+          apiKey: 'sk-shared',
+        },
+        translation: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'translation-model',
+          apiKey: 'sk-shared',
+        },
+        tag: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'tag-model',
+          apiKey: 'sk-shared',
+        },
+        chat: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'vision-model',
+          apiKey: 'sk-shared',
+          supportsImages: true,
+        },
+      });
+
+      await expect(service.testChatImageCapability()).resolves.toEqual({
+        ok: true,
+        message: 'The AI Chat model accepted image input.',
+      });
+      expect(testImageConnection).toHaveBeenCalledOnce();
+      expect(testImageConnection).toHaveBeenCalledWith(expect.objectContaining({
+        model: 'vision-model',
+        mimeType: 'image/png',
+        bytes: expect.any(Uint8Array),
+      }));
+    } finally {
+      databaseManager.close();
+    }
+  });
+
+  it('reuses identical secrets across task routes and retains referenced secrets', () => {
+    const { databaseManager, service, profileStore } = createService();
+
+    try {
+      service.save({
+        summary: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'summary-model',
+          apiKey: 'sk-shared',
+        },
+        translation: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'translation-model',
+          apiKey: 'sk-shared',
+        },
+        tag: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'tag-model',
+          apiKey: 'sk-shared',
+        },
+        chat: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'chat-model',
+          apiKey: 'sk-shared',
+          supportsImages: true,
+        },
+      });
+
+      const first = profileStore.findActiveWithSecret();
+      expect(first).toBeDefined();
+      expect(new Set([
+        first?.apiKeyRef,
+        first?.translationApiKeyRef,
+        first?.tagApiKeyRef,
+        first?.chatApiKeyRef,
+      ]).size).toBe(1);
+
+      service.save({
+        summary: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'summary-model',
+          apiKey: 'sk-summary-new',
+        },
+        translation: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'translation-model',
+        },
+        tag: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'tag-model',
+        },
+        chat: {
+          providerKind: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'chat-model',
+          supportsImages: true,
+        },
+      });
+
+      const second = profileStore.findActiveWithSecret();
+      expect(second?.apiKeyRef).not.toBe(first?.apiKeyRef);
+      expect(second?.translationApiKeyRef).toBe(first?.translationApiKeyRef);
+      expect(second?.tagApiKeyRef).toBe(first?.tagApiKeyRef);
+      expect(second?.chatApiKeyRef).toBe(first?.chatApiKeyRef);
+      expect(second?.chatSupportsImages).toBe(true);
     } finally {
       databaseManager.close();
     }

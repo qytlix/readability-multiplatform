@@ -10,6 +10,25 @@ afterEach(() => {
 });
 
 describe('ProviderTransport', () => {
+  it('preserves a bounded Retry-After delay from retryable HTTP responses', async () => {
+    const scope = createProviderAbortScope();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {
+      status: 503,
+      headers: { 'retry-after': '4' },
+    })));
+
+    await expect(fetchProviderResponse(
+      'https://provider.example',
+      {},
+      scope,
+    )).rejects.toMatchObject({
+      code: 'SUMMARY_PROVIDER_REQUEST_FAILED',
+      retryable: true,
+      retryAfterMs: 4_000,
+    });
+    scope.dispose();
+  });
+
   it('maps caller cancellation to the stable interrupted error', async () => {
     const caller = new AbortController();
     const scope = createProviderAbortScope(caller.signal);
