@@ -6,12 +6,20 @@ import type {
 import type { ShaleError } from '../../../shared/contracts/feed.ipc';
 import type {
   TranslationResult,
+  TranslationMode,
+  TranslationResultVariant,
   TranslationRunStatus,
   TranslationSegment,
   TranslationSegmentStatus,
   TranslationSourceLanguage,
   TranslationTargetLanguage,
   TranslationTerminologyMatch,
+} from '../../../shared/contracts/translation.types';
+import {
+  DEEP_TRANSLATION_MODE,
+  LEGACY_TRANSLATION_VARIANT,
+  STANDARD_TRANSLATION_MODE,
+  TRANSLATION_MODES,
 } from '../../../shared/contracts/translation.types';
 import { TRANSLATION_ERROR_CODES } from '../../../shared/errors/translation.errors';
 
@@ -27,6 +35,7 @@ interface TranslationResultRow {
   expertId: string;
   expertContentHash: string;
   smartContextEnabled: number;
+  translationVariant: string;
   contextPromptVersion: string;
   contextWarningCode: string | null;
   contextWarningMessage: string | null;
@@ -54,6 +63,15 @@ interface TranslationSegmentRow {
   errorMessage: string | null;
 }
 
+export type DeepTranslationCheckpointStage = 'draft' | 'review' | 'rewrite';
+
+export interface DeepTranslationBatchCheckpoint {
+  batchKey: string;
+  stage: DeepTranslationCheckpointStage;
+  draftJson?: string;
+  reviewJson?: string;
+}
+
 export interface CreateTranslationRunParams {
   entryId: number;
   providerProfileId: number;
@@ -66,6 +84,7 @@ export interface CreateTranslationRunParams {
   expertId?: string;
   expertContentHash?: string;
   smartContextEnabled?: boolean;
+  translationVariant?: TranslationMode;
   contextPromptVersion?: string;
   segments: ContentSegment[];
 }
@@ -74,6 +93,50 @@ export class TranslationStore {
   constructor(private readonly db: Database.Database) {}
 
   findCompatibleResult(
+    entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
+    targetLanguage: TranslationTargetLanguage,
+    sourceContentHash: string,
+    segmenterVersion: string,
+    promptVersion: string,
+    terminologyPackVersion: string,
+    expertId = 'none',
+    expertContentHash = 'none',
+    smartContextEnabled = false,
+    contextPromptVersion = 'none',
+    translationVariant: TranslationMode = STANDARD_TRANSLATION_MODE,
+  ): TranslationResult | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM translation_result
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
+        AND sourceContentHash = ? AND segmenterVersion = ?
+        AND promptVersion = ?
+        AND terminologyPackVersion = ?
+        AND expertId = ?
+        AND expertContentHash = ?
+        AND smartContextEnabled = ?
+        AND contextPromptVersion = ?
+        AND translationVariant = ?
+      ORDER BY updatedAt DESC, id DESC
+      LIMIT 1
+    `).get(
+      entryId,
+      sourceLanguage,
+      targetLanguage,
+      sourceContentHash,
+      segmenterVersion,
+      promptVersion,
+      terminologyPackVersion,
+      expertId,
+      expertContentHash,
+      smartContextEnabled ? 1 : 0,
+      contextPromptVersion,
+      translationVariant,
+    ) as TranslationResultRow | undefined;
+    return row ? this.toResult(row) : undefined;
+  }
+
+  findCompatibleProductResult(
     entryId: number,
     sourceLanguage: TranslationSourceLanguage,
     targetLanguage: TranslationTargetLanguage,
@@ -96,6 +159,7 @@ export class TranslationStore {
         AND expertContentHash = ?
         AND smartContextEnabled = ?
         AND contextPromptVersion = ?
+        AND translationVariant IN ('standard', 'deep')
       ORDER BY updatedAt DESC, id DESC
       LIMIT 1
     `).get(
@@ -126,6 +190,7 @@ export class TranslationStore {
     expertContentHash = 'none',
     smartContextEnabled = false,
     contextPromptVersion = 'none',
+    translationVariant: TranslationMode = STANDARD_TRANSLATION_MODE,
   ): TranslationResult | undefined {
     const row = this.db.prepare(`
       SELECT * FROM translation_result
@@ -137,6 +202,51 @@ export class TranslationStore {
         AND expertContentHash = ?
         AND smartContextEnabled = ?
         AND contextPromptVersion = ?
+        AND translationVariant = ?
+        AND status = 'succeeded' AND isActive = 1
+      ORDER BY completedAt DESC, id DESC
+      LIMIT 1
+    `).get(
+      entryId,
+      sourceLanguage,
+      targetLanguage,
+      sourceContentHash,
+      segmenterVersion,
+      promptVersion,
+      terminologyPackVersion,
+      expertId,
+      expertContentHash,
+      smartContextEnabled ? 1 : 0,
+      contextPromptVersion,
+      translationVariant,
+    ) as TranslationResultRow | undefined;
+    return row ? this.toResult(row) : undefined;
+  }
+
+  findActiveCompatibleProductResult(
+    entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
+    targetLanguage: TranslationTargetLanguage,
+    sourceContentHash: string,
+    segmenterVersion: string,
+    promptVersion: string,
+    terminologyPackVersion: string,
+    expertId = 'none',
+    expertContentHash = 'none',
+    smartContextEnabled = false,
+    contextPromptVersion = 'none',
+  ): TranslationResult | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM translation_result
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
+        AND sourceContentHash = ? AND segmenterVersion = ?
+        AND promptVersion = ?
+        AND terminologyPackVersion = ?
+        AND expertId = ?
+        AND expertContentHash = ?
+        AND smartContextEnabled = ?
+        AND contextPromptVersion = ?
+        AND translationVariant IN ('standard', 'deep')
         AND status = 'succeeded' AND isActive = 1
       ORDER BY completedAt DESC, id DESC
       LIMIT 1
@@ -162,13 +272,92 @@ export class TranslationStore {
     targetLanguage: TranslationTargetLanguage,
     sourceContentHash: string,
     segmenterVersion: string,
+    translationVariant: TranslationMode = STANDARD_TRANSLATION_MODE,
   ): TranslationResult | undefined {
     const row = this.db.prepare(`
       SELECT * FROM translation_result
       WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
         AND sourceContentHash = ? AND segmenterVersion = ?
+        AND translationVariant = ?
         AND status = 'succeeded' AND isActive = 1
       ORDER BY completedAt DESC, id DESC
+      LIMIT 1
+    `).get(
+      entryId,
+      sourceLanguage,
+      targetLanguage,
+      sourceContentHash,
+      segmenterVersion,
+      translationVariant,
+    ) as TranslationResultRow | undefined;
+    return row ? this.toResult(row) : undefined;
+  }
+
+  findLatestActiveProductResult(
+    entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
+    targetLanguage: TranslationTargetLanguage,
+    sourceContentHash: string,
+    segmenterVersion: string,
+  ): TranslationResult | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM translation_result
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
+        AND sourceContentHash = ? AND segmenterVersion = ?
+        AND translationVariant IN ('standard', 'deep')
+        AND status = 'succeeded' AND isActive = 1
+      ORDER BY completedAt DESC, id DESC
+      LIMIT 1
+    `).get(
+      entryId,
+      sourceLanguage,
+      targetLanguage,
+      sourceContentHash,
+      segmenterVersion,
+    ) as TranslationResultRow | undefined;
+    return row ? this.toResult(row) : undefined;
+  }
+
+  /**
+   * Finds the product-mode run that still owns the current task lifecycle.
+   * This is independent of the settings used for the next run, so a settings
+   * change cannot hide or retarget an in-flight or paused task.
+   */
+  findLatestPendingProductResult(
+    entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
+    targetLanguage: TranslationTargetLanguage,
+    sourceContentHash: string,
+    segmenterVersion: string,
+  ): TranslationResult | undefined {
+    const latest = this.findLatestProductResult(
+      entryId,
+      sourceLanguage,
+      targetLanguage,
+      sourceContentHash,
+      segmenterVersion,
+    );
+    return latest?.status === 'running'
+      || (latest?.status === 'failed'
+        && latest.translationVariant === STANDARD_TRANSLATION_MODE
+        && latest.error?.code === TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED)
+      ? latest
+      : undefined;
+  }
+
+  findLatestProductResult(
+    entryId: number,
+    sourceLanguage: TranslationSourceLanguage,
+    targetLanguage: TranslationTargetLanguage,
+    sourceContentHash: string,
+    segmenterVersion: string,
+  ): TranslationResult | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM translation_result
+      WHERE entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
+        AND sourceContentHash = ? AND segmenterVersion = ?
+        AND translationVariant IN ('standard', 'deep')
+      ORDER BY id DESC
       LIMIT 1
     `).get(
       entryId,
@@ -200,9 +389,10 @@ export class TranslationStore {
         INSERT INTO translation_result
           (entryId, providerProfileId, sourceLanguage, targetLanguage, sourceContentHash,
            segmenterVersion, promptVersion, terminologyPackVersion,
-           expertId, expertContentHash, smartContextEnabled, contextPromptVersion,
+           expertId, expertContentHash, smartContextEnabled, translationVariant,
+           contextPromptVersion,
            status, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
       `).run(
         params.entryId,
         params.providerProfileId,
@@ -215,6 +405,7 @@ export class TranslationStore {
         params.expertId ?? 'none',
         params.expertContentHash ?? 'none',
         params.smartContextEnabled ? 1 : 0,
+        params.translationVariant ?? STANDARD_TRANSLATION_MODE,
         params.contextPromptVersion ?? 'none',
         now,
         now,
@@ -249,6 +440,12 @@ export class TranslationStore {
   resumeRun(runId: number, providerProfileId?: number): TranslationResult {
     const now = new Date().toISOString();
     const resume = this.db.transaction(() => {
+      const run = this.db.prepare(`
+        SELECT translationVariant FROM translation_result WHERE id = ?
+      `).get(runId) as Pick<TranslationResultRow, 'translationVariant'> | undefined;
+      if (run?.translationVariant === DEEP_TRANSLATION_MODE) {
+        throw new Error('Deep Translation runs cannot be resumed.');
+      }
       this.db.prepare(`
         UPDATE translation_result
         SET status = 'running', errorCode = NULL, errorMessage = NULL,
@@ -321,13 +518,15 @@ export class TranslationStore {
       const run = this.db.prepare(`
         SELECT entryId, sourceLanguage, targetLanguage, sourceContentHash,
                segmenterVersion, promptVersion, terminologyPackVersion,
-               expertId, expertContentHash, smartContextEnabled, contextPromptVersion
+               expertId, expertContentHash, smartContextEnabled, translationVariant,
+               contextPromptVersion
         FROM translation_result
         WHERE id = ? AND status = 'running'
       `).get(runId) as Pick<TranslationResultRow,
         'entryId' | 'sourceLanguage' | 'targetLanguage' | 'sourceContentHash'
         | 'segmenterVersion' | 'promptVersion' | 'terminologyPackVersion'
-        | 'expertId' | 'expertContentHash' | 'smartContextEnabled' | 'contextPromptVersion'
+        | 'expertId' | 'expertContentHash' | 'smartContextEnabled' | 'translationVariant'
+        | 'contextPromptVersion'
       > | undefined;
       if (!run) throw new Error('Translation run is not available for completion.');
 
@@ -348,7 +547,8 @@ export class TranslationStore {
           AND sourceContentHash = ? AND segmenterVersion = ?
           AND promptVersion = ? AND terminologyPackVersion = ?
           AND expertId = ? AND expertContentHash = ?
-          AND smartContextEnabled = ? AND contextPromptVersion = ?
+          AND smartContextEnabled = ? AND translationVariant = ?
+          AND contextPromptVersion = ?
           AND isActive = 1
       `).run(
         runId,
@@ -362,6 +562,7 @@ export class TranslationStore {
         run.expertId,
         run.expertContentHash,
         run.smartContextEnabled,
+        run.translationVariant,
         run.contextPromptVersion,
       );
       this.db.prepare(`
@@ -371,6 +572,23 @@ export class TranslationStore {
             errorRetryable = NULL, completedAt = ?, updatedAt = ?
         WHERE id = ? AND status = 'running'
       `).run(now, now, runId);
+      this.db.prepare(`
+        DELETE FROM translation_deep_batch_checkpoint
+        WHERE translationResultId IN (
+          SELECT id FROM translation_result
+          WHERE id <= ?
+            AND entryId = ? AND sourceLanguage = ? AND targetLanguage = ?
+            AND sourceContentHash = ? AND segmenterVersion = ?
+            AND translationVariant IN ('standard', 'deep')
+        )
+      `).run(
+        runId,
+        run.entryId,
+        run.sourceLanguage,
+        run.targetLanguage,
+        run.sourceContentHash,
+        run.segmenterVersion,
+      );
     });
     activate();
     const result = this.findById(runId);
@@ -402,18 +620,35 @@ export class TranslationStore {
   ): void {
     const now = new Date().toISOString();
     const persist = this.db.transaction(() => {
-      this.db.prepare(`
+      const run = this.db.prepare(`
+        SELECT translationVariant FROM translation_result WHERE id = ?
+      `).get(runId) as Pick<TranslationResultRow, 'translationVariant'> | undefined;
+      const failed = this.db.prepare(`
         UPDATE translation_result
-        SET status = 'failed', errorCode = ?, errorMessage = ?, errorRetryable = ?,
+        SET status = 'failed', isActive = 0,
+            errorCode = ?, errorMessage = ?, errorRetryable = ?,
             completedAt = ?, updatedAt = ?
         WHERE id = ? AND status = 'running'
       `).run(error.code, error.message, error.retryable ? 1 : 0, now, now, runId);
-      if (sourceSegmentId) {
+      if (failed.changes > 0 && sourceSegmentId) {
         this.db.prepare(`
           UPDATE translation_segment
           SET status = 'failed', errorCode = ?, errorMessage = ?, updatedAt = ?
           WHERE translationResultId = ? AND sourceSegmentId = ? AND status = 'pending'
         `).run(error.code, error.message, now, runId, sourceSegmentId);
+      }
+      if (failed.changes > 0 && run?.translationVariant === DEEP_TRANSLATION_MODE) {
+        this.db.prepare(`
+          UPDATE translation_segment
+          SET status = 'pending', translatedText = NULL, translatedHtml = NULL,
+              terminologyMatchesJson = NULL, errorCode = NULL, errorMessage = NULL,
+              updatedAt = ?
+          WHERE translationResultId = ?
+        `).run(now, runId);
+        this.db.prepare(`
+          DELETE FROM translation_deep_batch_checkpoint
+          WHERE translationResultId = ?
+        `).run(runId);
       }
     });
     persist();
@@ -427,19 +662,174 @@ export class TranslationStore {
   }
 
   reconcileInterruptedRuns(): number {
+    return this.reconcileInterruptedRunsWithDiagnostics().interruptedCount;
+  }
+
+  reconcileInterruptedRunsWithDiagnostics(): {
+    interruptedCount: number;
+    canonicalCorrectionCount: number;
+  } {
     const now = new Date().toISOString();
-    const result = this.db.prepare(`
-      UPDATE translation_result
-      SET status = 'failed', errorCode = ?, errorMessage = ?, errorRetryable = 1,
-          completedAt = ?, updatedAt = ?
-      WHERE status = 'running'
+    const reconcile = this.db.transaction(() => {
+      const failedDeepCorrections = this.db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM translation_result AS result
+        WHERE result.translationVariant = ?
+          AND result.status = 'failed'
+          AND (
+            result.errorCode = ?
+            OR result.isActive != 0
+            OR EXISTS (
+              SELECT 1 FROM translation_deep_batch_checkpoint AS checkpoint
+              WHERE checkpoint.translationResultId = result.id
+            )
+            OR EXISTS (
+              SELECT 1 FROM translation_segment AS segment
+              WHERE segment.translationResultId = result.id
+                AND (
+                  segment.status != 'pending'
+                  OR segment.translatedText IS NOT NULL
+                  OR segment.translatedHtml IS NOT NULL
+                  OR segment.terminologyMatchesJson IS NOT NULL
+                  OR segment.errorCode IS NOT NULL
+                  OR segment.errorMessage IS NOT NULL
+                )
+            )
+          )
+      `).get(
+        DEEP_TRANSLATION_MODE,
+        TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED,
+      ) as { count: number };
+      const interrupted = this.db.prepare(`
+        UPDATE translation_result
+        SET status = 'failed', isActive = 0,
+            errorCode = ?, errorMessage = ?, errorRetryable = 1,
+            completedAt = ?, updatedAt = ?
+        WHERE status = 'running'
+      `).run(
+        TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
+        'Translation generation was interrupted before completion.',
+        now,
+        now,
+      );
+      const succeededCorrections = this.db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM translation_result AS result
+        WHERE result.status = 'succeeded'
+          AND (
+            result.errorCode IS NOT NULL
+            OR result.errorMessage IS NOT NULL
+            OR result.errorRetryable IS NOT NULL
+            OR result.completedAt IS NULL
+            OR EXISTS (
+              SELECT 1 FROM translation_deep_batch_checkpoint AS checkpoint
+              WHERE checkpoint.translationResultId = result.id
+            )
+          )
+      `).get() as { count: number };
+      this.db.prepare(`
+        UPDATE translation_result
+        SET isActive = 0,
+            errorCode = ?, errorMessage = ?, errorRetryable = 1,
+            completedAt = COALESCE(completedAt, ?), updatedAt = ?
+        WHERE translationVariant = ?
+          AND status = 'failed'
+          AND errorCode = ?
+      `).run(
+        TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
+        'Deep Translation was interrupted and cannot be resumed.',
+        now,
+        now,
+        DEEP_TRANSLATION_MODE,
+        TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED,
+      );
+      // Older builds could leave pause/error metadata or deep checkpoints on a
+      // row that had already reached success. The terminal status is canonical.
+      this.db.prepare(`
+        UPDATE translation_result
+        SET errorCode = NULL, errorMessage = NULL, errorRetryable = NULL,
+            completedAt = COALESCE(completedAt, updatedAt)
+        WHERE status = 'succeeded'
+          AND (errorCode IS NOT NULL OR errorMessage IS NOT NULL OR errorRetryable IS NOT NULL
+               OR completedAt IS NULL)
+      `).run();
+      this.db.prepare(`
+        DELETE FROM translation_deep_batch_checkpoint
+        WHERE translationResultId IN (
+          SELECT id FROM translation_result
+          WHERE status = 'succeeded'
+             OR (status = 'failed' AND translationVariant = ?)
+        )
+      `).run(DEEP_TRANSLATION_MODE);
+      this.db.prepare(`
+        UPDATE translation_segment
+        SET status = 'pending', translatedText = NULL, translatedHtml = NULL,
+            terminologyMatchesJson = NULL, errorCode = NULL, errorMessage = NULL,
+            updatedAt = ?
+        WHERE translationResultId IN (
+          SELECT id FROM translation_result
+          WHERE status = 'failed' AND translationVariant = ?
+        )
+      `).run(now, DEEP_TRANSLATION_MODE);
+      return {
+        interruptedCount: interrupted.changes,
+        canonicalCorrectionCount: succeededCorrections.count + failedDeepCorrections.count,
+      };
+    });
+    return reconcile();
+  }
+
+  findDeepBatchCheckpoint(
+    runId: number,
+    batchKey: string,
+  ): DeepTranslationBatchCheckpoint | undefined {
+    const row = this.db.prepare(`
+      SELECT batchKey, stage, draftJson, reviewJson
+      FROM translation_deep_batch_checkpoint
+      WHERE translationResultId = ? AND batchKey = ?
+    `).get(runId, batchKey) as {
+      batchKey: string;
+      stage: DeepTranslationCheckpointStage;
+      draftJson: string | null;
+      reviewJson: string | null;
+    } | undefined;
+    if (!row) return undefined;
+    return {
+      batchKey: row.batchKey,
+      stage: row.stage,
+      ...(row.draftJson ? { draftJson: row.draftJson } : {}),
+      ...(row.reviewJson ? { reviewJson: row.reviewJson } : {}),
+    };
+  }
+
+  saveDeepBatchCheckpoint(
+    runId: number,
+    checkpoint: DeepTranslationBatchCheckpoint,
+  ): void {
+    this.db.prepare(`
+      INSERT INTO translation_deep_batch_checkpoint
+        (translationResultId, batchKey, stage, draftJson, reviewJson, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(translationResultId, batchKey) DO UPDATE SET
+        stage = excluded.stage,
+        draftJson = excluded.draftJson,
+        reviewJson = excluded.reviewJson,
+        updatedAt = excluded.updatedAt
     `).run(
-      TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
-      'Translation generation was interrupted before completion.',
-      now,
-      now,
+      runId,
+      checkpoint.batchKey,
+      checkpoint.stage,
+      checkpoint.draftJson ?? null,
+      checkpoint.reviewJson ?? null,
+      new Date().toISOString(),
     );
-    return result.changes;
+  }
+
+  clearDeepBatchCheckpoint(runId: number, batchKey: string): void {
+    this.db.prepare(`
+      DELETE FROM translation_deep_batch_checkpoint
+      WHERE translationResultId = ? AND batchKey = ?
+    `).run(runId, batchKey);
   }
 
   private findById(runId: number): TranslationResult | undefined {
@@ -467,6 +857,7 @@ export class TranslationStore {
       expertId: row.expertId,
       expertContentHash: row.expertContentHash,
       smartContextEnabled: row.smartContextEnabled === 1,
+      translationVariant: toTranslationResultVariant(row.translationVariant),
       contextPromptVersion: row.contextPromptVersion,
       contextWarning: toError(
         row.contextWarningCode,
@@ -495,6 +886,14 @@ export class TranslationStore {
     `).get(runId, sourceSegmentId) as TranslationSegmentRow | undefined;
     return row ? toSegment(row) : undefined;
   }
+}
+
+function toTranslationResultVariant(value: string): TranslationResultVariant {
+  if (value === LEGACY_TRANSLATION_VARIANT) return value;
+  if (TRANSLATION_MODES.includes(value as TranslationMode)) {
+    return value as TranslationMode;
+  }
+  return LEGACY_TRANSLATION_VARIANT;
 }
 
 function toSegment(row: TranslationSegmentRow): TranslationSegment {

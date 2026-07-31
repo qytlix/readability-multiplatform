@@ -1,4 +1,4 @@
-export const USAGE_STATISTICS_TASK_TYPES = ['summary', 'translation'] as const;
+export const USAGE_STATISTICS_TASK_TYPES = ['summary', 'translation', 'chat'] as const;
 export type UsageStatisticsTaskType = (typeof USAGE_STATISTICS_TASK_TYPES)[number];
 
 export interface UsageStatisticsQuery {

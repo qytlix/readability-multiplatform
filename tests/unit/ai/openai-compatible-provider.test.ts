@@ -37,6 +37,54 @@ describe('OpenAICompatibleProvider', () => {
     );
   });
 
+  it('maps system, multi-turn text, and image content parts', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      'data: {"choices":[{"delta":{"content":"Seen."}}]}\n\n',
+      { status: 200 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const chunks: string[] = [];
+    for await (const chunk of new OpenAICompatibleProvider().stream({
+      ...request(),
+      prompt: '',
+      systemInstruction: 'Use the article.',
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'First question' }] },
+        { role: 'assistant', content: [{ type: 'text', text: 'First answer' }] },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'What is in this image?' },
+            {
+              type: 'image',
+              mimeType: 'image/png',
+              bytes: new Uint8Array([1, 2, 3]),
+            },
+          ],
+        },
+      ],
+    })) chunks.push(chunk);
+
+    expect(chunks).toEqual(['Seen.']);
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body)).messages).toEqual([
+      { role: 'system', content: 'Use the article.' },
+      { role: 'user', content: [{ type: 'text', text: 'First question' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'First answer' }] },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'What is in this image?' },
+          {
+            type: 'image_url',
+            image_url: { url: 'data:image/png;base64,AQID' },
+          },
+        ],
+      },
+    ]);
+  });
+
   it('handles split SSE chunks and ignores keepalive comments', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(streamingResponse([
       ': OPENROUTER PROCESSING\n',
@@ -92,6 +140,38 @@ describe('OpenAICompatibleProvider', () => {
       retryable: true,
     });
     expect(chunks).toEqual(['partial']);
+  });
+
+  it('marks opaque upstream stream failures as retryable for a bounded caller retry', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      'data: {"error":{"code":"bad_response_status_code","type":"upstream_error"},"choices":[]}\n\n',
+      { status: 200 },
+    )));
+
+    await expect((async () => {
+      for await (const chunk of new OpenAICompatibleProvider().stream(request())) {
+        void chunk;
+      }
+    })()).rejects.toMatchObject({
+      code: 'SUMMARY_PROVIDER_REQUEST_FAILED',
+      retryable: true,
+    });
+  });
+
+  it('keeps explicit invalid-request stream failures non-retryable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      'data: {"error":{"code":"context_length_exceeded","type":"invalid_request_error"},"choices":[]}\n\n',
+      { status: 200 },
+    )));
+
+    await expect((async () => {
+      for await (const chunk of new OpenAICompatibleProvider().stream(request())) {
+        void chunk;
+      }
+    })()).rejects.toMatchObject({
+      code: 'SUMMARY_PROVIDER_REQUEST_FAILED',
+      retryable: false,
+    });
   });
 
   it('reports response-header and first-delta timing phases once', async () => {

@@ -59,6 +59,7 @@ describe('Translation toolbar continuity', () => {
   let root: Root;
   let translationGet: ReturnType<typeof vi.fn>;
   let translationGenerate: ReturnType<typeof vi.fn>;
+  let translationPause: ReturnType<typeof vi.fn>;
 
   const render = async (
     translationVisible: boolean,
@@ -101,6 +102,7 @@ describe('Translation toolbar continuity', () => {
     reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
     translationGet = vi.fn().mockResolvedValue({ ok: true, data: { state: 'idle' } });
     translationGenerate = vi.fn();
+    translationPause = vi.fn();
     Object.defineProperty(window, 'shaleAPI', {
       configurable: true,
       value: {
@@ -111,6 +113,7 @@ describe('Translation toolbar continuity', () => {
         translation: {
           get: translationGet,
           generate: translationGenerate,
+          pause: translationPause,
           prioritize: vi.fn().mockResolvedValue({ ok: true, data: { accepted: true } }),
           onEvent: vi.fn(() => () => undefined),
         },
@@ -160,6 +163,7 @@ describe('Translation toolbar continuity', () => {
       useTerminology: true,
       expertId: 'none',
       useSmartContext: false,
+      translationMode: 'standard',
     });
     await render(true);
 
@@ -252,6 +256,33 @@ describe('Translation toolbar continuity', () => {
     expect(toolbarTarget.querySelector('[aria-label="暂停重新翻译"]')).toBeNull();
   });
 
+  it('disables the main control from the frozen deep run variant', async () => {
+    const deepRunningResult: TranslationResult = {
+      ...runningResult,
+      translationVariant: 'deep',
+    };
+    await remount(
+      { state: 'running', result: deepRunningResult },
+      true,
+      { ...DEFAULT_AI_PREFERENCES, translationMode: 'deep' },
+    );
+    await render(true, { ...DEFAULT_AI_PREFERENCES, translationMode: 'standard' });
+
+    const reason = '深度翻译暂不支持暂停，请等待任务完成或失败';
+    const button = toolbarTarget.querySelector<HTMLButtonElement>(`[aria-label="${reason}"]`);
+    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute('aria-busy')).toBe('true');
+    expect(button?.closest('.article-action-tooltip')?.getAttribute('data-tooltip')).toBe(reason);
+    expect(toolbarTarget.querySelector('[aria-label="暂停翻译"]')).toBeNull();
+
+    await act(async () => {
+      button?.click();
+      await settle();
+    });
+    expect(translationGenerate).not.toHaveBeenCalled();
+    expect(translationPause).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['loading', { state: 'running', result: runningResult }],
     ['success', { state: 'succeeded', result: succeededResult }],
@@ -290,8 +321,8 @@ describe('Translation toolbar continuity', () => {
     const aiTooltips = Array.from(toolbarTarget.querySelectorAll<HTMLElement>(
       '.entry-detail-ai-actions > .article-action-tooltip',
     )).map((tooltip) => tooltip.getAttribute('data-tooltip'));
-    expect(aiButtons).toHaveLength(3);
-    expect(aiTooltips).toEqual(['总结', '翻译', '标签']);
+    expect(aiButtons).toHaveLength(4);
+    expect(aiTooltips).toEqual(['总结', '翻译', '标签', '问答']);
     aiButtons.forEach((button) => {
       expect(button.closest('.article-action-tooltip')).not.toBeNull();
       expect(button.hasAttribute('title')).toBe(false);
@@ -334,6 +365,7 @@ function createTranslationResult(
     expertId: 'none',
     expertContentHash: 'none',
     smartContextEnabled: false,
+    translationVariant: 'standard',
     contextPromptVersion: 'none',
     status,
     createdAt: '2026-07-25T00:00:00.000Z',

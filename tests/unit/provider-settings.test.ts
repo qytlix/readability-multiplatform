@@ -53,6 +53,11 @@ describe('ProviderSettings model routing fields', () => {
         tagBaseUrl: 'https://api.openai.com/v1',
         tagModel: 'gpt-5.4-mini',
         hasTagApiKey: true,
+        chatProviderKind: 'openai',
+        chatBaseUrl: 'https://api.openai.com/v1',
+        chatModel: 'gpt-5.4-mini',
+        chatSupportsImages: false,
+        hasChatApiKey: true,
         keyStorageMode: 'secure',
       },
       onSaved: () => undefined,
@@ -65,5 +70,11 @@ describe('ProviderSettings model routing fields', () => {
     expect(markup).toContain('value="translation-model"');
     expect(markup).toContain('value="deepseek"');
     expect(markup).toContain('value="https://api.deepseek.com"');
+    expect(markup).toContain('AI 问答');
+    expect(markup).toContain('问答模型');
+    expect(markup).toContain('该模型支持图片输入');
+    expect(markup).toContain('name="chat-provider-api-key"');
+    expect(markup).toContain('测试问答连接');
+    expect(markup).toContain('测试图片能力');
   });
 });

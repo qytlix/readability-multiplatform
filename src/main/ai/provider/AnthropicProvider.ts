@@ -1,9 +1,13 @@
-import type {
-  TextGenerationConnectionRequest,
-  TextGenerationProvider,
-  TextGenerationProviderRequest,
+import {
+  normalizeProviderFinishReason,
+  validateProviderConversation,
+  type ProviderContentPart,
+  type ProviderMessage,
+  type TextGenerationConnectionRequest,
+  type TextGenerationImageConnectionRequest,
+  type TextGenerationProvider,
+  type TextGenerationProviderRequest,
 } from './TextGenerationProvider';
-import { normalizeProviderFinishReason } from './TextGenerationProvider';
 import {
   createProviderAbortScope,
   fetchProviderResponse,
@@ -17,6 +21,7 @@ const ANTHROPIC_VERSION = '2023-06-01';
 /** Native Anthropic Messages adapter. */
 export class AnthropicProvider implements TextGenerationProvider {
   async *stream(request: TextGenerationProviderRequest): AsyncIterable<string> {
+    const conversation = buildAnthropicConversation(request);
     const scope = createProviderAbortScope(request.signal);
     let receivedFirstDelta = false;
     try {
@@ -29,7 +34,8 @@ export class AnthropicProvider implements TextGenerationProvider {
             model: request.model,
             max_tokens: 4_096,
             stream: true,
-            messages: [{ role: 'user', content: request.prompt }],
+            ...(conversation.system ? { system: conversation.system } : {}),
+            messages: conversation.messages,
           }),
         },
         scope,
@@ -74,6 +80,84 @@ export class AnthropicProvider implements TextGenerationProvider {
       scope.dispose();
     }
   }
+
+  async testImageConnection(
+    request: TextGenerationImageConnectionRequest,
+  ): Promise<void> {
+    const scope = createProviderAbortScope();
+    try {
+      const response = await fetchProviderResponse(
+        buildMessagesUrl(request.baseUrl),
+        {
+          method: 'POST',
+          headers: buildHeaders(request.apiKey),
+          body: JSON.stringify({
+            model: request.model,
+            max_tokens: 1,
+            messages: [{
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: request.mimeType,
+                    data: Buffer.from(request.bytes).toString('base64'),
+                  },
+                },
+                { type: 'text', text: 'Reply with OK if you can inspect this image.' },
+              ],
+            }],
+          }),
+        },
+        scope,
+      );
+      await response.body?.cancel();
+    } finally {
+      scope.dispose();
+    }
+  }
+}
+
+function buildAnthropicConversation(
+  request: TextGenerationProviderRequest,
+): {
+  system?: string;
+  messages: Array<Record<string, unknown>>;
+} {
+  const conversation = validateProviderConversation(request);
+  if (request.messages === undefined) {
+    const part = conversation.messages[0]?.content[0];
+    return {
+      messages: [{
+        role: 'user',
+        content: part?.type === 'text' ? part.text : '',
+      }],
+    };
+  }
+  return {
+    ...(conversation.systemInstruction ? { system: conversation.systemInstruction } : {}),
+    messages: conversation.messages.map(mapAnthropicMessage),
+  };
+}
+
+function mapAnthropicMessage(message: ProviderMessage): Record<string, unknown> {
+  return {
+    role: message.role,
+    content: message.content.map(mapAnthropicContentPart),
+  };
+}
+
+function mapAnthropicContentPart(part: ProviderContentPart): Record<string, unknown> {
+  if (part.type === 'text') return { type: 'text', text: part.text };
+  return {
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: part.mimeType,
+      data: Buffer.from(part.bytes).toString('base64'),
+    },
+  };
 }
 
 function buildHeaders(apiKey: string): Record<string, string> {

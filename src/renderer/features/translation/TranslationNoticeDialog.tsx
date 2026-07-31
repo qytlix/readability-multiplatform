@@ -4,10 +4,28 @@ import {
   useRef,
 } from 'react';
 import { createPortal } from 'react-dom';
+import type { RetranslationRequestResult } from './TranslationPanel';
 
 interface TranslationNoticeDialogProps {
   message: string | null;
   onConfirm: () => void;
+}
+
+export function getRetranslationNoticeMessage(
+  result: RetranslationRequestResult,
+): string | null {
+  switch (result) {
+    case 'content-unavailable':
+      return '当前文章尚未拉取成功';
+    case 'no-translation':
+      return '当前文章还没有翻译';
+    case 'active':
+      return '当前文章的翻译任务正在进行，请使用主翻译按钮暂停或继续。';
+    case 'active-deep':
+      return '当前文章的深度翻译任务正在进行，请等待任务完成或失败。';
+    default:
+      return null;
+  }
 }
 
 /** Compact acknowledgement dialog for an unavailable article Translation action. */

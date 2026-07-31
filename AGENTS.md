@@ -305,8 +305,10 @@ Issue 只有同时满足以下条件才能进入 `Done`：
 - AT-M5 已升级严格的单词/短语/句子划词结果、源语言发音、多义项、上下文释义、专家/术语接入和主动取消；
 - AT-M6 已补齐组合回归、旧库连续升级/重启、敏感日志哨兵、超长文章全文代表采样、
   Windows x64 打包与启动验证以及发布文档；
-- 下一步是人工验收 AT-M3～AT-M6，并在原生 Wayland 与真实 Provider 环境完成
-  最终冒烟。
+- Article Chat CHAT-00～CHAT-10 已完成自动化实现；Reader 对话面板、文件/图片附件、
+  双语选区提问、持久化恢复、用量归属与 Windows x64 打包产物检查均已通过；
+- 下一步是人工验收 AT-M3～AT-M6 与 Article Chat，并在原生 Wayland、真实 Provider
+  和 Windows GUI 环境完成最终冒烟。
 
 本节必须在每个里程碑结束后更新，不得长期保留已经失真的状态。
 
@@ -356,6 +358,9 @@ Issue 只有同时满足以下条件才能进入 `Done`：
   只截取开头，而是在相同 8 × 6,000 字符预算内确定性采样全文。
 - AT-M6 自动化记录和未完成的人工验收项见
   `docs/ai/translation-advanced-verification.md`。
+- Article Chat 的 11 个 milestone 均保持至少 5 个单一目的 commit；CHAT-10 自动化记录、
+  Windows x64 打包结果和未完成的人工验收项见
+  `docs/ai/article-chat-verification.md`。
 
 ## 17. Roadmap
 
@@ -381,6 +386,7 @@ Issue 只有同时满足以下条件才能进入 `Done`：
 | 第三方 Provider 协议与模型 ID 持续变化 | 模型 ID 可配置、协议适配器隔离；CI 使用固定 Mock SSE，真实连接仅人工按需验证 |
 | 香港繁体与台湾繁体仅靠字形难以可靠区分 | 自动模式不短路繁体内容，提示词明确要求香港用语；质量样例由人工验收 |
 | 不同模型对划词结构化输出和发音格式的遵循程度不同 | Main 严格校验结构、语言和发音体系并返回可观察错误；真实 Provider 质量由人工按语言抽样 |
+| Article Chat 的文件选择、剪贴板图片、响应式布局和模型能力存在平台差异 | Windows x64 自动化与打包已通过；原生 Wayland、Windows GUI 和真实 Provider 仍需人工验收 |
 | 多人同时修改公共文件产生冲突 | 公共变更先写 Issue，指定 Review 人，小 PR 合入 |
 | AI 代码坏味道复制和中心模块膨胀 | 里程碑 Review，功能之间安排小规模重构 |
 | 辅助功能挤压核心交付 | P0 有风险时不启动 P1/P2，最后 5 天功能冻结 |

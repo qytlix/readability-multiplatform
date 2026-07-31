@@ -12,11 +12,13 @@ import {
 import { createPortal } from 'react-dom';
 import type {
   TranslationResult,
+  TranslationResultVariant,
   TranslationSegment,
   TranslationSourceLanguage,
   TranslationState,
   TranslationStreamEvent,
   TranslationTargetLanguage,
+  TranslationMode,
 } from '../../../shared/contracts/translation.types';
 import { projectBilingualBody } from './bilingualProjection';
 import {
@@ -41,6 +43,7 @@ interface TranslationPanelProps {
   targetLanguage: TranslationTargetLanguage;
   useTerminology: boolean;
   useSmartContext: boolean;
+  translationMode?: TranslationMode;
   expertId: string;
   shortcut: TranslationShortcut;
   sourceHtml: string;
@@ -68,6 +71,12 @@ export interface TranslationControlState {
   targetLanguage: TranslationTargetLanguage;
   useTerminology: boolean;
   useSmartContext: boolean;
+  /** Mode currently selected in settings for a future new run. */
+  selectedVariant: TranslationMode;
+  /** Immutable variant of the current running/paused run, if any. */
+  runningVariant?: TranslationMode;
+  /** Variant of the complete result currently projected in Reader. */
+  displayedVariant?: TranslationResultVariant;
   expertId: string;
   state: TranslationState['state'];
   runId?: number;
@@ -79,6 +88,7 @@ export type RetranslationRequestResult =
   | 'content-unavailable'
   | 'no-translation'
   | 'active'
+  | 'active-deep'
   | 'failed';
 
 /**
@@ -91,6 +101,7 @@ export interface RetranslationStatus {
   targetLanguage: TranslationTargetLanguage;
   useTerminology: boolean;
   useSmartContext: boolean;
+  runningVariant: TranslationResultVariant;
   expertId: string;
   runId: number;
   state: 'running' | 'paused' | 'completed' | 'failed';
@@ -106,6 +117,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   targetLanguage,
   useTerminology,
   useSmartContext,
+  translationMode = 'standard',
   expertId,
   shortcut,
   sourceHtml,
@@ -142,14 +154,17 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     });
   }, []);
 
-  const loadState = useCallback(async (options?: { preserveFeedback?: boolean }) => {
+  const loadState = useCallback(async (
+    options?: { preserveFeedback?: boolean },
+  ): Promise<TranslationState | undefined> => {
     const loadSequence = loadSequenceRef.current + 1;
     loadSequenceRef.current = loadSequence;
     if (!options?.preserveFeedback) setMessage('');
     if (!isContentReady) {
-      updateTranslationState({ state: 'idle' });
+      const idleState: TranslationState = { state: 'idle' };
+      updateTranslationState(idleState);
       setIsGenerating(false);
-      return;
+      return idleState;
     }
     try {
       const result = await window.shaleAPI.translation.get({
@@ -158,14 +173,16 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         targetLanguage,
         useTerminology,
         useSmartContext,
+        translationMode,
         expertId,
       });
-      if (loadSequenceRef.current !== loadSequence) return;
+      if (loadSequenceRef.current !== loadSequence) return undefined;
       if (!result.ok) {
         setMessage(result.error.message);
-        return;
+        return undefined;
       }
       updateTranslationState(result.data);
+      if (result.data.state !== 'paused') setShowPauseNotice(false);
       if (result.data.state === 'running') {
         activeRunIdRef.current = result.data.result.id;
         setIsGenerating(true);
@@ -173,9 +190,11 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         activeRunIdRef.current = null;
         setIsGenerating(false);
       }
+      return result.data;
     } catch {
-      if (loadSequenceRef.current !== loadSequence) return;
+      if (loadSequenceRef.current !== loadSequence) return undefined;
       setMessage('Unable to load the Translation state.');
+      return undefined;
     }
   }, [
     entryId,
@@ -183,6 +202,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     isContentReady,
     sourceLanguage,
     targetLanguage,
+    translationMode,
     useSmartContext,
     useTerminology,
     updateTranslationState,
@@ -217,6 +237,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         }
         updateTranslationState({ state: 'succeeded', result: event.result });
         setIsGenerating(false);
+        setShowPauseNotice(false);
         onBilingualChange(true);
         activeRunIdRef.current = null;
         return;
@@ -257,6 +278,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
           setRetranslationTerminalStatus({ state: 'failed', runId: event.runId });
         }
         setIsGenerating(false);
+        setShowPauseNotice(false);
         activeRunIdRef.current = null;
         void loadState({ preserveFeedback: retranslationFailed });
       }
@@ -281,6 +303,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         targetLanguage,
         useTerminology,
         useSmartContext,
+        translationMode,
         expertId,
         ...(forceNew ? { forceNew: true } : {}),
       });
@@ -311,6 +334,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     onBilingualChange,
     sourceLanguage,
     targetLanguage,
+    translationMode,
     useSmartContext,
     useTerminology,
     updateTranslationState,
@@ -338,6 +362,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         targetLanguage,
         useTerminology,
         useSmartContext,
+        translationMode,
         expertId,
       });
       if (!response.ok) {
@@ -372,6 +397,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     sourceLanguage,
     targetLanguage,
     translationState,
+    translationMode,
     useSmartContext,
     useTerminology,
     updateTranslationState,
@@ -411,17 +437,28 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
   }, [retranslationTerminalStatus]);
 
   const activate = useCallback((): void => {
-    const currentState = translationStateRef.current;
-    if (currentState.state === 'running') {
-      void pause();
-      return;
-    }
-    if (currentState.state !== 'paused' && hasCompleteTranslation(currentState)) {
-      onBilingualChange(!isBilingualVisible);
-      return;
-    }
-    void generate();
-  }, [generate, isBilingualVisible, onBilingualChange, pause]);
+    const actOnState = (state: TranslationState): boolean => {
+      if (state.state === 'running') {
+        if (getRunningVariant(state) === 'deep') return true;
+        void pause();
+        return true;
+      }
+      if (state.state === 'paused') {
+        void generate();
+        return true;
+      }
+      if (getDisplayableCompleteResult(state)) {
+        onBilingualChange(!isBilingualVisible);
+        return true;
+      }
+      return false;
+    };
+    if (actOnState(translationStateRef.current)) return;
+    void loadState().then((canonicalState) => {
+      if (!canonicalState || actOnState(canonicalState)) return;
+      void generate();
+    });
+  }, [generate, isBilingualVisible, loadState, onBilingualChange, pause]);
 
   const requestRetranslation = useCallback(async (): Promise<RetranslationRequestResult> => {
     if (!isContentReady) return 'content-unavailable';
@@ -433,6 +470,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
         targetLanguage,
         useTerminology,
         useSmartContext,
+        translationMode,
         expertId,
       });
       if (!stateResult.ok) {
@@ -445,14 +483,14 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       if (currentState.state === 'running') {
         activeRunIdRef.current = currentState.result.id;
         setIsGenerating(true);
-        return 'active';
+        return currentState.result.translationVariant === 'deep' ? 'active-deep' : 'active';
       }
       if (currentState.state === 'paused') {
         activeRunIdRef.current = null;
         setIsGenerating(false);
-        return 'active';
+        return currentState.result.translationVariant === 'deep' ? 'active-deep' : 'active';
       }
-      if (!hasCompleteTranslation(currentState)) return 'no-translation';
+      if (!getDisplayableCompleteResult(currentState)) return 'no-translation';
       return await generate(true) ? 'started' : 'failed';
     } catch {
       setMessage('Unable to load the Translation state.');
@@ -466,6 +504,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     isContentReady,
     sourceLanguage,
     targetLanguage,
+    translationMode,
     updateTranslationState,
     useSmartContext,
     useTerminology,
@@ -526,16 +565,22 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
 
   useEffect(() => () => onRetranslationStatusChange(null), [onRetranslationStatusChange]);
 
+  const displayableCompleteResult = getDisplayableCompleteResult(translationState);
   const translationControlState: TranslationControlState = {
     entryId,
     sourceLanguage,
     targetLanguage,
     useTerminology,
     useSmartContext,
+    selectedVariant: translationMode,
+    ...(getRunningVariant(translationState) ? { runningVariant: getRunningVariant(translationState) } : {}),
+    ...(displayableCompleteResult
+      ? { displayedVariant: displayableCompleteResult.translationVariant }
+      : {}),
     expertId,
     state: translationState.state,
     ...(getResult(translationState) ? { runId: getResult(translationState)?.id } : {}),
-    hasCompleteTranslation: hasCompleteTranslation(translationState),
+    hasCompleteTranslation: displayableCompleteResult !== undefined,
   };
 
   useEffect(() => {
@@ -546,8 +591,11 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     onTranslationControlStateChange,
     sourceLanguage,
     targetLanguage,
+    translationControlState.displayedVariant,
     translationControlState.hasCompleteTranslation,
     translationControlState.runId,
+    translationControlState.runningVariant,
+    translationControlState.selectedVariant,
     translationControlState.state,
     useSmartContext,
     useTerminology,
@@ -593,7 +641,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
           heading={retranslationFailed
             ? '重新翻译失败'
             : translationState.state === 'failed'
-              ? 'Translation paused'
+              ? 'Translation failed'
               : 'Translation unavailable'}
           message={failureFeedback}
           canRetry={!retranslationFailed
@@ -626,6 +674,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
       targetLanguage,
       useTerminology,
       useSmartContext,
+      translationMode,
       expertId,
       sourceSegmentIds,
     }).catch(() => undefined);
@@ -634,6 +683,7 @@ export const TranslationPanel = forwardRef<TranslationPanelHandle, TranslationPa
     expertId,
     sourceLanguage,
     targetLanguage,
+    translationMode,
     useSmartContext,
     useTerminology,
   ]);
@@ -886,31 +936,21 @@ export function getDisplayedResult(state: TranslationState): TranslationResult |
   if (!candidate || !activeResult || candidate.id === activeResult.id) {
     return activeResult ?? candidate;
   }
-
-  const replacementSegments = new Map(
-    candidate.segments.map((segment) => [segment.sourceSegmentId, segment]),
-  );
-  return {
-    ...activeResult,
-    // The candidate is persisted before its event is emitted. Project every
-    // successful candidate segment over the active result, while failed and
-    // pending candidate segments keep their last known completed translation.
-    status: candidate.status,
-    error: candidate.error,
-    updatedAt: candidate.updatedAt,
-    segments: activeResult.segments.map((activeSegment) => {
-      const replacement = replacementSegments.get(activeSegment.sourceSegmentId);
-      return replacement?.status === 'succeeded' ? replacement : activeSegment;
-    }),
-  };
+  // A candidate is not displayable until the whole run succeeds. This keeps
+  // both same-mode retranslations and cross-mode replacements from mixing a
+  // partial candidate into the last complete result.
+  return activeResult;
 }
 
-export function hasCompleteTranslation(state: TranslationState): boolean {
-  return [getResult(state), getActiveResult(state)].some((result) =>
-    result?.status === 'succeeded'
-    && result.segments.length > 0
-    && result.segments.every((segment) => segment.status === 'succeeded'),
-  );
+export function getDisplayableCompleteResult(
+  state: TranslationState,
+): TranslationResult | undefined {
+  const displayedResult = getDisplayedResult(state);
+  return displayedResult?.status === 'succeeded'
+    && displayedResult.segments.length > 0
+    && displayedResult.segments.every((segment) => segment.status === 'succeeded')
+    ? displayedResult
+    : undefined;
 }
 
 function isRetranslationRun(state: TranslationState, runId?: number): boolean {
@@ -925,13 +965,21 @@ function isRetranslationRun(state: TranslationState, runId?: number): boolean {
 function getRetranslationStatus(
   state: TranslationState,
   terminalStatus: RetranslationTerminalStatus | null,
-  scope: Omit<RetranslationStatus, 'runId' | 'state'>,
+  scope: Omit<RetranslationStatus, 'runId' | 'state' | 'runningVariant'>,
 ): RetranslationStatus | null {
-  if (terminalStatus) return { ...scope, ...terminalStatus };
   const candidate = getResult(state);
+  if (terminalStatus && candidate) {
+    return { ...scope, ...terminalStatus, runningVariant: candidate.translationVariant };
+  }
   if (!candidate || !isRetranslationRun(state)) return null;
   if (state.state !== 'running' && state.state !== 'paused') return null;
-  return { ...scope, runId: candidate.id, state: state.state };
+  return { ...scope, runId: candidate.id, state: state.state, runningVariant: candidate.translationVariant };
+}
+
+function getRunningVariant(state: TranslationState): TranslationMode | undefined {
+  if (state.state !== 'running' && state.state !== 'paused') return undefined;
+  const variant = state.result.translationVariant;
+  return variant === 'standard' || variant === 'deep' ? variant : undefined;
 }
 
 function getTranslationFailureMessage(result: TranslationResult | undefined): string {

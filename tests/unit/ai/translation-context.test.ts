@@ -9,6 +9,7 @@ import {
 } from '../../../src/main/ai/services/TranslationContextService';
 import { ProviderProfileStore } from '../../../src/main/ai/stores/ProviderProfileStore';
 import { TranslationContextStore } from '../../../src/main/ai/stores/TranslationContextStore';
+import { NoopUsageRecorder } from '../../../src/main/ai/services/UsageRecorder';
 import { buildTestDb } from '../../fixtures/databases/feed-fixture';
 
 const CONTEXT_JSON = JSON.stringify({
@@ -57,6 +58,12 @@ function createRequest(profileId: number, articleText = 'An article about runtim
       baseUrl: 'https://provider.example/v1',
       model: 'mock-model',
       apiKey: 'not-a-real-key',
+    },
+    usage: {
+      attemptId: 'context-test-attempt',
+      taskRunId: 1,
+      providerProfileId: profileId,
+      recorder: new NoopUsageRecorder(),
     },
     signal: new AbortController().signal,
   };

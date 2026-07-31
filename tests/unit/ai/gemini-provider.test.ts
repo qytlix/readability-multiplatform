@@ -44,6 +44,52 @@ describe('GeminiProvider', () => {
     });
   });
 
+  it('maps system instruction, assistant role, and inline image data', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      'data: {"candidates":[{"content":{"parts":[{"text":"Seen"}]}}]}\n\n',
+      { status: 200 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const chunks: string[] = [];
+    for await (const chunk of new GeminiProvider().stream({
+      ...request(),
+      prompt: '',
+      systemInstruction: 'Use the article.',
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'Earlier question' }] },
+        { role: 'assistant', content: [{ type: 'text', text: 'Earlier answer' }] },
+        {
+          role: 'user',
+          content: [{
+            type: 'image',
+            mimeType: 'image/png',
+            bytes: new Uint8Array([1, 2, 3]),
+          }],
+        },
+      ],
+    })) chunks.push(chunk);
+
+    expect(chunks).toEqual(['Seen']);
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      systemInstruction: { parts: [{ text: 'Use the article.' }] },
+      contents: [
+        { role: 'user', parts: [{ text: 'Earlier question' }] },
+        { role: 'model', parts: [{ text: 'Earlier answer' }] },
+        {
+          role: 'user',
+          parts: [{
+            inlineData: {
+              mimeType: 'image/png',
+              data: 'AQID',
+            },
+          }],
+        },
+      ],
+    });
+  });
+
   it('handles split candidate events and ignores non-text parts', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(streamingResponse([
       'data: {"candidates":[{"content":{"parts":[{"thought":true},',

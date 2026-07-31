@@ -32,7 +32,13 @@ import {
 } from '../translation/TranslationPanel';
 import type { AiPreferences } from '../settings/aiPreferences';
 import { InlineTranslationOverlay } from '../translation/InlineTranslationOverlay';
-import { SummaryIcon, TranslateIcon, ExportIcon, TagIcon } from '../reader/ReaderIcons';
+import {
+  ChatIcon,
+  SummaryIcon,
+  TranslateIcon,
+  ExportIcon,
+  TagIcon,
+} from '../reader/ReaderIcons';
 import { formatArticleDate, getArticleDateLocale } from './articleMetadata';
 import {
   checkAvailability,
@@ -63,6 +69,8 @@ import {
 } from './trustedVideoEmbed';
 import { AnnotatedArticle } from '../annotations/AnnotatedArticle';
 import { TagFloatingWindow } from '../tags/TagFloatingWindow';
+import type { ChatSelectionContext } from '../../../shared/contracts/chat.types';
+import { ArticleChatSelectionMenu } from '../chat/ArticleChatSelectionMenu';
 
 interface EntryDetailProps {
   entry: Entry | null;
@@ -101,6 +109,9 @@ interface EntryDetailProps {
   onExportRequest?: () => void;
   onFeedback?: (message: string) => void;
   pageTurnAnimationEnabled?: boolean;
+  articleChatOpen?: boolean;
+  onArticleChatToggle?: () => void;
+  onArticleChatSelection?: (selection: ChatSelectionContext) => void;
 }
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -136,6 +147,9 @@ export const EntryDetail = ({
   beforeTranslationStart,
   onTagsChanged,
   pageTurnAnimationEnabled = true,
+  articleChatOpen = false,
+  onArticleChatToggle,
+  onArticleChatSelection,
 }: EntryDetailProps) => {
   const [content, setContent] = useState<CleanedContent | null>(null);
   const [status, setStatus] = useState<LoadStatus>('idle');
@@ -160,7 +174,6 @@ export const EntryDetail = ({
     useState<ReadingBookTurnMotion | null>(null);
   const [readingJumpTarget, setReadingJumpTarget] =
     useState<'start' | 'end'>('end');
-  const prevEntryId = useRef<number | null>(null);
   const handledRefreshVersionsRef = useRef(new Map<number, number>());
   const handledRetranslationRequestRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -250,7 +263,6 @@ export const EntryDetail = ({
 
   useEffect(() => {
     if (!entry) {
-      prevEntryId.current = null;
       setContent(null);
       setStatus('idle');
       setLinkError('');
@@ -265,26 +277,23 @@ export const EntryDetail = ({
     }
 
     // Abort any in-flight request for previous entry (P2-#10: race condition fix)
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
+    abortRef.current?.abort();
 
-    // Avoid re-fetching same entry
-    if (prevEntryId.current === entry.id && !forceRefresh) return;
-    prevEntryId.current = entry.id;
+    const loadController = new AbortController();
+    abortRef.current = loadController;
 
     const loadContent = async () => {
       setContent(null);
       setStatus('loading');
       setError('');
       setLinkError('');
-      abortRef.current = new AbortController();
       let showingPreview = false;
 
       try {
         // First check if content already exists
         if (!forceRefresh) {
           const existingResult = await window.shaleAPI.content.get(entry.id);
+          if (loadController.signal.aborted) return;
           if (!existingResult.ok) {
             // IPC-level error (not "no content")
             setStatus('error');
@@ -309,6 +318,7 @@ export const EntryDetail = ({
 
         // No existing content (null) — fetch and clean
         const fetchResult = await window.shaleAPI.content.fetchAndClean(entry.id);
+        if (loadController.signal.aborted) return;
         if (!fetchResult.ok) {
           const message = fetchResult.error?.message ?? 'Failed to fetch content';
           if (showingPreview) return;
@@ -336,6 +346,7 @@ export const EntryDetail = ({
           onContentRefreshComplete?.(entry.id, { ok: true });
         }
       } catch (err: unknown) {
+        if (loadController.signal.aborted) return;
         // Ignore abort errors
         if (err instanceof Error && err.name === 'AbortError') return;
         if (showingPreview) return;
@@ -352,10 +363,10 @@ export const EntryDetail = ({
     loadContent();
 
     return () => {
-      // Cleanup: abort in-flight request on unmount
-      if (abortRef.current) {
-        abortRef.current.abort();
-      }
+      // The IPC promise itself may not be cancellable, so every continuation
+      // above also checks this load-local signal before mutating Renderer state.
+      loadController.abort();
+      if (abortRef.current === loadController) abortRef.current = null;
     };
   }, [
     contentRefreshVersion,
@@ -404,6 +415,10 @@ export const EntryDetail = ({
     ) {
       return;
     }
+    // A request is actionable only after content restoration reaches a terminal
+    // state. Consuming it during remount's idle/loading window creates a false
+    // "content unavailable" result for articles already persisted locally.
+    if (status === 'idle' || status === 'loading') return;
     handledRetranslationRequestRef.current = retranslationRequest.version;
     const requestRetranslation = async (): Promise<void> => {
       const result = !isTranslationReady
@@ -418,6 +433,7 @@ export const EntryDetail = ({
     isTranslationReady,
     onRetranslationRequestComplete,
     retranslationRequest,
+    status,
   ]);
 
   useEffect(() => () => {
@@ -869,39 +885,42 @@ export const EntryDetail = ({
     && !isPreview
     && !hasArticleVideo
     && Boolean(content?.markdown.trim());
+  const isArticleChatReady = status === 'success'
+    && !isPreview
+    && Boolean(content?.markdown.trim());
   const articleDateLocale = getArticleDateLocale(
     entry.title,
     content?.markdown ?? entry.summary,
   );
   const currentRetranslationStatus = retranslationStatus
     && retranslationStatus.entryId === entry.id
-    && retranslationStatus.sourceLanguage === aiPreferences.translationSourceLanguage
-    && retranslationStatus.targetLanguage === aiPreferences.translationTargetLanguage
-    && retranslationStatus.useTerminology === aiPreferences.useTerminology
-    && retranslationStatus.useSmartContext === aiPreferences.useSmartContext
-    && retranslationStatus.expertId === aiPreferences.translationExpertId
     ? retranslationStatus
     : null;
   const currentTranslationControlState = translationControlState
     && translationControlState.entryId === entry.id
-    && translationControlState.sourceLanguage === aiPreferences.translationSourceLanguage
-    && translationControlState.targetLanguage === aiPreferences.translationTargetLanguage
-    && translationControlState.useTerminology === aiPreferences.useTerminology
-    && translationControlState.useSmartContext === aiPreferences.useSmartContext
-    && translationControlState.expertId === aiPreferences.translationExpertId
     ? translationControlState
     : null;
-  const translationButtonLabel = currentRetranslationStatus?.state === 'running'
-    ? '暂停重新翻译'
-    : currentRetranslationStatus?.state === 'paused'
-      ? '继续重新翻译'
-      : currentTranslationControlState?.state === 'running'
-        ? '暂停翻译'
+  const deepPauseDisabled = (
+    currentRetranslationStatus?.state === 'running'
+    && currentRetranslationStatus.runningVariant === 'deep'
+  ) || (
+    currentTranslationControlState?.state === 'running'
+    && currentTranslationControlState.runningVariant === 'deep'
+  );
+  const deepPauseDisabledMessage = '深度翻译暂不支持暂停，请等待任务完成或失败';
+  const translationButtonLabel = deepPauseDisabled
+    ? deepPauseDisabledMessage
+    : currentRetranslationStatus?.state === 'running'
+      ? '暂停重新翻译'
+      : currentRetranslationStatus?.state === 'paused'
+        ? '继续重新翻译'
+        : currentTranslationControlState?.state === 'running'
+          ? '暂停翻译'
           : currentTranslationControlState?.state === 'paused'
-          ? '继续翻译'
-          : currentTranslationControlState?.hasCompleteTranslation
-            ? aiViewState.translationVisible ? '隐藏译文' : '显示译文'
-            : '翻译或切换双语视图';
+            ? '继续翻译'
+            : currentTranslationControlState?.hasCompleteTranslation
+              ? aiViewState.translationVisible ? '隐藏译文' : '显示译文'
+              : '翻译或切换双语视图';
 
   const activateSummary = (fromFloatingHeader: boolean): void => {
     summaryPanelRef.current?.activate();
@@ -955,7 +974,7 @@ export const EntryDetail = ({
   );
 
   const summaryTooltip = '总结';
-  const translationTooltip = '翻译';
+  const translationTooltip = deepPauseDisabled ? deepPauseDisabledMessage : '翻译';
 
   const aiToolbar = aiToolbarTarget
     ? createPortal(
@@ -986,7 +1005,7 @@ export const EntryDetail = ({
             className={aiViewState.translationVisible ? 'is-active' : ''}
             aria-label={translationButtonLabel}
             aria-pressed={aiViewState.translationVisible}
-            disabled={!isTranslationReady}
+            disabled={!isTranslationReady || deepPauseDisabled}
             onClick={activateTranslation}
             aria-busy={isTranslationGenerating}
           >
@@ -1012,6 +1031,21 @@ export const EntryDetail = ({
             }}
           >
             <TagIcon />
+          </button>
+        </span>
+        <span
+          className="article-action-tooltip"
+          data-tooltip="问答"
+        >
+          <button
+            type="button"
+            className={articleChatOpen ? 'is-active' : ''}
+            aria-label={articleChatOpen ? '关闭 AI 问答' : '打开 AI 问答'}
+            aria-pressed={articleChatOpen}
+            disabled={!isArticleChatReady || !onArticleChatToggle}
+            onClick={onArticleChatToggle}
+          >
+            <ChatIcon />
           </button>
         </span>
         {currentRetranslationStatus && (
@@ -1093,7 +1127,7 @@ export const EntryDetail = ({
             onVisibleChange={handleSummaryVisibleChange}
           />
           <TranslationPanel
-            key={`${entry.id}:${aiPreferences.translationSourceLanguage}:${aiPreferences.translationTargetLanguage}:${aiPreferences.useTerminology}:${aiPreferences.useSmartContext}:${aiPreferences.translationExpertId}`}
+            key={`${entry.id}:${aiPreferences.translationSourceLanguage}:${aiPreferences.translationTargetLanguage}`}
             ref={translationPanelRef}
             entryId={entry.id}
             isContentReady={isTranslationReady}
@@ -1101,6 +1135,7 @@ export const EntryDetail = ({
             targetLanguage={aiPreferences.translationTargetLanguage}
             useTerminology={aiPreferences.useTerminology}
             useSmartContext={aiPreferences.useSmartContext}
+            translationMode={aiPreferences.translationMode}
             expertId={aiPreferences.translationExpertId}
             shortcut={aiPreferences.fullTranslationShortcut}
             sourceHtml={content?.cleanedHtml ?? ''}
@@ -1212,6 +1247,13 @@ export const EntryDetail = ({
           useTerminology={aiPreferences.useTerminology}
           expertId={aiPreferences.translationExpertId}
         />
+        {isArticleChatReady && onArticleChatSelection && (
+          <ArticleChatSelectionMenu
+            entryId={entry.id}
+            containerRef={scrollContainerRef}
+            onAskAI={onArticleChatSelection}
+          />
+        )}
         <ReadingProgressBook
           readingProgress={visibleReadingProgress}
           turnMotion={pageTurnAnimationEnabled ? readingBookTurn : null}

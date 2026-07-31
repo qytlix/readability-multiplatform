@@ -49,6 +49,24 @@ segment counts, input/output character counts, and up to three 16-character
 segment-ID hashes. It never includes nested provider objects, prompts, raw
 NDJSON, chunks, source text, or translated text.
 
+Translation run lifecycle records share `taskRunId`, an opaque `attemptId`,
+the controlled trigger, and `translationVariant`. Terminal and interruption
+records aggregate the current attempt's persisted Usage ledger by
+`requestKind`: standard batch and compensation, deep draft/review/rewrite,
+deep draft/rewrite compensation, and smart-context requests. Request outcomes
+and Provider-reported token fields come from those same Usage rows; resumed
+attempts do not recount completed segments or deep checkpoints from an earlier
+attempt. Failed runs also include a controlled `finalFailureStage` and the
+existing safe error classification.
+
+`translation.run.creation-blocked` is emitted only when Main's canonical live
+task prevents another run from being created, or a canonical paused task is
+continued instead of creating a concurrent replacement. Startup reconciliation
+emits aggregate recovery records only when it changes interrupted work or corrects
+stale metadata/checkpoints on a terminal success. Ordinary state reads,
+completed-result reuse, Renderer state derivation, and UI interactions do not
+produce diagnostics.
+
 Markdown export records are operation-level terminal records only:
 `markdown.export.completed` includes the exported article count and duration.
 When image localization actually processed remote images, it also includes only

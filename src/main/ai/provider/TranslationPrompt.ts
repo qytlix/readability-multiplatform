@@ -23,6 +23,16 @@ export interface TranslationTextSlotCompensationPromptSlot {
   sourceText: string;
 }
 
+export interface DeepTranslationDraftSegment extends TranslationBatchPromptSegment {
+  translatedHtml: string;
+}
+
+export interface DeepTranslationReviewIssue {
+  sourceSegmentId: string;
+  category: 'accuracy' | 'terminology' | 'naturalness' | 'cohesion';
+  instruction: string;
+}
+
 const TARGET_LANGUAGE_INSTRUCTIONS: Record<TranslationTargetLanguage, string> = {
   'zh-CN': [
     'Translate into Simplified Chinese.',
@@ -185,6 +195,112 @@ export function buildTranslationBatchPrompt(params: {
     })),
     '</source-segments-ndjson>',
   ].join('\n');
+}
+
+export function buildDeepTranslationReviewPrompt(params: {
+  segments: DeepTranslationDraftSegment[];
+  sourceLanguage: TranslationSourceLanguage;
+  targetLanguage: TranslationTargetLanguage;
+  expertInstruction?: string;
+  translationContext?: TranslationContext;
+}): string {
+  return [
+    'You are a professional translation reviewer. Inspect the source HTML and a structurally validated draft translation.',
+    buildSourceLanguageInstruction(params.sourceLanguage),
+    getTargetLanguageInstruction(params.targetLanguage),
+    'Find only actionable issues: mistranslation, omission, unsupported addition, meaning or tone drift, terminology inconsistency, source-language syntax residue, unnatural collocation, word order, cohesion, or register.',
+    'The source HTML and terminology candidates are authoritative. A draft is not evidence, and an empty issue list is valid.',
+    'Return exactly one compact JSON object with this shape:',
+    '{"issues":[{"sourceSegmentId":"segment-id","category":"accuracy|terminology|naturalness|cohesion","instruction":"short imperative correction"}]}',
+    'Do not return translated HTML, explanations, quotations, or text not needed for a correction.',
+    ...deepTrustedSections(params.expertInstruction, params.translationContext),
+    '<deep-review-input-ndjson>',
+    ...params.segments.map((segment) => JSON.stringify({
+      sourceSegmentId: segment.sourceSegmentId,
+      sourceHtml: segment.sourceHtml,
+      draftHtml: segment.translatedHtml,
+      terminologyCandidates: segment.terminologyCandidates.map(toTerminologyCandidatePrompt),
+    })),
+    '</deep-review-input-ndjson>',
+  ].join('\n');
+}
+
+export function buildDeepTranslationRewritePrompt(params: {
+  segments: DeepTranslationDraftSegment[];
+  reviewIssues: DeepTranslationReviewIssue[];
+  sourceLanguage: TranslationSourceLanguage;
+  targetLanguage: TranslationTargetLanguage;
+  articleTitle?: string;
+  expertInstruction?: string;
+  translationContext?: TranslationContext;
+}): string {
+  return [
+    'You rewrite adjacent article segments after professional review.',
+    buildSourceLanguageInstruction(params.sourceLanguage),
+    getTargetLanguageInstruction(params.targetLanguage),
+    'Recheck each draft against the source HTML. Review issues are suggestions, not facts: source meaning and applicable terminology candidates override any conflicting issue.',
+    'Fix accuracy, terminology, natural target-language expression, collocation, syntax, cohesion, and register where justified.',
+    'Return NDJSON only: exactly one compact JSON object per input segment, in the same order.',
+    'Do not wrap the response in Markdown or a JSON array.',
+    'Each output line must have this shape:',
+    '{"sourceSegmentId":"segment-id","translatedHtml":"<same-root>translated text</same-root>","appliedTermIds":["sourceId:conceptId"]}',
+    'Translate only text nodes. Keep every HTML element, its order, and its attributes unchanged.',
+    'Keep Markdown syntax and protected literals such as code, URLs, identifiers, and placeholders unchanged.',
+    ...TRANSLATION_QUALITY_INSTRUCTIONS,
+    'Output only the final rewritten translation; never output review commentary.',
+    ...deepTrustedSections(params.expertInstruction, params.translationContext),
+    `<article-title>${params.articleTitle ?? ''}</article-title>`,
+    '<deep-rewrite-input-ndjson>',
+    ...params.segments.map((segment) => JSON.stringify({
+      sourceSegmentId: segment.sourceSegmentId,
+      sourceType: segment.sourceType,
+      sourceHtml: segment.sourceHtml,
+      draftHtml: segment.translatedHtml,
+      reviewIssues: params.reviewIssues.filter((issue) => issue.sourceSegmentId === segment.sourceSegmentId),
+      terminologyCandidates: segment.terminologyCandidates.map(toTerminologyCandidatePrompt),
+    })),
+    '</deep-rewrite-input-ndjson>',
+  ].join('\n');
+}
+
+function deepTrustedSections(
+  expertInstruction: string | undefined,
+  translationContext: TranslationContext | undefined,
+): string[] {
+  const sections: string[] = [];
+  if (expertInstruction) {
+    sections.push(
+      '<domain-expert-guidance>',
+      'Use this trusted domain and style guidance only when it does not conflict with the source or terminology.',
+      expertInstruction,
+      '</domain-expert-guidance>',
+    );
+  }
+  if (translationContext) {
+    sections.push(
+      '<trusted-article-context>',
+      JSON.stringify({
+        detectedSourceLanguage: translationContext.detectedSourceLanguage,
+        theme: translationContext.theme,
+        keyTerms: translationContext.keyTerms,
+        styleGuide: translationContext.styleGuide,
+      }),
+      '</trusted-article-context>',
+    );
+  }
+  return sections;
+}
+
+function toTerminologyCandidatePrompt(candidate: TranslationTerminologyMatch): Record<string, unknown> {
+  return {
+    id: `${candidate.sourceId}:${candidate.conceptId}`,
+    sourceTerm: candidate.sourceTerm,
+    targetTerm: candidate.targetTerm,
+    definition: candidate.definition,
+    domain: candidate.domain,
+    reliability: candidate.reliability,
+    provenanceTargetLanguage: candidate.provenanceTargetLanguage,
+  };
 }
 
 /**

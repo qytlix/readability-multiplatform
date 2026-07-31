@@ -3,15 +3,18 @@ import { performance } from 'node:perf_hooks';
 import {
   isProviderKind,
   isValidProviderModel,
+  type ProviderChatModelList,
   type ProviderConnectionTestResult,
   type ProviderKind,
   type ProviderProfile,
   type SaveProviderRequest,
 } from '../../../shared/contracts/provider.types';
 import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summary.errors';
+import { CHAT_ERROR_CODES, ChatError } from '../../../shared/errors/chat.errors';
 import { ProviderProfileStore } from '../stores/ProviderProfileStore';
 import { SecretStore } from '../stores/SecretStore';
 import type { TextGenerationProvider } from '../provider/TextGenerationProvider';
+import { ProviderModelCatalog } from '../provider/ProviderModelCatalog';
 import {
   elapsedProviderMilliseconds,
   logProviderConfigCompleted,
@@ -25,12 +28,18 @@ import {
   type ProviderOperationLogger,
 } from './ProviderLogging';
 
+const ONE_PIXEL_PNG = Uint8Array.from(Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+));
+
 export class ProviderService {
   constructor(
     private readonly profileStore: ProviderProfileStore,
     private readonly secretStore: SecretStore,
     private readonly provider: TextGenerationProvider,
     private readonly logger?: ProviderOperationLogger,
+    private readonly modelCatalog = new ProviderModelCatalog(),
   ) {}
 
   getActiveProfile(): ProviderProfile | undefined {
@@ -47,10 +56,10 @@ export class ProviderService {
       stage = 'profileLookup';
       const existing = this.profileStore.findActiveWithSecret();
       stage = 'key';
-      const sameCredentialScope = hasSameCredentialScope(routes.summary, routes.translation);
       const summarySuppliedKey = routes.summary.apiKey?.trim();
       const translationSuppliedKey = routes.translation.apiKey?.trim();
       const tagSuppliedKey = routes.tag.apiKey?.trim();
+      const chatSuppliedKey = routes.chat.apiKey?.trim();
       let summaryApiKeyRef = reusableKeyReference(
         existing,
         'summary',
@@ -66,43 +75,52 @@ export class ProviderService {
         'tag',
         routes.tag,
       );
+      let chatApiKeyRef = reusableKeyReference(
+        existing,
+        'chat',
+        routes.chat,
+      );
       const secretWrites = new Map<string, string>();
 
-      if (
-        sameCredentialScope
-        && summarySuppliedKey
-        && summarySuppliedKey === translationSuppliedKey
-      ) {
-        const sharedReference = randomUUID();
-        summaryApiKeyRef = sharedReference;
-        translationApiKeyRef = sharedReference;
-        secretWrites.set(sharedReference, summarySuppliedKey);
-      } else {
-        if (summarySuppliedKey) {
-          summaryApiKeyRef = randomUUID();
-          secretWrites.set(summaryApiKeyRef, summarySuppliedKey);
-        }
-        if (translationSuppliedKey) {
-          translationApiKeyRef = randomUUID();
-          secretWrites.set(translationApiKeyRef, translationSuppliedKey);
-        }
-      }
+      const referencesBySuppliedKey = new Map<string, string>();
+      const assignSuppliedKey = (
+        suppliedKey: string | undefined,
+        currentReference: string | undefined,
+      ): string | undefined => {
+        if (!suppliedKey) return currentReference;
+        const sharedReference = referencesBySuppliedKey.get(suppliedKey);
+        if (sharedReference) return sharedReference;
+        const reference = randomUUID();
+        referencesBySuppliedKey.set(suppliedKey, reference);
+        secretWrites.set(reference, suppliedKey);
+        return reference;
+      };
 
-      // Tag route always has its own independent credentials.
-      // An empty tagApiKeyRef means Tag is not yet configured — the
-      // AutoTagService will detect this and guide the user to set it up.
-      if (tagSuppliedKey) {
-        tagApiKeyRef = randomUUID();
-        secretWrites.set(tagApiKeyRef, tagSuppliedKey);
-      } else if (!tagApiKeyRef) {
-        tagApiKeyRef = '';
-      }
+      summaryApiKeyRef = assignSuppliedKey(summarySuppliedKey, summaryApiKeyRef);
+      translationApiKeyRef = assignSuppliedKey(
+        translationSuppliedKey,
+        translationApiKeyRef,
+      );
+      tagApiKeyRef = assignSuppliedKey(tagSuppliedKey, tagApiKeyRef);
+      chatApiKeyRef = assignSuppliedKey(chatSuppliedKey, chatApiKeyRef);
 
-      if (sameCredentialScope) {
-        summaryApiKeyRef ??= translationApiKeyRef;
-        translationApiKeyRef ??= summaryApiKeyRef;
+      const routeReferences = [
+        { route: routes.summary, reference: summaryApiKeyRef },
+        { route: routes.translation, reference: translationApiKeyRef },
+        { route: routes.chat, reference: chatApiKeyRef },
+      ];
+      for (const candidate of routeReferences) {
+        if (candidate.reference) continue;
+        candidate.reference = routeReferences.find((other) => (
+          other.reference && hasSameCredentialScope(candidate.route, other.route)
+        ))?.reference;
       }
-      if (!summaryApiKeyRef || !translationApiKeyRef) {
+      [summaryApiKeyRef, translationApiKeyRef, chatApiKeyRef] =
+        routeReferences.map((candidate) => candidate.reference);
+
+      // Tag may remain unconfigured without blocking the three reading tasks.
+      tagApiKeyRef ??= '';
+      if (!summaryApiKeyRef || !translationApiKeyRef || !chatApiKeyRef) {
         throw new SummaryError(
           SUMMARY_ERROR_CODES.SUMMARY_KEY_MISSING,
           'A new API key is required for each Provider whose type or host changed.',
@@ -135,10 +153,27 @@ export class ProviderService {
             model: routes.tag.model,
             apiKeyRef: tagApiKeyRef,
           },
+          chat: {
+            providerKind: routes.chat.providerKind,
+            baseUrl: routes.chat.baseUrl,
+            model: routes.chat.model,
+            apiKeyRef: chatApiKeyRef,
+            supportsImages: routes.chat.supportsImages,
+          },
         });
-        const retainedReferences = new Set([summaryApiKeyRef, translationApiKeyRef, tagApiKeyRef]);
+        const retainedReferences = new Set([
+          summaryApiKeyRef,
+          translationApiKeyRef,
+          tagApiKeyRef,
+          chatApiKeyRef,
+        ]);
         const obsoleteReferences = existing
-          ? new Set([existing.apiKeyRef, existing.translationApiKeyRef, existing.tagApiKeyRef])
+          ? new Set([
+            existing.apiKeyRef,
+            existing.translationApiKeyRef,
+            existing.tagApiKeyRef,
+            existing.chatApiKeyRef,
+          ])
           : new Set<string>();
         for (const reference of obsoleteReferences) {
           if (retainedReferences.has(reference)) continue;
@@ -157,6 +192,7 @@ export class ProviderService {
         const hasSummaryApiKey = this.secretStore.has(summaryApiKeyRef);
         const hasTranslationApiKey = this.secretStore.has(translationApiKeyRef);
         const hasTagApiKey = this.secretStore.has(tagApiKeyRef);
+        const hasChatApiKey = this.secretStore.has(chatApiKeyRef);
         const result: ProviderProfile = {
           ...profile,
           keyStorageMode: this.secretStore.getStorageMode(),
@@ -164,6 +200,7 @@ export class ProviderService {
           hasSummaryApiKey,
           hasTranslationApiKey,
           hasTagApiKey,
+          hasChatApiKey,
         };
         logProviderConfigCompleted(this.logger, {
           providerId: profile.id,
@@ -227,6 +264,12 @@ export class ProviderService {
           model: profile.tagModel,
           apiKeyRef: profile.tagApiKeyRef,
         },
+        {
+          providerKind: profile.chatProviderKind,
+          baseUrl: profile.chatBaseUrl,
+          model: profile.chatModel,
+          apiKeyRef: profile.chatApiKeyRef,
+        },
       ];
       const distinctRoutes = [...new Map(routes.map((route) => [
         [
@@ -253,7 +296,9 @@ export class ProviderService {
         ? 'Provider connection succeeded.'
         : routeCount === 2
           ? 'Summary and Translation Provider connections succeeded.'
-          : 'Summary, Translation and Tag Provider connections succeeded.';
+          : routeCount === 3
+            ? 'Three Provider routes succeeded.'
+            : 'Summary, Translation, Tag and Chat Provider connections succeeded.';
       const result: ProviderConnectionTestResult = {
         ok: true,
         message,
@@ -276,6 +321,122 @@ export class ProviderService {
     }
   }
 
+  async testChatConnection(): Promise<ProviderConnectionTestResult> {
+    const startedAt = performance.now();
+    let stage: ProviderConnectionStage = 'profile';
+    let providerId: number | undefined;
+    try {
+      const profile = this.profileStore.findActiveWithSecret();
+      if (!profile) {
+        throw new SummaryError(
+          SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_NOT_CONFIGURED,
+          'Configure an AI Chat provider before testing the connection.',
+          false,
+        );
+      }
+      providerId = profile.id;
+      stage = 'key';
+      const apiKey = this.secretStore.read(profile.chatApiKeyRef);
+      stage = 'request';
+      await this.provider.testConnection({
+        providerKind: profile.chatProviderKind,
+        baseUrl: profile.chatBaseUrl,
+        model: profile.chatModel,
+        apiKey,
+      });
+      const result: ProviderConnectionTestResult = {
+        ok: true,
+        message: 'AI Chat Provider connection succeeded.',
+      };
+      logProviderConnectionCompleted(this.logger, {
+        providerId,
+        durationMs: elapsedProviderMilliseconds(startedAt),
+        success: true,
+      });
+      return result;
+    } catch (error) {
+      logProviderConnectionFailed(this.logger, {
+        durationMs: elapsedProviderMilliseconds(startedAt),
+        success: false,
+        stage,
+        errorCode: toConnectionErrorCode(stage, error),
+        ...(providerId === undefined ? {} : { providerId }),
+      });
+      throw error;
+    }
+  }
+
+  async listChatModels(): Promise<ProviderChatModelList> {
+    const profile = this.profileStore.findActiveWithSecret();
+    if (!profile) {
+      throw new SummaryError(
+        SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_NOT_CONFIGURED,
+        'Configure an AI Chat provider before loading its models.',
+        false,
+      );
+    }
+
+    return {
+      providerKind: profile.chatProviderKind,
+      models: await this.modelCatalog.list({
+        providerKind: profile.chatProviderKind,
+        baseUrl: profile.chatBaseUrl,
+        apiKey: this.secretStore.read(profile.chatApiKeyRef),
+      }),
+    };
+  }
+
+  async testChatImageCapability(): Promise<ProviderConnectionTestResult> {
+    const profile = this.profileStore.findActiveWithSecret();
+    if (!profile) {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_PROVIDER_NOT_CONFIGURED,
+        'Configure an AI Chat provider before testing image input.',
+        false,
+      );
+    }
+    if (!profile.chatSupportsImages) {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_IMAGE_UNSUPPORTED,
+        'Enable image input for the Chat model before testing it.',
+        false,
+      );
+    }
+    if (!this.provider.testImageConnection) {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_IMAGE_UNSUPPORTED,
+        'The configured Provider adapter cannot test image input.',
+        false,
+      );
+    }
+    try {
+      await this.provider.testImageConnection({
+        providerKind: profile.chatProviderKind,
+        baseUrl: profile.chatBaseUrl,
+        model: profile.chatModel,
+        apiKey: this.secretStore.read(profile.chatApiKeyRef),
+        mimeType: 'image/png',
+        bytes: ONE_PIXEL_PNG,
+      });
+    } catch (error) {
+      if (
+        error instanceof SummaryError
+        && error.code === SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_REQUEST_FAILED
+      ) {
+        throw new ChatError(
+          CHAT_ERROR_CODES.CHAT_IMAGE_UNSUPPORTED,
+          'The configured Chat model rejected image input.',
+          false,
+        );
+      }
+      throw error;
+    }
+    return {
+      ok: true,
+      message: 'The AI Chat model accepted image input.',
+    };
+  }
+
   private toPublicProfile(profile: NonNullable<ReturnType<ProviderProfileStore['findActiveWithSecret']>>): ProviderProfile {
     return {
       id: profile.id,
@@ -289,6 +450,10 @@ export class ProviderService {
       tagProviderKind: profile.tagProviderKind,
       tagBaseUrl: profile.tagBaseUrl,
       tagModel: profile.tagModel,
+      chatProviderKind: profile.chatProviderKind,
+      chatBaseUrl: profile.chatBaseUrl,
+      chatModel: profile.chatModel,
+      chatSupportsImages: profile.chatSupportsImages,
       isActive: profile.isActive,
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
@@ -297,6 +462,7 @@ export class ProviderService {
       hasSummaryApiKey: this.secretStore.has(profile.apiKeyRef),
       hasTranslationApiKey: this.secretStore.has(profile.translationApiKeyRef),
       hasTagApiKey: this.secretStore.has(profile.tagApiKeyRef),
+      hasChatApiKey: this.secretStore.has(profile.chatApiKeyRef),
     };
   }
 }
@@ -367,16 +533,29 @@ interface ValidatedProviderRoute {
   apiKey?: string;
 }
 
+interface ValidatedChatProviderRoute extends ValidatedProviderRoute {
+  supportsImages: boolean;
+}
+
 function validateProviderRequest(request: SaveProviderRequest): {
   summary: ValidatedProviderRoute;
   translation: ValidatedProviderRoute;
   tag: ValidatedProviderRoute;
+  chat: ValidatedChatProviderRoute;
 } {
   if ('summary' in request) {
+    const summary = validateProviderRoute(request.summary, 'Summary');
+    const chat = request.chat
+      ? {
+        ...validateProviderRoute(request.chat, 'Chat'),
+        supportsImages: request.chat.supportsImages === true,
+      }
+      : { ...summary, supportsImages: false };
     return {
-      summary: validateProviderRoute(request.summary, 'Summary'),
+      summary,
       translation: validateProviderRoute(request.translation, 'Translation'),
       tag: validateProviderRoute(request.tag, 'Tag'),
+      chat,
     };
   }
 
@@ -399,12 +578,21 @@ function validateProviderRequest(request: SaveProviderRequest): {
       baseUrl: '',
       model: 'gpt-5.4-mini',
     },
+    chat: {
+      ...validateProviderRoute({
+        providerKind: request.providerKind,
+        baseUrl: request.baseUrl,
+        model: request.summaryModel ?? legacyModel ?? '',
+        ...(request.apiKey ? { apiKey: request.apiKey } : {}),
+      }, 'Chat'),
+      supportsImages: false,
+    },
   };
 }
 
 function validateProviderRoute(
   route: ValidatedProviderRoute,
-  taskLabel: 'Summary' | 'Translation' | 'Tag' | undefined,
+  taskLabel: 'Summary' | 'Translation' | 'Tag' | 'Chat' | undefined,
 ): ValidatedProviderRoute {
   if (!isProviderKind(route.providerKind)) {
     throw new SummaryError(
@@ -457,7 +645,7 @@ function validateProviderRoute(
 
 function validateTaskModel(
   value: string,
-  taskLabel: 'Summary' | 'Translation' | 'Tag' | undefined,
+  taskLabel: 'Summary' | 'Translation' | 'Tag' | 'Chat' | undefined,
   providerKind: ProviderKind,
 ): string {
   const model = value.trim();
@@ -495,20 +683,22 @@ function hasSameCredentialScope(
 
 function reusableKeyReference(
   existing: ReturnType<ProviderProfileStore['findActiveWithSecret']>,
-  task: 'summary' | 'translation' | 'tag',
+  task: 'summary' | 'translation' | 'tag' | 'chat',
   route: ValidatedProviderRoute,
 ): string | undefined {
   if (!existing) return undefined;
-  const existingKind = task === 'summary'
-    ? existing.providerKind
-    : task === 'translation'
-      ? existing.translationProviderKind
-      : existing.tagProviderKind;
-  const existingBaseUrl = task === 'summary'
-    ? existing.baseUrl
-    : task === 'translation'
-      ? existing.translationBaseUrl
-      : existing.tagBaseUrl;
+  const existingKind = {
+    summary: existing.providerKind,
+    translation: existing.translationProviderKind,
+    tag: existing.tagProviderKind,
+    chat: existing.chatProviderKind,
+  }[task];
+  const existingBaseUrl = {
+    summary: existing.baseUrl,
+    translation: existing.translationBaseUrl,
+    tag: existing.tagBaseUrl,
+    chat: existing.chatBaseUrl,
+  }[task];
   if (
     existingKind !== route.providerKind
     || (!existingBaseUrl && route.baseUrl)
@@ -517,9 +707,10 @@ function reusableKeyReference(
   ) {
     return undefined;
   }
-  return task === 'summary'
-    ? existing.apiKeyRef
-    : task === 'translation'
-      ? existing.translationApiKeyRef
-      : existing.tagApiKeyRef;
+  return {
+    summary: existing.apiKeyRef,
+    translation: existing.translationApiKeyRef,
+    tag: existing.tagApiKeyRef,
+    chat: existing.chatApiKeyRef,
+  }[task];
 }

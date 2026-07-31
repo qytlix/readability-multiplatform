@@ -31,6 +31,7 @@ const CONTEXT_FIELD_TYPES = {
   feedId: 'number',
   entryId: 'number',
   taskRunId: 'number',
+  attemptId: 'string',
   providerId: 'number',
   providerRequestId: 'number',
   count: 'number',
@@ -41,6 +42,12 @@ const CONTEXT_FIELD_TYPES = {
   providerRequestCount: 'number',
   batchRequestCount: 'number',
   compensationRequestCount: 'number',
+  translationContextRequestCount: 'number',
+  deepDraftRequestCount: 'number',
+  deepReviewRequestCount: 'number',
+  deepRewriteRequestCount: 'number',
+  deepDraftCompensationRequestCount: 'number',
+  deepRewriteCompensationRequestCount: 'number',
   providerRequestSuccessCount: 'number',
   providerRequestFailureCount: 'number',
   missingSegmentCount: 'number',
@@ -71,6 +78,7 @@ const CONTEXT_FIELD_TYPES = {
   convertDurationMs: 'number',
   persistDurationMs: 'number',
   attemptCount: 'number',
+  contextMode: 'chat-context-mode',
   downloadedImageCount: 'number',
   failedImageCount: 'number',
   httpStatus: 'number',
@@ -85,6 +93,8 @@ const CONTEXT_FIELD_TYPES = {
   operation: 'string',
   strategy: 'string',
   requestKind: 'string',
+  translationVariant: 'string',
+  finalFailureStage: 'string',
   trigger: 'string',
   previousResultAtStart: 'string',
   previousResultOutcome: 'string',
@@ -121,6 +131,7 @@ export interface StructuredLogContext {
   feedId?: number;
   entryId?: number;
   taskRunId?: number;
+  attemptId?: string;
   providerId?: number;
   providerRequestId?: number;
   count?: number;
@@ -131,6 +142,12 @@ export interface StructuredLogContext {
   providerRequestCount?: number;
   batchRequestCount?: number;
   compensationRequestCount?: number;
+  translationContextRequestCount?: number;
+  deepDraftRequestCount?: number;
+  deepReviewRequestCount?: number;
+  deepRewriteRequestCount?: number;
+  deepDraftCompensationRequestCount?: number;
+  deepRewriteCompensationRequestCount?: number;
   providerRequestSuccessCount?: number;
   providerRequestFailureCount?: number;
   missingSegmentCount?: number;
@@ -161,6 +178,7 @@ export interface StructuredLogContext {
   convertDurationMs?: number;
   persistDurationMs?: number;
   attemptCount?: number;
+  contextMode?: 'full' | 'history-compressed' | 'article-map';
   downloadedImageCount?: number;
   failedImageCount?: number;
   httpStatus?: number;
@@ -175,6 +193,8 @@ export interface StructuredLogContext {
   operation?: string;
   strategy?: string;
   requestKind?: string;
+  translationVariant?: string;
+  finalFailureStage?: string;
   trigger?: string;
   previousResultAtStart?: string;
   previousResultOutcome?: string;
@@ -637,6 +657,13 @@ function sanitizeContextValue(
   if (expectedType === 'compensation-protocol') {
     return value === 'text-slots' ? value : undefined;
   }
+  if (expectedType === 'chat-context-mode') {
+    return value === 'full'
+      || value === 'history-compressed'
+      || value === 'article-map'
+      ? value
+      : undefined;
+  }
   if (expectedType === 'boolean') {
     return typeof value === 'boolean' ? value : undefined;
   }
@@ -682,6 +709,9 @@ function assignContextField(
     case 'taskRunId':
       if (typeof value === 'number') context.taskRunId = value;
       return;
+    case 'attemptId':
+      if (typeof value === 'string') context.attemptId = value;
+      return;
     case 'providerId':
       if (typeof value === 'number') context.providerId = value;
       return;
@@ -711,6 +741,24 @@ function assignContextField(
       return;
     case 'compensationRequestCount':
       if (typeof value === 'number') context.compensationRequestCount = value;
+      return;
+    case 'translationContextRequestCount':
+      if (typeof value === 'number') context.translationContextRequestCount = value;
+      return;
+    case 'deepDraftRequestCount':
+      if (typeof value === 'number') context.deepDraftRequestCount = value;
+      return;
+    case 'deepReviewRequestCount':
+      if (typeof value === 'number') context.deepReviewRequestCount = value;
+      return;
+    case 'deepRewriteRequestCount':
+      if (typeof value === 'number') context.deepRewriteRequestCount = value;
+      return;
+    case 'deepDraftCompensationRequestCount':
+      if (typeof value === 'number') context.deepDraftCompensationRequestCount = value;
+      return;
+    case 'deepRewriteCompensationRequestCount':
+      if (typeof value === 'number') context.deepRewriteCompensationRequestCount = value;
       return;
     case 'providerRequestSuccessCount':
       if (typeof value === 'number') context.providerRequestSuccessCount = value;
@@ -787,6 +835,18 @@ function assignContextField(
     case 'durationMs':
       if (typeof value === 'number') context.durationMs = value;
       return;
+    case 'attemptCount':
+      if (typeof value === 'number') context.attemptCount = value;
+      return;
+    case 'contextMode':
+      if (
+        value === 'full'
+        || value === 'history-compressed'
+        || value === 'article-map'
+      ) {
+        context.contextMode = value;
+      }
+      return;
     case 'downloadedImageCount':
       if (typeof value === 'number') context.downloadedImageCount = value;
       return;
@@ -825,6 +885,12 @@ function assignContextField(
       return;
     case 'requestKind':
       if (typeof value === 'string') context.requestKind = value;
+      return;
+    case 'translationVariant':
+      if (typeof value === 'string') context.translationVariant = value;
+      return;
+    case 'finalFailureStage':
+      if (typeof value === 'string') context.finalFailureStage = value;
       return;
     case 'trigger':
       if (typeof value === 'string') context.trigger = value;

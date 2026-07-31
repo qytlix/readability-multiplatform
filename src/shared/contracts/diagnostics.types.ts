@@ -35,6 +35,7 @@ export interface DiagnosticLogContext {
   feedId?: number;
   entryId?: number;
   taskRunId?: number;
+  attemptId?: string;
   providerId?: number;
   providerRequestId?: number;
   count?: number;
@@ -45,6 +46,12 @@ export interface DiagnosticLogContext {
   providerRequestCount?: number;
   batchRequestCount?: number;
   compensationRequestCount?: number;
+  translationContextRequestCount?: number;
+  deepDraftRequestCount?: number;
+  deepReviewRequestCount?: number;
+  deepRewriteRequestCount?: number;
+  deepDraftCompensationRequestCount?: number;
+  deepRewriteCompensationRequestCount?: number;
   providerRequestSuccessCount?: number;
   providerRequestFailureCount?: number;
   missingSegmentCount?: number;
@@ -70,6 +77,8 @@ export interface DiagnosticLogContext {
   inputCharacters?: number;
   outputCharacters?: number;
   durationMs?: number;
+  attemptCount?: number;
+  contextMode?: 'full' | 'history-compressed' | 'article-map';
   downloadedImageCount?: number;
   failedImageCount?: number;
   httpStatus?: number;
@@ -83,6 +92,8 @@ export interface DiagnosticLogContext {
   stage?: string;
   operation?: string;
   requestKind?: string;
+  translationVariant?: string;
+  finalFailureStage?: string;
   trigger?: string;
   previousResultAtStart?: 'none' | 'retained';
   previousResultOutcome?: 'none' | 'retained' | 'replaced';

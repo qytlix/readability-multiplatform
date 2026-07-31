@@ -7,6 +7,8 @@ import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import {
   getSummaryService,
+  getChatAttachmentService,
+  getChatService,
   getInlineTranslationService,
   getTranslationService,
   getSyncScheduler,
@@ -28,6 +30,7 @@ import type { ProviderOperationLogger } from './ai/services/ProviderLogging';
 import type { SummaryOperationLogger } from './ai/services/SummaryLogging';
 import type { TranslationOperationLogger } from './ai/services/TranslationLogging';
 import type { UsageLedgerOperationLogger } from './ai/services/UsageRecorder';
+import type { ChatOperationLogger } from './ai/services/ChatLogging';
 import type { MarkdownExportOperationLogger } from './export/MarkdownExportLogging';
 import type { AnnotationOperationLogger } from './annotations/AnnotationLogging';
 import type { UsageStatisticsOperationLogger } from './ai/services/UsageStatisticsLogging';
@@ -58,6 +61,8 @@ const normalShutdownCoordinator = new NormalShutdownCoordinator({
   stopApplicationWork: () => {
     getSyncScheduler()?.stop();
     getSummaryService()?.abortActiveRun();
+    getChatService()?.abortActiveRun();
+    getChatAttachmentService()?.stopCleanupSchedule();
     getInlineTranslationService()?.close();
     getTranslationService()?.close();
   },
@@ -157,6 +162,7 @@ async function initializeApplication(): Promise<void> {
     & SummaryOperationLogger
     & TranslationOperationLogger
     & UsageLedgerOperationLogger
+    & ChatOperationLogger
     & MarkdownExportOperationLogger
     & AnnotationOperationLogger
     & UsageStatisticsOperationLogger = lifecycleLogger ?? {

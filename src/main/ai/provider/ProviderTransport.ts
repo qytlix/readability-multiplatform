@@ -1,6 +1,7 @@
 import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summary.errors';
 
 const PROVIDER_INACTIVITY_TIMEOUT_MS = 60_000;
+const MAX_PROVIDER_RETRY_AFTER_MS = 30_000;
 
 export interface ProviderAbortScope {
   signal: AbortSignal;
@@ -72,6 +73,7 @@ export async function fetchProviderResponse(
 
   if (response.ok) return response;
 
+  const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
   void response.body?.cancel();
   if (response.status === 401 || response.status === 403) {
     throw new SummaryError(
@@ -84,6 +86,7 @@ export async function fetchProviderResponse(
     SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_REQUEST_FAILED,
     `The provider request failed with status ${response.status}.`,
     response.status === 408 || response.status === 429 || response.status >= 500,
+    retryAfterMs,
   );
 }
 
@@ -199,6 +202,23 @@ function mapTransportFailure(
       ? 'The provider stream ended unexpectedly.'
       : 'Unable to reach the configured provider.',
     true,
+  );
+}
+
+function parseRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim();
+  if (/^\d+$/.test(normalized)) {
+    return Math.min(
+      Number(normalized) * 1_000,
+      MAX_PROVIDER_RETRY_AFTER_MS,
+    );
+  }
+  const retryAt = Date.parse(normalized);
+  if (!Number.isFinite(retryAt)) return undefined;
+  return Math.min(
+    Math.max(0, retryAt - Date.now()),
+    MAX_PROVIDER_RETRY_AFTER_MS,
   );
 }
 
