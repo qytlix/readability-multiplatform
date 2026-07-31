@@ -5,7 +5,9 @@ import { ProviderProfileStore } from '../../src/main/ai/stores/ProviderProfileSt
 import { UsageStore } from '../../src/main/ai/stores/UsageStore';
 import { MIGRATION_011 } from '../../src/main/migrations/011_create_llm_usage_events';
 import { MIGRATION_012 } from '../../src/main/migrations/012_add_llm_usage_attempt_id';
-import { MIGRATION_029 } from '../../src/main/migrations/029_expand_usage_for_chat';
+import { MIGRATION_028 as MIGRATION_028_TRANSLATION } from '../../src/main/migrations/028_add_deep_translation_checkpoints';
+import { MIGRATION_029 as MIGRATION_029_TRANSLATION } from '../../src/main/migrations/029_add_translation_context_usage_kind';
+import { MIGRATION_029 as MIGRATION_029_CHAT } from '../../src/main/migrations/029_expand_usage_for_chat';
 import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
 
 describe('UsageStore', () => {
@@ -168,7 +170,7 @@ describe('UsageStore', () => {
     `).run('2026-07-01T00:00:00.000Z');
 
     legacyDatabase.exec(MIGRATION_012);
-    legacyDatabase.exec(MIGRATION_029);
+    legacyDatabase.exec(MIGRATION_029_TRANSLATION);
 
     const columns = legacyDatabase.prepare('PRAGMA table_info(llm_usage_event)')
       .all() as Array<{ name: string }>;
@@ -176,5 +178,174 @@ describe('UsageStore', () => {
     expect(legacyDatabase.prepare('SELECT attemptId FROM llm_usage_event WHERE providerRequestId = 99')
       .get()).toEqual({ attemptId: null });
     legacyDatabase.close();
+  });
+
+  it('adds the Translation context request kind with a forward-only ledger rebuild', () => {
+    const legacyDatabase = new SqliteDatabase(':memory:');
+    legacyDatabase.exec('PRAGMA foreign_keys = ON');
+    legacyDatabase.exec('CREATE TABLE ai_provider_profile (id INTEGER PRIMARY KEY)');
+    legacyDatabase.exec('INSERT INTO ai_provider_profile (id) VALUES (1)');
+    legacyDatabase.exec(`
+      CREATE TABLE llm_usage_event (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        providerRequestId INTEGER NOT NULL UNIQUE,
+        taskType TEXT NOT NULL CHECK (taskType IN ('summary', 'translation')),
+        taskRunId INTEGER NOT NULL,
+        providerProfileId INTEGER NOT NULL REFERENCES ai_provider_profile(id),
+        model TEXT NOT NULL,
+        requestKind TEXT NOT NULL CHECK (requestKind IN (
+          'summary', 'batch', 'compensation',
+          'deep-draft', 'deep-review', 'deep-rewrite',
+          'deep-draft-compensation', 'deep-rewrite-compensation'
+        )),
+        requestStatus TEXT NOT NULL CHECK (requestStatus IN ('running', 'succeeded', 'failed', 'interrupted')),
+        errorCode TEXT,
+        inputTokens INTEGER,
+        outputTokens INTEGER,
+        totalTokens INTEGER,
+        usageAvailability TEXT NOT NULL,
+        startedAt TEXT NOT NULL,
+        finishedAt TEXT,
+        attemptId TEXT
+      );
+      INSERT INTO llm_usage_event
+        (providerRequestId, taskType, taskRunId, providerProfileId, model,
+         requestKind, requestStatus, usageAvailability, startedAt, attemptId)
+      VALUES (91, 'translation', 9, 1, 'legacy-model', 'deep-draft',
+              'succeeded', 'missing', '2026-07-01T00:00:00.000Z', 'attempt-legacy');
+    `);
+
+    legacyDatabase.exec(MIGRATION_029_TRANSLATION);
+    const migratedStore = new UsageStore(legacyDatabase);
+    migratedStore.createRunning({
+      providerRequestId: 92,
+      attemptId: 'attempt-context',
+      taskType: 'translation',
+      taskRunId: 9,
+      providerProfileId: 1,
+      model: 'context-model',
+      requestKind: 'translation-context',
+    });
+
+    expect(migratedStore.listByTask('translation', 9).map((record) => record.requestKind))
+      .toEqual(['deep-draft', 'translation-context']);
+    legacyDatabase.close();
+  });
+
+  it('preserves deep Translation usage while adding Article Chat request kinds', () => {
+    const mainDatabase = new SqliteDatabase(':memory:');
+    mainDatabase.exec('PRAGMA foreign_keys = ON');
+    mainDatabase.exec('CREATE TABLE ai_provider_profile (id INTEGER PRIMARY KEY)');
+    mainDatabase.exec('INSERT INTO ai_provider_profile (id) VALUES (1)');
+    mainDatabase.exec(`
+      CREATE TABLE llm_usage_event (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        providerRequestId INTEGER NOT NULL UNIQUE,
+        taskType TEXT NOT NULL CHECK (taskType IN ('summary', 'translation')),
+        taskRunId INTEGER NOT NULL,
+        providerProfileId INTEGER NOT NULL REFERENCES ai_provider_profile(id),
+        model TEXT NOT NULL,
+        requestKind TEXT NOT NULL CHECK (requestKind IN (
+          'summary', 'translation-context', 'batch', 'compensation',
+          'deep-draft', 'deep-review', 'deep-rewrite',
+          'deep-draft-compensation', 'deep-rewrite-compensation'
+        )),
+        requestStatus TEXT NOT NULL CHECK (
+          requestStatus IN ('running', 'succeeded', 'failed', 'interrupted')
+        ),
+        errorCode TEXT,
+        inputTokens INTEGER,
+        outputTokens INTEGER,
+        totalTokens INTEGER,
+        usageAvailability TEXT NOT NULL,
+        startedAt TEXT NOT NULL,
+        finishedAt TEXT,
+        attemptId TEXT
+      );
+      INSERT INTO llm_usage_event
+        (providerRequestId, taskType, taskRunId, providerProfileId, model,
+         requestKind, requestStatus, usageAvailability, startedAt, attemptId)
+      VALUES (301, 'translation', 31, 1, 'deep-model', 'deep-draft',
+              'succeeded', 'missing', '2026-07-31T00:00:00.000Z', 'deep-attempt');
+    `);
+
+    mainDatabase.exec(MIGRATION_029_CHAT);
+    const migratedStore = new UsageStore(mainDatabase);
+    migratedStore.createRunning({
+      providerRequestId: 302,
+      attemptId: 'chat-attempt',
+      taskType: 'chat',
+      taskRunId: 32,
+      providerProfileId: 1,
+      model: 'chat-model',
+      requestKind: 'chat-answer',
+    });
+
+    expect(mainDatabase.prepare(`
+      SELECT providerRequestId, requestKind FROM llm_usage_event ORDER BY providerRequestId
+    `).all()).toEqual([
+      { providerRequestId: 301, requestKind: 'deep-draft' },
+      { providerRequestId: 302, requestKind: 'chat-answer' },
+    ]);
+    mainDatabase.close();
+  });
+
+  it('preserves Article Chat usage through the deep Translation migrations', () => {
+    const chatDatabase = new SqliteDatabase(':memory:');
+    chatDatabase.exec('PRAGMA foreign_keys = ON');
+    chatDatabase.exec('CREATE TABLE ai_provider_profile (id INTEGER PRIMARY KEY)');
+    chatDatabase.exec('INSERT INTO ai_provider_profile (id) VALUES (1)');
+    chatDatabase.exec(`
+      CREATE TABLE llm_usage_event (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        providerRequestId INTEGER NOT NULL UNIQUE,
+        taskType TEXT NOT NULL CHECK (taskType IN ('summary', 'translation', 'chat')),
+        taskRunId INTEGER NOT NULL,
+        providerProfileId INTEGER NOT NULL REFERENCES ai_provider_profile(id),
+        model TEXT NOT NULL,
+        requestKind TEXT NOT NULL CHECK (requestKind IN (
+          'summary', 'batch', 'compensation',
+          'chat-answer', 'chat-history-compression',
+          'chat-segment-analysis', 'chat-article-map'
+        )),
+        requestStatus TEXT NOT NULL CHECK (
+          requestStatus IN ('running', 'succeeded', 'failed', 'interrupted')
+        ),
+        errorCode TEXT,
+        inputTokens INTEGER,
+        outputTokens INTEGER,
+        totalTokens INTEGER,
+        usageAvailability TEXT NOT NULL,
+        startedAt TEXT NOT NULL,
+        finishedAt TEXT,
+        attemptId TEXT
+      );
+      INSERT INTO llm_usage_event
+        (providerRequestId, taskType, taskRunId, providerProfileId, model,
+         requestKind, requestStatus, usageAvailability, startedAt, attemptId)
+      VALUES (401, 'chat', 41, 1, 'chat-model', 'chat-answer',
+              'succeeded', 'missing', '2026-07-31T00:00:00.000Z', 'chat-attempt');
+    `);
+
+    chatDatabase.exec(MIGRATION_028_TRANSLATION);
+    chatDatabase.exec(MIGRATION_029_TRANSLATION);
+    const migratedStore = new UsageStore(chatDatabase);
+    migratedStore.createRunning({
+      providerRequestId: 402,
+      attemptId: 'context-attempt',
+      taskType: 'translation',
+      taskRunId: 42,
+      providerProfileId: 1,
+      model: 'translation-model',
+      requestKind: 'translation-context',
+    });
+
+    expect(chatDatabase.prepare(`
+      SELECT providerRequestId, requestKind FROM llm_usage_event ORDER BY providerRequestId
+    `).all()).toEqual([
+      { providerRequestId: 401, requestKind: 'chat-answer' },
+      { providerRequestId: 402, requestKind: 'translation-context' },
+    ]);
+    chatDatabase.close();
   });
 });

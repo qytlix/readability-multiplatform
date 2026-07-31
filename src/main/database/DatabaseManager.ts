@@ -32,10 +32,14 @@ import { MIGRATION_022 } from '../migrations/022_create_entry_tags';
 import { MIGRATION_023 } from '../migrations/023_tag_name_case_sensitive';
 import { MIGRATION_024 } from '../migrations/024_add_tag_provider_route';
 import { MIGRATION_025 } from '../migrations/025_add_entry_ai_tag_generated';
-import { MIGRATION_026 } from '../migrations/026_add_chat_provider_route';
-import { MIGRATION_027 } from '../migrations/027_create_article_chat';
-import { MIGRATION_028 } from '../migrations/028_create_article_context_cache';
-import { MIGRATION_029 } from '../migrations/029_expand_usage_for_chat';
+import { MIGRATION_026 as MIGRATION_026_CHAT } from '../migrations/026_add_chat_provider_route';
+import { MIGRATION_026 as MIGRATION_026_TRANSLATION } from '../migrations/026_add_translation_local_context';
+import { MIGRATION_027 as MIGRATION_027_TRANSLATION } from '../migrations/027_add_translation_result_variant';
+import { MIGRATION_027 as MIGRATION_027_CHAT } from '../migrations/027_create_article_chat';
+import { MIGRATION_028 as MIGRATION_028_TRANSLATION } from '../migrations/028_add_deep_translation_checkpoints';
+import { MIGRATION_028 as MIGRATION_028_CHAT } from '../migrations/028_create_article_context_cache';
+import { MIGRATION_029 as MIGRATION_029_TRANSLATION } from '../migrations/029_add_translation_context_usage_kind';
+import { MIGRATION_029 as MIGRATION_029_CHAT } from '../migrations/029_expand_usage_for_chat';
 
 interface Migration {
   id: string;
@@ -87,11 +91,15 @@ const MIGRATIONS: Migration[] = [
   {
     id: '026_add_chat_provider_route',
     legacyIds: ['022_add_chat_provider_route'],
-    sql: MIGRATION_026,
+    sql: MIGRATION_026_CHAT,
   },
-  { id: '027_create_article_chat', sql: MIGRATION_027 },
-  { id: '028_create_article_context_cache', sql: MIGRATION_028 },
-  { id: '029_expand_usage_for_chat', sql: MIGRATION_029 },
+  { id: '026_add_translation_local_context', sql: MIGRATION_026_TRANSLATION },
+  { id: '027_create_article_chat', sql: MIGRATION_027_CHAT },
+  { id: '027_add_translation_result_variant', sql: MIGRATION_027_TRANSLATION },
+  { id: '028_create_article_context_cache', sql: MIGRATION_028_CHAT },
+  { id: '028_add_deep_translation_checkpoints', sql: MIGRATION_028_TRANSLATION },
+  { id: '029_expand_usage_for_chat', sql: MIGRATION_029_CHAT },
+  { id: '029_add_translation_context_usage_kind', sql: MIGRATION_029_TRANSLATION },
 ];
 
 export class DatabaseManager {

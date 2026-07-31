@@ -13,8 +13,14 @@ export type UsageTaskType = (typeof USAGE_TASK_TYPES)[number];
 
 export const USAGE_REQUEST_KINDS = [
   'summary',
+  'translation-context',
   'batch',
   'compensation',
+  'deep-draft',
+  'deep-review',
+  'deep-rewrite',
+  'deep-draft-compensation',
+  'deep-rewrite-compensation',
   'chat-answer',
   'chat-history-compression',
   'chat-segment-analysis',
@@ -145,6 +151,19 @@ export class UsageStore {
       WHERE taskType = ? AND taskRunId = ?
       ORDER BY startedAt ASC, id ASC
     `).all(taskType, taskRunId) as UsageRequestRow[];
+    return rows.map(toUsageRequestRecord);
+  }
+
+  listByAttempt(
+    taskType: UsageTaskType,
+    taskRunId: number,
+    attemptId: string,
+  ): UsageRequestRecord[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM llm_usage_event
+      WHERE taskType = ? AND taskRunId = ? AND attemptId = ?
+      ORDER BY startedAt ASC, id ASC
+    `).all(taskType, taskRunId, attemptId) as UsageRequestRow[];
     return rows.map(toUsageRequestRecord);
   }
 

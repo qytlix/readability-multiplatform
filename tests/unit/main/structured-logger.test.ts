@@ -209,11 +209,15 @@ describe('StructuredLogger', () => {
 
     logTranslationRunStarted(logger, {
       taskRunId: 12,
+      attemptId: 'attempt-12',
+      translationVariant: 'standard',
       trigger: 'initial',
       previousResultAtStart: 'none',
     });
     logTranslationRunCompleted(logger, {
       taskRunId: 12,
+      attemptId: 'attempt-12',
+      translationVariant: 'standard',
       trigger: 'initial',
       previousResultOutcome: 'none',
       durationMs: 1,
@@ -228,6 +232,9 @@ describe('StructuredLogger', () => {
     });
     logTranslationRunFailed(logger, {
       taskRunId: 13,
+      attemptId: 'attempt-13',
+      translationVariant: 'deep',
+      finalFailureStage: 'deep-review',
       trigger: 'resume',
       previousResultOutcome: 'retained',
       durationMs: 2,
@@ -244,6 +251,8 @@ describe('StructuredLogger', () => {
     });
     logTranslationRunInterrupted(logger, {
       taskRunId: 14,
+      attemptId: 'attempt-14',
+      translationVariant: 'standard',
       trigger: 'force-new',
       previousResultOutcome: 'retained',
       durationMs: 3,
@@ -276,11 +285,15 @@ describe('StructuredLogger', () => {
     ]);
     expect(records[0].context).toEqual({
       taskRunId: 12,
+      attemptId: 'attempt-12',
+      translationVariant: 'standard',
       trigger: 'initial',
       previousResultAtStart: 'none',
     });
     expect(records[1].context).toEqual({
       taskRunId: 12,
+      attemptId: 'attempt-12',
+      translationVariant: 'standard',
       durationMs: 1,
       success: true,
       trigger: 'initial',
@@ -288,6 +301,12 @@ describe('StructuredLogger', () => {
       providerRequestCount: 1,
       batchRequestCount: 1,
       compensationRequestCount: 0,
+      translationContextRequestCount: 0,
+      deepDraftRequestCount: 0,
+      deepReviewRequestCount: 0,
+      deepRewriteRequestCount: 0,
+      deepDraftCompensationRequestCount: 0,
+      deepRewriteCompensationRequestCount: 0,
       providerRequestSuccessCount: 1,
       providerRequestFailureCount: 0,
       missingSegmentCount: 0,
@@ -295,6 +314,9 @@ describe('StructuredLogger', () => {
     });
     expect(records[2].context).toEqual({
       taskRunId: 13,
+      attemptId: 'attempt-13',
+      translationVariant: 'deep',
+      finalFailureStage: 'deep-review',
       durationMs: 2,
       success: false,
       stage: 'stream',
@@ -304,6 +326,12 @@ describe('StructuredLogger', () => {
       providerRequestCount: 1,
       batchRequestCount: 1,
       compensationRequestCount: 0,
+      translationContextRequestCount: 0,
+      deepDraftRequestCount: 0,
+      deepReviewRequestCount: 0,
+      deepRewriteRequestCount: 0,
+      deepDraftCompensationRequestCount: 0,
+      deepRewriteCompensationRequestCount: 0,
       providerRequestSuccessCount: 0,
       providerRequestFailureCount: 1,
       missingSegmentCount: 0,
@@ -311,6 +339,8 @@ describe('StructuredLogger', () => {
     });
     expect(records[3].context).toEqual({
       taskRunId: 14,
+      attemptId: 'attempt-14',
+      translationVariant: 'standard',
       durationMs: 3,
       success: false,
       stage: 'interrupt',
@@ -321,6 +351,12 @@ describe('StructuredLogger', () => {
       providerRequestCount: 1,
       batchRequestCount: 1,
       compensationRequestCount: 0,
+      translationContextRequestCount: 0,
+      deepDraftRequestCount: 0,
+      deepReviewRequestCount: 0,
+      deepRewriteRequestCount: 0,
+      deepDraftCompensationRequestCount: 0,
+      deepRewriteCompensationRequestCount: 0,
       providerRequestSuccessCount: 0,
       providerRequestFailureCount: 1,
       missingSegmentCount: 0,
@@ -339,12 +375,14 @@ describe('StructuredLogger', () => {
 
     logTranslationMissingSegmentsDetected(logger, {
       taskRunId: 12,
+      attemptId: 'attempt-12',
       providerRequestId: 1,
       requestKind: 'batch',
       missingSegmentCount: 1,
     });
     logTranslationProviderRequestFailed(logger, {
       taskRunId: 12,
+      attemptId: 'attempt-12',
       providerRequestId: 2,
       requestKind: 'compensation',
       segmentCount: 1,
@@ -361,12 +399,14 @@ describe('StructuredLogger', () => {
     ]);
     expect(records[0].context).toEqual({
       taskRunId: 12,
+      attemptId: 'attempt-12',
       providerRequestId: 1,
       requestKind: 'batch',
       missingSegmentCount: 1,
     });
     expect(records[1].context).toEqual({
       taskRunId: 12,
+      attemptId: 'attempt-12',
       providerRequestId: 2,
       requestKind: 'compensation',
       segmentCount: 1,
@@ -382,6 +422,7 @@ describe('StructuredLogger', () => {
 
     logTranslationProviderRequestFailed(logger, {
       taskRunId: 12,
+      attemptId: 'attempt-12',
       providerRequestId: 2,
       requestKind: 'compensation',
       segmentCount: 1,
@@ -418,6 +459,7 @@ describe('StructuredLogger', () => {
 
     expect(readRecords(directory)[0]?.context).toEqual({
       taskRunId: 12,
+      attemptId: 'attempt-12',
       providerRequestId: 2,
       requestKind: 'compensation',
       segmentCount: 1,

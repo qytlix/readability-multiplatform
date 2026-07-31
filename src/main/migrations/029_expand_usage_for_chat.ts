@@ -1,6 +1,7 @@
 /**
  * Migration 029: extend the usage ledger CHECK constraints for Article Chat
- * while preserving every existing Summary and Translation row.
+ * while preserving every existing Summary and Translation row, including
+ * deep-translation and context-analysis requests introduced on main.
  */
 export const MIGRATION_029 = `
 ALTER TABLE llm_usage_event RENAME TO llm_usage_event_legacy_029;
@@ -17,8 +18,14 @@ CREATE TABLE llm_usage_event (
     requestKind       TEXT NOT NULL CHECK (
       requestKind IN (
         'summary',
+        'translation-context',
         'batch',
         'compensation',
+        'deep-draft',
+        'deep-review',
+        'deep-rewrite',
+        'deep-draft-compensation',
+        'deep-rewrite-compensation',
         'chat-answer',
         'chat-history-compression',
         'chat-segment-analysis',

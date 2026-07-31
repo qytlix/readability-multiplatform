@@ -3,9 +3,20 @@
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TranslationNoticeDialog } from '../../../src/renderer/features/translation/TranslationNoticeDialog';
+import {
+  getRetranslationNoticeMessage,
+  TranslationNoticeDialog,
+} from '../../../src/renderer/features/translation/TranslationNoticeDialog';
 
 describe('TranslationNoticeDialog', () => {
+  it('uses non-pause guidance while a deep retranslation is active', () => {
+    expect(getRetranslationNoticeMessage('active-deep'))
+      .toBe('当前文章的深度翻译任务正在进行，请等待任务完成或失败。');
+    expect(getRetranslationNoticeMessage('active-deep')).not.toContain('暂停');
+    expect(getRetranslationNoticeMessage('active'))
+      .toContain('请使用主翻译按钮暂停或继续');
+  });
+
   let container: HTMLDivElement;
   let root: Root;
 

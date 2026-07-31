@@ -85,6 +85,7 @@ describe('ProviderArticleSegmentAnalyzer', () => {
       fail: vi.fn(),
       interrupt: vi.fn(),
       reconcileInterruptedRunning: vi.fn(),
+      listByAttempt: vi.fn(() => []),
     };
     const provider = {
       async *stream(input: Parameters<TextGenerationProvider['stream']>[0]) {
@@ -146,6 +147,7 @@ describe('ProviderArticleSegmentAnalyzer', () => {
       fail: vi.fn(),
       interrupt: vi.fn(),
       reconcileInterruptedRunning: vi.fn(),
+      listByAttempt: vi.fn(() => []),
     };
     const provider = {
       async *stream() {

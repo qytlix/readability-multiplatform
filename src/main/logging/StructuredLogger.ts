@@ -31,6 +31,7 @@ const CONTEXT_FIELD_TYPES = {
   feedId: 'number',
   entryId: 'number',
   taskRunId: 'number',
+  attemptId: 'string',
   providerId: 'number',
   providerRequestId: 'number',
   count: 'number',
@@ -41,6 +42,12 @@ const CONTEXT_FIELD_TYPES = {
   providerRequestCount: 'number',
   batchRequestCount: 'number',
   compensationRequestCount: 'number',
+  translationContextRequestCount: 'number',
+  deepDraftRequestCount: 'number',
+  deepReviewRequestCount: 'number',
+  deepRewriteRequestCount: 'number',
+  deepDraftCompensationRequestCount: 'number',
+  deepRewriteCompensationRequestCount: 'number',
   providerRequestSuccessCount: 'number',
   providerRequestFailureCount: 'number',
   missingSegmentCount: 'number',
@@ -86,6 +93,8 @@ const CONTEXT_FIELD_TYPES = {
   operation: 'string',
   strategy: 'string',
   requestKind: 'string',
+  translationVariant: 'string',
+  finalFailureStage: 'string',
   trigger: 'string',
   previousResultAtStart: 'string',
   previousResultOutcome: 'string',
@@ -122,6 +131,7 @@ export interface StructuredLogContext {
   feedId?: number;
   entryId?: number;
   taskRunId?: number;
+  attemptId?: string;
   providerId?: number;
   providerRequestId?: number;
   count?: number;
@@ -132,6 +142,12 @@ export interface StructuredLogContext {
   providerRequestCount?: number;
   batchRequestCount?: number;
   compensationRequestCount?: number;
+  translationContextRequestCount?: number;
+  deepDraftRequestCount?: number;
+  deepReviewRequestCount?: number;
+  deepRewriteRequestCount?: number;
+  deepDraftCompensationRequestCount?: number;
+  deepRewriteCompensationRequestCount?: number;
   providerRequestSuccessCount?: number;
   providerRequestFailureCount?: number;
   missingSegmentCount?: number;
@@ -177,6 +193,8 @@ export interface StructuredLogContext {
   operation?: string;
   strategy?: string;
   requestKind?: string;
+  translationVariant?: string;
+  finalFailureStage?: string;
   trigger?: string;
   previousResultAtStart?: string;
   previousResultOutcome?: string;
@@ -691,6 +709,9 @@ function assignContextField(
     case 'taskRunId':
       if (typeof value === 'number') context.taskRunId = value;
       return;
+    case 'attemptId':
+      if (typeof value === 'string') context.attemptId = value;
+      return;
     case 'providerId':
       if (typeof value === 'number') context.providerId = value;
       return;
@@ -720,6 +741,24 @@ function assignContextField(
       return;
     case 'compensationRequestCount':
       if (typeof value === 'number') context.compensationRequestCount = value;
+      return;
+    case 'translationContextRequestCount':
+      if (typeof value === 'number') context.translationContextRequestCount = value;
+      return;
+    case 'deepDraftRequestCount':
+      if (typeof value === 'number') context.deepDraftRequestCount = value;
+      return;
+    case 'deepReviewRequestCount':
+      if (typeof value === 'number') context.deepReviewRequestCount = value;
+      return;
+    case 'deepRewriteRequestCount':
+      if (typeof value === 'number') context.deepRewriteRequestCount = value;
+      return;
+    case 'deepDraftCompensationRequestCount':
+      if (typeof value === 'number') context.deepDraftCompensationRequestCount = value;
+      return;
+    case 'deepRewriteCompensationRequestCount':
+      if (typeof value === 'number') context.deepRewriteCompensationRequestCount = value;
       return;
     case 'providerRequestSuccessCount':
       if (typeof value === 'number') context.providerRequestSuccessCount = value;
@@ -846,6 +885,12 @@ function assignContextField(
       return;
     case 'requestKind':
       if (typeof value === 'string') context.requestKind = value;
+      return;
+    case 'translationVariant':
+      if (typeof value === 'string') context.translationVariant = value;
+      return;
+    case 'finalFailureStage':
+      if (typeof value === 'string') context.finalFailureStage = value;
       return;
     case 'trigger':
       if (typeof value === 'string') context.trigger = value;

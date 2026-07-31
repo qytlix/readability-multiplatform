@@ -106,6 +106,7 @@ describe('ChatService', () => {
       fail: vi.fn(),
       interrupt: vi.fn(),
       reconcileInterruptedRunning: vi.fn(),
+      listByAttempt: vi.fn(() => []),
     };
     const logger = {
       info: vi.fn(),

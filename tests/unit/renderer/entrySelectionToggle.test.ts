@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { act, createElement, forwardRef } from 'react';
+import {
+  act,
+  createElement,
+  Fragment,
+  forwardRef,
+  StrictMode,
+  type ReactNode,
+} from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -14,11 +21,21 @@ vi.mock('../../../src/renderer/features/summary/SummaryPanel', () => ({
 }));
 
 vi.mock('../../../src/renderer/features/translation/TranslationPanel', () => ({
-  TranslationPanel: forwardRef(() => null),
+  TranslationPanel: forwardRef(({ children }: { children?: ReactNode }) => (
+    createElement(Fragment, null, children)
+  )),
 }));
 
 vi.mock('../../../src/renderer/features/translation/InlineTranslationOverlay', () => ({
   InlineTranslationOverlay: () => null,
+}));
+
+vi.mock('../../../src/renderer/features/settings/AISettingsPage', () => ({
+  AISettingsPage: ({ onClose }: { onClose: () => void }) => createElement(
+    'section',
+    { className: 'settings-page' },
+    createElement('button', { className: 'settings-back-button', onClick: onClose }, '返回阅读'),
+  ),
 }));
 
 import { App } from '../../../src/renderer/App';
@@ -210,6 +227,52 @@ describe('article selection toggle', () => {
     expect(container.querySelector('.entry-detail-title-row h2')?.textContent).toBe('文章 B');
     expect(storyCards.scrollTop).toBe(146);
     expect(listEntries).toHaveBeenCalledTimes(listRequestCount);
+  });
+
+  it('restores the same cached article after repeated settings page remounts', async () => {
+    getContent.mockResolvedValue({
+      ok: true,
+      data: {
+        entryId: entries[0].id,
+        sourceUrl: entries[0].url,
+        cleanedHtml: '<article><p>Persisted article body</p></article>',
+        markdown: 'Persisted article body',
+        pipelineStatus: 'success',
+      },
+    });
+
+    await act(async () => {
+      root.render(createElement(StrictMode, null, createElement(App)));
+      await Promise.resolve();
+    });
+    await flushAsyncState();
+
+    act(() => container.querySelector<HTMLButtonElement>('.sidebar-feed')?.click());
+    await flushAsyncState();
+    act(() => findStoryCard(container, entries[0].title ?? '')?.click());
+    await flushAsyncState();
+    await flushAsyncState();
+
+    expect(container.textContent).toContain('Persisted article body');
+    expect(fetchAndClean).not.toHaveBeenCalled();
+
+    for (let cycle = 0; cycle < 2; cycle += 1) {
+      const settingsButton = [...container.querySelectorAll<HTMLButtonElement>(
+        '.sidebar-footer-button',
+      )].find((button) => button.textContent?.includes('设置'));
+      act(() => settingsButton?.click());
+      expect(container.querySelector('.settings-page')).not.toBeNull();
+
+      act(() => container.querySelector<HTMLButtonElement>('.settings-back-button')?.click());
+      await flushAsyncState();
+      await flushAsyncState();
+
+      expect(container.querySelector('.entry-detail-title-row h2')?.textContent)
+        .toBe(entries[0].title);
+      expect(container.textContent).toContain('Persisted article body');
+      expect(container.textContent).not.toContain('Fetching and cleaning article content...');
+      expect(fetchAndClean).not.toHaveBeenCalled();
+    }
   });
 
   it('cycles list filters within the selected feed while sidebar filters stay global', async () => {

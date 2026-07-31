@@ -127,6 +127,15 @@ function parseTextSlotPrompt(prompt: string): TextSlotPromptSlot[] {
     JSON.parse(line) as TextSlotPromptSlot);
 }
 
+function parseDeepRewritePrompt(prompt: string): BatchPromptSegment[] {
+  const serialized = prompt.match(
+    /<deep-rewrite-input-ndjson>\n([\s\S]*?)\n<\/deep-rewrite-input-ndjson>/,
+  )?.[1];
+  if (!serialized) throw new Error('Missing deep rewrite input.');
+  return serialized.split('\n').filter(Boolean).map((line) =>
+    JSON.parse(line) as BatchPromptSegment);
+}
+
 function toBatchOutput(segment: BatchPromptSegment): BatchProviderOutput {
   const translatedHtml = segment.sourceHtml.replace(
     />([^<]*)</g,
@@ -261,6 +270,78 @@ describe('TranslationService', () => {
     ]);
   });
 
+  it('logs a low-noise canonical correction without diagnosing completed work as pending', () => {
+    const records: TranslationLogRecord[] = [];
+    const translationStore = new TranslationStore(database);
+    const profile = profileStore.findActiveWithSecret();
+    if (!profile) throw new Error('Expected an active test provider profile.');
+    const completed = translationStore.createRun({
+      entryId: 1,
+      providerProfileId: profile.id,
+      sourceLanguage: 'auto',
+      targetLanguage: 'zh-CN',
+      sourceContentHash: 'canonical-completed-source',
+      segmenterVersion: 'test-segmenter',
+      promptVersion: 'test-prompt',
+      terminologyPackVersion: 'test-terminology',
+      translationVariant: 'deep',
+      segments: [{
+        id: 'canonical-completed-segment',
+        orderIndex: 0,
+        type: 'paragraph',
+        sourceHtml: '<p>Completed.</p>',
+        sourceText: 'Completed.',
+      }],
+    });
+    translationStore.markSegmentSucceeded(
+      completed.id,
+      'canonical-completed-segment',
+      '完成。',
+      '<p>完成。</p>',
+      [],
+    );
+    translationStore.markRunSucceeded(completed.id);
+    database.prepare(`
+      UPDATE translation_result
+      SET errorCode = 'TRANSLATION_PAUSED', errorMessage = 'stale', errorRetryable = 1
+      WHERE id = ?
+    `).run(completed.id);
+    database.prepare(`
+      INSERT INTO translation_deep_batch_checkpoint
+        (translationResultId, batchKey, stage, draftJson, updatedAt)
+      VALUES (?, 'stale', 'review', '[]', ?)
+    `).run(completed.id, new Date().toISOString());
+    const recoveringService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      translationStore,
+      provider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+    );
+
+    recoveringService.reconcileInterruptedRuns();
+
+    expect(translationStore.findLatestResult(1, 'auto', 'zh-CN')).toMatchObject({
+      id: completed.id,
+      status: 'succeeded',
+      error: undefined,
+    });
+    expect(records).toEqual([{
+      event: TRANSLATION_LOG_EVENTS.canonicalStateReconciled,
+      component: 'translation.canonical-state',
+      context: {
+        count: 1,
+        trigger: 'startup-recovery',
+        outcome: 'canonical-state-corrected',
+      },
+    }]);
+  });
+
   it('batches adjacent segments, persists each result, and reuses a compatible Translation', async () => {
     const events: string[] = [];
     const request = { entryId: 1, sourceLanguage: 'auto' as const, targetLanguage: 'zh-CN' as const };
@@ -305,6 +386,638 @@ describe('TranslationService', () => {
     expect(provider.maxActiveStreams).toBe(1);
     expect(provider.providerKinds).toEqual(['deepseek']);
     expect(provider.models).toEqual(['translation-model']);
+  });
+
+  it('returns the newest complete product result independently of the selected mode', async () => {
+    const standardRequest = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+      translationMode: 'standard' as const,
+    };
+    service.generate(standardRequest);
+    await vi.waitFor(() => {
+      expect(service.getState(standardRequest)).toMatchObject({ state: 'succeeded' });
+    });
+    const initialState = service.getState(standardRequest);
+    if (initialState.state !== 'succeeded') throw new Error('Expected the initial Translation.');
+
+    const store = new TranslationStore(database);
+    const profile = profileStore.findActiveWithSecret();
+    if (!profile) throw new Error('Expected an active provider profile.');
+    const publish = (translationVariant: 'standard' | 'deep', translatedText: string): number => {
+      const run = store.createRun({
+        entryId: initialState.result.entryId,
+        providerProfileId: profile.id,
+        sourceLanguage: initialState.result.sourceLanguage,
+        targetLanguage: initialState.result.targetLanguage,
+        sourceContentHash: initialState.result.sourceContentHash,
+        segmenterVersion: initialState.result.segmenterVersion,
+        promptVersion: initialState.result.promptVersion,
+        terminologyPackVersion: initialState.result.terminologyPackVersion,
+        expertId: initialState.result.expertId,
+        expertContentHash: initialState.result.expertContentHash,
+        smartContextEnabled: initialState.result.smartContextEnabled,
+        translationVariant,
+        contextPromptVersion: initialState.result.contextPromptVersion,
+        segments: initialState.result.segments.map((segment) => ({
+          id: segment.sourceSegmentId,
+          orderIndex: segment.orderIndex,
+          type: segment.sourceType,
+          sourceHtml: segment.sourceHtml,
+          sourceText: segment.sourceText,
+        })),
+      });
+      run.segments.forEach((segment) => {
+        store.markSegmentSucceeded(
+          run.id,
+          segment.sourceSegmentId,
+          translatedText,
+          `<p>${translatedText}</p>`,
+          [],
+        );
+      });
+      store.markRunSucceeded(run.id);
+      return run.id;
+    };
+
+    const newerDeepRunId = publish('deep', 'Newest deep Translation.');
+    expect(service.getState(standardRequest)).toMatchObject({
+      state: 'succeeded',
+      result: { id: newerDeepRunId, translationVariant: 'deep' },
+    });
+    expect(service.getState({ ...standardRequest, translationMode: 'deep' })).toMatchObject({
+      state: 'succeeded',
+      result: { id: newerDeepRunId, translationVariant: 'deep' },
+    });
+    expect(service.generate(standardRequest)).toMatchObject({
+      runId: newerDeepRunId,
+      reused: true,
+      result: { id: newerDeepRunId, translationVariant: 'deep' },
+    });
+
+    const newestStandard = service.generate({ ...standardRequest, forceNew: true });
+    expect(newestStandard).toMatchObject({
+      reused: false,
+      result: { translationVariant: 'standard' },
+      activeResult: { id: newerDeepRunId, translationVariant: 'deep' },
+    });
+    await vi.waitFor(() => {
+      expect(service.getState(standardRequest)).toMatchObject({
+        state: 'succeeded',
+        result: { id: newestStandard.runId },
+      });
+    });
+    expect(service.getState({ ...standardRequest, translationMode: 'deep' })).toMatchObject({
+      state: 'succeeded',
+      result: { id: newestStandard.runId, translationVariant: 'standard' },
+    });
+    expect(service.getState(standardRequest)).toMatchObject({
+      state: 'succeeded',
+      result: { id: newestStandard.runId, translationVariant: 'standard' },
+    });
+  });
+
+  it('runs deep batches as draft, review, then rewrite without publishing intermediate output', async () => {
+    const prompts: string[] = [];
+    const records: TranslationLogRecord[] = [];
+    const sequenceProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        prompts.push(providerRequest.prompt);
+        if (providerRequest.prompt.includes('<deep-review-input-ndjson>')) {
+          yield '{"issues":[]}';
+          return;
+        }
+        const segments = providerRequest.prompt.includes('<deep-rewrite-input-ndjson>')
+          ? parseDeepRewritePrompt(providerRequest.prompt)
+          : parseBatchPrompt(providerRequest.prompt);
+        for (const segment of segments) {
+          yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const deepService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      sequenceProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+      new UsageRecorder(usageStore),
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+      translationMode: 'deep' as const,
+    };
+    const emittedTypes: string[] = [];
+    deepService.subscribe((event) => emittedTypes.push(event.type));
+    const started = deepService.generate(request);
+    await vi.waitFor(() => {
+      expect(deepService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    expect(prompts).toHaveLength(3);
+    expect(prompts.every((prompt) => !prompt.includes('<adjacent-source-context>'))).toBe(true);
+    expect(prompts[0]).toContain('<source-segments-ndjson>');
+    expect(prompts[1]).toContain('<deep-review-input-ndjson>');
+    expect(prompts[1]).toContain('draftHtml');
+    expect(prompts[2]).toContain('<deep-rewrite-input-ndjson>');
+    expect(prompts[2]).toContain('reviewIssues');
+    expect(emittedTypes.filter((type) => type === 'segment-completed')).toHaveLength(3);
+    expect(usageStore.listByTask('translation', started.runId).map((record) => record.requestKind))
+      .toEqual(['deep-draft', 'deep-review', 'deep-rewrite']);
+    const startedLog = records.find((record) => record.event === TRANSLATION_LOG_EVENTS.runStarted);
+    const completedLog = records.find((record) => record.event === TRANSLATION_LOG_EVENTS.runCompleted);
+    expect(startedLog?.context).toMatchObject({
+      taskRunId: started.runId,
+      attemptId: expect.any(String),
+      trigger: 'initial',
+      translationVariant: 'deep',
+    });
+    expect(completedLog?.context).toMatchObject({
+      taskRunId: started.runId,
+      attemptId: (startedLog?.context as { attemptId?: string })?.attemptId,
+      trigger: 'initial',
+      translationVariant: 'deep',
+      providerRequestCount: 3,
+      batchRequestCount: 0,
+      compensationRequestCount: 0,
+      deepDraftRequestCount: 1,
+      deepReviewRequestCount: 1,
+      deepRewriteRequestCount: 1,
+      deepDraftCompensationRequestCount: 0,
+      deepRewriteCompensationRequestCount: 0,
+    });
+  });
+
+  it.each([
+    { failureStage: 'deep-draft' as const, actions: ['fail'] as const },
+    { failureStage: 'deep-review' as const, actions: ['success', 'fail'] as const },
+    { failureStage: 'deep-rewrite' as const, actions: ['success', 'success', 'fail'] as const },
+    {
+      failureStage: 'deep-draft-compensation' as const,
+      actions: ['invalid', 'fail'] as const,
+    },
+    {
+      failureStage: 'deep-rewrite-compensation' as const,
+      actions: ['success', 'success', 'invalid', 'fail'] as const,
+    },
+  ])('records $failureStage as the stable final failure stage', async ({
+    failureStage,
+    actions,
+  }) => {
+    const records: TranslationLogRecord[] = [];
+    let requestIndex = 0;
+    const failingProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        const action = actions[requestIndex];
+        requestIndex += 1;
+        if (action === 'fail') {
+          throw new SummaryError(
+            SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_TIMEOUT,
+            'Provider timed out.',
+            true,
+          );
+        }
+        if (action === 'invalid') {
+          yield 'not-json\n';
+          return;
+        }
+        if (providerRequest.prompt.includes('<deep-review-input-ndjson>')) {
+          yield '{"issues":[]}';
+          return;
+        }
+        const segments = providerRequest.prompt.includes('<deep-rewrite-input-ndjson>')
+          ? parseDeepRewritePrompt(providerRequest.prompt)
+          : parseBatchPrompt(providerRequest.prompt);
+        for (const segment of segments) {
+          yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const failingService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      failingProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+      new UsageRecorder(usageStore),
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+      translationMode: 'deep' as const,
+      forceNew: true,
+    };
+
+    const started = failingService.generate(request);
+    await vi.waitFor(() => {
+      expect(failingService.getState(request)).toMatchObject({ state: 'failed' });
+    });
+
+    const startedLog = records.find((record) => record.event === TRANSLATION_LOG_EVENTS.runStarted);
+    const failedLog = records.find((record) => record.event === TRANSLATION_LOG_EVENTS.runFailed);
+    expect(failedLog?.context).toMatchObject({
+      taskRunId: started.runId,
+      attemptId: (startedLog?.context as { attemptId?: string })?.attemptId,
+      trigger: 'force-new',
+      translationVariant: 'deep',
+      finalFailureStage: failureStage,
+      errorCode: TRANSLATION_LOG_ERROR_CODES.providerTimeout,
+    });
+    const usageRecords = usageStore.listByTask('translation', started.runId);
+    expect(usageRecords.at(-1)).toMatchObject({
+      requestKind: failureStage,
+      requestStatus: 'failed',
+    });
+  });
+
+  it('rejects pause for an active deep run without interrupting it', async () => {
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+      translationMode: 'deep' as const,
+    };
+    const started = service.generate(request);
+
+    expect(service.pause({ ...request, runId: started.runId })).toEqual({ paused: false });
+    expect(service.getState(request)).toMatchObject({
+      state: 'running',
+      result: { id: started.runId, translationVariant: 'deep' },
+    });
+    await vi.waitFor(() => {
+      expect(service.getState(request).state).not.toBe('running');
+    });
+  });
+
+  it('makes a timed-out deep run terminal and starts its retry as a new draft run', async () => {
+    const standardRequest = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+      translationMode: 'standard' as const,
+    };
+    const retained = service.generate(standardRequest);
+    await vi.waitFor(() => {
+      expect(service.getState(standardRequest)).toMatchObject({ state: 'succeeded' });
+    });
+    const records: TranslationLogRecord[] = [];
+    const prompts: string[] = [];
+    let shouldTimeoutReview = true;
+    const checkpointProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        prompts.push(providerRequest.prompt);
+        if (providerRequest.prompt.includes('<deep-review-input-ndjson>')) {
+          if (shouldTimeoutReview) {
+            shouldTimeoutReview = false;
+            throw new SummaryError(
+              SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_TIMEOUT,
+              'Provider timed out.',
+              true,
+            );
+          }
+          yield '{"issues":[]}';
+          return;
+        }
+        const segments = providerRequest.prompt.includes('<deep-rewrite-input-ndjson>')
+          ? parseDeepRewritePrompt(providerRequest.prompt)
+          : parseBatchPrompt(providerRequest.prompt);
+        for (const segment of segments) {
+          yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const store = new TranslationStore(database);
+    const firstService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      store,
+      checkpointProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+      new UsageRecorder(usageStore),
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+      translationMode: 'deep' as const,
+      forceNew: true,
+    };
+    const started = firstService.generate(request);
+    await vi.waitFor(() => {
+      expect(firstService.getState(request)).toMatchObject({ state: 'failed' });
+    });
+    expect(firstService.getState(request)).toMatchObject({
+      state: 'failed',
+      result: {
+        id: started.runId,
+        translationVariant: 'deep',
+        error: { code: 'TRANSLATION_PROVIDER_TIMEOUT' },
+      },
+      activeResult: { id: retained.runId, status: 'succeeded' },
+    });
+    expect(database.prepare(`
+      SELECT COUNT(*) AS count FROM translation_deep_batch_checkpoint
+      WHERE translationResultId = ?
+    `).get(started.runId)).toEqual({ count: 0 });
+
+    const replacement = firstService.generate(request);
+    expect(replacement.runId).not.toBe(started.runId);
+    await vi.waitFor(() => {
+      expect(firstService.getState(request)).toMatchObject({
+        state: 'succeeded',
+        result: { id: replacement.runId },
+      });
+    });
+
+    expect(prompts.filter((prompt) => prompt.includes('<source-segments-ndjson>'))).toHaveLength(2);
+    const terminalSummaries = records.filter((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.runFailed
+      || record.event === TRANSLATION_LOG_EVENTS.runCompleted);
+    expect(terminalSummaries.map((record) => record.context)).toEqual([
+      expect.objectContaining({
+        taskRunId: started.runId,
+        trigger: 'force-new',
+        deepDraftRequestCount: 1,
+        deepReviewRequestCount: 1,
+        deepRewriteRequestCount: 0,
+        finalFailureStage: 'deep-review',
+      }),
+      expect.objectContaining({
+        taskRunId: replacement.runId,
+        trigger: 'force-new',
+        deepDraftRequestCount: 1,
+        deepReviewRequestCount: 1,
+        deepRewriteRequestCount: 1,
+      }),
+    ]);
+    expect(new Set(terminalSummaries.map((record) =>
+      (record.context as { attemptId: string }).attemptId)).size).toBe(2);
+  });
+
+  it('blocks late deep responses after timeout while a new run completes', async () => {
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: Array.from(
+        { length: 7 },
+        (_, index) => `<p>Deep timeout paragraph ${index + 1}.</p>`,
+      ).join(''),
+      pipelineStatus: 'success',
+    });
+    let notifySecondDraftStarted: (() => void) | undefined;
+    const secondDraftStarted = new Promise<void>((resolve) => {
+      notifySecondDraftStarted = resolve;
+    });
+    let releaseLateDraft: (() => void) | undefined;
+    const lateDraftReleased = new Promise<void>((resolve) => {
+      releaseLateDraft = resolve;
+    });
+    let draftRequestCount = 0;
+    let lateSignal: AbortSignal | undefined;
+    const records: TranslationLogRecord[] = [];
+    const lateProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        if (providerRequest.prompt.includes('<deep-review-input-ndjson>')) {
+          yield '{"issues":[]}';
+          return;
+        }
+        const isRewrite = providerRequest.prompt.includes('<deep-rewrite-input-ndjson>');
+        const segments = isRewrite
+          ? parseDeepRewritePrompt(providerRequest.prompt)
+          : parseBatchPrompt(providerRequest.prompt);
+        if (!isRewrite) {
+          draftRequestCount += 1;
+          if (draftRequestCount === 1) {
+            await secondDraftStarted;
+            throw new SummaryError(
+              SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_TIMEOUT,
+              'Provider timed out.',
+              true,
+            );
+          }
+          if (draftRequestCount === 2) {
+            lateSignal = providerRequest.signal;
+            notifySecondDraftStarted?.();
+            await lateDraftReleased;
+          }
+        }
+        for (const segment of segments) {
+          yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const lateService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      lateProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+      new UsageRecorder(usageStore),
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+      translationMode: 'deep' as const,
+    };
+
+    const timedOut = lateService.generate(request);
+    await vi.waitFor(() => {
+      expect(lateService.getState(request)).toMatchObject({
+        state: 'failed',
+        result: { id: timedOut.runId, error: { code: 'TRANSLATION_PROVIDER_TIMEOUT' } },
+      });
+    });
+    expect(lateSignal?.aborted).toBe(true);
+
+    const replacement = lateService.generate(request);
+    expect(replacement.runId).not.toBe(timedOut.runId);
+    expect(database.prepare(`
+      SELECT COUNT(*) AS count FROM translation_result
+      WHERE entryId = ? AND status = 'running'
+    `).get(request.entryId)).toEqual({ count: 1 });
+    await vi.waitFor(() => {
+      expect(lateService.getState(request)).toMatchObject({
+        state: 'succeeded',
+        result: { id: replacement.runId },
+      });
+    });
+
+    releaseLateDraft?.();
+    await vi.waitFor(() => {
+      expect(records.some((record) =>
+        record.event === TRANSLATION_LOG_EVENTS.runFailed
+        && (record.context as { taskRunId?: number }).taskRunId === timedOut.runId)).toBe(true);
+    });
+    expect(database.prepare(`
+      SELECT status, errorCode FROM translation_result WHERE id = ?
+    `).get(timedOut.runId)).toEqual({
+      status: 'failed',
+      errorCode: 'TRANSLATION_PROVIDER_TIMEOUT',
+    });
+    expect(database.prepare(`
+      SELECT COUNT(*) AS count FROM translation_segment
+      WHERE translationResultId = ? AND translatedText IS NOT NULL
+    `).get(timedOut.runId)).toEqual({ count: 0 });
+    const starts = records.filter((record) => record.event === TRANSLATION_LOG_EVENTS.runStarted)
+      .map((record) => record.context as {
+        taskRunId: number;
+        attemptId: string;
+        trigger: string;
+        translationVariant: string;
+      });
+    expect(starts).toEqual([
+      expect.objectContaining({
+        taskRunId: timedOut.runId,
+        trigger: 'initial',
+        translationVariant: 'deep',
+      }),
+      expect.objectContaining({
+        taskRunId: replacement.runId,
+        trigger: 'initial',
+        translationVariant: 'deep',
+      }),
+    ]);
+    expect(new Set(starts.map(({ attemptId }) => attemptId).filter(Boolean)).size).toBe(2);
+  });
+
+  it('uses the same standard batch prompt for first, middle, last, and single-segment articles', async () => {
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: [
+        '<p>Opening source.</p>',
+        '<p>Boundary before.</p>',
+        '<p>Target relationship.</p>',
+        '<p>Closing source.</p>',
+      ].join(''),
+      markdown: 'Opening source.\n\nBoundary before.\n\nTarget relationship.\n\nClosing source.',
+      pipelineStatus: 'success',
+    });
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+    };
+    const firstRun = service.generate(request);
+    await vi.waitFor(() => {
+      expect(service.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+    expect(provider.prompts).toHaveLength(2);
+    expect(provider.prompts.every((prompt) =>
+      !prompt.includes('<adjacent-source-context>'))).toBe(true);
+    const batchSegments = provider.prompts.flatMap(parseBatchPrompt);
+    expect(batchSegments).toHaveLength(5);
+    expect(batchSegments.map((segment) => segment.sourceHtml)).toEqual(expect.arrayContaining([
+      '<p>Opening source.</p>',
+      '<p>Boundary before.</p>',
+      '<p>Target relationship.</p>',
+      '<p>Closing source.</p>',
+    ]));
+    expect(usageStore.listByTask('translation', firstRun.runId)).toHaveLength(2);
+
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: '<p>Only target source.</p>',
+      markdown: 'Only target source.',
+      pipelineStatus: 'success',
+    });
+    const singleRun = service.generate(request);
+    await vi.waitFor(() => {
+      expect(service.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+    expect(provider.prompts).toHaveLength(3);
+    expect(parseBatchPrompt(provider.prompts.at(-1) ?? '')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceHtml: '<p>Only target source.</p>' }),
+    ]));
+    expect(usageStore.listByTask('translation', singleRun.runId)).toHaveLength(1);
+  });
+
+  it('does not attach adjacent source data to text-slot compensation', async () => {
+    contentStore.upsert({
+      entryId: 1,
+      cleanedHtml: [
+        '<p>First source.</p>',
+        '<p>Second boundary.</p>',
+        '<p>Third target.</p>',
+        '<p>Fourth source.</p>',
+      ].join(''),
+      markdown: 'First source.\n\nSecond boundary.\n\nThird target.\n\nFourth source.',
+      pipelineStatus: 'success',
+    });
+    const prompts: string[] = [];
+    const recoveringProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        prompts.push(providerRequest.prompt);
+        if (providerRequest.prompt.includes('<text-slots-ndjson>')) {
+          for (const slot of parseTextSlotPrompt(providerRequest.prompt)) {
+            yield `${JSON.stringify({
+              textSlotId: slot.textSlotId,
+              translatedText: 'Recovered slot.',
+              appliedTermIds: [],
+            })}\n`;
+          }
+          return;
+        }
+        for (const segment of parseBatchPrompt(providerRequest.prompt)) {
+          const output = toBatchOutput(segment);
+          if (segment.sourceHtml.includes('Third target.')) {
+            output.translatedHtml = '<p><em>Broken structure.</em></p>';
+          }
+          yield `${JSON.stringify(output)}\n`;
+        }
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const recoveringService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      recoveringProvider,
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'fr' as const,
+    };
+
+    recoveringService.generate(request);
+    await vi.waitFor(() => {
+      expect(recoveringService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+
+    const textSlotPrompt = prompts.find((prompt) => prompt.includes('<text-slots-ndjson>'));
+    expect(prompts.every((prompt) => !prompt.includes('<adjacent-source-context>'))).toBe(true);
+    expect(parseTextSlotPrompt(textSlotPrompt ?? '')).toEqual([
+      expect.objectContaining({ sourceText: 'Third target.' }),
+    ]);
   });
 
   it('creates a fresh, usage-tracked run when retranslation is explicitly requested', async () => {
@@ -384,6 +1097,110 @@ describe('TranslationService', () => {
         }),
       }),
     ]);
+    const completedAttempts = records.filter((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.runCompleted).map((record) =>
+      record.context as {
+        attemptId: string;
+        taskRunId: number;
+        providerRequestCount: number;
+        batchRequestCount: number;
+      });
+    expect(completedAttempts).toEqual([
+      expect.objectContaining({
+        taskRunId: original.runId,
+        attemptId: expect.any(String),
+        providerRequestCount: 1,
+        batchRequestCount: 1,
+      }),
+      expect.objectContaining({
+        taskRunId: replacement.runId,
+        attemptId: expect.any(String),
+        providerRequestCount: 1,
+        batchRequestCount: 1,
+      }),
+    ]);
+    expect(new Set(completedAttempts.map(({ attemptId }) => attemptId)).size).toBe(2);
+    expect(records.some((record) => record.event === TRANSLATION_LOG_EVENTS.creationBlocked))
+      .toBe(false);
+  });
+
+  it('ignores a superseded paused history after force-new success and restart', async () => {
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+    };
+    const original = service.generate(request);
+    await vi.waitFor(() => {
+      expect(service.getState(request)).toMatchObject({
+        state: 'succeeded', result: { id: original.runId },
+      });
+    });
+    const originalState = service.getState(request);
+    if (originalState.state !== 'succeeded') throw new Error('Expected the original result.');
+    const originalResult = originalState.result;
+    if (originalResult.translationVariant !== 'standard'
+      && originalResult.translationVariant !== 'deep') {
+      throw new Error('Expected a product Translation variant.');
+    }
+    const profile = profileStore.findActiveWithSecret();
+    if (!profile) throw new Error('Expected an active provider profile.');
+    const store = new TranslationStore(database);
+    const pausedHistory = store.createRun({
+      entryId: originalResult.entryId,
+      providerProfileId: profile.id,
+      sourceLanguage: originalResult.sourceLanguage,
+      targetLanguage: originalResult.targetLanguage,
+      sourceContentHash: originalResult.sourceContentHash,
+      segmenterVersion: originalResult.segmenterVersion,
+      promptVersion: originalResult.promptVersion,
+      terminologyPackVersion: originalResult.terminologyPackVersion,
+      expertId: originalResult.expertId,
+      expertContentHash: originalResult.expertContentHash,
+      smartContextEnabled: originalResult.smartContextEnabled,
+      translationVariant: originalResult.translationVariant,
+      contextPromptVersion: originalResult.contextPromptVersion,
+      segments: originalResult.segments.map((segment) => ({
+        id: segment.sourceSegmentId,
+        orderIndex: segment.orderIndex,
+        type: segment.sourceType,
+        sourceHtml: segment.sourceHtml,
+        sourceText: segment.sourceText,
+      })),
+    });
+    store.markRunPaused(pausedHistory.id, {
+      code: TRANSLATION_ERROR_CODES.TRANSLATION_PAUSED,
+      message: 'Historical pause.',
+      retryable: true,
+    });
+
+    const replacement = service.generate({ ...request, forceNew: true });
+    expect(replacement.runId).toBeGreaterThan(pausedHistory.id);
+    await vi.waitFor(() => {
+      expect(service.getState(request)).toMatchObject({
+        state: 'succeeded', result: { id: replacement.runId },
+      });
+    });
+
+    const restartedService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      provider,
+    );
+    restartedService.reconcileInterruptedRuns();
+    expect(restartedService.getState(request)).toMatchObject({
+      state: 'succeeded', result: { id: replacement.runId },
+    });
+    const nextReplacement = restartedService.generate({ ...request, forceNew: true });
+    expect(nextReplacement.reused).toBe(false);
+    expect(nextReplacement.runId).toBeGreaterThan(replacement.runId);
+    await vi.waitFor(() => {
+      expect(restartedService.getState(request)).toMatchObject({
+        state: 'succeeded', result: { id: nextReplacement.runId },
+      });
+    });
   });
 
   it('keeps API keys and article content out of Translation diagnostics', async () => {
@@ -557,6 +1374,8 @@ describe('TranslationService', () => {
         component: 'translation.run',
         context: {
           taskRunId: started.runId,
+          attemptId: expect.any(String),
+          translationVariant: 'standard',
           trigger: 'initial',
           previousResultAtStart: 'none',
         },
@@ -566,11 +1385,19 @@ describe('TranslationService', () => {
         component: 'translation.run',
         context: {
           taskRunId: started.runId,
+          attemptId: expect.any(String),
+          translationVariant: 'standard',
           durationMs: expect.any(Number),
           success: true,
           providerRequestCount: 1,
           batchRequestCount: 1,
           compensationRequestCount: 0,
+          translationContextRequestCount: 0,
+          deepDraftRequestCount: 0,
+          deepReviewRequestCount: 0,
+          deepRewriteRequestCount: 0,
+          deepDraftCompensationRequestCount: 0,
+          deepRewriteCompensationRequestCount: 0,
           providerRequestSuccessCount: 1,
           providerRequestFailureCount: 0,
           missingSegmentCount: 0,
@@ -2151,6 +2978,26 @@ describe('TranslationService', () => {
     const usageAttempts = new UsageStore(db).listByTask('translation', firstRun.runId);
     expect(usageAttempts).toHaveLength(2);
     expect(new Set(usageAttempts.map((event) => event.attemptId)).size).toBe(2);
+    const terminalSummaries = records.filter((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.runFailed
+      || record.event === TRANSLATION_LOG_EVENTS.runCompleted);
+    expect(terminalSummaries).toHaveLength(2);
+    expect(terminalSummaries.map((record) => record.context)).toEqual([
+      expect.objectContaining({
+        taskRunId: firstRun.runId,
+        trigger: 'initial',
+        providerRequestCount: 1,
+        batchRequestCount: 1,
+      }),
+      expect.objectContaining({
+        taskRunId: firstRun.runId,
+        trigger: 'resume',
+        providerRequestCount: 1,
+        batchRequestCount: 1,
+      }),
+    ]);
+    expect(new Set(terminalSummaries.map((record) =>
+      (record.context as { attemptId: string }).attemptId)).size).toBe(2);
   });
 
   it('does not compensate a mapped provider timeout and preserves the incomplete run', async () => {
@@ -2209,6 +3056,8 @@ describe('TranslationService', () => {
         component: 'translation.run',
         context: {
           taskRunId: failedState.result.id,
+          attemptId: expect.any(String),
+          translationVariant: 'standard',
           trigger: 'initial',
           previousResultAtStart: 'none',
         },
@@ -2218,6 +3067,7 @@ describe('TranslationService', () => {
         component: 'translation.provider.request',
         context: {
           taskRunId: failedState.result.id,
+          attemptId: expect.any(String),
           providerRequestId: expect.any(Number),
           requestKind: 'batch',
           segmentCount: 2,
@@ -2244,13 +3094,22 @@ describe('TranslationService', () => {
         component: 'translation.run',
         context: {
           taskRunId: failedState.result.id,
+          attemptId: expect.any(String),
+          translationVariant: 'standard',
           durationMs: expect.any(Number),
           success: false,
           stage: 'stream',
           errorCode: TRANSLATION_LOG_ERROR_CODES.providerTimeout,
+          finalFailureStage: 'batch',
           providerRequestCount: 1,
           batchRequestCount: 1,
           compensationRequestCount: 0,
+          translationContextRequestCount: 0,
+          deepDraftRequestCount: 0,
+          deepReviewRequestCount: 0,
+          deepRewriteRequestCount: 0,
+          deepDraftCompensationRequestCount: 0,
+          deepRewriteCompensationRequestCount: 0,
           providerRequestSuccessCount: 0,
           providerRequestFailureCount: 1,
           missingSegmentCount: 0,
@@ -2279,10 +3138,13 @@ describe('TranslationService', () => {
     });
     memorySecrets.set('key-context-expert', 'not-a-real-key');
     const prompts: string[] = [];
+    const records: TranslationLogRecord[] = [];
+    const advancedUsageStore = new UsageStore(db);
     const adaptiveProvider: SummaryProvider = {
       async *stream(request): AsyncIterable<string> {
         prompts.push(request.prompt);
         if (request.prompt.startsWith('Analyze untrusted article content')) {
+          request.onUsage?.({ inputTokens: 2, outputTokens: 1, totalTokens: 3 });
           yield JSON.stringify({
             schemaVersion: 1,
             detectedSourceLanguage: 'en',
@@ -2296,6 +3158,7 @@ describe('TranslationService', () => {
           });
           return;
         }
+        request.onUsage?.({ inputTokens: 5, outputTokens: 4, totalTokens: 9 });
         for (const segment of parseBatchPrompt(request.prompt)) {
           yield `${JSON.stringify(toBatchOutput(segment))}\n`;
         }
@@ -2320,6 +3183,8 @@ describe('TranslationService', () => {
       undefined,
       expertService,
       contextService,
+      createCapturingLogger(records),
+      new UsageRecorder(advancedUsageStore),
     );
     const request = {
       entryId: 1,
@@ -2329,7 +3194,7 @@ describe('TranslationService', () => {
       useSmartContext: true,
     };
 
-    advancedService.generate(request);
+    const started = advancedService.generate(request);
     await vi.waitFor(() => {
       expect(advancedService.getState(request)).toMatchObject({ state: 'succeeded' });
     });
@@ -2349,6 +3214,39 @@ describe('TranslationService', () => {
         smartContextEnabled: true,
         contextWarning: undefined,
       },
+    });
+    const usageRecords = advancedUsageStore.listByTask('translation', started.runId);
+    expect(usageRecords.map((record) => record.requestKind)).toEqual([
+      'translation-context',
+      'batch',
+    ]);
+    expect(new Set(usageRecords.map((record) => record.providerRequestId)).size).toBe(2);
+    expect(new Set(usageRecords.map((record) => record.attemptId)).size).toBe(1);
+    expect(usageRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        requestKind: 'translation-context',
+        inputTokens: 2,
+        outputTokens: 1,
+        totalTokens: 3,
+      }),
+      expect.objectContaining({
+        requestKind: 'batch',
+        inputTokens: 5,
+        outputTokens: 4,
+        totalTokens: 9,
+      }),
+    ]));
+    const completedLog = records.find((record) => record.event === TRANSLATION_LOG_EVENTS.runCompleted);
+    expect(completedLog?.context).toMatchObject({
+      taskRunId: started.runId,
+      attemptId: usageRecords[0]?.attemptId,
+      translationVariant: 'standard',
+      translationContextRequestCount: 1,
+      batchRequestCount: 1,
+      providerRequestCount: 2,
+      inputTokens: 7,
+      outputTokens: 5,
+      totalTokens: 12,
     });
   });
 
@@ -2425,6 +3323,7 @@ describe('TranslationService', () => {
   });
 
   it('permits only one active Translation at a time', () => {
+    const records: TranslationLogRecord[] = [];
     const pendingProvider: SummaryProvider = {
       async *stream(request: SummaryProviderRequest): AsyncIterable<string> {
         await new Promise<void>((resolve) => {
@@ -2452,11 +3351,32 @@ describe('TranslationService', () => {
       new TestSecretStore(),
       new TranslationStore(db),
       pendingProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
     );
 
-    pendingService.generate({ entryId: 1, sourceLanguage: 'auto', targetLanguage: 'en' });
+    const active = pendingService.generate({
+      entryId: 1,
+      sourceLanguage: 'auto',
+      targetLanguage: 'en',
+    });
     expect(() => pendingService.generate({ entryId: 2, sourceLanguage: 'auto', targetLanguage: 'en' }))
       .toThrow('Another Translation is already being generated');
+    expect(records.find((record) => record.event === TRANSLATION_LOG_EVENTS.creationBlocked))
+      .toMatchObject({
+        component: 'translation.canonical-state',
+        context: {
+          taskRunId: active.runId,
+          attemptId: expect.any(String),
+          translationVariant: 'standard',
+          trigger: 'initial',
+          outcome: 'blocked',
+          stage: 'running',
+        },
+      });
     pendingService.abortActiveRun();
   });
 
@@ -2613,13 +3533,155 @@ describe('TranslationService', () => {
     expect(records.map((record) => record.event)).toEqual([
       TRANSLATION_LOG_EVENTS.runStarted,
       TRANSLATION_LOG_EVENTS.runInterrupted,
+      TRANSLATION_LOG_EVENTS.creationBlocked,
       TRANSLATION_LOG_EVENTS.runStarted,
       TRANSLATION_LOG_EVENTS.runCompleted,
     ]);
     expect(records[2]?.context).toMatchObject({
       taskRunId: started.runId,
+      attemptId: expect.any(String),
+      translationVariant: 'standard',
+      trigger: 'resume',
+      outcome: 'blocked',
+      stage: 'paused',
+    });
+    expect(records[3]?.context).toMatchObject({
+      taskRunId: started.runId,
       trigger: 'resume',
       previousResultAtStart: 'none',
+    });
+  });
+
+  it('writes a single pause summary only after the interrupted Usage request settles', async () => {
+    let releaseProviderSettlement: (() => void) | undefined;
+    const providerSettlement = new Promise<void>((resolve) => {
+      releaseProviderSettlement = resolve;
+    });
+    let notifyProviderBlocked: (() => void) | undefined;
+    const providerBlocked = new Promise<void>((resolve) => {
+      notifyProviderBlocked = resolve;
+    });
+    let resumeMode = false;
+    const initialPrompts: BatchPromptSegment[][] = [];
+    const resumedPrompts: BatchPromptSegment[][] = [];
+    const deferredProvider: SummaryProvider = {
+      async *stream(providerRequest): AsyncIterable<string> {
+        const segments = parseBatchPrompt(providerRequest.prompt);
+        if (resumeMode) {
+          resumedPrompts.push(segments);
+          for (const segment of segments) {
+            yield `${JSON.stringify(toBatchOutput(segment))}\n`;
+          }
+          return;
+        }
+
+        initialPrompts.push(segments);
+        const firstSegment = segments[0];
+        if (firstSegment) yield `${JSON.stringify(toBatchOutput(firstSegment))}\n`;
+        notifyProviderBlocked?.();
+        if (!providerRequest.signal.aborted) {
+          await new Promise<void>((resolve) => {
+            providerRequest.signal.addEventListener('abort', () => resolve(), { once: true });
+          });
+        }
+        await providerSettlement;
+        providerRequest.onUsage?.({ inputTokens: 11, outputTokens: 7, totalTokens: 18 });
+        throw new TranslationError(
+          TRANSLATION_ERROR_CODES.TRANSLATION_INTERRUPTED,
+          'Translation was interrupted after Provider settlement.',
+          true,
+        );
+      },
+      testConnection: () => Promise.resolve(),
+    };
+    const records: TranslationLogRecord[] = [];
+    const pauseService = new TranslationService(
+      contentStore,
+      profileStore,
+      new TestSecretStore(),
+      new TranslationStore(database),
+      deferredProvider,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createCapturingLogger(records),
+      new UsageRecorder(usageStore),
+    );
+    const request = {
+      entryId: 1,
+      sourceLanguage: 'auto' as const,
+      targetLanguage: 'zh-CN' as const,
+    };
+
+    const started = pauseService.generate(request);
+    await providerBlocked;
+    const firstAttempt = usageStore.listByTask('translation', started.runId);
+    expect(firstAttempt).toEqual([
+      expect.objectContaining({ requestStatus: 'running', requestKind: 'batch' }),
+    ]);
+
+    const paused = pauseService.pause({ ...request, runId: started.runId });
+    expect(paused).toMatchObject({
+      paused: true,
+      result: { id: started.runId, status: 'failed', error: { code: 'TRANSLATION_PAUSED' } },
+    });
+    expect(pauseService.getState(request)).toMatchObject({
+      state: 'paused',
+      result: { id: started.runId },
+    });
+    expect(records.filter((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.runInterrupted)).toHaveLength(0);
+    expect(usageStore.listByTask('translation', started.runId)).toEqual([
+      expect.objectContaining({ requestStatus: 'running' }),
+    ]);
+
+    releaseProviderSettlement?.();
+    await vi.waitFor(() => {
+      expect(usageStore.listByTask('translation', started.runId)).toEqual([
+        expect.objectContaining({
+          requestStatus: 'interrupted',
+          inputTokens: 11,
+          outputTokens: 7,
+          totalTokens: 18,
+        }),
+      ]);
+      expect(records.filter((record) =>
+        record.event === TRANSLATION_LOG_EVENTS.runInterrupted)).toHaveLength(1);
+    });
+    const interruptionSummaries = records.filter((record) =>
+      record.event === TRANSLATION_LOG_EVENTS.runInterrupted);
+    expect(interruptionSummaries[0]?.context).toMatchObject({
+      taskRunId: started.runId,
+      translationVariant: 'standard',
+      stopReason: 'paused',
+      trigger: 'initial',
+      providerRequestCount: 1,
+      providerRequestSuccessCount: 0,
+      providerRequestFailureCount: 1,
+      inputTokens: 11,
+      outputTokens: 7,
+      totalTokens: 18,
+    });
+
+    const completedSegmentId = initialPrompts[0]?.[0]?.sourceSegmentId;
+    if (!completedSegmentId) throw new Error('Expected one segment to finish before pausing.');
+    resumeMode = true;
+    const resumed = pauseService.generate(request);
+    expect(resumed.runId).toBe(started.runId);
+    await vi.waitFor(() => {
+      expect(pauseService.getState(request)).toMatchObject({ state: 'succeeded' });
+    });
+    expect(resumedPrompts.flat().map((segment) => segment.sourceSegmentId))
+      .not.toContain(completedSegmentId);
+    const startedLogs = records.filter((record) => record.event === TRANSLATION_LOG_EVENTS.runStarted);
+    expect(startedLogs).toHaveLength(2);
+    expect((startedLogs[0]?.context as { attemptId?: string }).attemptId)
+      .not.toBe((startedLogs[1]?.context as { attemptId?: string }).attemptId);
+    expect(startedLogs[1]?.context).toMatchObject({
+      taskRunId: started.runId,
+      translationVariant: 'standard',
+      trigger: 'resume',
     });
   });
 });
