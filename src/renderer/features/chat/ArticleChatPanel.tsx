@@ -203,12 +203,14 @@ export const ArticleChatPanel = ({
         busy={busy}
         disabled={session.loadStatus !== 'success'}
         errorMessage={session.actionErrorMessage}
+        provider={session.provider}
         attachments={session.state?.draftAttachments ?? []}
         selection={pendingSelection?.selection}
         selectionFocusRequestId={pendingSelection?.requestId}
         onChange={setDraft}
         onSend={handleSend}
         onStop={() => void session.stop()}
+        onSelectModel={session.switchChatModel}
         onRemoveSelection={removePendingSelection}
         onPickAttachments={() => void session.pickAttachments()}
         onRemoveAttachment={(attachmentId) => {

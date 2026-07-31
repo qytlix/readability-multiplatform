@@ -9,6 +9,7 @@ import type {
   ChatAttachment,
   ChatSelectionContext,
 } from '../../../shared/contracts/chat.types';
+import type { ProviderProfile } from '../../../shared/contracts/provider.types';
 import { getChatComposerKeyAction } from './chatComposerKeyboard';
 import {
   createChatClipboardPastePlan,
@@ -16,6 +17,7 @@ import {
   type ChatClipboardImageInput,
 } from './chatClipboard';
 import { ChatImageAttachmentPreview } from './ChatImageAttachmentPreview';
+import { ChatModelSwitcher } from './ChatModelSwitcher';
 
 interface ArticleChatComposerProps {
   value: string;
@@ -24,12 +26,14 @@ interface ArticleChatComposerProps {
   busy: boolean;
   disabled: boolean;
   errorMessage: string;
+  provider: ProviderProfile | null;
   attachments: ChatAttachment[];
   selection?: ChatSelectionContext;
   selectionFocusRequestId?: number;
   onChange: (value: string) => void;
   onSend: () => void | Promise<void>;
   onStop: () => void | Promise<void>;
+  onSelectModel: (model: string) => Promise<boolean>;
   onRemoveSelection: () => void;
   onPickAttachments: () => void | Promise<void>;
   onRemoveAttachment: (attachmentId: number) => void | Promise<void>;
@@ -45,12 +49,14 @@ export const ArticleChatComposer = ({
   busy,
   disabled,
   errorMessage,
+  provider,
   attachments,
   selection,
   selectionFocusRequestId,
   onChange,
   onSend,
   onStop,
+  onSelectModel,
   onRemoveSelection,
   onPickAttachments,
   onRemoveAttachment,
@@ -172,9 +178,14 @@ export const ArticleChatComposer = ({
           onCompositionEnd={handleComposition}
           onPaste={handlePaste}
         />
+        <ChatModelSwitcher
+          profile={provider}
+          disabled={running || busy || disabled}
+          onSelectModel={onSelectModel}
+        />
         <button
           type="button"
-          className={running ? 'is-stop' : 'is-send'}
+          className={`article-chat-submit-button ${running ? 'is-stop' : 'is-send'}`}
           aria-label={running ? '停止生成' : '发送问题'}
           disabled={running ? busy : disabled || busy || !value.trim()}
           onClick={() => void (running ? onStop() : onSend())}

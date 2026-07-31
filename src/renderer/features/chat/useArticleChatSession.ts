@@ -4,13 +4,17 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { ProviderProfile } from '../../../shared/contracts/provider.types';
+import {
+  isValidProviderModel,
+  type ProviderProfile,
+} from '../../../shared/contracts/provider.types';
 import type {
   ChatSelectionContext,
   ChatState,
   ChatStreamEvent,
 } from '../../../shared/contracts/chat.types';
 import { applyChatStreamEvent } from './articleChatSession';
+import { buildProviderRequestWithChatModel } from './chatModelSelection';
 import type { ChatClipboardImageInput } from './chatClipboard';
 
 type ChatLoadStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -19,6 +23,7 @@ type ChatActionStatus =
   | 'sending'
   | 'stopping'
   | 'retrying'
+  | 'switching-model'
   | 'importing'
   | 'removing';
 
@@ -37,6 +42,7 @@ export interface ArticleChatSession {
   ) => Promise<boolean>;
   stop: () => Promise<boolean>;
   retry: () => Promise<boolean>;
+  switchChatModel: (model: string) => Promise<boolean>;
   pickAttachments: () => Promise<boolean>;
   removeAttachment: (attachmentId: number) => Promise<boolean>;
   importClipboardImages: (
@@ -208,6 +214,44 @@ export const useArticleChatSession = (
     }
   }, [active, reload]);
 
+  const switchChatModel = useCallback(async (
+    model: string,
+  ): Promise<boolean> => {
+    const nextModel = model.trim();
+    const currentProvider = provider;
+    if (
+      !active
+      || stateRef.current?.state === 'running'
+      || !currentProvider
+    ) {
+      return false;
+    }
+    if (nextModel === currentProvider.chatModel) return true;
+    if (!isValidProviderModel(nextModel)) {
+      setActionErrorMessage('所选问答模型名称无效。');
+      return false;
+    }
+
+    setActionStatus('switching-model');
+    setActionErrorMessage('');
+    try {
+      const result = await window.shaleAPI.provider.save(
+        buildProviderRequestWithChatModel(currentProvider, nextModel),
+      );
+      if (!result.ok) {
+        setActionErrorMessage(result.error.message);
+        return false;
+      }
+      setProvider(result.data);
+      return true;
+    } catch {
+      setActionErrorMessage('无法切换问答模型，请稍后重试。');
+      return false;
+    } finally {
+      setActionStatus('idle');
+    }
+  }, [active, provider]);
+
   const pickAttachments = useCallback(async (): Promise<boolean> => {
     if (!active || stateRef.current?.state === 'running') return false;
     setActionStatus('importing');
@@ -308,6 +352,7 @@ export const useArticleChatSession = (
     sendQuestion,
     stop,
     retry,
+    switchChatModel,
     pickAttachments,
     removeAttachment,
     importClipboardImages,

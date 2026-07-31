@@ -105,6 +105,7 @@ describe('Article Chat Markdown rendering', () => {
       sendQuestion: resolveFalse,
       stop: resolveFalse,
       retry: resolveFalse,
+      switchChatModel: resolveFalse,
       pickAttachments: resolveFalse,
       removeAttachment: resolveFalse,
       importClipboardImages: resolveFalse,
