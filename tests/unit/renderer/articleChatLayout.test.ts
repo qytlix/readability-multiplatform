@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   createArticleChatLayoutSnapshot,
@@ -51,5 +53,38 @@ describe('Article Chat layout snapshots', () => {
       entryListCollapsed: true,
       entryListWidth: 0,
     });
+  });
+
+  it('places chat and article side by side without auto-placement', () => {
+    const css = fs.readFileSync(
+      path.resolve(
+        __dirname,
+        '../../../src/renderer/features/reader/ReaderPage.css',
+      ),
+      'utf8',
+    ).replace(/\r\n/g, '\n');
+
+    const workspaceRule = css.match(
+      /\.reader-page\.is-article-chat \.reader-workspace\s*\{([^}]*)\}/s,
+    )?.[1];
+    const articleRule = css.match(
+      /\.reader-page\.is-article-chat \.article-pane\s*\{([^}]*)\}/s,
+    )?.[1];
+
+    expect(workspaceRule).toContain(
+      'var(--reader-sidebar-width)\n'
+      + '      + var(--reader-list-width)\n'
+      + '      + var(--reader-divider-width)',
+    );
+    expect(workspaceRule).toContain('minmax(0, 1fr)');
+    expect(articleRule).toContain('grid-column: 2;');
+    expect(articleRule).toContain('grid-row: 1;');
+    expect(css).toContain(
+      '.reader-page.is-article-chat .reader-sidebar,\n'
+      + '.reader-page.is-article-chat .story-list-pane,\n'
+      + '.reader-page.is-article-chat .reader-list-divider,\n'
+      + '.reader-page.is-article-chat .sidebar-backdrop {\n'
+      + '  display: none;',
+    );
   });
 });

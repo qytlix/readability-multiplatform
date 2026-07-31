@@ -1,5 +1,9 @@
 import Database from 'better-sqlite3';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { DatabaseManager } from '../../src/main/database/DatabaseManager';
 import { MIGRATION_006 } from '../../src/main/migrations/006_create_ai_profiles';
 import { MIGRATION_012 } from '../../src/main/migrations/012_expand_ai_providers';
 import { MIGRATION_020 } from '../../src/main/migrations/020_add_provider_task_models';
@@ -157,6 +161,49 @@ describe('provider profile migration 026', () => {
       });
     } finally {
       db.close();
+    }
+  });
+
+  it('recognizes the original 022 migration identity after it was renumbered', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'shale-chat-provider-'));
+    const databasePath = path.join(directory, 'shale.db');
+    const initial = new DatabaseManager(databasePath);
+
+    try {
+      initial.runMigrations();
+      initial.getDb().prepare(`
+        UPDATE _migrations
+        SET filename = '022_add_chat_provider_route'
+        WHERE filename = '026_add_chat_provider_route'
+      `).run();
+    } finally {
+      initial.close();
+    }
+
+    const upgraded = new DatabaseManager(databasePath);
+    try {
+      expect(() => upgraded.runMigrations()).not.toThrow();
+      expect(upgraded.getDb().prepare(`
+        SELECT filename
+        FROM _migrations
+        WHERE filename IN (
+          '022_add_chat_provider_route',
+          '026_add_chat_provider_route'
+        )
+        ORDER BY filename
+      `).all()).toEqual([
+        { filename: '022_add_chat_provider_route' },
+        { filename: '026_add_chat_provider_route' },
+      ]);
+
+      const providerColumns = upgraded.getDb()
+        .pragma('table_info(ai_provider_profile)') as Array<{ name: string }>;
+      const chatColumns = providerColumns.filter(({ name }) =>
+        name.startsWith('chat'));
+      expect(chatColumns).toHaveLength(5);
+    } finally {
+      upgraded.close();
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });

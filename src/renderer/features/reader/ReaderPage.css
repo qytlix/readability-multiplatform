@@ -230,8 +230,6 @@
       + var(--reader-list-width)
       + var(--reader-divider-width)
     )
-    0
-    0
     minmax(0, 1fr);
 }
 
@@ -242,6 +240,18 @@
 .reader-page.is-article-chat .sidebar-backdrop {
   visibility: hidden;
   pointer-events: none;
+}
+
+.reader-page.is-article-chat .reader-sidebar,
+.reader-page.is-article-chat .story-list-pane,
+.reader-page.is-article-chat .reader-list-divider,
+.reader-page.is-article-chat .sidebar-backdrop {
+  display: none;
+}
+
+.reader-page.is-article-chat .article-pane {
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .article-chat-panel {
@@ -6221,7 +6231,7 @@ body.workspace-is-resizing * {
   .reader-page.is-article-chat.is-sidebar-closed .reader-workspace,
   .reader-page.is-article-chat.is-reading-focus .reader-workspace,
   .reader-page.is-article-chat.is-reading-focus.is-sidebar-closed .reader-workspace {
-    grid-template-columns: minmax(0, 1fr) 0 0 0;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .reader-page.is-article-chat .article-chat-panel {
@@ -6229,8 +6239,7 @@ body.workspace-is-resizing * {
   }
 
   .reader-page.is-article-chat .article-pane {
-    visibility: hidden;
-    pointer-events: none;
+    display: none;
   }
 
   .reader-workspace,

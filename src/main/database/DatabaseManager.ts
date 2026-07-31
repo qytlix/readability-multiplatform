@@ -39,6 +39,8 @@ import { MIGRATION_029 } from '../migrations/029_expand_usage_for_chat';
 
 interface Migration {
   id: string;
+  /** Previous persisted IDs that represent the same migration. */
+  legacyIds?: readonly string[];
   /** Raw SQL to execute (for simple migrations) */
   sql?: string;
   /** JS function to run (for complex migrations needing JS logic) */
@@ -82,7 +84,11 @@ const MIGRATIONS: Migration[] = [
   { id: '023_tag_name_case_sensitive', sql: MIGRATION_023 },
   { id: '024_add_tag_provider_route', sql: MIGRATION_024 },
   { id: '025_add_entry_ai_tag_generated', sql: MIGRATION_025 },
-  { id: '026_add_chat_provider_route', sql: MIGRATION_026 },
+  {
+    id: '026_add_chat_provider_route',
+    legacyIds: ['022_add_chat_provider_route'],
+    sql: MIGRATION_026,
+  },
   { id: '027_create_article_chat', sql: MIGRATION_027 },
   { id: '028_create_article_context_cache', sql: MIGRATION_028 },
   { id: '029_expand_usage_for_chat', sql: MIGRATION_029 },
@@ -121,6 +127,14 @@ export class DatabaseManager {
     for (const migration of MIGRATIONS) {
       if (applied.has(migration.id)) continue;
 
+      if (migration.legacyIds?.some((legacyId) => applied.has(legacyId))) {
+        this.db
+          .prepare('INSERT INTO _migrations (filename, appliedAt) VALUES (?, ?)')
+          .run(migration.id, new Date().toISOString());
+        applied.add(migration.id);
+        continue;
+      }
+
       this.db.transaction(() => {
         if (migration.sql) {
           this.db.exec(migration.sql);
@@ -133,6 +147,7 @@ export class DatabaseManager {
           .prepare('INSERT INTO _migrations (filename, appliedAt) VALUES (?, ?)')
           .run(migration.id, new Date().toISOString());
       })();
+      applied.add(migration.id);
     }
   }
 
