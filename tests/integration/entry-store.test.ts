@@ -583,6 +583,29 @@ describe('EntryStore', () => {
       expect(result.entries[0].title).toBe('New AI Breakthrough');
     });
 
+    it('+tag: AND filter requires tag (exact)', () => {
+      // sidebar tag click produces operator='+' with match='exact' (Issue #112)
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '+', value: 'Technology', match: 'exact' },
+        ],
+        limit: 50,
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].title).toBe('New AI Breakthrough');
+    });
+
+    it('+tag: exact non-match returns no entries', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '+', value: 'Tech', match: 'exact' },
+        ],
+        limit: 50,
+      });
+      // 'Tech' is NOT an exact tag name (only 'Technology' exists)
+      expect(result.entries).toHaveLength(0);
+    });
+
     it('-tag: exclusion filter excludes tagged entries', () => {
       const result = entryStoreFilters.query({
         filters: [
@@ -597,6 +620,22 @@ describe('EntryStore', () => {
       expect(titles).toContain('New AI Breakthrough');
       expect(titles).toContain('Climate Change Report');
       expect(titles).toContain('Tech Stocks Rise');
+    });
+
+    it('-tag: exclusion filter (exact) excludes only exact tag name', () => {
+      const result = entryStoreFilters.query({
+        filters: [
+          { field: 'tag', operator: '-', value: 'Technology', match: 'exact' },
+        ],
+        limit: 50,
+      });
+      // Only e1 has 'Technology' tag, so it should be excluded
+      expect(result.entries).toHaveLength(3);
+      const titles = result.entries.map((e) => e.title);
+      expect(titles).not.toContain('New AI Breakthrough');
+      expect(titles).toContain('Climate Change Report');
+      expect(titles).toContain('Tech Stocks Rise');
+      expect(titles).toContain('New Physics Discovery');
     });
 
     it('feed: OR filter matches feed title substring', () => {
