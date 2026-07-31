@@ -54,6 +54,10 @@ import {
 } from './ArticleContextBudget';
 import {
   elapsedChatMilliseconds,
+  logChatContextCompleted,
+  logChatProviderCompleted,
+  logChatProviderFirstDelta,
+  logChatProviderResponseHeaders,
   logChatRecoveryCompleted,
   logChatRunCompleted,
   logChatRunFailed,
@@ -152,6 +156,7 @@ export class ChatService {
         true,
       );
     }
+    const requestStartedAt = performance.now();
     this.preparing = true;
     try {
       const content = this.requireContent(request.entryId);
@@ -200,6 +205,7 @@ export class ChatService {
         request.attachmentIds,
       );
       let prepared: PreparedArticleContext;
+      const contextStartedAt = performance.now();
       try {
         prepared = await this.contextService.prepare({
           source: {
@@ -233,10 +239,26 @@ export class ChatService {
           contextWindowTokens: DEFAULT_CHAT_CONTEXT_WINDOW_TOKENS,
           responseReserveTokens: DEFAULT_CHAT_RESPONSE_RESERVE_TOKENS,
         });
+        logChatContextCompleted(this.logger, {
+          taskRunId: created.run.id,
+          durationMs: elapsedChatMilliseconds(contextStartedAt),
+          success: true,
+          contextMode: prepared.mode,
+          inputTokens: prepared.estimatedPromptTokens,
+        });
       } catch (error) {
+        const failure = toChatIpcError(error);
+        logChatContextCompleted(this.logger, {
+          taskRunId: created.run.id,
+          durationMs: elapsedChatMilliseconds(contextStartedAt),
+          success: false,
+          errorCode: failure.code as (
+            typeof CHAT_ERROR_CODES
+          )[keyof typeof CHAT_ERROR_CODES],
+        });
         this.chatStore.markRunFailed(
           created.run.id,
-          toChatIpcError(error),
+          failure,
         );
         throw error;
       }
@@ -266,7 +288,7 @@ export class ChatService {
         entryId: request.entryId,
         abortController,
         usageHandle,
-        startedAt: performance.now(),
+        startedAt: requestStartedAt,
       };
       logChatRunStarted(this.logger, finalizedRun.id);
       this.emit({
@@ -335,6 +357,7 @@ export class ChatService {
         Boolean(this.activeRun || this.preparing),
       );
     }
+    const requestStartedAt = performance.now();
     const previousRun = this.chatStore.findRunById(request.runId);
     if (
       !previousRun
@@ -386,38 +409,60 @@ export class ChatService {
       const history = this.chatStore.listMessages(thread.id)
         .filter(({ id }) => id < userMessage.id);
       const attemptId = createUsageAttemptId();
-      const prepared = await this.contextService.prepare({
-        source: {
-          entryId: thread.entryId,
-          title: content.readerTitle,
-          sourceUrl: content.sourceUrl,
-          markdown: content.markdown,
-          sourceContentHash: currentHash,
-          segments: content.segments ?? [],
-        },
-        history,
-        question: userMessage.content,
-        selection: userMessage.selection,
-        textAttachments: attachments.flatMap((attachment) => (
-          attachment.kind === 'text' && attachment.textContent !== undefined
-            ? [{
-                id: attachment.id,
-                displayName: attachment.displayName,
-                mimeType: attachment.mimeType,
-                textContent: attachment.textContent,
-              }]
-            : []
-        )),
-        analysisModelFamily: `${profile.chatProviderKind}:${profile.chatModel}`,
-        analysisUsage: {
-          attemptId,
+      const contextStartedAt = performance.now();
+      let prepared: PreparedArticleContext;
+      try {
+        prepared = await this.contextService.prepare({
+          source: {
+            entryId: thread.entryId,
+            title: content.readerTitle,
+            sourceUrl: content.sourceUrl,
+            markdown: content.markdown,
+            sourceContentHash: currentHash,
+            segments: content.segments ?? [],
+          },
+          history,
+          question: userMessage.content,
+          selection: userMessage.selection,
+          textAttachments: attachments.flatMap((attachment) => (
+            attachment.kind === 'text' && attachment.textContent !== undefined
+              ? [{
+                  id: attachment.id,
+                  displayName: attachment.displayName,
+                  mimeType: attachment.mimeType,
+                  textContent: attachment.textContent,
+                }]
+              : []
+          )),
+          analysisModelFamily: `${profile.chatProviderKind}:${profile.chatModel}`,
+          analysisUsage: {
+            attemptId,
+            taskRunId: previousRun.id,
+            providerProfileId: profile.id,
+            model: profile.chatModel,
+          },
+          contextWindowTokens: DEFAULT_CHAT_CONTEXT_WINDOW_TOKENS,
+          responseReserveTokens: DEFAULT_CHAT_RESPONSE_RESERVE_TOKENS,
+        });
+        logChatContextCompleted(this.logger, {
           taskRunId: previousRun.id,
-          providerProfileId: profile.id,
-          model: profile.chatModel,
-        },
-        contextWindowTokens: DEFAULT_CHAT_CONTEXT_WINDOW_TOKENS,
-        responseReserveTokens: DEFAULT_CHAT_RESPONSE_RESERVE_TOKENS,
-      });
+          durationMs: elapsedChatMilliseconds(contextStartedAt),
+          success: true,
+          contextMode: prepared.mode,
+          inputTokens: prepared.estimatedPromptTokens,
+        });
+      } catch (error) {
+        const failure = toChatIpcError(error);
+        logChatContextCompleted(this.logger, {
+          taskRunId: previousRun.id,
+          durationMs: elapsedChatMilliseconds(contextStartedAt),
+          success: false,
+          errorCode: failure.code as (
+            typeof CHAT_ERROR_CODES
+          )[keyof typeof CHAT_ERROR_CODES],
+        });
+        throw error;
+      }
       const retried = this.chatStore.retryRun(request.runId);
       const inputContentHash = hashChatInput([
         prepared.articleReference,
@@ -445,7 +490,7 @@ export class ChatService {
         entryId: thread.entryId,
         abortController,
         usageHandle,
-        startedAt: performance.now(),
+        startedAt: requestStartedAt,
       };
       logChatRunStarted(this.logger, finalizedRun.id);
       this.emit({
@@ -543,6 +588,33 @@ export class ChatService {
   ): Promise<void> {
     let usage: ProviderTokenUsage | undefined;
     let output = '';
+    const providerStartedAt = performance.now();
+    let currentProviderAttempt = 1;
+    let currentProviderAttemptStartedAt = providerStartedAt;
+    let responseHeadersRecordedForAttempt = false;
+    let firstDeltaAt: number | undefined;
+    const recordProviderTiming = (
+      phase: 'response-headers' | 'first-delta',
+    ): void => {
+      if (this.activeRun?.run.id !== run.id) return;
+      if (phase === 'response-headers') {
+        if (responseHeadersRecordedForAttempt) return;
+        responseHeadersRecordedForAttempt = true;
+        logChatProviderResponseHeaders(this.logger, {
+          taskRunId: run.id,
+          durationMs: elapsedChatMilliseconds(currentProviderAttemptStartedAt),
+          attemptCount: currentProviderAttempt,
+        });
+        return;
+      }
+      if (firstDeltaAt !== undefined) return;
+      firstDeltaAt = performance.now();
+      logChatProviderFirstDelta(this.logger, {
+        taskRunId: run.id,
+        durationMs: elapsedChatMilliseconds(providerStartedAt),
+        attemptCount: currentProviderAttempt,
+      });
+    };
     try {
       const questionParts: ProviderContentPart[] = [
         { type: 'text', text: question },
@@ -590,11 +662,16 @@ export class ChatService {
         onUsage: (reported) => {
           usage = sanitizeProviderTokenUsage(reported);
         },
+        onTiming: recordProviderTiming,
       };
       for (let providerAttempt = 1; ; providerAttempt += 1) {
+        currentProviderAttempt = providerAttempt;
+        currentProviderAttemptStartedAt = performance.now();
+        responseHeadersRecordedForAttempt = false;
         try {
           for await (const delta of this.provider.stream(providerRequest)) {
             if (this.activeRun?.run.id !== run.id) return;
+            recordProviderTiming('first-delta');
             output += delta;
             this.chatStore.appendAssistantDelta(run.id, delta);
             this.emit({
@@ -634,6 +711,13 @@ export class ChatService {
             abortController.signal,
           );
         }
+      }
+      if (firstDeltaAt !== undefined) {
+        logChatProviderCompleted(this.logger, {
+          taskRunId: run.id,
+          durationMs: elapsedChatMilliseconds(firstDeltaAt),
+          attemptCount: currentProviderAttempt,
+        });
       }
       if (!output.trim()) {
         throw new ChatError(

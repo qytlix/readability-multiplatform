@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  logChatContextCompleted,
+  logChatProviderCompleted,
+  logChatProviderFirstDelta,
+  logChatProviderResponseHeaders,
   logChatRunCompleted,
   logChatRunFailed,
   logChatRunRetrying,
@@ -15,6 +19,28 @@ describe('Article Chat structured logging', () => {
     };
 
     logChatRunStarted(logger, 7);
+    logChatContextCompleted(logger, {
+      taskRunId: 7,
+      durationMs: 11,
+      success: true,
+      contextMode: 'full',
+      inputTokens: 321,
+    });
+    logChatProviderResponseHeaders(logger, {
+      taskRunId: 7,
+      durationMs: 12,
+      attemptCount: 1,
+    });
+    logChatProviderFirstDelta(logger, {
+      taskRunId: 7,
+      durationMs: 18,
+      attemptCount: 1,
+    });
+    logChatProviderCompleted(logger, {
+      taskRunId: 7,
+      durationMs: 4,
+      attemptCount: 1,
+    });
     logChatRunRetrying(logger, {
       taskRunId: 7,
       attemptCount: 2,
@@ -60,6 +86,32 @@ describe('Article Chat structured logging', () => {
         success: false,
       },
     );
+    expect(logger.info).toHaveBeenCalledWith(
+      'chat.run.context.completed',
+      'chat.run',
+      {
+        taskRunId: 7,
+        durationMs: 11,
+        success: true,
+        contextMode: 'full',
+        inputTokens: 321,
+      },
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      'chat.run.provider.response.headers',
+      'chat.run',
+      { taskRunId: 7, durationMs: 12, attemptCount: 1 },
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      'chat.run.provider.first.delta',
+      'chat.run',
+      { taskRunId: 7, durationMs: 18, attemptCount: 1 },
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      'chat.run.provider.completed',
+      'chat.run',
+      { taskRunId: 7, durationMs: 4, attemptCount: 1 },
+    );
     expect(logger.warn).toHaveBeenCalledWith(
       'chat.run.retrying',
       'chat.run',
@@ -69,5 +121,35 @@ describe('Article Chat structured logging', () => {
         errorCode: 'CHAT_PROVIDER_REQUEST_FAILED',
       },
     );
+  });
+
+  it('logs failed context timing without carrying unsafe source fields', () => {
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const unsafeContext = {
+      taskRunId: 9,
+      durationMs: 45,
+      success: false as const,
+      errorCode: 'CHAT_CONTEXT_TOO_LARGE' as const,
+      question: 'CONTEXT_QUESTION_CANARY',
+      article: 'CONTEXT_ARTICLE_CANARY',
+    };
+
+    logChatContextCompleted(logger, unsafeContext);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      'chat.run.context.completed',
+      'chat.run',
+      {
+        taskRunId: 9,
+        durationMs: 45,
+        success: false,
+        errorCode: 'CHAT_CONTEXT_TOO_LARGE',
+      },
+    );
+    expect(JSON.stringify(logger.info.mock.calls)).not.toContain('CANARY');
   });
 });

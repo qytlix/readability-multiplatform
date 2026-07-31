@@ -21,6 +21,10 @@ import {
   SUMMARY_ERROR_CODES,
   SummaryError,
 } from '../../src/shared/errors/summary.errors';
+import {
+  CHAT_LOG_EVENTS,
+  type ChatOperationLogger,
+} from '../../src/main/ai/services/ChatLogging';
 
 describe('ChatService', () => {
   it('streams and persists a content-scoped answer with full event identity', async () => {
@@ -65,6 +69,8 @@ describe('ChatService', () => {
       async *stream(request) {
         expect(request.systemInstruction).toContain('Shale Article Guide');
         expect(request.messages).toHaveLength(2);
+        request.onTiming?.('response-headers');
+        request.onTiming?.('first-delta');
         yield 'First ';
         yield 'answer.';
       },
@@ -101,6 +107,11 @@ describe('ChatService', () => {
       interrupt: vi.fn(),
       reconcileInterruptedRunning: vi.fn(),
     };
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    } satisfies ChatOperationLogger;
     const service = new ChatService(
       contentStore,
       profileStore,
@@ -110,6 +121,7 @@ describe('ChatService', () => {
       provider,
       undefined,
       usageRecorder,
+      logger,
     );
     const events: string[] = [];
     const completed = new Promise<void>((resolve) => {
@@ -145,6 +157,34 @@ describe('ChatService', () => {
       taskRunId: response.runId,
       requestKind: 'chat-answer',
     }));
+    expect(logger.info.mock.calls.map(([event]) => event)).toEqual([
+      CHAT_LOG_EVENTS.contextCompleted,
+      CHAT_LOG_EVENTS.runStarted,
+      CHAT_LOG_EVENTS.providerResponseHeaders,
+      CHAT_LOG_EVENTS.providerFirstDelta,
+      CHAT_LOG_EVENTS.providerCompleted,
+      CHAT_LOG_EVENTS.runCompleted,
+    ]);
+    expect(logger.info).toHaveBeenCalledWith(
+      CHAT_LOG_EVENTS.contextCompleted,
+      'chat.run',
+      expect.objectContaining({
+        taskRunId: response.runId,
+        durationMs: expect.any(Number),
+        success: true,
+        contextMode: 'full',
+        inputTokens: 20,
+      }),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      CHAT_LOG_EVENTS.providerFirstDelta,
+      'chat.run',
+      expect.objectContaining({
+        taskRunId: response.runId,
+        durationMs: expect.any(Number),
+        attemptCount: 1,
+      }),
+    );
     expect(chatStore.findMessageById(response.assistantMessageId)).toMatchObject({
       status: 'completed',
       content: 'First answer.',
@@ -238,8 +278,14 @@ describe('ChatService', () => {
 
   it('retries one retryable Provider failure before any answer text is emitted', async () => {
     let attemptCount = 0;
-    const harness = createChatServiceHarness(async function* () {
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    } satisfies ChatOperationLogger;
+    const harness = createChatServiceHarness(async function* (request) {
       attemptCount += 1;
+      request.onTiming?.('response-headers');
       if (attemptCount === 1) {
         throw new SummaryError(
           SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_REQUEST_FAILED,
@@ -247,8 +293,9 @@ describe('ChatService', () => {
           true,
         );
       }
+      request.onTiming?.('first-delta');
       yield 'recovered';
-    });
+    }, undefined, logger);
     const events: string[] = [];
     const terminalEvent = new Promise<string>((resolve) => {
       harness.service.subscribe((event) => {
@@ -273,6 +320,21 @@ describe('ChatService', () => {
       status: 'completed',
       content: 'recovered',
     });
+    expect(logger.info).toHaveBeenCalledWith(
+      CHAT_LOG_EVENTS.providerResponseHeaders,
+      'chat.run',
+      expect.objectContaining({ attemptCount: 1 }),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      CHAT_LOG_EVENTS.providerResponseHeaders,
+      'chat.run',
+      expect.objectContaining({ attemptCount: 2 }),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      CHAT_LOG_EVENTS.providerFirstDelta,
+      'chat.run',
+      expect.objectContaining({ attemptCount: 2 }),
+    );
   });
 
   it('recovers from a short Provider outage spanning multiple 503 attempts', async () => {
@@ -510,6 +572,11 @@ describe('ChatService', () => {
     const providerStream = vi.fn(async function* () {
       yield 'unreachable';
     });
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    } satisfies ChatOperationLogger;
     const harness = createChatServiceHarness(
       providerStream,
       async () => {
@@ -519,6 +586,7 @@ describe('ChatService', () => {
           false,
         );
       },
+      logger,
     );
 
     await expect(harness.service.send({
@@ -541,6 +609,14 @@ describe('ChatService', () => {
         error: { code: CHAT_ERROR_CODES.CHAT_CONTEXT_TOO_LARGE },
       },
     });
+    expect(logger.info).toHaveBeenCalledWith(
+      CHAT_LOG_EVENTS.contextCompleted,
+      'chat.run',
+      expect.objectContaining({
+        success: false,
+        errorCode: CHAT_ERROR_CODES.CHAT_CONTEXT_TOO_LARGE,
+      }),
+    );
   });
 });
 
@@ -634,6 +710,7 @@ function createChatServiceHarness(
     cacheHit: false,
     relatedSegmentIds: [],
   }),
+  logger?: ChatOperationLogger,
 ): {
   service: ChatService;
   chatStore: ChatStore;
@@ -667,6 +744,9 @@ function createChatServiceHarness(
       chatStore,
       { prepare },
       provider,
+      undefined,
+      undefined,
+      logger,
     ),
   };
 }

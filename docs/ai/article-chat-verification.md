@@ -38,6 +38,8 @@ preserves all existing migrations and user data.
 - success, failure, cancellation, retry, late-event isolation, and restart
   interruption;
 - chat usage records and diagnostic-export redaction.
+- privacy-safe timing records for context preparation, response headers, first
+  visible delta, post-delta generation, retries, and end-to-end completion.
 
 ### Attachments
 
