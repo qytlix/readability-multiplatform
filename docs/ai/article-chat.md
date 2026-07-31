@@ -48,8 +48,8 @@ Reader/Translation state. Closing chat restores the exact snapshot.
 
 The chat panel contains:
 
-- article, Provider/model, and context-mode information;
-- suggestions, persisted messages, streaming output, selections, attachments,
+- article information, suggestions, persisted messages, streaming output,
+  selections, attachments,
   and visible failure/interruption states;
 - a fixed composer with attachment picker, growing textarea, and send/stop
   control.
@@ -68,4 +68,9 @@ complex multi-thread management, or concurrent chat generations.
 Unsupported or over-budget input fails before the Provider request. Shale
 never silently removes an image, truncates the article, or treats an
 unparseable attachment as empty text.
+
+If a Provider reports a retryable streaming failure before any answer text is
+emitted, Article Chat retries the Provider request once. It never retries after
+visible output has started, so persisted and rendered answer text cannot be
+duplicated.
 

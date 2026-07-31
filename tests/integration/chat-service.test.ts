@@ -17,6 +17,10 @@ import {
   CHAT_ERROR_CODES,
   ChatError,
 } from '../../src/shared/errors/chat.errors';
+import {
+  SUMMARY_ERROR_CODES,
+  SummaryError,
+} from '../../src/shared/errors/summary.errors';
 
 describe('ChatService', () => {
   it('streams and persists a content-scoped answer with full event identity', async () => {
@@ -229,6 +233,78 @@ describe('ChatService', () => {
     expect(harness.chatStore.findMessageById(response.assistantMessageId)).toMatchObject({
       status: 'interrupted',
       content: '',
+    });
+  });
+
+  it('retries one retryable Provider failure before any answer text is emitted', async () => {
+    let attemptCount = 0;
+    const harness = createChatServiceHarness(async function* () {
+      attemptCount += 1;
+      if (attemptCount === 1) {
+        throw new SummaryError(
+          SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_REQUEST_FAILED,
+          'The upstream Provider failed while starting the stream.',
+          true,
+        );
+      }
+      yield 'recovered';
+    });
+    const events: string[] = [];
+    const terminalEvent = new Promise<string>((resolve) => {
+      harness.service.subscribe((event) => {
+        events.push(event.type);
+        if (event.type === 'completed' || event.type === 'failed') {
+          resolve(event.type);
+        }
+      });
+    });
+
+    const response = await harness.service.send({
+      entryId: 1,
+      question: 'recover transient failure',
+      attachmentIds: [],
+    });
+
+    expect(await terminalEvent).toBe('completed');
+    expect(attemptCount).toBe(2);
+    expect(events).toEqual(['started', 'delta', 'completed']);
+    expect(harness.chatStore.findRunById(response.runId)?.status).toBe('succeeded');
+    expect(harness.chatStore.findMessageById(response.assistantMessageId)).toMatchObject({
+      status: 'completed',
+      content: 'recovered',
+    });
+  });
+
+  it('does not retry after answer text has already been emitted', async () => {
+    let attemptCount = 0;
+    const harness = createChatServiceHarness(async function* () {
+      attemptCount += 1;
+      yield 'partial';
+      throw new SummaryError(
+        SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_REQUEST_FAILED,
+        'The upstream Provider failed after output started.',
+        true,
+      );
+    });
+    const terminalEvent = new Promise<string>((resolve) => {
+      harness.service.subscribe((event) => {
+        if (event.type === 'completed' || event.type === 'failed') {
+          resolve(event.type);
+        }
+      });
+    });
+
+    const response = await harness.service.send({
+      entryId: 1,
+      question: 'do not duplicate output',
+      attachmentIds: [],
+    });
+
+    expect(await terminalEvent).toBe('failed');
+    expect(attemptCount).toBe(1);
+    expect(harness.chatStore.findMessageById(response.assistantMessageId)).toMatchObject({
+      status: 'failed',
+      content: 'partial',
     });
   });
 

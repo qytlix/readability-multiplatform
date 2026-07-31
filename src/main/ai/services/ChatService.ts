@@ -21,6 +21,7 @@ import type {
   ProviderContentPart,
   ProviderTokenUsage,
   TextGenerationProvider,
+  TextGenerationProviderRequest,
 } from '../provider/TextGenerationProvider';
 import { sanitizeProviderTokenUsage } from '../provider/ProviderTokenUsage';
 import type {
@@ -53,10 +54,13 @@ import {
   logChatRunCompleted,
   logChatRunFailed,
   logChatRunInterrupted,
+  logChatRunRetrying,
   logChatRunStarted,
   type ChatOperationLogger,
 } from './ChatLogging';
 import { performance } from 'node:perf_hooks';
+
+const MAX_CHAT_PROVIDER_START_RETRIES = 1;
 
 export interface ChatContentLookup {
   findByEntry(entryId: number): CleanedContent | undefined;
@@ -568,7 +572,7 @@ export class ChatService {
         },
         { role: 'user' as const, content: questionParts },
       ];
-      for await (const delta of this.provider.stream({
+      const providerRequest: TextGenerationProviderRequest = {
         providerKind: profile.chatProviderKind,
         baseUrl: profile.chatBaseUrl,
         model: profile.chatModel,
@@ -581,18 +585,41 @@ export class ChatService {
         onUsage: (reported) => {
           usage = sanitizeProviderTokenUsage(reported);
         },
-      })) {
-        if (this.activeRun?.run.id !== run.id) return;
-        output += delta;
-        this.chatStore.appendAssistantDelta(run.id, delta);
-        this.emit({
-          type: 'delta',
-          runId: run.id,
-          threadId: run.threadId,
-          entryId,
-          messageId: run.assistantMessageId,
-          text: delta,
-        });
+      };
+      for (let providerAttempt = 1; ; providerAttempt += 1) {
+        try {
+          for await (const delta of this.provider.stream(providerRequest)) {
+            if (this.activeRun?.run.id !== run.id) return;
+            output += delta;
+            this.chatStore.appendAssistantDelta(run.id, delta);
+            this.emit({
+              type: 'delta',
+              runId: run.id,
+              threadId: run.threadId,
+              entryId,
+              messageId: run.assistantMessageId,
+              text: delta,
+            });
+          }
+          break;
+        } catch (error) {
+          const failure = toChatIpcError(error);
+          const canRetry = (
+            providerAttempt <= MAX_CHAT_PROVIDER_START_RETRIES
+            && output.length === 0
+            && failure.retryable
+            && !abortController.signal.aborted
+          );
+          if (!canRetry) throw error;
+          usage = undefined;
+          logChatRunRetrying(this.logger, {
+            taskRunId: run.id,
+            attemptCount: providerAttempt + 1,
+            errorCode: failure.code as (
+              typeof CHAT_ERROR_CODES
+            )[keyof typeof CHAT_ERROR_CODES],
+          });
+        }
       }
       if (!output.trim()) {
         throw new ChatError(

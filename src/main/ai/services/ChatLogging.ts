@@ -3,6 +3,7 @@ import type { ChatErrorCode } from '../../../shared/errors/chat.errors';
 
 export const CHAT_LOG_EVENTS = {
   runStarted: 'chat.run.started',
+  runRetrying: 'chat.run.retrying',
   runCompleted: 'chat.run.completed',
   runFailed: 'chat.run.failed',
   runInterrupted: 'chat.run.interrupted',
@@ -23,6 +24,12 @@ interface ChatRunResultContext {
   errorCode?: ChatErrorCode;
 }
 
+interface ChatRunRetryContext {
+  taskRunId: number;
+  attemptCount: number;
+  errorCode: ChatErrorCode;
+}
+
 interface ChatRecoveryContext {
   durationMs: number;
   count: number;
@@ -39,9 +46,11 @@ export interface ChatOperationLogger {
     context: ChatRunStartContext | ChatRunResultContext | ChatRecoveryContext,
   ): void;
   warn(
-    event: typeof CHAT_LOG_EVENTS.runInterrupted,
+    event:
+      | typeof CHAT_LOG_EVENTS.runRetrying
+      | typeof CHAT_LOG_EVENTS.runInterrupted,
     component: typeof CHAT_RUN_COMPONENT,
-    context: ChatRunResultContext,
+    context: ChatRunRetryContext | ChatRunResultContext,
   ): void;
   error(
     event: typeof CHAT_LOG_EVENTS.runFailed,
@@ -63,6 +72,27 @@ export function logChatRunStarted(
     logger?.info(CHAT_LOG_EVENTS.runStarted, CHAT_RUN_COMPONENT, { taskRunId });
   } catch {
     // Observability must never change Chat behavior.
+  }
+}
+
+export function logChatRunRetrying(
+  logger: ChatOperationLogger | undefined,
+  context: ChatRunRetryContext,
+): void {
+  if (
+    !isSafeId(context.taskRunId)
+    || !isSafeId(context.attemptCount)
+  ) {
+    return;
+  }
+  try {
+    logger?.warn(CHAT_LOG_EVENTS.runRetrying, CHAT_RUN_COMPONENT, {
+      taskRunId: context.taskRunId,
+      attemptCount: context.attemptCount,
+      errorCode: context.errorCode,
+    });
+  } catch {
+    // Observability must never change Chat retry behavior.
   }
 }
 

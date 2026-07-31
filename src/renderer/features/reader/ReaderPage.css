@@ -315,24 +315,6 @@
   font-size: 12px;
 }
 
-.article-chat-meta {
-  display: flex;
-  min-height: 42px;
-  padding: 9px 20px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border-bottom: 1px solid var(--reader-line);
-  color: var(--reader-text-muted);
-  font-size: 9px;
-}
-
-.article-chat-meta span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .article-chat-messages {
   min-height: 0;
   padding: 22px 20px 32px;

@@ -142,6 +142,38 @@ describe('OpenAICompatibleProvider', () => {
     expect(chunks).toEqual(['partial']);
   });
 
+  it('marks opaque upstream stream failures as retryable for a bounded caller retry', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      'data: {"error":{"code":"bad_response_status_code","type":"upstream_error"},"choices":[]}\n\n',
+      { status: 200 },
+    )));
+
+    await expect((async () => {
+      for await (const chunk of new OpenAICompatibleProvider().stream(request())) {
+        void chunk;
+      }
+    })()).rejects.toMatchObject({
+      code: 'SUMMARY_PROVIDER_REQUEST_FAILED',
+      retryable: true,
+    });
+  });
+
+  it('keeps explicit invalid-request stream failures non-retryable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      'data: {"error":{"code":"context_length_exceeded","type":"invalid_request_error"},"choices":[]}\n\n',
+      { status: 200 },
+    )));
+
+    await expect((async () => {
+      for await (const chunk of new OpenAICompatibleProvider().stream(request())) {
+        void chunk;
+      }
+    })()).rejects.toMatchObject({
+      code: 'SUMMARY_PROVIDER_REQUEST_FAILED',
+      retryable: false,
+    });
+  });
+
   it('reports response-header and first-delta timing phases once', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
       'data: {"choices":[{"delta":{"content":"First"}}]}\n\n',

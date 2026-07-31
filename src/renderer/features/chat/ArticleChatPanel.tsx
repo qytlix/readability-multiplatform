@@ -1,9 +1,5 @@
 import { CloseIcon } from '../reader/ReaderIcons';
 import { useEffect, useState } from 'react';
-import type {
-  ChatContextMode,
-  ChatMessage,
-} from '../../../shared/contracts/chat.types';
 import { useArticleChatSession } from './useArticleChatSession';
 import { ArticleChatComposer } from './ArticleChatComposer';
 import { ChatMarkdown } from './ChatMarkdown';
@@ -20,21 +16,6 @@ interface ArticleChatPanelProps {
   onSelectionCleared: (requestId: number) => void;
 }
 
-const CONTEXT_MODE_LABELS: Record<ChatContextMode, string> = {
-  full: '使用完整文章上下文',
-  'history-compressed': '已压缩早期对话，文章全文保持完整',
-  'article-map': '文章过长，使用全文分析与相关原文',
-};
-
-const getCurrentContextMode = (
-  messages: ChatMessage[],
-): ChatContextMode | null => (
-  [...messages]
-    .reverse()
-    .find(({ role }) => role === 'assistant')
-    ?.articleContextMode ?? null
-);
-
 export const ArticleChatPanel = ({
   entryId,
   entryTitle,
@@ -47,9 +28,6 @@ export const ArticleChatPanel = ({
   const [draft, setDraft] = useState('');
   const [pendingSelection, setPendingSelection] =
     useState<ArticleChatSelectionRequest | null>(selectionRequest ?? null);
-  const contextMode = session.state?.state === 'running'
-    ? session.state.run.contextMode
-    : getCurrentContextMode(session.state?.messages ?? []);
   const running = session.state?.state === 'running';
   const activeRunId = session.state?.state === 'running'
     ? session.state.run.id
@@ -105,15 +83,6 @@ export const ArticleChatPanel = ({
           <CloseIcon />
         </button>
       </header>
-
-      <div className="article-chat-meta" aria-label="问答上下文信息">
-        <span>
-          {session.provider
-            ? `${session.provider.chatProviderKind} · ${session.provider.chatModel}`
-            : '尚未配置问答模型'}
-        </span>
-        {contextMode && <span>{CONTEXT_MODE_LABELS[contextMode]}</span>}
-      </div>
 
       <div className="article-chat-messages" aria-live="polite">
         {session.loadStatus === 'loading' && (

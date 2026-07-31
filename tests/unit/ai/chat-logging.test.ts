@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   logChatRunCompleted,
   logChatRunFailed,
+  logChatRunRetrying,
   logChatRunStarted,
 } from '../../../src/main/ai/services/ChatLogging';
 
@@ -14,6 +15,11 @@ describe('Article Chat structured logging', () => {
     };
 
     logChatRunStarted(logger, 7);
+    logChatRunRetrying(logger, {
+      taskRunId: 7,
+      attemptCount: 2,
+      errorCode: 'CHAT_PROVIDER_REQUEST_FAILED',
+    });
     logChatRunCompleted(logger, { taskRunId: 7, durationMs: 22 });
     const unsafeFailureContext = {
       taskRunId: 8,
@@ -52,6 +58,15 @@ describe('Article Chat structured logging', () => {
         durationMs: 30,
         errorCode: 'CHAT_NETWORK_ERROR',
         success: false,
+      },
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      'chat.run.retrying',
+      'chat.run',
+      {
+        taskRunId: 7,
+        attemptCount: 2,
+        errorCode: 'CHAT_PROVIDER_REQUEST_FAILED',
       },
     );
   });
