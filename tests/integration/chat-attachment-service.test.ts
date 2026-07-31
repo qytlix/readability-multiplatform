@@ -90,6 +90,12 @@ describe('ChatAttachmentService', () => {
     expect(safeAttachmentDisplayName(
       'C:\\secret\\line\u0000break.md',
     )).toBe('linebreak.md');
+    expect(safeAttachmentDisplayName(
+      '/secret/line\u0000break.md',
+    )).toBe('linebreak.md');
+    expect(safeAttachmentDisplayName(
+      'C:\\secret/mixed\\line\u0000break.md',
+    )).toBe('linebreak.md');
   });
 
   it('reuses normalized image bytes and removes the file after the last draft', async () => {

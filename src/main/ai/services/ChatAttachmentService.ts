@@ -331,7 +331,7 @@ export class ChatAttachmentService {
 }
 
 export const safeAttachmentDisplayName = (filePath: string): string => {
-  const baseName = [...path.basename(filePath)
+  const baseName = [...path.win32.basename(filePath)
     .normalize('NFC')
   ].filter((character) => {
     const codePoint = character.codePointAt(0) ?? 0;
