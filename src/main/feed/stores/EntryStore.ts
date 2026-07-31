@@ -616,7 +616,7 @@ function appendSingleFilter(
         conditions.push(`NOT EXISTS (
           SELECT 1 FROM entry_tag et
           JOIN tag t ON t.id = et.tagId
-          WHERE et.entryId = e.id AND t.name ${exact ? '=' : `LIKE ?${esc}`}
+          WHERE et.entryId = e.id AND t.name ${exact ? '= ?' : `LIKE ?${esc}`}
         )`);
         params.push(exact ? value : `%${escapeLike(value)}%`);
       } else {
@@ -624,7 +624,7 @@ function appendSingleFilter(
         conditions.push(`e.id IN (
           SELECT et.entryId FROM entry_tag et
           JOIN tag t ON t.id = et.tagId
-          WHERE t.name ${exact ? '=' : `LIKE ?${esc}`}
+          WHERE t.name ${exact ? '= ?' : `LIKE ?${esc}`}
         )`);
         params.push(exact ? value : `%${escapeLike(value)}%`);
       }
