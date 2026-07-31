@@ -6,6 +6,7 @@ import type {
 } from '../../../shared/contracts/chat.types';
 import { useArticleChatSession } from './useArticleChatSession';
 import { ArticleChatComposer } from './ArticleChatComposer';
+import { ChatMarkdown } from './ChatMarkdown';
 import type { ArticleChatSelectionRequest } from './articleChatSelection';
 
 interface ArticleChatPanelProps {
@@ -163,7 +164,11 @@ export const ArticleChatPanel = ({
               <blockquote>{message.selection.text}</blockquote>
             )}
             <div className="article-chat-message-content">
-              {message.content || (
+              {message.content && message.role === 'assistant' && (
+                <ChatMarkdown content={message.content} />
+              )}
+              {message.content && message.role === 'user' && message.content}
+              {!message.content && (
                 <span className="article-chat-streaming">正在组织回答…</span>
               )}
             </div>
