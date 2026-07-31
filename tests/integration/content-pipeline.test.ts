@@ -412,7 +412,7 @@ describe('ContentCleaner', () => {
     expect(result.content).toContain('<math');
   });
 
-  it('marks linked author avatars without treating article images as avatars', () => {
+  it('removes linked author cards while preserving article images', () => {
     const cleanedHtml = cleaner.cleanStoredHtml(
       `<div class="publisher-author">
         <div>
@@ -430,16 +430,206 @@ describe('ContentCleaner', () => {
       </p>`,
     );
 
-    expect(cleanedHtml).toContain('class="publisher-author reader-author-card"');
-    expect(cleanedHtml).toContain('class="reader-author-avatar"');
-    expect(cleanedHtml).toContain('class="reader-author-name"');
-    expect(cleanedHtml).toContain('class="reader-author-bio"');
+    // Author card should be removed entirely
+    expect(cleanedHtml).not.toContain('kokdemo');
+    expect(cleanedHtml).not.toContain('Author biography');
+    expect(cleanedHtml).not.toContain('avatars/kokdemo.jpg');
+    // Article image should be preserved
     expect(cleanedHtml).toContain(
       '<img src="https://example.com/article-photo.jpg" alt="Article photo">',
     );
-    expect(cleanedHtml).not.toContain(
-      'alt="Article photo" class="reader-author-avatar"',
+  });
+
+  it('removes author card from The Verge-like full-article HTML', () => {
+    const articleParagraph = (
+      'As previously reported, the company faced numerous challenges during this period. '
+    ).repeat(12);
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Article with author card</title></head>
+        <body>
+          <article>
+            <div class="author-profile">
+              <a href="/authors/emma-roth">
+                <img
+                  src="https://example.com/avatars/emma.jpg"
+                  alt="Emma Roth"
+                >
+              </a>
+              <a href="/authors/emma-roth">Emma Roth</a>
+              <p>is a news writer who covers the streaming wars, consumer tech, and more.</p>
+            </div>
+            <p>${articleParagraph}</p>
+            <p>${articleParagraph}</p>
+          </article>
+        </body>
+      </html>`,
+      'https://example.com/articles/ebay-settlement',
     );
+
+    // Author card must be removed
+    expect(result.content).not.toContain('Emma Roth');
+    expect(result.content).not.toContain('streaming wars');
+    expect(result.content).not.toContain('avatars/emma.jpg');
+    // Article text must be preserved
+    expect(result.content).toContain('As previously reported');
+  });
+
+  it('removes author card with non-link name element (Verge pattern)', () => {
+    const articleParagraph = (
+      'eBay and three former executives will pay $55.7 million as part of a settlement with a Massachusetts couple. '
+    ).repeat(8);
+    // The Verge page includes <meta name="author"> which Readability uses
+    // to detect the byline even after the small avatar image is stripped.
+    const result = cleaner.clean(
+      `<html>
+        <head>
+          <meta name="author" content="Emma Roth">
+          <title>Article with Verge-style author card</title>
+        </head>
+        <body>
+          <article>
+            <p>
+              <a href="/authors/emma-roth">
+                <img
+                  src="https://example.com/avatars/emma.jpg"
+                  alt="Emma Roth"
+                  width="36"
+                  height="36"
+                >
+              </a>
+              <span>Emma Roth</span>
+              <span>is a news writer who covers the streaming wars, consumer tech, crypto, social media, and much more. Previously, she was a writer and editor at MUO.</span>
+            </p>
+            <p>${articleParagraph}</p>
+            <p>${articleParagraph}</p>
+          </article>
+        </body>
+      </html>`,
+      'https://www.theverge.com/tech/972209/ebay-cyberstalking-harassment-settlement',
+    );
+
+    // Author card must be removed
+    expect(result.content).not.toContain('Emma Roth');
+    expect(result.content).not.toContain('streaming wars');
+    expect(result.content).not.toContain('avatars/emma.jpg');
+    // Article text must be preserved
+    expect(result.content).toContain('eBay and three former executives');
+    expect(result.content).toContain('Massachusetts couple');
+  });
+
+  it('removes comment container from cleaned content', () => {
+    const articleParagraph = (
+      'This article contains the latest reporting on the topic. '
+    ).repeat(12);
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Article with comments</title></head>
+        <body>
+          <article>
+            <p>${articleParagraph}</p>
+            <p>${articleParagraph}</p>
+          </article>
+          <section id="comments">
+            <h2>Reader comments</h2>
+            <div class="comment">
+              <img src="https://example.com/avatars/user.jpg" alt="User avatar">
+              <p>Great article!</p>
+            </div>
+          </section>
+        </body>
+      </html>`,
+      'https://example.com/articles/with-comments',
+    );
+
+    // Comment section must be removed
+    expect(result.content).not.toContain('Reader comments');
+    expect(result.content).not.toContain('Great article!');
+    // Article text must be preserved
+    expect(result.content).toContain('latest reporting');
+  });
+
+  it('does not remove inline textual references to comments', () => {
+    const articleParagraph = (
+      'The article discusses the topic and readers have left comments below. '
+    ).repeat(12);
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Article mentioning comments</title></head>
+        <body>
+          <article>
+            <p>${articleParagraph}</p>
+            <p>As one commenter noted, this is an important development.</p>
+          </article>
+        </body>
+      </html>`,
+      'https://example.com/articles/with-comment-text',
+    );
+
+    // Inline text referencing comments must be preserved
+    expect(result.content).toContain('As one commenter noted');
+    expect(result.content).toContain('have left comments below');
+  });
+
+  it('removes Follow topics and authors CTA', () => {
+    const articleParagraph = (
+      'This article contains enough reporting and analysis for reader extraction. '
+    ).repeat(12);
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Article with follow CTA</title></head>
+        <body>
+          <article>
+            <p>${articleParagraph}</p>
+            <p>${articleParagraph}</p>
+            <p><strong>Follow topics and authors</strong> from this story to see more like this in your personalized homepage feed and to receive email updates.</p>
+            <ul>
+              <li>Emma Roth</li>
+            </ul>
+          </article>
+        </body>
+      </html>`,
+      'https://example.com/articles/follow-cta',
+    );
+
+    // Follow CTA and its list must be removed
+    expect(result.content).not.toContain('Follow topics and authors');
+    expect(result.content).not.toContain('personalized homepage feed');
+    // Article text must be preserved
+    expect(result.content).toContain('enough reporting');
+  });
+
+  it('preserves meaningful figures near comment containers', () => {
+    const articleParagraph = (
+      'The article contains verified reporting, background, and analysis. '
+    ).repeat(12);
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Article with figure near comments</title></head>
+        <body>
+          <article>
+            <p>${articleParagraph}</p>
+            <figure>
+              <img
+                src="https://example.com/hero.jpg"
+                alt="Chart showing the trend"
+                width="800"
+                height="600"
+              >
+              <figcaption>Figure 1: Trend analysis.</figcaption>
+            </figure>
+            <p>${articleParagraph}</p>
+          </article>
+        </body>
+      </html>`,
+      'https://example.com/articles/with-figure',
+    );
+
+    expect(result.content).toContain(
+      'src="https://example.com/hero.jpg"',
+    );
+    expect(result.content).toContain('Trend analysis');
+    expect(result.content).toContain('Chart showing the trend');
   });
 });
 
