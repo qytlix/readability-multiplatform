@@ -19,6 +19,7 @@ import {
   type ChatClipboardImageImportResponse,
   type ChatCancelRequest,
   type ChatGetRequest,
+  type ChatRegenerateRequest,
   type ChatRetryRequest,
   type ChatRunResponse,
   type ChatSelectionContext,
@@ -87,6 +88,22 @@ export function registerChatIpcHandlers(
       if (!isRunRequest(request)) return invalidRequest();
       try {
         return { ok: true, data: await chatService.retry(request) };
+      } catch (error) {
+        return { ok: false, error: toChatIpcError(error) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    CHAT_IPC_CHANNELS.regenerate,
+    async (event, request: unknown): Promise<IPCResult<ChatRunResponse>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
+      if (!isRegenerateRequest(request)) return invalidRequest();
+      try {
+        return {
+          ok: true,
+          data: await chatService.regenerate(request),
+        };
       } catch (error) {
         return { ok: false, error: toChatIpcError(error) };
       }
@@ -289,6 +306,21 @@ function isRunRequest(
   value: unknown,
 ): value is ChatCancelRequest & ChatRetryRequest {
   return isRecord(value) && isPositiveInteger(value.runId);
+}
+
+export function isRegenerateRequest(
+  value: unknown,
+): value is ChatRegenerateRequest {
+  return isRecord(value)
+    && isPositiveInteger(value.userMessageId)
+    && (
+      value.question === undefined
+      || (
+        typeof value.question === 'string'
+        && Boolean(value.question.trim())
+        && value.question.length <= 20_000
+      )
+    );
 }
 
 function isAttachmentRemoveRequest(

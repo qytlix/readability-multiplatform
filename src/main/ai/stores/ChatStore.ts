@@ -35,6 +35,7 @@ interface ChatMessageRow {
   articleContentHash: string;
   createdAt: string;
   updatedAt: string;
+  supersededAt: string | null;
 }
 
 interface ChatRunRow {
@@ -99,6 +100,11 @@ export interface CreatedChatRun {
   run: ChatRun;
   userMessage: ChatMessage;
   assistantMessage: ChatMessage;
+}
+
+export interface CreateReplacementChatRunParams extends CreateChatRunParams {
+  userMessageId: number;
+  attachmentIds: number[];
 }
 
 export interface CreateTextChatAttachmentParams {
@@ -219,7 +225,7 @@ export class ChatStore {
   listMessages(threadId: number): ChatMessage[] {
     const rows = this.db.prepare(`
       SELECT * FROM ai_chat_message
-      WHERE threadId = ?
+      WHERE threadId = ? AND supersededAt IS NULL
       ORDER BY createdAt ASC, id ASC
     `).all(threadId) as ChatMessageRow[];
     return rows.map((row) => toChatMessage(
@@ -231,6 +237,16 @@ export class ChatStore {
   findMessageById(messageId: number): ChatMessage | undefined {
     const row = this.db.prepare('SELECT * FROM ai_chat_message WHERE id = ?')
       .get(messageId) as ChatMessageRow | undefined;
+    return row
+      ? toChatMessage(row, this.listAttachmentsForMessage(row.id))
+      : undefined;
+  }
+
+  findCurrentMessageById(messageId: number): ChatMessage | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM ai_chat_message
+      WHERE id = ? AND supersededAt IS NULL
+    `).get(messageId) as ChatMessageRow | undefined;
     return row
       ? toChatMessage(row, this.listAttachmentsForMessage(row.id))
       : undefined;
@@ -414,9 +430,125 @@ export class ChatStore {
     return { run, userMessage, assistantMessage };
   }
 
+  createReplacementRun(
+    params: CreateReplacementChatRunParams,
+  ): CreatedChatRun {
+    const source = this.db.prepare(`
+      SELECT threadId, role, createdAt
+      FROM ai_chat_message
+      WHERE id = ? AND supersededAt IS NULL
+    `).get(params.userMessageId) as {
+      threadId: number;
+      role: ChatMessageRole;
+      createdAt: string;
+    } | undefined;
+    if (
+      !source
+      || source.threadId !== params.threadId
+      || source.role !== 'user'
+    ) {
+      throw new Error('The current Chat user message was not found.');
+    }
+    if (
+      params.attachmentIds.length > 5
+      || new Set(params.attachmentIds).size !== params.attachmentIds.length
+    ) {
+      throw new Error('The replacement Chat message attachments are invalid.');
+    }
+    for (const attachmentId of params.attachmentIds) {
+      const attachment = this.db.prepare(`
+        SELECT threadId FROM ai_chat_attachment WHERE id = ?
+      `).get(attachmentId) as { threadId: number } | undefined;
+      if (!attachment || attachment.threadId !== params.threadId) {
+        throw new Error('Chat attachment does not belong to this conversation.');
+      }
+    }
+
+    const now = new Date().toISOString();
+    const persist = this.db.transaction(() => {
+      this.db.prepare(`
+        UPDATE ai_chat_message
+        SET supersededAt = ?, updatedAt = ?
+        WHERE threadId = ? AND supersededAt IS NULL
+          AND (createdAt > ? OR (createdAt = ? AND id >= ?))
+      `).run(
+        now,
+        now,
+        params.threadId,
+        source.createdAt,
+        source.createdAt,
+        params.userMessageId,
+      );
+      const userMessageId = this.insertMessage({
+        threadId: params.threadId,
+        role: 'user',
+        content: params.question,
+        status: 'completed',
+        selection: params.selection,
+        articleContextMode: params.contextMode,
+        articleContentHash: params.articleContentHash,
+      }, now);
+      const assistantMessageId = this.insertMessage({
+        threadId: params.threadId,
+        role: 'assistant',
+        content: '',
+        status: 'running',
+        articleContextMode: params.contextMode,
+        articleContentHash: params.articleContentHash,
+      }, now);
+      const inserted = this.db.prepare(`
+        INSERT INTO ai_chat_run
+          (threadId, userMessageId, assistantMessageId, providerProfileId,
+           providerKind, model, status, promptVersion, contextMode,
+           inputContentHash, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)
+      `).run(
+        params.threadId,
+        userMessageId,
+        assistantMessageId,
+        params.providerProfileId,
+        params.providerKind,
+        params.model,
+        params.promptVersion,
+        params.contextMode,
+        params.inputContentHash,
+        now,
+      );
+      const linkAttachment = this.db.prepare(`
+        INSERT INTO ai_chat_message_attachment
+          (messageId, attachmentId, orderIndex)
+        VALUES (?, ?, ?)
+      `);
+      params.attachmentIds.forEach((attachmentId, orderIndex) => {
+        linkAttachment.run(userMessageId, attachmentId, orderIndex);
+      });
+      this.touchThread(params.threadId, now);
+      return {
+        runId: Number(inserted.lastInsertRowid),
+        userMessageId,
+        assistantMessageId,
+      };
+    });
+    const created = persist();
+    const run = this.findRunById(created.runId);
+    const userMessage = this.findMessageById(created.userMessageId);
+    const assistantMessage = this.findMessageById(created.assistantMessageId);
+    if (!run || !userMessage || !assistantMessage) {
+      throw new Error('Chat replacement did not persist its complete graph.');
+    }
+    return { run, userMessage, assistantMessage };
+  }
+
   findRunById(runId: number): ChatRun | undefined {
     const row = this.db.prepare('SELECT * FROM ai_chat_run WHERE id = ?')
       .get(runId) as ChatRunRow | undefined;
+    return row ? toChatRun(row) : undefined;
+  }
+
+  findRunByUserMessageId(userMessageId: number): ChatRun | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM ai_chat_run WHERE userMessageId = ?
+    `).get(userMessageId) as ChatRunRow | undefined;
     return row ? toChatRun(row) : undefined;
   }
 
@@ -431,9 +563,14 @@ export class ChatStore {
 
   findLatestRunForThread(threadId: number): ChatRun | undefined {
     const row = this.db.prepare(`
-      SELECT * FROM ai_chat_run
-      WHERE threadId = ?
-      ORDER BY id DESC LIMIT 1
+      SELECT run.* FROM ai_chat_run AS run
+      JOIN ai_chat_message AS userMessage ON userMessage.id = run.userMessageId
+      JOIN ai_chat_message AS assistantMessage
+        ON assistantMessage.id = run.assistantMessageId
+      WHERE run.threadId = ?
+        AND userMessage.supersededAt IS NULL
+        AND assistantMessage.supersededAt IS NULL
+      ORDER BY run.id DESC LIMIT 1
     `).get(threadId) as ChatRunRow | undefined;
     return row ? toChatRun(row) : undefined;
   }

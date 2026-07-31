@@ -5,6 +5,7 @@ import {
   CHAT_SELECTION_LIMITS,
   type ChatCancelRequest,
   type ChatGetRequest,
+  type ChatRegenerateRequest,
   type ChatRun,
   type ChatRunResponse,
   type ChatRetryRequest,
@@ -518,6 +519,222 @@ export class ChatService {
         userMessageId: retried.userMessage.id,
         assistantMessageId: retried.assistantMessage.id,
         reused: true,
+      };
+    } finally {
+      this.preparing = false;
+    }
+  }
+
+  async regenerate(
+    request: ChatRegenerateRequest,
+  ): Promise<ChatRunResponse> {
+    const editedQuestion = request.question;
+    if (
+      !Number.isInteger(request.userMessageId)
+      || request.userMessageId <= 0
+      || (
+        editedQuestion !== undefined
+        && (!editedQuestion.trim() || editedQuestion.length > 20_000)
+      )
+      || this.activeRun
+      || this.preparing
+    ) {
+      throw new ChatError(
+        this.activeRun || this.preparing
+          ? CHAT_ERROR_CODES.CHAT_BUSY
+          : CHAT_ERROR_CODES.CHAT_INVALID_REQUEST,
+        this.activeRun || this.preparing
+          ? 'Another Article Chat answer is already being generated.'
+          : 'The Article Chat regenerate request is invalid.',
+        Boolean(this.activeRun || this.preparing),
+      );
+    }
+
+    const sourceMessage = this.chatStore.findCurrentMessageById(
+      request.userMessageId,
+    );
+    const sourceRun = this.chatStore.findRunByUserMessageId(
+      request.userMessageId,
+    );
+    if (
+      !sourceMessage
+      || sourceMessage.role !== 'user'
+      || !sourceRun
+      || sourceRun.threadId !== sourceMessage.threadId
+      || sourceRun.status === 'running'
+    ) {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_INVALID_REQUEST,
+        'The Article Chat message can no longer be regenerated.',
+        false,
+      );
+    }
+    const thread = this.chatStore.findThreadById(sourceMessage.threadId);
+    if (!thread) {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_INVALID_REQUEST,
+        'The Article Chat conversation is unavailable.',
+        false,
+      );
+    }
+
+    const question = (editedQuestion ?? sourceMessage.content).trim();
+    const requestStartedAt = performance.now();
+    this.preparing = true;
+    try {
+      const content = this.requireContent(thread.entryId);
+      const currentHash = content.sourceContentHash
+        ?? hashChatInput(content.markdown);
+      if (currentHash !== thread.sourceContentHash) {
+        throw new ChatError(
+          CHAT_ERROR_CODES.CHAT_CONTENT_UNAVAILABLE,
+          'The article changed after this answer was created. Ask again in the new conversation.',
+          false,
+        );
+      }
+      const profile = this.requireProfile();
+      const attachments = sourceMessage.attachments.map(({ id }) =>
+        this.requireAttachment(id, thread.id));
+      if (
+        attachments.some(({ kind }) => kind === 'image')
+        && !profile.chatSupportsImages
+      ) {
+        throw new ChatError(
+          CHAT_ERROR_CODES.CHAT_IMAGE_UNSUPPORTED,
+          'The configured AI Chat model is not enabled for image input.',
+          false,
+        );
+      }
+      const history = this.chatStore.listMessages(thread.id)
+        .filter(({ id }) => id < sourceMessage.id);
+      const attemptId = createUsageAttemptId();
+      const created = this.chatStore.createReplacementRun({
+        userMessageId: sourceMessage.id,
+        threadId: thread.id,
+        question,
+        selection: sourceMessage.selection,
+        attachmentIds: attachments.map(({ id }) => id),
+        providerProfileId: profile.id,
+        providerKind: profile.chatProviderKind,
+        model: profile.chatModel,
+        promptVersion: CHAT_PROMPT_VERSION,
+        contextMode: 'article-map',
+        articleContentHash: currentHash,
+        inputContentHash: hashChatInput([
+          currentHash,
+          question,
+          ...attachments.map(({ contentHash }) => contentHash),
+        ].join('\n')),
+      });
+      const contextStartedAt = performance.now();
+      let prepared: PreparedArticleContext;
+      try {
+        prepared = await this.contextService.prepare({
+          source: {
+            entryId: thread.entryId,
+            title: content.readerTitle,
+            sourceUrl: content.sourceUrl,
+            markdown: content.markdown,
+            sourceContentHash: currentHash,
+            segments: content.segments ?? [],
+          },
+          history,
+          question,
+          selection: sourceMessage.selection,
+          textAttachments: attachments.flatMap((attachment) => (
+            attachment.kind === 'text' && attachment.textContent !== undefined
+              ? [{
+                  id: attachment.id,
+                  displayName: attachment.displayName,
+                  mimeType: attachment.mimeType,
+                  textContent: attachment.textContent,
+                }]
+              : []
+          )),
+          analysisModelFamily: `${profile.chatProviderKind}:${profile.chatModel}`,
+          analysisUsage: {
+            attemptId,
+            taskRunId: created.run.id,
+            providerProfileId: profile.id,
+            model: profile.chatModel,
+          },
+          contextWindowTokens: DEFAULT_CHAT_CONTEXT_WINDOW_TOKENS,
+          responseReserveTokens: DEFAULT_CHAT_RESPONSE_RESERVE_TOKENS,
+        });
+        logChatContextCompleted(this.logger, {
+          taskRunId: created.run.id,
+          durationMs: elapsedChatMilliseconds(contextStartedAt),
+          success: true,
+          contextMode: prepared.mode,
+          inputTokens: prepared.estimatedPromptTokens,
+        });
+      } catch (error) {
+        const failure = toChatIpcError(error);
+        logChatContextCompleted(this.logger, {
+          taskRunId: created.run.id,
+          durationMs: elapsedChatMilliseconds(contextStartedAt),
+          success: false,
+          errorCode: failure.code as (
+            typeof CHAT_ERROR_CODES
+          )[keyof typeof CHAT_ERROR_CODES],
+        });
+        this.chatStore.markRunFailed(created.run.id, failure);
+        throw error;
+      }
+      const inputContentHash = hashChatInput([
+        prepared.articleReference,
+        prepared.historyReference,
+        question,
+        ...attachments.map(({ contentHash }) => contentHash),
+      ].join('\n'));
+      const finalizedRun = this.chatStore.finalizeRunContext(
+        created.run.id,
+        prepared.mode,
+        inputContentHash,
+      );
+      const abortController = new AbortController();
+      const usageHandle = this.usageRecorder.start({
+        providerRequestId: createProviderRequestId(),
+        attemptId,
+        taskType: 'chat',
+        taskRunId: finalizedRun.id,
+        providerProfileId: profile.id,
+        model: profile.chatModel,
+        requestKind: 'chat-answer',
+      });
+      this.activeRun = {
+        run: finalizedRun,
+        entryId: thread.entryId,
+        abortController,
+        usageHandle,
+        startedAt: requestStartedAt,
+      };
+      logChatRunStarted(this.logger, finalizedRun.id);
+      this.emit({
+        type: 'started',
+        runId: finalizedRun.id,
+        threadId: thread.id,
+        entryId: thread.entryId,
+        messageId: created.assistantMessage.id,
+        contextMode: prepared.mode,
+      });
+      void this.executeRun(
+        finalizedRun,
+        thread.entryId,
+        prepared,
+        attachments,
+        question,
+        profile,
+        this.secretLookup.read(profile.chatApiKeyRef),
+        abortController,
+        usageHandle,
+      );
+      return {
+        runId: finalizedRun.id,
+        threadId: thread.id,
+        userMessageId: created.userMessage.id,
+        assistantMessageId: created.assistantMessage.id,
+        reused: false,
       };
     } finally {
       this.preparing = false;

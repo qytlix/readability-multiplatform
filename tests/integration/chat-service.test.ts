@@ -480,6 +480,57 @@ describe('ChatService', () => {
     ]);
   });
 
+  it('regenerates an edited user turn and removes its old visible suffix', async () => {
+    const questions: string[] = [];
+    let answerNumber = 0;
+    const harness = createChatServiceHarness(async function* (request) {
+      const questionMessage = request.messages?.[request.messages.length - 1];
+      const questionPart = questionMessage?.content.find(
+        (part) => part.type === 'text',
+      );
+      questions.push(questionPart?.type === 'text' ? questionPart.text : '');
+      answerNumber += 1;
+      yield `answer-${answerNumber}`;
+    });
+
+    const firstCompleted = waitForChatCompletion(harness.service);
+    const first = await harness.service.send({
+      entryId: 1,
+      question: 'Original question',
+      attachmentIds: [],
+    });
+    await firstCompleted;
+    const followUpCompleted = waitForChatCompletion(harness.service);
+    await harness.service.send({
+      entryId: 1,
+      question: 'Follow-up question',
+      attachmentIds: [],
+    });
+    await followUpCompleted;
+
+    const regeneratedCompleted = waitForChatCompletion(harness.service);
+    const regenerated = await harness.service.regenerate({
+      userMessageId: first.userMessageId,
+      question: 'Edited question',
+    });
+    await regeneratedCompleted;
+
+    expect(regenerated).toMatchObject({ reused: false });
+    expect(regenerated.userMessageId).not.toBe(first.userMessageId);
+    expect(questions).toEqual([
+      'Original question',
+      'Follow-up question',
+      'Edited question',
+    ]);
+    expect(harness.service.getState({ entryId: 1 })).toMatchObject({
+      state: 'idle',
+      messages: [
+        { role: 'user', content: 'Edited question' },
+        { role: 'assistant', content: 'answer-3', status: 'completed' },
+      ],
+    });
+  });
+
   it('interrupts the active run when the current article changes', async () => {
     const harness = createChatServiceHarness(async function* () {
       await new Promise((resolve) => setTimeout(resolve, 30));
@@ -696,6 +747,16 @@ function createImageChatHarness(supportsImages: boolean): {
     providerStream,
     readImage,
   };
+}
+
+function waitForChatCompletion(service: ChatService): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const unsubscribe = service.subscribe((event) => {
+      if (event.type !== 'completed') return;
+      unsubscribe();
+      resolve();
+    });
+  });
 }
 
 function createChatServiceHarness(

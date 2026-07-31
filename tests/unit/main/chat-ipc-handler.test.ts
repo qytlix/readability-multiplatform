@@ -64,6 +64,13 @@ function createService() {
       })),
       cancel: vi.fn(),
       retry: vi.fn(),
+      regenerate: vi.fn(async () => ({
+        runId: 21,
+        threadId: 12,
+        userMessageId: 23,
+        assistantMessageId: 24,
+        reused: false,
+      })),
       subscribe: vi.fn((listener: (event: unknown) => void) => {
         eventListener = listener;
         return () => {
@@ -193,6 +200,36 @@ describe('Article Chat IPC handler', () => {
       error: { code: 'CHAT_INVALID_REQUEST' },
     });
     expect(service.send).not.toHaveBeenCalled();
+  });
+
+  it('validates and forwards an edited-message regeneration request', async () => {
+    const { mainWindow, event } = createAuthorizedWindow();
+    const { service } = createService();
+    registerChatIpcHandlers(
+      () => mainWindow,
+      service,
+      createAttachmentService(),
+    );
+    const request = { userMessageId: 13, question: 'Edited question' };
+
+    await expect(invoke(
+      CHAT_IPC_CHANNELS.regenerate,
+      event,
+      request,
+    )).resolves.toMatchObject({
+      ok: true,
+      data: { runId: 21, userMessageId: 23, assistantMessageId: 24 },
+    });
+    expect(service.regenerate).toHaveBeenCalledWith(request);
+    await expect(invoke(
+      CHAT_IPC_CHANNELS.regenerate,
+      event,
+      { userMessageId: 13, question: '   ' },
+    )).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'CHAT_INVALID_REQUEST' },
+    });
+    expect(service.regenerate).toHaveBeenCalledTimes(1);
   });
 
   it('forwards identity-rich stream events only to the live main window', () => {

@@ -40,6 +40,7 @@ import { MIGRATION_028 as MIGRATION_028_TRANSLATION } from '../migrations/028_ad
 import { MIGRATION_028 as MIGRATION_028_CHAT } from '../migrations/028_create_article_context_cache';
 import { MIGRATION_029 as MIGRATION_029_TRANSLATION } from '../migrations/029_add_translation_context_usage_kind';
 import { MIGRATION_029 as MIGRATION_029_CHAT } from '../migrations/029_expand_usage_for_chat';
+import { MIGRATION_030 } from '../migrations/030_add_article_chat_message_branches';
 
 interface Migration {
   id: string;
@@ -100,6 +101,7 @@ const MIGRATIONS: Migration[] = [
   { id: '028_add_deep_translation_checkpoints', sql: MIGRATION_028_TRANSLATION },
   { id: '029_expand_usage_for_chat', sql: MIGRATION_029_CHAT },
   { id: '029_add_translation_context_usage_kind', sql: MIGRATION_029_TRANSLATION },
+  { id: '030_add_article_chat_message_branches', sql: MIGRATION_030 },
 ];
 
 export class DatabaseManager {

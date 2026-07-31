@@ -24,6 +24,7 @@ The first release includes:
 - text, Markdown, CSV, JSON, HTML, PDF, PNG, JPEG, and WebP attachments;
 - clipboard image paste;
 - questions created from selections in local Reader and bilingual Reader;
+- copy actions for both roles, user-question editing, and answer regeneration;
 - chat usage records;
 - Windows 11 and native Wayland verification.
 
@@ -51,6 +52,9 @@ The chat panel contains:
 - article information, suggestions, persisted messages, streaming output,
   selections, attachments,
   and visible failure/interruption states;
+- per-message copy actions, user-message edit-and-resend, and assistant
+  regenerate actions; editing or regenerating an older turn replaces the
+  visible suffix of the current linear conversation;
 - a fixed composer with attachment picker, growing textarea, and send/stop
   control.
 

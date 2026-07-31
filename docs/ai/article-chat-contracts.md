@@ -12,7 +12,7 @@ src/shared/errors/chat.errors.ts
 
 The public domain includes `ChatThread`, `ChatMessage`, `ChatAttachment`,
 `ChatSelectionContext`, `ChatContextMode`, `ChatSendRequest`, `ChatRun`,
-`ChatState`, and `ChatStreamEvent`.
+`ChatRegenerateRequest`, `ChatState`, and `ChatStreamEvent`.
 
 Chat run states are:
 
@@ -45,9 +45,11 @@ chat:get
 chat:send
 chat:cancel
 chat:retry
+chat:regenerate
 chat:attachment-pick
 chat:attachment-import-clipboard-image
 chat:attachment-remove
+chat:attachment-preview
 chat:stream
 ```
 
@@ -108,6 +110,15 @@ User message and run creation are transactional. A retry identifies the
 existing run/user message and does not duplicate the question. Attachments are
 linked to messages through an ordered join table, allowing content-addressed
 files to be reused without conflating message references.
+
+Editing a user message or regenerating its assistant answer uses
+`chat:regenerate`. The request identifies the persisted user message and may
+include replacement question text. Main reuses the persisted selection and
+attachments, marks that user turn and every later current-branch message with
+`supersededAt`, and creates a new transactional user/assistant/run graph. Only
+messages whose `supersededAt` is null are returned as the current linear
+conversation. Superseded runs and attachment links remain durable so usage
+identity and private-file lifecycle are not broken.
 
 Article-context caches use:
 

@@ -27,6 +27,7 @@ type ChatActionStatus =
   | 'sending'
   | 'stopping'
   | 'retrying'
+  | 'regenerating'
   | 'switching-model'
   | 'importing'
   | 'removing';
@@ -49,6 +50,10 @@ export interface ArticleChatSession {
   ) => Promise<boolean>;
   stop: () => Promise<boolean>;
   retry: () => Promise<boolean>;
+  regenerate: (
+    userMessageId: number,
+    question?: string,
+  ) => Promise<boolean>;
   loadChatModels: () => Promise<boolean>;
   switchChatModel: (model: string) => Promise<boolean>;
   pickAttachments: () => Promise<boolean>;
@@ -286,6 +291,41 @@ export const useArticleChatSession = (
     }
   }, [active, reload]);
 
+  const regenerate = useCallback(async (
+    userMessageId: number,
+    question?: string,
+  ): Promise<boolean> => {
+    if (
+      !active
+      || stateRef.current?.state === 'running'
+      || !Number.isInteger(userMessageId)
+      || userMessageId <= 0
+      || (question !== undefined && !question.trim())
+    ) {
+      return false;
+    }
+    setActionStatus('regenerating');
+    setActionErrorMessage('');
+    try {
+      const result = await window.shaleAPI.chat.regenerate({
+        userMessageId,
+        ...(question === undefined ? {} : { question }),
+      });
+      if (!result.ok) {
+        setActionErrorMessage(result.error.message);
+        await reload();
+        return false;
+      }
+      await reload();
+      return true;
+    } catch {
+      setActionErrorMessage('无法重新生成这次回答，请稍后再试。');
+      return false;
+    } finally {
+      setActionStatus('idle');
+    }
+  }, [active, reload]);
+
   const switchChatModel = useCallback(async (
     model: string,
   ): Promise<boolean> => {
@@ -427,6 +467,7 @@ export const useArticleChatSession = (
     sendQuestion,
     stop,
     retry,
+    regenerate,
     loadChatModels,
     switchChatModel,
     pickAttachments,

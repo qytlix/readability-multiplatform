@@ -184,6 +184,8 @@ const chatAPI = {
     ipcRenderer.invoke(CHAT_IPC_CHANNELS.cancel, request),
   retry: (request: { runId: number }) =>
     ipcRenderer.invoke(CHAT_IPC_CHANNELS.retry, request),
+  regenerate: (request: { userMessageId: number; question?: string }) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.regenerate, request),
   pickAttachments: (request: ChatAttachmentPickRequest) =>
     ipcRenderer.invoke(CHAT_IPC_CHANNELS.attachmentPick, request),
   removeAttachment: (request: ChatAttachmentRemoveRequest) =>

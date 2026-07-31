@@ -124,6 +124,80 @@ describe('ChatStore threads and messages', () => {
     expect(store.listMessages(thread.id)).toHaveLength(2);
   });
 
+  it('replaces the selected user turn and supersedes the visible suffix', () => {
+    const thread = store.findOrCreateThread(1, 'content-a', 'article-chat-v1');
+    const attachment = store.createTextAttachment({
+      threadId: thread.id,
+      displayName: 'evidence.txt',
+      mimeType: 'text/plain',
+      byteSize: 8,
+      textContent: 'evidence',
+      contentHash: 'evidence-hash',
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+    const first = store.createRunWithMessages({
+      threadId: thread.id,
+      question: 'Original question',
+      providerProfileId: providerId,
+      providerKind: 'openai',
+      model: 'example-model',
+      promptVersion: 'article-chat-v1',
+      contextMode: 'full',
+      articleContentHash: 'content-a',
+      inputContentHash: 'input-a',
+    });
+    store.linkAttachments(first.userMessage.id, [attachment.id]);
+    store.appendAssistantDelta(first.run.id, 'Original answer');
+    store.markRunSucceeded(first.run.id);
+    const followUp = store.createRunWithMessages({
+      threadId: thread.id,
+      question: 'Follow-up question',
+      providerProfileId: providerId,
+      providerKind: 'openai',
+      model: 'example-model',
+      promptVersion: 'article-chat-v1',
+      contextMode: 'full',
+      articleContentHash: 'content-a',
+      inputContentHash: 'input-b',
+    });
+    store.appendAssistantDelta(followUp.run.id, 'Follow-up answer');
+    store.markRunSucceeded(followUp.run.id);
+
+    const replacement = store.createReplacementRun({
+      userMessageId: first.userMessage.id,
+      threadId: thread.id,
+      question: 'Edited question',
+      attachmentIds: [attachment.id],
+      providerProfileId: providerId,
+      providerKind: 'openai',
+      model: 'example-model',
+      promptVersion: 'article-chat-v1',
+      contextMode: 'article-map',
+      articleContentHash: 'content-a',
+      inputContentHash: 'replacement-input',
+    });
+
+    expect(store.listMessages(thread.id)).toMatchObject([
+      {
+        id: replacement.userMessage.id,
+        role: 'user',
+        content: 'Edited question',
+        attachments: [{ id: attachment.id }],
+      },
+      {
+        id: replacement.assistantMessage.id,
+        role: 'assistant',
+        status: 'running',
+      },
+    ]);
+    expect(store.findCurrentMessageById(first.userMessage.id)).toBeUndefined();
+    expect(store.findMessageById(first.userMessage.id)).toMatchObject({
+      content: 'Original question',
+    });
+    expect(store.findLatestRunForThread(thread.id)?.id).toBe(replacement.run.id);
+    expect(store.listDraftAttachments(thread.id)).toEqual([]);
+  });
+
   it('links ordered attachment metadata without exposing stored content', () => {
     const thread = store.findOrCreateThread(1, 'content-a', 'article-chat-v1');
     const first = store.createTextAttachment({

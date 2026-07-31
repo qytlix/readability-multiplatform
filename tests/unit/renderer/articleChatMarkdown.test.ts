@@ -108,6 +108,7 @@ describe('Article Chat Markdown rendering', () => {
       sendQuestion: resolveFalse,
       stop: resolveFalse,
       retry: resolveFalse,
+      regenerate: resolveFalse,
       loadChatModels: resolveFalse,
       switchChatModel: resolveFalse,
       pickAttachments: resolveFalse,

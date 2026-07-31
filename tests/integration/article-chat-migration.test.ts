@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import { DatabaseManager } from '../../src/main/database/DatabaseManager';
 
-describe('article chat migration 027', () => {
+describe('article chat migrations', () => {
   it('creates the chat graph after the existing migration chain', () => {
     const manager = new DatabaseManager();
     try {
@@ -51,6 +51,26 @@ describe('article chat migration 027', () => {
       expect(() => insert.run(1, now, now)).toThrow();
       expect(() => insert.run(0, now, now)).not.toThrow();
       expect(() => insert.run(0, now, now)).not.toThrow();
+    } finally {
+      manager.close();
+    }
+  });
+
+  it('adds a current-branch marker without superseding existing messages', () => {
+    const manager = new DatabaseManager();
+    try {
+      manager.runMigrations();
+      const columns = manager.getDb().pragma(
+        'table_info(ai_chat_message)',
+      ) as Array<{ name: string; dflt_value: string | null }>;
+      expect(columns).toContainEqual(expect.objectContaining({
+        name: 'supersededAt',
+        dflt_value: null,
+      }));
+      const migrations = manager.getDb().prepare(`
+        SELECT filename FROM _migrations WHERE filename = ?
+      `).all('030_add_article_chat_message_branches');
+      expect(migrations).toHaveLength(1);
     } finally {
       manager.close();
     }

@@ -10,6 +10,7 @@ import type {
   ChatClipboardImageImportResponse,
   ChatCancelRequest,
   ChatGetRequest,
+  ChatRegenerateRequest,
   ChatRetryRequest,
   ChatRunResponse,
   ChatSendRequest,
@@ -22,6 +23,7 @@ export const CHAT_IPC_CHANNELS = {
   send: 'chat:send',
   cancel: 'chat:cancel',
   retry: 'chat:retry',
+  regenerate: 'chat:regenerate',
   attachmentPick: 'chat:attachment-pick',
   attachmentRemove: 'chat:attachment-remove',
   attachmentImportClipboardImage: 'chat:attachment-import-clipboard-image',
@@ -34,6 +36,9 @@ export interface ChatAPI {
   send(request: ChatSendRequest): Promise<IPCResult<ChatRunResponse>>;
   cancel(request: ChatCancelRequest): Promise<IPCResult<void>>;
   retry(request: ChatRetryRequest): Promise<IPCResult<ChatRunResponse>>;
+  regenerate(
+    request: ChatRegenerateRequest,
+  ): Promise<IPCResult<ChatRunResponse>>;
   pickAttachments(
     request: ChatAttachmentPickRequest,
   ): Promise<IPCResult<ChatAttachmentPickResponse>>;

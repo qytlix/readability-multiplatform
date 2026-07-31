@@ -134,6 +134,12 @@ export interface ChatRetryRequest {
   runId: number;
 }
 
+export interface ChatRegenerateRequest {
+  userMessageId: number;
+  /** Omit to reuse the persisted question; provide to edit before sending. */
+  question?: string;
+}
+
 export interface ChatCancelRequest {
   runId: number;
 }

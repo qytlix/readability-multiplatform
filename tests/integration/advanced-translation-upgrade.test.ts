@@ -149,6 +149,7 @@ describe('Advanced Translation upgrade and restart hardening', () => {
         { filename: '028_create_article_context_cache' },
         { filename: '029_add_translation_context_usage_kind' },
         { filename: '029_expand_usage_for_chat' },
+        { filename: '030_add_article_chat_message_branches' },
       ]);
       expect(restarted.getDb().prepare(`
         SELECT name FROM sqlite_master

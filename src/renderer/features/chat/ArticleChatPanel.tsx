@@ -1,11 +1,17 @@
-import { CloseIcon } from '../reader/ReaderIcons';
-import { useEffect, useState } from 'react';
+import {
+  CloseIcon,
+  CopyIcon,
+  EditIcon,
+  SyncIcon,
+} from '../reader/ReaderIcons';
+import { useEffect, useRef, useState } from 'react';
 import { useArticleChatSession } from './useArticleChatSession';
 import { ArticleChatComposer } from './ArticleChatComposer';
 import { ChatMarkdown } from './ChatMarkdown';
 import type { ArticleChatSelectionRequest } from './articleChatSelection';
 import type { ShaleError } from '../../../shared/contracts/feed.ipc';
 import { CHAT_ERROR_CODES } from '../../../shared/errors/chat.errors';
+import type { ChatMessage } from '../../../shared/contracts/chat.types';
 
 interface ArticleChatPanelProps {
   entryId: number;
@@ -28,6 +34,15 @@ export const ArticleChatPanel = ({
 }: ArticleChatPanelProps) => {
   const session = useArticleChatSession(entryId, true);
   const [draft, setDraft] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState<{
+    messageId: number;
+    status: 'copied' | 'failed';
+  } | null>(null);
+  const copyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [pendingSelection, setPendingSelection] =
     useState<ArticleChatSelectionRequest | null>(selectionRequest ?? null);
   const running = session.state?.state === 'running';
@@ -46,6 +61,18 @@ export const ArticleChatPanel = ({
     if (selectionRequest?.selection.entryId !== entryId) return;
     setPendingSelection(selectionRequest);
   }, [entryId, selectionRequest]);
+
+  useEffect(() => () => {
+    if (copyFeedbackTimerRef.current) {
+      clearTimeout(copyFeedbackTimerRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    setEditingMessageId(null);
+    setEditDraft('');
+    setCopyFeedback(null);
+  }, [entryId]);
 
   const handleSend = async (): Promise<void> => {
     const sent = await session.sendQuestion(
@@ -66,6 +93,45 @@ export const ArticleChatPanel = ({
     if (!pendingSelection) return;
     onSelectionCleared(pendingSelection.requestId);
     setPendingSelection(null);
+  };
+
+  const copyMessage = async (message: ChatMessage): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      showCopyFeedback(message.id, 'copied');
+    } catch {
+      showCopyFeedback(message.id, 'failed');
+    }
+  };
+
+  const showCopyFeedback = (
+    messageId: number,
+    status: 'copied' | 'failed',
+  ): void => {
+    if (copyFeedbackTimerRef.current) {
+      clearTimeout(copyFeedbackTimerRef.current);
+    }
+    setCopyFeedback({ messageId, status });
+    copyFeedbackTimerRef.current = setTimeout(() => {
+      setCopyFeedback(null);
+      copyFeedbackTimerRef.current = null;
+    }, 1_800);
+  };
+
+  const beginEditing = (message: ChatMessage): void => {
+    setEditingMessageId(message.id);
+    setEditDraft(message.content);
+  };
+
+  const cancelEditing = (): void => {
+    setEditingMessageId(null);
+    setEditDraft('');
+  };
+
+  const submitEdit = async (messageId: number): Promise<void> => {
+    if (!editDraft.trim()) return;
+    const regenerated = await session.regenerate(messageId, editDraft);
+    if (regenerated) cancelEditing();
   };
 
   return (
@@ -122,49 +188,131 @@ export const ArticleChatPanel = ({
             </div>
           </div>
         )}
-        {session.state?.messages.map((message) => (
-          <article
-            key={message.id}
-            className={`article-chat-message is-${message.role} is-${message.status}`}
-            data-message-id={message.id}
-          >
-            {message.selection && (
-              <blockquote>{message.selection.text}</blockquote>
-            )}
-            <div className="article-chat-message-content">
-              {message.content && message.role === 'assistant' && (
-                <ChatMarkdown content={message.content} />
-              )}
-              {message.content && message.role === 'user' && message.content}
-              {!message.content && (
-                <span className="article-chat-streaming">正在组织回答…</span>
-              )}
-            </div>
-            {message.attachments.length > 0 && (
-              <div className="article-chat-message-attachments">
-                {message.attachments.map((attachment) => (
-                  <span key={attachment.id}>{attachment.displayName}</span>
-                ))}
-              </div>
-            )}
-            {message.status === 'interrupted' && <small>回答已停止</small>}
-          </article>
-        ))}
-        {(session.state?.state === 'failed'
-          || session.state?.state === 'interrupted') && (
-          <div className="article-chat-retry">
-            {session.state.state === 'failed' && (
-              <p role="alert">
-                {formatChatFailureMessage(session.state.run.error)}
-              </p>
-            )}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void session.retry()}
+        {session.state?.messages.map((message, index, messages) => {
+          const sourceUserMessage = message.role === 'assistant'
+            ? findSourceUserMessage(messages, index)
+            : undefined;
+          const editing = editingMessageId === message.id;
+          const messageCopyFeedback = copyFeedback?.messageId === message.id
+            ? copyFeedback.status
+            : null;
+          return (
+            <article
+              key={message.id}
+              className={`article-chat-message is-${message.role} is-${message.status}${
+                editing ? ' is-editing' : ''
+              }`}
+              data-message-id={message.id}
             >
-              重新回答
-            </button>
+              {message.selection && (
+                <blockquote>{message.selection.text}</blockquote>
+              )}
+              {editing ? (
+                <div className="article-chat-message-editor">
+                  <textarea
+                    autoFocus
+                    rows={3}
+                    maxLength={20_000}
+                    aria-label="编辑问题"
+                    value={editDraft}
+                    disabled={busy || running}
+                    onChange={(event) => setEditDraft(event.target.value)}
+                  />
+                  <div className="article-chat-message-editor-actions">
+                    <button
+                      type="button"
+                      disabled={busy || running}
+                      onClick={cancelEditing}
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      className="is-primary"
+                      disabled={busy || running || !editDraft.trim()}
+                      onClick={() => void submitEdit(message.id)}
+                    >
+                      发送
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="article-chat-message-content">
+                  {message.content && message.role === 'assistant' && (
+                    <ChatMarkdown content={message.content} />
+                  )}
+                  {message.content && message.role === 'user' && message.content}
+                  {!message.content && (
+                    <span className="article-chat-streaming">正在组织回答…</span>
+                  )}
+                </div>
+              )}
+              {message.attachments.length > 0 && (
+                <div className="article-chat-message-attachments">
+                  {message.attachments.map((attachment) => (
+                    <span key={attachment.id}>{attachment.displayName}</span>
+                  ))}
+                </div>
+              )}
+              {message.status === 'interrupted' && <small>回答已停止</small>}
+              {!editing && (
+                <div
+                  className="article-chat-message-actions"
+                  aria-label={message.role === 'user' ? '问题操作' : '回答操作'}
+                >
+                  {message.content && (
+                    <button
+                      type="button"
+                      className={messageCopyFeedback === 'copied' ? 'is-success' : ''}
+                      aria-label={messageCopyFeedback === 'copied'
+                        ? '消息已复制'
+                        : messageCopyFeedback === 'failed'
+                          ? '消息复制失败'
+                          : '复制消息'}
+                      onClick={() => void copyMessage(message)}
+                    >
+                      <CopyIcon />
+                      {messageCopyFeedback === 'copied'
+                        ? '已复制'
+                        : messageCopyFeedback === 'failed'
+                          ? '复制失败'
+                          : '复制'}
+                    </button>
+                  )}
+                  {message.role === 'user' && (
+                    <button
+                      type="button"
+                      disabled={busy || running}
+                      aria-label="编辑问题"
+                      onClick={() => beginEditing(message)}
+                    >
+                      <EditIcon />
+                      编辑
+                    </button>
+                  )}
+                  {message.role === 'assistant'
+                    && sourceUserMessage
+                    && message.status !== 'running' && (
+                    <button
+                      type="button"
+                      disabled={busy || running}
+                      aria-label="重新回答"
+                      onClick={() => void session.regenerate(sourceUserMessage.id)}
+                    >
+                      <SyncIcon />
+                      重新回答
+                    </button>
+                  )}
+                </div>
+              )}
+            </article>
+          );
+        })}
+        {session.state?.state === 'failed' && (
+          <div className="article-chat-retry">
+            <p role="alert">
+              {formatChatFailureMessage(session.state.run.error)}
+            </p>
           </div>
         )}
       </div>
@@ -198,6 +346,16 @@ export const ArticleChatPanel = ({
       />
     </section>
   );
+};
+
+const findSourceUserMessage = (
+  messages: ChatMessage[],
+  assistantIndex: number,
+): ChatMessage | undefined => {
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') return messages[index];
+  }
+  return undefined;
 };
 
 const formatChatFailureMessage = (error?: ShaleError): string => {

@@ -558,3 +558,14 @@ Key 位于 Electron `userData/ai-secrets.json`。系统 `safeStorage` 可用时�
 **生命周期：** `configure` → `running` → `ready_next` → `review` → `applying` → `done`
 
 在 `running` / `ready_next` / `review` / `applying` 状态下会锁定标签变更，防止并发冲突。
+
+---
+
+## 4. Article Chat
+
+Article Chat 使用 `ai_chat_thread`、`ai_chat_message`、`ai_chat_run`、
+`ai_chat_attachment` 与 `ai_chat_message_attachment` 保存线性会话、流式运行和附件关联。
+`ai_chat_message.supersededAt` 为空时表示消息属于当前可见分支；用户编辑旧问题或要求模型
+重新回答时，从目标用户消息开始的原分支会写入该时间戳，并创建新的用户消息、模型占位消息
+和运行记录。旧运行及其附件关联继续保留，用于维持用量归属和文件生命周期，查询当前会话时
+只返回 `supersededAt IS NULL` 的消息。
