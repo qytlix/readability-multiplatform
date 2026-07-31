@@ -17,6 +17,10 @@ import {
   ChatError,
   toChatIpcError,
 } from '../../../shared/errors/chat.errors';
+import {
+  SUMMARY_ERROR_CODES,
+  SummaryError,
+} from '../../../shared/errors/summary.errors';
 import type {
   ProviderContentPart,
   ProviderTokenUsage,
@@ -60,7 +64,8 @@ import {
 } from './ChatLogging';
 import { performance } from 'node:perf_hooks';
 
-const MAX_CHAT_PROVIDER_START_RETRIES = 1;
+const CHAT_PROVIDER_RETRY_DELAYS_MS = [1_000, 3_000, 7_000] as const;
+const CHAT_PROVIDER_TIMEOUT_RETRY_DELAYS_MS = [1_000] as const;
 
 export interface ChatContentLookup {
   findByEntry(entryId: number): CleanedContent | undefined;
@@ -604,8 +609,13 @@ export class ChatService {
           break;
         } catch (error) {
           const failure = toChatIpcError(error);
+          const retryDelayMs = getChatProviderRetryDelayMs(
+            error,
+            failure.code,
+            providerAttempt,
+          );
           const canRetry = (
-            providerAttempt <= MAX_CHAT_PROVIDER_START_RETRIES
+            retryDelayMs !== undefined
             && output.length === 0
             && failure.retryable
             && !abortController.signal.aborted
@@ -619,6 +629,10 @@ export class ChatService {
               typeof CHAT_ERROR_CODES
             )[keyof typeof CHAT_ERROR_CODES],
           });
+          await waitForChatProviderRetry(
+            retryDelayMs,
+            abortController.signal,
+          );
         }
       }
       if (!output.trim()) {
@@ -769,4 +783,67 @@ function validateSendRequest(request: ChatSendRequest): void {
 
 function hashChatInput(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function getChatProviderRetryDelayMs(
+  error: unknown,
+  errorCode: string,
+  providerAttempt: number,
+): number | undefined {
+  const retryIndex = providerAttempt - 1;
+  const retryDelays = errorCode === CHAT_ERROR_CODES.CHAT_PROVIDER_TIMEOUT
+    ? CHAT_PROVIDER_TIMEOUT_RETRY_DELAYS_MS
+    : (
+      errorCode === CHAT_ERROR_CODES.CHAT_PROVIDER_REQUEST_FAILED
+      || errorCode === CHAT_ERROR_CODES.CHAT_NETWORK_ERROR
+    )
+      ? CHAT_PROVIDER_RETRY_DELAYS_MS
+      : [];
+  const defaultDelayMs = retryDelays[retryIndex];
+  if (defaultDelayMs === undefined) return undefined;
+  const providerDelayMs = (
+    error instanceof SummaryError
+    && error.code === SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_REQUEST_FAILED
+  )
+    ? error.retryAfterMs
+    : undefined;
+  return Math.max(defaultDelayMs, providerDelayMs ?? 0);
+}
+
+function waitForChatProviderRetry(
+  delayMs: number,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) {
+    return Promise.reject(new ChatError(
+      CHAT_ERROR_CODES.CHAT_INTERRUPTED,
+      'Article Chat generation was interrupted before retrying.',
+      true,
+    ));
+  }
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const cleanup = (): void => {
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', handleAbort);
+    };
+    const handleAbort = (): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new ChatError(
+        CHAT_ERROR_CODES.CHAT_INTERRUPTED,
+        'Article Chat generation was interrupted before retrying.',
+        true,
+      ));
+    };
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    }, delayMs);
+    signal.addEventListener('abort', handleAbort, { once: true });
+    if (signal.aborted) handleAbort();
+  });
 }

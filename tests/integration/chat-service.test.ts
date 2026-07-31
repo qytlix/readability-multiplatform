@@ -275,6 +275,80 @@ describe('ChatService', () => {
     });
   });
 
+  it('recovers from a short Provider outage spanning multiple 503 attempts', async () => {
+    vi.useFakeTimers();
+    try {
+      let attemptCount = 0;
+      const harness = createChatServiceHarness(async function* () {
+        attemptCount += 1;
+        if (attemptCount <= 3) {
+          throw new SummaryError(
+            SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_REQUEST_FAILED,
+            'The provider request failed with status 503.',
+            true,
+          );
+        }
+        yield 'recovered after outage';
+      });
+      const terminalEvent = new Promise<string>((resolve) => {
+        harness.service.subscribe((event) => {
+          if (event.type === 'completed' || event.type === 'failed') {
+            resolve(event.type);
+          }
+        });
+      });
+
+      const response = await harness.service.send({
+        entryId: 1,
+        question: 'recover repeated transient failures',
+        attachmentIds: [],
+      });
+      await vi.runAllTimersAsync();
+
+      expect(await terminalEvent).toBe('completed');
+      expect(attemptCount).toBe(4);
+      expect(harness.chatStore.findRunById(response.runId)?.status)
+        .toBe('succeeded');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels immediately while waiting to retry a transient Provider failure', async () => {
+    vi.useFakeTimers();
+    try {
+      let attemptCount = 0;
+      let markFirstAttemptFailed: () => void = () => undefined;
+      const firstAttemptFailed = new Promise<void>((resolve) => {
+        markFirstAttemptFailed = resolve;
+      });
+      const harness = createChatServiceHarness(async function* () {
+        attemptCount += 1;
+        markFirstAttemptFailed();
+        yield await Promise.reject<string>(new SummaryError(
+          SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_REQUEST_FAILED,
+          'The provider request failed with status 503.',
+          true,
+        ));
+      });
+      const response = await harness.service.send({
+        entryId: 1,
+        question: 'cancel during retry delay',
+        attachmentIds: [],
+      });
+      await firstAttemptFailed;
+
+      harness.service.cancel({ runId: response.runId });
+      await vi.runAllTimersAsync();
+
+      expect(attemptCount).toBe(1);
+      expect(harness.chatStore.findRunById(response.runId)?.status)
+        .toBe('interrupted');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not retry after answer text has already been emitted', async () => {
     let attemptCount = 0;
     const harness = createChatServiceHarness(async function* () {

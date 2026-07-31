@@ -4,6 +4,8 @@ import { useArticleChatSession } from './useArticleChatSession';
 import { ArticleChatComposer } from './ArticleChatComposer';
 import { ChatMarkdown } from './ChatMarkdown';
 import type { ArticleChatSelectionRequest } from './articleChatSelection';
+import type { ShaleError } from '../../../shared/contracts/feed.ipc';
+import { CHAT_ERROR_CODES } from '../../../shared/errors/chat.errors';
 
 interface ArticleChatPanelProps {
   entryId: number;
@@ -145,13 +147,17 @@ export const ArticleChatPanel = ({
                 ))}
               </div>
             )}
-            {message.status === 'failed' && <small>回答失败</small>}
             {message.status === 'interrupted' && <small>回答已停止</small>}
           </article>
         ))}
         {(session.state?.state === 'failed'
           || session.state?.state === 'interrupted') && (
           <div className="article-chat-retry">
+            {session.state.state === 'failed' && (
+              <p role="alert">
+                {formatChatFailureMessage(session.state.run.error)}
+              </p>
+            )}
             <button
               type="button"
               disabled={busy}
@@ -192,4 +198,23 @@ export const ArticleChatPanel = ({
       />
     </section>
   );
+};
+
+const formatChatFailureMessage = (error?: ShaleError): string => {
+  if (!error) return '回答未完成，请重试。';
+  switch (error.code) {
+    case CHAT_ERROR_CODES.CHAT_PROVIDER_REQUEST_FAILED: {
+      const status = error.message.match(/\bstatus (\d{3})\b/i)?.[1];
+      return `模型服务暂时不可用${status ? `（HTTP ${status}）` : ''}。`
+        + '应用已自动重试；请稍后再试，若持续失败请切换模型。';
+    }
+    case CHAT_ERROR_CODES.CHAT_PROVIDER_TIMEOUT:
+      return '模型服务响应超时。请稍后再试，若持续失败请切换模型。';
+    case CHAT_ERROR_CODES.CHAT_NETWORK_ERROR:
+      return '无法连接模型服务。请检查网络后重试。';
+    case CHAT_ERROR_CODES.CHAT_PROVIDER_AUTH:
+      return '模型服务拒绝了当前 API Key，请检查问答模型配置。';
+    default:
+      return '回答未完成，请重试；若持续失败请检查问答模型配置。';
+  }
 };

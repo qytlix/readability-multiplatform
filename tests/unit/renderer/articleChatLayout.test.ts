@@ -87,4 +87,28 @@ describe('Article Chat layout snapshots', () => {
       + '  display: none;',
     );
   });
+
+  it('gives the model option list a constrained vertical scroll area', () => {
+    const css = fs.readFileSync(
+      path.resolve(
+        __dirname,
+        '../../../src/renderer/features/reader/ReaderPage.css',
+      ),
+      'utf8',
+    ).replace(/\r\n/g, '\n');
+    const menuRule = css.match(
+      /\.article-chat-model-menu\s*\{([^}]*)\}/s,
+    )?.[1];
+    const optionsRule = css.match(
+      /\.article-chat-model-options\s*\{([^}]*)\}/s,
+    )?.[1];
+
+    expect(menuRule).toContain('display: flex;');
+    expect(menuRule).toContain('flex-direction: column;');
+    expect(menuRule).toContain('overflow: hidden;');
+    expect(optionsRule).toContain('flex: 1 1 auto;');
+    expect(optionsRule).toContain('min-height: 0;');
+    expect(optionsRule).toContain('overflow-y: auto;');
+    expect(optionsRule).toContain('overscroll-behavior: contain;');
+  });
 });

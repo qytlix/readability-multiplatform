@@ -24,6 +24,7 @@ export class SummaryError extends Error {
     public readonly code: SummaryErrorCode,
     message: string,
     public readonly retryable: boolean,
+    public readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = 'SummaryError';

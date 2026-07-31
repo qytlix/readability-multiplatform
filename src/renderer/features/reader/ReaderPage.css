@@ -597,9 +597,17 @@
 }
 
 .article-chat-retry {
-  display: flex;
-  justify-content: flex-start;
+  display: grid;
+  justify-items: flex-start;
+  gap: 8px;
   margin: -8px 0 20px;
+}
+
+.article-chat-retry p {
+  margin: 0;
+  color: var(--reader-danger-strong);
+  font-size: 10px;
+  line-height: 1.55;
 }
 
 .article-chat-retry button {
@@ -752,9 +760,10 @@
   right: 0;
   bottom: calc(100% + 12px);
   z-index: 80;
-  display: grid;
+  display: flex;
   width: min(286px, calc(100vw - 36px));
   max-height: min(430px, calc(100vh - 150px));
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--reader-line);
   border-radius: 22px;
@@ -767,6 +776,7 @@
   display: flex;
   min-height: 42px;
   padding: 8px 11px 8px 18px;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -803,6 +813,7 @@
 
 .article-chat-model-search {
   padding: 9px 12px 5px;
+  flex: 0 0 auto;
 }
 
 .article-chat-model-search input {
@@ -824,6 +835,7 @@
 
 .article-chat-model-catalog-status {
   margin: 3px 12px 0;
+  flex: 0 0 auto;
   color: var(--reader-text-muted);
   font-size: 9px;
   line-height: 1.45;
@@ -836,9 +848,12 @@
 .article-chat-model-options {
   min-height: 0;
   padding: 8px;
+  flex: 1 1 auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-color: #3a4239 transparent;
   scrollbar-width: thin;
+  touch-action: pan-y;
 }
 
 .article-chat-model-empty {

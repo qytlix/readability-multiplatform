@@ -195,6 +195,60 @@ describe('Article Chat Markdown rendering', () => {
     expect(assistantMessage?.classList.contains('is-assistant')).toBe(true);
   });
 
+  it('shows an actionable status for an exhausted Provider outage', async () => {
+    if (!sessionRef.current) throw new Error('Expected a chat session');
+    sessionRef.current = {
+      ...sessionRef.current,
+      state: {
+        state: 'failed',
+        thread: chatState.thread,
+        messages: chatState.messages.map((message) => ({
+          ...message,
+          status: 'failed',
+          content: '',
+        })),
+        draftAttachments: [],
+        run: {
+          id: 5,
+          threadId: chatState.thread.id,
+          userMessageId: 9,
+          assistantMessageId: 11,
+          providerProfileId: 1,
+          providerKind: 'custom-openai-compatible',
+          model: 'gpt-5',
+          status: 'failed',
+          promptVersion: 'article-chat-v1',
+          contextMode: 'full',
+          inputContentHash: 'input-hash',
+          error: {
+            code: 'CHAT_PROVIDER_REQUEST_FAILED',
+            message: 'The provider request failed with status 503.',
+            retryable: true,
+          },
+          createdAt: '2026-07-31T08:55:58.273Z',
+          completedAt: '2026-07-31T08:56:04.609Z',
+        },
+      },
+    };
+
+    await act(async () => {
+      root.render(createElement(ArticleChatPanel, {
+        entryId: 7,
+        entryTitle: 'Markdown article',
+        onClose: () => undefined,
+        onActiveRunChange: () => undefined,
+        onSelectionCleared: () => undefined,
+      }));
+    });
+
+    expect(
+      container.querySelector('.article-chat-retry [role="alert"]')
+        ?.textContent,
+    ).toContain('HTTP 503');
+    expect(container.querySelector('.article-chat-retry')?.textContent)
+      .toContain('若持续失败请切换模型');
+  });
+
   it('opens rendered links through the restricted external-link API', async () => {
     await act(async () => {
       root.render(createElement(ArticleChatPanel, {
