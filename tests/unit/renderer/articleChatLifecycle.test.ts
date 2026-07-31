@@ -151,6 +151,7 @@ describe('Article Chat renderer lifecycle', () => {
         provider: {
           get: vi.fn().mockResolvedValue({ ok: true, data: null }),
           save: vi.fn(),
+          listChatModels: vi.fn(),
         },
       } as unknown as typeof window.shaleAPI,
     });
@@ -268,6 +269,44 @@ describe('Article Chat renderer lifecycle', () => {
       },
     });
     expect(session?.provider?.chatModel).toBe('gpt-5.6-sol');
+  });
+
+  it('loads every chat model exposed to the saved API key', async () => {
+    vi.mocked(window.shaleAPI.provider.get).mockResolvedValue({
+      ok: true,
+      data: providerProfile,
+    });
+    vi.mocked(window.shaleAPI.provider.listChatModels).mockResolvedValue({
+      ok: true,
+      data: {
+        providerKind: 'openai',
+        models: [
+          { id: 'gpt-4.1', ownedBy: 'openai' },
+          { id: 'gpt-5.6-pro', displayName: 'GPT-5.6 Pro' },
+        ],
+      },
+    });
+    let session: ArticleChatSession | undefined;
+    await act(async () => {
+      root.render(createElement(SessionHarness, {
+        onSession: (current) => {
+          session = current;
+        },
+      }));
+      await settle();
+    });
+
+    await act(async () => {
+      await session?.loadChatModels();
+      await settle();
+    });
+
+    expect(window.shaleAPI.provider.listChatModels).toHaveBeenCalledOnce();
+    expect(session?.chatModelCatalogStatus).toBe('success');
+    expect(session?.availableChatModels).toEqual([
+      { id: 'gpt-4.1', ownedBy: 'openai' },
+      { id: 'gpt-5.6-pro', displayName: 'GPT-5.6 Pro' },
+    ]);
   });
 
   it('revokes a normalized image preview URL on unmount', async () => {

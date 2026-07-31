@@ -1,40 +1,64 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import {
   getProviderPreset,
+  type ProviderChatModel,
   type ProviderProfile,
 } from '../../../shared/contracts/provider.types';
 import {
   formatChatModelLabel,
   getChatModelOptions,
+  type ChatModelCatalogStatus,
 } from './chatModelSelection';
 
 interface ChatModelSwitcherProps {
   profile: ProviderProfile | null;
   disabled: boolean;
+  models?: ProviderChatModel[];
+  catalogStatus?: ChatModelCatalogStatus;
+  catalogErrorMessage?: string;
+  onRequestModels?: () => Promise<boolean>;
   onSelectModel: (model: string) => Promise<boolean>;
 }
 
 export const ChatModelSwitcher = ({
   profile,
   disabled,
+  models = [],
+  catalogStatus = 'idle',
+  catalogErrorMessage = '',
+  onRequestModels,
   onSelectModel,
 }: ChatModelSwitcherProps) => {
   const [open, setOpen] = useState(false);
   const [selecting, setSelecting] = useState(false);
+  const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
-  const options = profile ? getChatModelOptions(profile) : [];
+  const options = profile ? getChatModelOptions(profile, models) : [];
+  const visibleOptions = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    if (!normalizedQuery) return options;
+    return options.filter((option) => (
+      option.label.toLocaleLowerCase().includes(normalizedQuery)
+      || option.value.toLocaleLowerCase().includes(normalizedQuery)
+      || option.description.toLocaleLowerCase().includes(normalizedQuery)
+    ));
+  }, [options, query]);
   const currentLabel = profile
     ? formatChatModelLabel(profile.chatModel)
     : '未配置模型';
   const unavailable = disabled || selecting || !profile;
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) {
+      setQuery('');
+      return undefined;
+    }
 
     const handlePointerDown = (event: PointerEvent): void => {
       if (
@@ -56,8 +80,26 @@ export const ChatModelSwitcher = ({
   }, [open]);
 
   useEffect(() => {
-    if (disabled) setOpen(false);
+    if (disabled) {
+      setOpen(false);
+      setQuery('');
+    }
   }, [disabled]);
+
+  const handleToggle = (): void => {
+    if (open) {
+      setOpen(false);
+      setQuery('');
+      return;
+    }
+    setOpen(true);
+    if (
+      onRequestModels
+      && (catalogStatus === 'idle' || catalogStatus === 'error')
+    ) {
+      void onRequestModels();
+    }
+  };
 
   const handleSelect = async (
     event: ReactMouseEvent<HTMLButtonElement>,
@@ -86,7 +128,7 @@ export const ChatModelSwitcher = ({
         aria-expanded={open}
         disabled={unavailable}
         title={profile?.chatModel}
-        onClick={() => setOpen((current) => !current)}
+        onClick={handleToggle}
       >
         <span>{selecting ? '切换中…' : currentLabel}</span>
         <span className="article-chat-model-chevron" aria-hidden="true" />
@@ -94,15 +136,60 @@ export const ChatModelSwitcher = ({
       {open && profile && (
         <div
           className="article-chat-model-menu"
-          role="listbox"
           aria-label="选择问答模型"
           data-placement="top"
         >
           <div className="article-chat-model-menu-header">
-            {getProviderPreset(profile.chatProviderKind).label} 问答模型
+            <span>
+              {getProviderPreset(profile.chatProviderKind).label} 问答模型
+            </span>
+            <button
+              type="button"
+              aria-label="刷新可用模型"
+              title="使用已保存的 API Key 刷新模型"
+              disabled={catalogStatus === 'loading'}
+              onClick={() => void onRequestModels?.()}
+            >
+              ↻
+            </button>
           </div>
-          <div className="article-chat-model-options">
-            {options.map((option) => (
+          <div className="article-chat-model-search">
+            <input
+              type="search"
+              value={query}
+              aria-label="搜索模型"
+              placeholder="搜索模型"
+              autoFocus
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          {catalogStatus === 'loading' && (
+            <div className="article-chat-model-catalog-status" role="status">
+              正在读取此 API Key 可用的模型…
+            </div>
+          )}
+          {catalogStatus === 'error' && (
+            <div
+              className="article-chat-model-catalog-status is-error"
+              role="status"
+              title={catalogErrorMessage}
+            >
+              在线模型读取失败，可继续使用已加载或常用模型
+            </div>
+          )}
+          {catalogStatus === 'success' && models.length === 0 && (
+            <div className="article-chat-model-catalog-status" role="status">
+              Provider 未返回可用于问答的模型
+            </div>
+          )}
+          <div
+            className="article-chat-model-options"
+            role="listbox"
+            aria-label="可用问答模型"
+            aria-busy={catalogStatus === 'loading'}
+            data-placement="top"
+          >
+            {visibleOptions.map((option) => (
               <button
                 key={option.value}
                 type="button"
@@ -131,6 +218,9 @@ export const ChatModelSwitcher = ({
                 </span>
               </button>
             ))}
+            {visibleOptions.length === 0 && (
+              <p className="article-chat-model-empty">没有匹配的模型</p>
+            )}
           </div>
         </div>
       )}

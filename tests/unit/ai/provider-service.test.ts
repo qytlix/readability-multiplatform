@@ -6,6 +6,7 @@ import { ProviderProfileStore } from '../../../src/main/ai/stores/ProviderProfil
 import { ProviderService } from '../../../src/main/ai/services/ProviderService';
 import { SecretStore, type SafeStorageBackend } from '../../../src/main/ai/stores/SecretStore';
 import type { SummaryProvider } from '../../../src/main/ai/provider/SummaryProvider';
+import type { ProviderModelCatalog } from '../../../src/main/ai/provider/ProviderModelCatalog';
 import { DatabaseManager } from '../../../src/main/database/DatabaseManager';
 
 const temporaryDirectories: string[] = [];
@@ -23,7 +24,10 @@ const encryptedBackend: SafeStorageBackend = {
   getSelectedStorageBackend: () => 'gnome_libsecret',
 };
 
-function createService(backend: SafeStorageBackend = encryptedBackend): {
+function createService(
+  backend: SafeStorageBackend = encryptedBackend,
+  modelCatalog?: ProviderModelCatalog,
+): {
   databaseManager: DatabaseManager;
   databasePath: string;
   service: ProviderService;
@@ -48,6 +52,8 @@ function createService(backend: SafeStorageBackend = encryptedBackend): {
     profileStore,
     new SecretStore(secretFilePath, backend, 'linux'),
     requestProvider,
+    undefined,
+    modelCatalog,
   );
   return {
     databaseManager,
@@ -60,6 +66,43 @@ function createService(backend: SafeStorageBackend = encryptedBackend): {
 }
 
 describe('ProviderService', () => {
+  it('lists chat models with the saved chat credential without exposing the key', async () => {
+    const modelCatalog = {
+      list: vi.fn().mockResolvedValue([
+        { id: 'gpt-5.4' },
+        { id: 'gpt-5.4-mini' },
+      ]),
+    } as unknown as ProviderModelCatalog;
+    const { databaseManager, service } = createService(
+      encryptedBackend,
+      modelCatalog,
+    );
+
+    try {
+      service.save({
+        providerKind: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5.4-mini',
+        apiKey: 'sk-chat-catalog-key',
+      });
+
+      await expect(service.listChatModels()).resolves.toEqual({
+        providerKind: 'openai',
+        models: [
+          { id: 'gpt-5.4' },
+          { id: 'gpt-5.4-mini' },
+        ],
+      });
+      expect(modelCatalog.list).toHaveBeenCalledWith({
+        providerKind: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        apiKey: 'sk-chat-catalog-key',
+      });
+    } finally {
+      databaseManager.close();
+    }
+  });
+
   it('reloads a securely persisted GPT configuration after reopening the app', async () => {
     const {
       databaseManager,

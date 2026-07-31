@@ -2,6 +2,7 @@ import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import type { IPCResult } from '../../shared/contracts/feed.ipc';
 import {
   isProviderKind,
+  type ProviderChatModelList,
   type ProviderConnectionTestResult,
   type ProviderProfile,
   type SaveProviderRequest,
@@ -86,6 +87,18 @@ export function registerSummaryIpcHandlers(
         return success(await providerService.testChatImageCapability());
       } catch (error) {
         return { ok: false, error: toChatIpcError(error) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    SUMMARY_IPC_CHANNELS.providerListChatModels,
+    async (event: IpcMainInvokeEvent): Promise<IPCResult<ProviderChatModelList>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
+      try {
+        return success(await providerService.listChatModels());
+      } catch (error) {
+        return failure(error);
       }
     },
   );

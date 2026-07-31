@@ -56,6 +56,15 @@ main window. Clipboard import accepts bytes, a suggested display name, and a
 declared MIME type but never an arbitrary path. File picking receives only
 picker options; Main owns the selected path.
 
+Chat model selection also uses the additive read-only
+`provider:list-chat-models` channel. Main reads the saved Chat credential,
+queries the configured Provider's model-catalog endpoint, and returns only
+safe model metadata (`id`, optional display name, description, and owner).
+The API Key is never returned to Preload or Renderer. Selecting a model saves
+the normal Provider profile, so the Chat composer and Provider settings always
+show the same active Chat model. If discovery fails, Renderer keeps the
+provider preset suggestions as an offline fallback.
+
 ## Provider-neutral messages
 
 Summary, Translation, and Tag continue to use the legacy `prompt` request.

@@ -142,6 +142,8 @@ const providerAPI = {
   testChat: () => ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerTestChat),
   testChatImage: () =>
     ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerTestChatImage),
+  listChatModels: () =>
+    ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerListChatModels),
 };
 
 const summaryAPI = {

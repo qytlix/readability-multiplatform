@@ -204,12 +204,16 @@ export const ArticleChatPanel = ({
         disabled={session.loadStatus !== 'success'}
         errorMessage={session.actionErrorMessage}
         provider={session.provider}
+        availableModels={session.availableChatModels}
+        modelCatalogStatus={session.chatModelCatalogStatus}
+        modelCatalogErrorMessage={session.chatModelCatalogErrorMessage}
         attachments={session.state?.draftAttachments ?? []}
         selection={pendingSelection?.selection}
         selectionFocusRequestId={pendingSelection?.requestId}
         onChange={setDraft}
         onSend={handleSend}
         onStop={() => void session.stop()}
+        onRequestModels={session.loadChatModels}
         onSelectModel={session.switchChatModel}
         onRemoveSelection={removePendingSelection}
         onPickAttachments={() => void session.pickAttachments()}

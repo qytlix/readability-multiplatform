@@ -81,6 +81,23 @@ describe('Article Chat model selection', () => {
     });
     expect(options.some(({ value }) => value === 'gpt-5.4-mini')).toBe(true);
   });
+
+  it('uses the provider catalog instead of limiting selection to suggestions', () => {
+    const options = getChatModelOptions(profile, [
+      { id: 'gpt-4.1', ownedBy: 'openai' },
+      {
+        id: 'ft:gpt-4.1:team:reader:abc',
+        displayName: 'Reader Fine-tune',
+      },
+    ]);
+
+    expect(options.map(({ value }) => value)).toEqual([
+      'gpt-5.6-terra',
+      'gpt-4.1',
+      'ft:gpt-4.1:team:reader:abc',
+    ]);
+    expect(options[2]?.label).toBe('Reader Fine-tune');
+  });
 });
 
 describe('ChatModelSwitcher', () => {
@@ -170,5 +187,46 @@ describe('ChatModelSwitcher', () => {
     );
 
     expect(modelSwitcher?.nextElementSibling).toBe(submitButton);
+  });
+
+  it('loads the API-key catalog on open and searches a large model list', async () => {
+    const onRequestModels = vi.fn().mockResolvedValue(true);
+    await act(async () => {
+      root.render(createElement(ChatModelSwitcher, {
+        profile,
+        disabled: false,
+        models: [
+          { id: 'gpt-4.1' },
+          { id: 'gpt-5.6-pro', displayName: 'GPT-5.6 Pro' },
+        ],
+        catalogStatus: 'idle',
+        onRequestModels,
+        onSelectModel: vi.fn().mockResolvedValue(true),
+      }));
+    });
+
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '.article-chat-model-trigger',
+    );
+    act(() => trigger?.click());
+    expect(onRequestModels).toHaveBeenCalledOnce();
+
+    const search = container.querySelector<HTMLInputElement>(
+      '[aria-label="搜索模型"]',
+    );
+    await act(async () => {
+      if (search) {
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          'value',
+        )?.set?.call(search, 'pro');
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+
+    const visibleModels = Array.from(container.querySelectorAll<HTMLElement>(
+      '[role="option"]',
+    )).map((option) => option.dataset.model);
+    expect(visibleModels).toEqual(['gpt-5.6-pro']);
   });
 });

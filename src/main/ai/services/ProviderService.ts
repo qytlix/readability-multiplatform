@@ -3,6 +3,7 @@ import { performance } from 'node:perf_hooks';
 import {
   isProviderKind,
   isValidProviderModel,
+  type ProviderChatModelList,
   type ProviderConnectionTestResult,
   type ProviderKind,
   type ProviderProfile,
@@ -13,6 +14,7 @@ import { CHAT_ERROR_CODES, ChatError } from '../../../shared/errors/chat.errors'
 import { ProviderProfileStore } from '../stores/ProviderProfileStore';
 import { SecretStore } from '../stores/SecretStore';
 import type { TextGenerationProvider } from '../provider/TextGenerationProvider';
+import { ProviderModelCatalog } from '../provider/ProviderModelCatalog';
 import {
   elapsedProviderMilliseconds,
   logProviderConfigCompleted,
@@ -37,6 +39,7 @@ export class ProviderService {
     private readonly secretStore: SecretStore,
     private readonly provider: TextGenerationProvider,
     private readonly logger?: ProviderOperationLogger,
+    private readonly modelCatalog = new ProviderModelCatalog(),
   ) {}
 
   getActiveProfile(): ProviderProfile | undefined {
@@ -361,6 +364,26 @@ export class ProviderService {
       });
       throw error;
     }
+  }
+
+  async listChatModels(): Promise<ProviderChatModelList> {
+    const profile = this.profileStore.findActiveWithSecret();
+    if (!profile) {
+      throw new SummaryError(
+        SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_NOT_CONFIGURED,
+        'Configure an AI Chat provider before loading its models.',
+        false,
+      );
+    }
+
+    return {
+      providerKind: profile.chatProviderKind,
+      models: await this.modelCatalog.list({
+        providerKind: profile.chatProviderKind,
+        baseUrl: profile.chatBaseUrl,
+        apiKey: this.secretStore.read(profile.chatApiKeyRef),
+      }),
+    };
   }
 
   async testChatImageCapability(): Promise<ProviderConnectionTestResult> {

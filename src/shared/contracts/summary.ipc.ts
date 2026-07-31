@@ -1,5 +1,6 @@
 import type { IPCResult } from './feed.ipc';
 import type {
+  ProviderChatModelList,
   ProviderConnectionTestResult,
   ProviderProfile,
   SaveProviderRequest,
@@ -18,6 +19,7 @@ export const SUMMARY_IPC_CHANNELS = {
   providerTest: 'provider:test',
   providerTestChat: 'provider:test-chat',
   providerTestChatImage: 'provider:test-chat-image',
+  providerListChatModels: 'provider:list-chat-models',
   summaryGet: 'summary:get',
   summaryGenerate: 'summary:generate',
   summaryStream: 'summary:stream',
@@ -29,6 +31,7 @@ export interface ProviderAPI {
   test: () => Promise<IPCResult<ProviderConnectionTestResult>>;
   testChat: () => Promise<IPCResult<ProviderConnectionTestResult>>;
   testChatImage: () => Promise<IPCResult<ProviderConnectionTestResult>>;
+  listChatModels: () => Promise<IPCResult<ProviderChatModelList>>;
 }
 
 export interface SummaryAPI {

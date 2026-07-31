@@ -6,6 +6,7 @@ import {
 } from 'react';
 import {
   isValidProviderModel,
+  type ProviderChatModel,
   type ProviderProfile,
 } from '../../../shared/contracts/provider.types';
 import type {
@@ -14,7 +15,10 @@ import type {
   ChatStreamEvent,
 } from '../../../shared/contracts/chat.types';
 import { applyChatStreamEvent } from './articleChatSession';
-import { buildProviderRequestWithChatModel } from './chatModelSelection';
+import {
+  buildProviderRequestWithChatModel,
+  type ChatModelCatalogStatus,
+} from './chatModelSelection';
 import type { ChatClipboardImageInput } from './chatClipboard';
 
 type ChatLoadStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -31,6 +35,9 @@ export interface ArticleChatSession {
   loadStatus: ChatLoadStatus;
   state: ChatState | null;
   provider: ProviderProfile | null;
+  availableChatModels: ProviderChatModel[];
+  chatModelCatalogStatus: ChatModelCatalogStatus;
+  chatModelCatalogErrorMessage: string;
   errorMessage: string;
   actionStatus: ChatActionStatus;
   actionErrorMessage: string;
@@ -42,6 +49,7 @@ export interface ArticleChatSession {
   ) => Promise<boolean>;
   stop: () => Promise<boolean>;
   retry: () => Promise<boolean>;
+  loadChatModels: () => Promise<boolean>;
   switchChatModel: (model: string) => Promise<boolean>;
   pickAttachments: () => Promise<boolean>;
   removeAttachment: (attachmentId: number) => Promise<boolean>;
@@ -57,10 +65,21 @@ export const useArticleChatSession = (
   const [loadStatus, setLoadStatus] = useState<ChatLoadStatus>('idle');
   const [state, setState] = useState<ChatState | null>(null);
   const [provider, setProvider] = useState<ProviderProfile | null>(null);
+  const [availableChatModels, setAvailableChatModels] = useState<
+    ProviderChatModel[]
+  >([]);
+  const [chatModelCatalogStatus, setChatModelCatalogStatus] =
+    useState<ChatModelCatalogStatus>('idle');
+  const [
+    chatModelCatalogErrorMessage,
+    setChatModelCatalogErrorMessage,
+  ] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [actionStatus, setActionStatus] = useState<ChatActionStatus>('idle');
   const [actionErrorMessage, setActionErrorMessage] = useState('');
   const requestVersionRef = useRef(0);
+  const modelCatalogRequestVersionRef = useRef(0);
+  const modelCatalogScopeRef = useRef('');
   const stateRef = useRef<ChatState | null>(null);
 
   useEffect(() => {
@@ -88,7 +107,22 @@ export const useArticleChatSession = (
 
       stateRef.current = chatResult.data;
       setState(chatResult.data);
-      setProvider(providerResult.ok ? providerResult.data : null);
+      const nextProvider = providerResult.ok ? providerResult.data : null;
+      const nextCatalogScope = nextProvider
+        ? [
+          nextProvider.chatProviderKind,
+          nextProvider.chatBaseUrl,
+          nextProvider.hasChatApiKey,
+        ].join('\u0000')
+        : '';
+      if (modelCatalogScopeRef.current !== nextCatalogScope) {
+        modelCatalogScopeRef.current = nextCatalogScope;
+        modelCatalogRequestVersionRef.current += 1;
+        setAvailableChatModels([]);
+        setChatModelCatalogStatus('idle');
+        setChatModelCatalogErrorMessage('');
+      }
+      setProvider(nextProvider);
       setLoadStatus('success');
     } catch {
       if (requestVersionRef.current !== requestVersion) return;
@@ -103,6 +137,11 @@ export const useArticleChatSession = (
       stateRef.current = null;
       setState(null);
       setProvider(null);
+      modelCatalogRequestVersionRef.current += 1;
+      modelCatalogScopeRef.current = '';
+      setAvailableChatModels([]);
+      setChatModelCatalogStatus('idle');
+      setChatModelCatalogErrorMessage('');
       setLoadStatus('idle');
       setErrorMessage('');
       setActionStatus('idle');
@@ -124,9 +163,42 @@ export const useArticleChatSession = (
 
     return () => {
       requestVersionRef.current += 1;
+      modelCatalogRequestVersionRef.current += 1;
       removeListener();
     };
   }, [active, entryId, reload]);
+
+  const loadChatModels = useCallback(async (): Promise<boolean> => {
+    const currentProvider = provider;
+    if (!active || !currentProvider?.hasChatApiKey) return false;
+
+    const requestVersion = modelCatalogRequestVersionRef.current + 1;
+    modelCatalogRequestVersionRef.current = requestVersion;
+    setChatModelCatalogStatus('loading');
+    setChatModelCatalogErrorMessage('');
+    try {
+      const result = await window.shaleAPI.provider.listChatModels();
+      if (modelCatalogRequestVersionRef.current !== requestVersion) return false;
+      if (!result.ok) {
+        setChatModelCatalogStatus('error');
+        setChatModelCatalogErrorMessage(result.error.message);
+        return false;
+      }
+      if (result.data.providerKind !== currentProvider.chatProviderKind) {
+        setChatModelCatalogStatus('error');
+        setChatModelCatalogErrorMessage('问答 Provider 已变化，请重新打开模型列表。');
+        return false;
+      }
+      setAvailableChatModels(result.data.models);
+      setChatModelCatalogStatus('success');
+      return true;
+    } catch {
+      if (modelCatalogRequestVersionRef.current !== requestVersion) return false;
+      setChatModelCatalogStatus('error');
+      setChatModelCatalogErrorMessage('无法读取此 API Key 可用的模型，请稍后重试。');
+      return false;
+    }
+  }, [active, provider]);
 
   const sendQuestion = useCallback(async (
     question: string,
@@ -345,6 +417,9 @@ export const useArticleChatSession = (
     loadStatus,
     state,
     provider,
+    availableChatModels,
+    chatModelCatalogStatus,
+    chatModelCatalogErrorMessage,
     errorMessage,
     actionStatus,
     actionErrorMessage,
@@ -352,6 +427,7 @@ export const useArticleChatSession = (
     sendQuestion,
     stop,
     retry,
+    loadChatModels,
     switchChatModel,
     pickAttachments,
     removeAttachment,

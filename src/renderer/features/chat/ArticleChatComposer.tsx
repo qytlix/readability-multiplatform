@@ -9,7 +9,10 @@ import type {
   ChatAttachment,
   ChatSelectionContext,
 } from '../../../shared/contracts/chat.types';
-import type { ProviderProfile } from '../../../shared/contracts/provider.types';
+import type {
+  ProviderChatModel,
+  ProviderProfile,
+} from '../../../shared/contracts/provider.types';
 import { getChatComposerKeyAction } from './chatComposerKeyboard';
 import {
   createChatClipboardPastePlan,
@@ -18,6 +21,7 @@ import {
 } from './chatClipboard';
 import { ChatImageAttachmentPreview } from './ChatImageAttachmentPreview';
 import { ChatModelSwitcher } from './ChatModelSwitcher';
+import type { ChatModelCatalogStatus } from './chatModelSelection';
 
 interface ArticleChatComposerProps {
   value: string;
@@ -27,12 +31,16 @@ interface ArticleChatComposerProps {
   disabled: boolean;
   errorMessage: string;
   provider: ProviderProfile | null;
+  availableModels?: ProviderChatModel[];
+  modelCatalogStatus?: ChatModelCatalogStatus;
+  modelCatalogErrorMessage?: string;
   attachments: ChatAttachment[];
   selection?: ChatSelectionContext;
   selectionFocusRequestId?: number;
   onChange: (value: string) => void;
   onSend: () => void | Promise<void>;
   onStop: () => void | Promise<void>;
+  onRequestModels?: () => Promise<boolean>;
   onSelectModel: (model: string) => Promise<boolean>;
   onRemoveSelection: () => void;
   onPickAttachments: () => void | Promise<void>;
@@ -50,12 +58,16 @@ export const ArticleChatComposer = ({
   disabled,
   errorMessage,
   provider,
+  availableModels = [],
+  modelCatalogStatus = 'idle',
+  modelCatalogErrorMessage = '',
   attachments,
   selection,
   selectionFocusRequestId,
   onChange,
   onSend,
   onStop,
+  onRequestModels,
   onSelectModel,
   onRemoveSelection,
   onPickAttachments,
@@ -181,6 +193,10 @@ export const ArticleChatComposer = ({
         <ChatModelSwitcher
           profile={provider}
           disabled={running || busy || disabled}
+          models={availableModels}
+          catalogStatus={modelCatalogStatus}
+          catalogErrorMessage={modelCatalogErrorMessage}
+          onRequestModels={onRequestModels}
           onSelectModel={onSelectModel}
         />
         <button

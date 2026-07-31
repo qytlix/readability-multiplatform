@@ -230,3 +230,16 @@ export interface ProviderConnectionTestResult {
   ok: true;
   message: string;
 }
+
+/** Safe model metadata returned to Renderer. API keys never cross this boundary. */
+export interface ProviderChatModel {
+  id: string;
+  displayName?: string;
+  description?: string;
+  ownedBy?: string;
+}
+
+export interface ProviderChatModelList {
+  providerKind: ProviderKind;
+  models: ProviderChatModel[];
+}

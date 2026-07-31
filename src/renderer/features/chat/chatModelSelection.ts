@@ -1,8 +1,11 @@
 import {
   getProviderPreset,
+  type ProviderChatModel,
   type ProviderProfile,
   type SaveProviderRequest,
 } from '../../../shared/contracts/provider.types';
+
+export type ChatModelCatalogStatus = 'idle' | 'loading' | 'success' | 'error';
 
 export interface ChatModelOption {
   value: string;
@@ -62,8 +65,25 @@ const describeChatModel = (model: string, custom: boolean): string => {
 
 export const getChatModelOptions = (
   profile: ProviderProfile,
+  discoveredModels: ProviderChatModel[] = [],
 ): ChatModelOption[] => {
   const preset = getProviderPreset(profile.chatProviderKind);
+  if (discoveredModels.length > 0) {
+    const models = discoveredModels.some(({ id }) => id === profile.chatModel)
+      ? discoveredModels
+      : [{ id: profile.chatModel }, ...discoveredModels];
+    return models.map((model) => ({
+      value: model.id,
+      label: model.displayName?.trim() || formatChatModelLabel(model.id),
+      description: model.description?.trim()
+        || (model.ownedBy?.trim()
+          ? `由 ${model.ownedBy.trim()} 提供`
+          : describeChatModel(model.id, false)),
+      current: model.id === profile.chatModel,
+      recommended: model.id === preset.defaultModel,
+    }));
+  }
+
   const suggestedModels = [...preset.suggestedModels];
   const currentIsCustom = !suggestedModels.includes(profile.chatModel);
   const models = currentIsCustom

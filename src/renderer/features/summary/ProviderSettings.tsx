@@ -480,7 +480,8 @@ export const ProviderSettings = ({
           该模型支持图片输入
         </label>
         <p className="provider-settings-note">
-          图片能力不会根据模型名称自动判断。关闭时仍可进行纯文本问答。
+          聊天界面会使用这里保存的 API Key 读取可用模型；在那里切换后，
+          此处的问答模型也会同步更新。图片能力不会根据模型名称自动判断。
         </p>
       </fieldset>
       <fieldset className="provider-route-settings">
