@@ -156,6 +156,45 @@ describe('Article Chat Markdown rendering', () => {
     );
   });
 
+  it('omits speaker labels while retaining role-specific message containers', async () => {
+    if (!sessionRef.current) throw new Error('Expected a chat session');
+    sessionRef.current = {
+      ...sessionRef.current,
+      state: {
+        ...chatState,
+        messages: [
+          {
+            ...chatState.messages[0],
+            id: 10,
+            role: 'user',
+            content: '请解释核心结论',
+          },
+          ...chatState.messages,
+        ],
+      },
+    };
+
+    await act(async () => {
+      root.render(createElement(ArticleChatPanel, {
+        entryId: 7,
+        entryTitle: 'Markdown article',
+        onClose: () => undefined,
+        onActiveRunChange: () => undefined,
+        onSelectionCleared: () => undefined,
+      }));
+    });
+
+    const userMessage = container.querySelector('[data-message-id="10"]');
+    const assistantMessage = container.querySelector('[data-message-id="11"]');
+
+    expect(container.querySelector('.article-chat-message-role')).toBeNull();
+    expect(userMessage?.classList.contains('is-user')).toBe(true);
+    expect(
+      userMessage?.querySelector('.article-chat-message-content')?.textContent,
+    ).toBe('请解释核心结论');
+    expect(assistantMessage?.classList.contains('is-assistant')).toBe(true);
+  });
+
   it('opens rendered links through the restricted external-link API', async () => {
     await act(async () => {
       root.render(createElement(ArticleChatPanel, {

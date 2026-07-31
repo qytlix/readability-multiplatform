@@ -126,9 +126,6 @@ export const ArticleChatPanel = ({
             className={`article-chat-message is-${message.role} is-${message.status}`}
             data-message-id={message.id}
           >
-            <div className="article-chat-message-role">
-              {message.role === 'user' ? '你' : 'Shale'}
-            </div>
             {message.selection && (
               <blockquote>{message.selection.text}</blockquote>
             )}
