@@ -472,8 +472,3 @@ readability-multiplatform/
 感谢课程指导教师 [李骏（neolee）](https://github.com/neolee) 的指导。
 
 Shale 的早期构思参考了 [Mercury](https://github.com/neolee/mercury)。
-
-<!--
-待人工确认许可证：package.json 声明 MIT，但仓库没有 LICENSE 文件，GitHub 也未识别
-明确许可证。确认并添加 LICENSE 后，再加入正式 License 章节和链接。
--->
