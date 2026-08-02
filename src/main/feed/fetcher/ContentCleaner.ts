@@ -7,8 +7,9 @@ import {
   removeSourceDecorativeGraphics,
   removeUntranslatableIcons,
 } from './ContentGraphics';
+import { removeArticleBoilerplate } from './ContentBoilerplate';
 
-export const CONTENT_CLEANER_VERSION = 6;
+export const CONTENT_CLEANER_VERSION = 7;
 
 /** A stable distinction for a successful response with no extractable article. */
 export class ContentExtractionError extends Error {
@@ -34,6 +35,11 @@ export class ContentCleaner {
     hydrateArcStructuredContent(dom.window.document, baseUrl);
     removePublisherChrome(dom.window.document);
     removeCssHiddenElements(dom.window.document);
+    removeArticleBoilerplate(
+      dom.window.document,
+      dom.window.document.querySelector('meta[name="author"]')?.getAttribute('content')
+        ?? undefined,
+    );
     protectMeaningfulArticleFigures(dom.window.document);
     removeSourceDecorativeGraphics(dom.window.document.body);
     const reader = new Readability(dom.window.document);
@@ -77,6 +83,7 @@ export class ContentCleaner {
     article.innerHTML = html;
     removePublisherChrome(article);
     removeCssHiddenElements(dom.window.document);
+    removeArticleBoilerplate(article, byline);
     removeSourceDecorativeGraphics(article);
 
     const content = sanitizeReaderContent(dom, article.innerHTML, baseUrl, byline);
@@ -97,7 +104,7 @@ export class ContentCleaner {
     const dom = new JSDOM(`<body>${html}</body>`);
     const body = dom.window.document.body;
     removePublisherChrome(body);
-    normalizeReaderAuthorBlocks(body);
+    removeArticleBoilerplate(body);
     removeUntranslatableIcons(body);
     return body.innerHTML;
   }
@@ -118,10 +125,10 @@ function sanitizeReaderContent(
   const container = dom.window.document.createElement('div');
   container.innerHTML = sanitized;
   removePublisherChrome(container);
+  removeArticleBoilerplate(container, readabilityByline);
   removeReaderProtectionClasses(container);
   normalizeReaderImages(container, baseUrl);
   normalizeReaderMedia(container, baseUrl);
-  normalizeReaderAuthorBlocks(container, readabilityByline);
   removeUntranslatableIcons(container);
   return container.innerHTML;
 }
@@ -278,72 +285,6 @@ function isPlaceholderImageUrl(candidate: string, baseUrl: string): boolean {
   const filename = pathname.split('/').pop() ?? '';
   return /^(?:img|image)[-_]placeholder(?:[.@_-]|$)/.test(filename)
     || /^placeholder(?:[.@_-]|$)/.test(filename);
-}
-
-/**
- * Publisher styles are intentionally removed from cleaned content. Preserve a
- * small, stable semantic hook for compact author cards so avatar images do not
- * inherit the Reader's full-width article-image layout.
- */
-function normalizeReaderAuthorBlocks(
-  container: HTMLElement,
-  readabilityByline?: string,
-): void {
-  const normalizedByline = normalizeAuthorText(readabilityByline);
-
-  for (const image of container.querySelectorAll('img')) {
-    const avatarName = normalizeAuthorText(image.getAttribute('alt'));
-    if (
-      !avatarName
-      || (
-        normalizedByline
-        && !normalizedByline.includes(avatarName)
-        && !avatarName.includes(normalizedByline)
-      )
-    ) {
-      continue;
-    }
-
-    const avatarLink = image.closest('a');
-    if (!avatarLink) continue;
-
-    let card: HTMLElement | null = avatarLink.parentElement;
-    for (let depth = 0; card && card !== container && depth < 4; depth += 1) {
-      const nameLink = Array.from(card.querySelectorAll('a')).find((link) => (
-        link !== avatarLink
-        && normalizeAuthorText(link.textContent) === avatarName
-      ));
-      if (nameLink && (card.textContent?.trim().length ?? 0) <= 500) {
-        const details = findDirectChildContaining(card, nameLink);
-        card.classList.add('reader-author-card');
-        avatarLink.classList.add('reader-author-avatar-link');
-        image.classList.add('reader-author-avatar');
-        nameLink.classList.add('reader-author-name');
-        details?.classList.add('reader-author-details');
-        for (const paragraph of details?.querySelectorAll('p') ?? []) {
-          if (!paragraph.contains(nameLink) && paragraph.textContent?.trim()) {
-            paragraph.classList.add('reader-author-bio');
-          }
-        }
-        break;
-      }
-      card = card.parentElement;
-    }
-  }
-}
-
-function normalizeAuthorText(value?: string | null): string {
-  return value?.replace(/\s+/g, ' ').trim().toLocaleLowerCase() ?? '';
-}
-
-function findDirectChildContaining(
-  parent: HTMLElement,
-  descendant: Element,
-): HTMLElement | null {
-  const directChild = Array.from(parent.children).find(
-    (child) => child.contains(descendant),
-  );
-  return directChild ? directChild as HTMLElement : null;
 }
 
 function normalizeImageSrcset(
