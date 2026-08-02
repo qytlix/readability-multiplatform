@@ -21,6 +21,7 @@ import {
 } from './ipc/translation.handler';
 import { registerUsageIpcHandlers } from './ipc/usage.handler';
 import { registerAnnotationIpcHandlers } from './ipc/annotation.handler';
+import { registerChatIpcHandlers } from './ipc/chat.handler';
 import { registerTagIpcHandlers } from './tags/TagIpcHandler';
 import { registerExportIpcHandlers } from './ipc/export.handler';
 import { ExportService } from './export/ExportService';
@@ -35,6 +36,7 @@ import {
   getUsageServices,
   getAnnotationServices,
   getTagServices,
+  getChatServices,
 } from './services';
 
 export type GetMainWindow = () => BrowserWindow | null;
@@ -167,6 +169,15 @@ export function registerIpcHandlers(
       getMainWindow,
       usageServices.usageStatisticsService,
       feedLogger,
+    );
+  }
+
+  const chatServices = getChatServices();
+  if (chatServices) {
+    registerChatIpcHandlers(
+      getMainWindow,
+      chatServices.chatService,
+      chatServices.attachmentService,
     );
   }
 

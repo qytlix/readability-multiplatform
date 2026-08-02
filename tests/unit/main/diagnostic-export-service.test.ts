@@ -32,6 +32,12 @@ import {
   logTranslationRunStarted,
   TRANSLATION_LOG_EVENTS,
 } from '../../../src/main/ai/services/TranslationLogging';
+import {
+  CHAT_LOG_EVENTS,
+  logChatContextCompleted,
+  logChatProviderFirstDelta,
+  logChatRunFailed,
+} from '../../../src/main/ai/services/ChatLogging';
 
 const temporaryDirectories: string[] = [];
 const GENERATED_AT = new Date('2026-07-24T08:00:00.000Z');
@@ -261,6 +267,90 @@ describe('DiagnosticExportService', () => {
         },
       }),
     ]);
+  });
+
+  it('exports Chat lifecycle metadata without question or attachment canaries', async () => {
+    const logDirectory = createDirectory();
+    const logger = new StructuredLogger({
+      directory: logDirectory,
+      now: () => GENERATED_AT,
+      createSessionId: () => 'session-test-chat',
+    });
+    const unsafeFailureContext = {
+      taskRunId: 31,
+      durationMs: 48,
+      errorCode: 'CHAT_NETWORK_ERROR' as const,
+      question: 'CHAT_QUESTION_CANARY',
+      selection: 'CHAT_SELECTION_CANARY',
+      attachmentPath: '/Users/alice/CHAT_ATTACHMENT_CANARY.png',
+      imageBase64: 'CHAT_IMAGE_BYTES_CANARY',
+      authorization: 'Bearer CHAT_SECRET_CANARY',
+    };
+    const unsafeContextTiming = {
+      taskRunId: 31,
+      durationMs: 7,
+      success: true as const,
+      contextMode: 'full' as const,
+      inputTokens: 987,
+      question: 'CHAT_QUESTION_CANARY',
+      article: 'CHAT_ARTICLE_CANARY',
+    };
+    const unsafeFirstDeltaTiming = {
+      taskRunId: 31,
+      durationMs: 29,
+      attemptCount: 2,
+      attachmentPath: '/Users/alice/CHAT_ATTACHMENT_CANARY.png',
+      apiKey: 'CHAT_SECRET_CANARY',
+    };
+    logChatContextCompleted(logger, unsafeContextTiming);
+    logChatProviderFirstDelta(logger, unsafeFirstDeltaTiming);
+    logChatRunFailed(logger, unsafeFailureContext);
+    await logger.flush();
+
+    const report = await createService(logDirectory).buildReport();
+    expect(report.logs.records).toEqual([
+      expect.objectContaining({
+        event: CHAT_LOG_EVENTS.contextCompleted,
+        component: 'chat.run',
+        context: {
+          taskRunId: 31,
+          durationMs: 7,
+          success: true,
+          contextMode: 'full',
+          inputTokens: 987,
+        },
+      }),
+      expect.objectContaining({
+        event: CHAT_LOG_EVENTS.providerFirstDelta,
+        component: 'chat.run',
+        context: {
+          taskRunId: 31,
+          durationMs: 29,
+          attemptCount: 2,
+        },
+      }),
+      expect.objectContaining({
+        event: CHAT_LOG_EVENTS.runFailed,
+        component: 'chat.run',
+        context: {
+          taskRunId: 31,
+          durationMs: 48,
+          success: false,
+          errorCode: 'CHAT_NETWORK_ERROR',
+        },
+      }),
+    ]);
+    const serialized = JSON.stringify(report);
+    for (const canary of [
+      'CHAT_QUESTION_CANARY',
+      'CHAT_ARTICLE_CANARY',
+      'CHAT_SELECTION_CANARY',
+      'CHAT_ATTACHMENT_CANARY',
+      'CHAT_IMAGE_BYTES_CANARY',
+      'CHAT_SECRET_CANARY',
+    ]) {
+      expect(serialized).not.toContain(canary);
+    }
   });
 
   it('exports the latest 1,000 valid records while preserving chronological order', async () => {

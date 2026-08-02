@@ -20,6 +20,14 @@ import type { UsageStatisticsQuery } from '../shared/contracts/usage.types';
 import { ANNOTATION_IPC_CHANNELS } from '../shared/contracts/annotation.ipc';
 import { TAG_IPC_CHANNELS } from '../shared/contracts/tag.ipc';
 import { EXPORT_IPC_CHANNELS } from '../shared/contracts/export.ipc';
+import { CHAT_IPC_CHANNELS } from '../shared/contracts/chat.ipc';
+import type {
+  ChatAttachmentPickRequest,
+  ChatAttachmentPreviewRequest,
+  ChatAttachmentRemoveRequest,
+  ChatClipboardImageImportRequest,
+  ChatStreamEvent,
+} from '../shared/contracts/chat.types';
 import type { CleanProgressEvent } from '../shared/contracts/export.ipc';
 import type {
   AnnotationIdRequest,
@@ -131,6 +139,11 @@ const providerAPI = {
   save: (request: SaveProviderRequest) =>
     ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerSave, request),
   test: () => ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerTest),
+  testChat: () => ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerTestChat),
+  testChatImage: () =>
+    ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerTestChatImage),
+  listChatModels: () =>
+    ipcRenderer.invoke(SUMMARY_IPC_CHANNELS.providerListChatModels),
 };
 
 const summaryAPI = {
@@ -150,6 +163,47 @@ const summaryAPI = {
     };
     ipcRenderer.on(SUMMARY_IPC_CHANNELS.summaryStream, handler);
     return () => ipcRenderer.removeListener(SUMMARY_IPC_CHANNELS.summaryStream, handler);
+  },
+};
+
+const chatAPI = {
+  get: (request: { entryId: number }) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.get, request),
+  send: (request: {
+    entryId: number;
+    question: string;
+    selection?: {
+      entryId: number;
+      text: string;
+      paragraphContext: string;
+      segmentId?: string;
+    };
+    attachmentIds: number[];
+  }) => ipcRenderer.invoke(CHAT_IPC_CHANNELS.send, request),
+  cancel: (request: { runId: number }) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.cancel, request),
+  retry: (request: { runId: number }) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.retry, request),
+  regenerate: (request: { userMessageId: number; question?: string }) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.regenerate, request),
+  pickAttachments: (request: ChatAttachmentPickRequest) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.attachmentPick, request),
+  removeAttachment: (request: ChatAttachmentRemoveRequest) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.attachmentRemove, request),
+  importClipboardImage: (request: ChatClipboardImageImportRequest) =>
+    ipcRenderer.invoke(
+      CHAT_IPC_CHANNELS.attachmentImportClipboardImage,
+      request,
+    ),
+  previewAttachment: (request: ChatAttachmentPreviewRequest) =>
+    ipcRenderer.invoke(CHAT_IPC_CHANNELS.attachmentPreview, request),
+  onEvent: (listener: (event: ChatStreamEvent) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      event: ChatStreamEvent,
+    ) => listener(event);
+    ipcRenderer.on(CHAT_IPC_CHANNELS.stream, handler);
+    return () => ipcRenderer.removeListener(CHAT_IPC_CHANNELS.stream, handler);
   },
 };
 
@@ -288,6 +342,7 @@ const shaleAPI: ShaleAPI = {
   external: externalAPI,
   provider: providerAPI,
   summary: summaryAPI,
+  chat: chatAPI,
   translation: translationAPI,
   expert: expertAPI,
   terminology: terminologyAPI,

@@ -238,6 +238,13 @@ export const TagIcon = () => (
   </Icon>
 );
 
+export const ChatIcon = () => (
+  <Icon size={19}>
+    <path d="M5 5.5h14v10H9l-4 3z" />
+    <path d="M8.5 9h7M8.5 12h4.5" />
+  </Icon>
+);
+
 export const CloseIcon = () => (
   <Icon size={16}>
     <path d="m6 6 12 12M18 6 6 18" />

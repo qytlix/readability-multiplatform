@@ -2,6 +2,7 @@ import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import type { IPCResult } from '../../shared/contracts/feed.ipc';
 import {
   isProviderKind,
+  type ProviderChatModelList,
   type ProviderConnectionTestResult,
   type ProviderProfile,
   type SaveProviderRequest,
@@ -21,6 +22,7 @@ import {
   SummaryError,
   toSummaryIpcError,
 } from '../../shared/errors/summary.errors';
+import { toChatIpcError } from '../../shared/errors/chat.errors';
 import type { SummaryServices } from '../services';
 
 type GetMainWindow = () => BrowserWindow | null;
@@ -59,6 +61,42 @@ export function registerSummaryIpcHandlers(
       if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
       try {
         return success(await providerService.testConnection());
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    SUMMARY_IPC_CHANNELS.providerTestChat,
+    async (event: IpcMainInvokeEvent): Promise<IPCResult<ProviderConnectionTestResult>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
+      try {
+        return success(await providerService.testChatConnection());
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    SUMMARY_IPC_CHANNELS.providerTestChatImage,
+    async (event: IpcMainInvokeEvent): Promise<IPCResult<ProviderConnectionTestResult>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
+      try {
+        return success(await providerService.testChatImageCapability());
+      } catch (error) {
+        return { ok: false, error: toChatIpcError(error) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    SUMMARY_IPC_CHANNELS.providerListChatModels,
+    async (event: IpcMainInvokeEvent): Promise<IPCResult<ProviderChatModelList>> => {
+      if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
+      try {
+        return success(await providerService.listChatModels());
       } catch (error) {
         return failure(error);
       }
@@ -118,11 +156,22 @@ function isAuthorizedSender(
 function isSaveProviderRequest(value: unknown): value is SaveProviderRequest {
   if (!value || typeof value !== 'object') return false;
   const request = value as Record<string, unknown>;
-  // Three-route shape: { summary, translation, tag }
+  // Task-route shape: { summary, translation, tag, chat? }
   if (typeof request.summary === 'object' && request.summary !== null) {
-    return (
+    const taskRoutesValid = (
       typeof request.translation === 'object' && request.translation !== null
       && typeof request.tag === 'object' && request.tag !== null
+    );
+    if (!taskRoutesValid || request.chat === undefined) return taskRoutesValid;
+    if (typeof request.chat !== 'object' || request.chat === null) return false;
+    const chat = request.chat as Record<string, unknown>;
+    return (
+      typeof chat.providerKind === 'string'
+      && isProviderKind(chat.providerKind)
+      && typeof chat.baseUrl === 'string'
+      && typeof chat.model === 'string'
+      && typeof chat.supportsImages === 'boolean'
+      && (chat.apiKey === undefined || typeof chat.apiKey === 'string')
     );
   }
   // Legacy single-route shape: { providerKind, baseUrl, model, apiKey? }

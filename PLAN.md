@@ -351,3 +351,17 @@ flowchart TD
 AT-M0 仅冻结设计和资源输入，不修改功能代码或 Schema。AT-M1 开始前，
 必须完成 AT-M0 的人工 Review；后续每个实现 Issue 继续保持 0.5～2 个理想
 开发日，并在上一 Milestone 验收后滚动拆细。
+
+## 13. Article Chat 专项
+
+负责人：cyj / AI；Reader、Preload/IPC、SQLite、安全和跨平台行为由对应负责人
+人工 Review。每个 CHAT milestone 至少包含 5 个单一目的 commit。
+
+| Milestone | 状态 | 交付结果 | 验收门 |
+|---|---|---|---|
+| CHAT-00～CHAT-05 基础契约与运行时 | Review | 范围与边界、独立 Provider、多模态适配、持久化、上下文预算、流式运行时与 typed IPC | 自动化通过；待公共边界与安全人工 Review |
+| CHAT-06 Reader 对话界面 | Review | 四状态布局恢复、Reader 入口、消息面板、发送/停止/重试与事件隔离 | 自动化通过；待 Windows/Wayland GUI 人工验收 |
+| CHAT-07 文件附件 | Review | 原生选择器、文本/HTML/PDF 提取、限制、过期清理与附件 chips | 自动化通过；待两平台选择器与真实文件人工验收 |
+| CHAT-08 图片附件 | Review | 签名校验、归一化、内容寻址存储、剪贴板与预览 | 自动化和 Windows 原生图片检查通过；待真实剪贴板与模型人工验收 |
+| CHAT-09 选区提问 | Review | Reader/双语映射、结构化边界、选区操作菜单与可移除引用 | 自动化通过；待三种阅读模式人工验收 |
+| CHAT-10 集成与发布加固 | Review | 分析/回答用量归属、准备失败持久化、隐私 allowlist、重启恢复与包内资源检查 | 155 个测试文件、1168 项测试和 Windows x64 打包通过；待原生 Wayland、真实 Provider、GUI 与公共边界人工验收 |

@@ -115,7 +115,7 @@ describe('EntryList header', () => {
     const css = fs.readFileSync(path.resolve(
       __dirname,
       '../../../src/renderer/features/reader/ReaderPage.css',
-    ), 'utf8');
+    ), 'utf8').replace(/\r\n/g, '\n');
 
     expect(css).toContain('.story-list-heading {\n  flex: 1 1 0;\n  min-width: 0;');
     expect(css).toContain('.story-list-heading-feed-name {\n  flex: 1 1 auto;');

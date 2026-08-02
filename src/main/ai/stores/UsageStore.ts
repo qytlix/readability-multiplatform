@@ -8,7 +8,7 @@ import {
   sanitizeProviderTokenUsage,
 } from '../provider/ProviderTokenUsage';
 
-export const USAGE_TASK_TYPES = ['summary', 'translation'] as const;
+export const USAGE_TASK_TYPES = ['summary', 'translation', 'chat'] as const;
 export type UsageTaskType = (typeof USAGE_TASK_TYPES)[number];
 
 export const USAGE_REQUEST_KINDS = [
@@ -21,6 +21,10 @@ export const USAGE_REQUEST_KINDS = [
   'deep-rewrite',
   'deep-draft-compensation',
   'deep-rewrite-compensation',
+  'chat-answer',
+  'chat-history-compression',
+  'chat-segment-analysis',
+  'chat-article-map',
 ] as const;
 export type UsageRequestKind = (typeof USAGE_REQUEST_KINDS)[number];
 

@@ -8,7 +8,7 @@ import {
   removeUntranslatableIcons,
 } from './ContentGraphics';
 
-export const CONTENT_CLEANER_VERSION = 6;
+export const CONTENT_CLEANER_VERSION = 7;
 
 /** A stable distinction for a successful response with no extractable article. */
 export class ContentExtractionError extends Error {
@@ -99,6 +99,7 @@ export class ContentCleaner {
     removePublisherChrome(body);
     removeReaderAuthorBlocks(body);
     removeReaderBoilerplate(body);
+    injectImageReferrerPolicy(body);
     removeUntranslatableIcons(body);
     return body.innerHTML;
   }
@@ -220,6 +221,20 @@ function removeReaderProtectionClasses(container: HTMLDivElement): void {
   }
 }
 
+/**
+ * Reader article images are loaded as cross-origin no-cors subresources. Some
+ * publishers (e.g. Cloudflare-hosted blogs) reject requests based on the
+ * `Referer` header and respond with an HTML/error document instead of the
+ * image; Chromium's ORB then fails that load as `ERR_BLOCKED_BY_ORB`, leaving
+ * a broken image. Dropping the referrer for images avoids referer-based
+ * filtering without proxying or downloading remote images.
+ */
+function injectImageReferrerPolicy(root: ParentNode): void {
+  for (const image of root.querySelectorAll('img')) {
+    image.setAttribute('referrerpolicy', 'no-referrer');
+  }
+}
+
 function normalizeReaderImages(
   container: HTMLDivElement,
   baseUrl: string,
@@ -271,6 +286,8 @@ function normalizeReaderImages(
     }
     source.removeAttribute('data-srcset');
   }
+
+  injectImageReferrerPolicy(container);
 }
 
 function isPlaceholderImageUrl(candidate: string, baseUrl: string): boolean {

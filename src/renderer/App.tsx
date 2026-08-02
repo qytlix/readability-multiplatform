@@ -42,6 +42,16 @@ import { ExportOptionsDialog } from './features/feeds/ExportOptionsDialog';
 import type { TagFilterState } from './features/search/entrySearch';
 import { TagListPage } from './features/tags/TagListPage';
 import { SearchOverlay } from './features/search/SearchOverlay';
+import { ArticleChatPanel } from './features/chat/ArticleChatPanel';
+import {
+  createArticleChatLayoutSnapshot,
+  restoreReaderColumnState,
+  type ArticleChatLayoutSnapshot,
+} from './features/chat/articleChatLayout';
+import type {
+  ArticleChatSelectionRequest,
+} from './features/chat/articleChatSelection';
+import type { ChatSelectionContext } from '../shared/contracts/chat.types';
 import './features/tags/TagListPage.css';
 import type { ArticleAvailability } from '../shared/contracts/export.types';
 import {
@@ -172,11 +182,21 @@ export const App = () => {
     loadAiPreferences(window.localStorage));
   const [entriesCursor, setEntriesCursor] = useState<EntryQuery['cursor']>();
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
+  const [articleChatOpen, setArticleChatOpen] = useState(false);
+  const [articleChatSelectionRequest, setArticleChatSelectionRequest] =
+    useState<ArticleChatSelectionRequest | undefined>();
+  const [activeArticleChatRun, setActiveArticleChatRun] = useState<{
+    entryId: number;
+    runId: number;
+  } | null>(null);
   const requestSequenceRef = useRef(0);
   const translationSetupNoticeResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const storyListPaneRef = useRef<HTMLElement>(null);
   const articlePaneRef = useRef<HTMLElement>(null);
+  const articleChatLayoutSnapshotRef =
+    useRef<ArticleChatLayoutSnapshot | null>(null);
+  const articleChatSelectionSequenceRef = useRef(0);
   const {
     workspaceRef,
     effectiveWidth: storyListWidth,
@@ -217,6 +237,62 @@ export const App = () => {
     layoutSnapshotRef.current = { storyList, article };
     updateLayout();
   }, []);
+
+  const openArticleChat = useCallback(() => {
+    if (!selectedEntry) return;
+    articleChatLayoutSnapshotRef.current = createArticleChatLayoutSnapshot({
+      sidebarOpen,
+      readingFocus: isReadingFocus,
+      storyListWidth,
+    });
+    setSearchFocused(false);
+    setArticleChatOpen(true);
+  }, [isReadingFocus, selectedEntry, sidebarOpen, storyListWidth]);
+
+  const closeArticleChat = useCallback(() => {
+    const snapshot = articleChatLayoutSnapshotRef.current;
+    articleChatLayoutSnapshotRef.current = null;
+    setArticleChatOpen(false);
+    if (!snapshot) return;
+    const restored = restoreReaderColumnState(snapshot);
+    setSidebarOpen(restored.sidebarOpen);
+    setIsReadingFocus(restored.readingFocus);
+  }, []);
+
+  const openArticleChatForSelection = useCallback((
+    selection: ChatSelectionContext,
+  ): void => {
+    if (!selectedEntry || selection.entryId !== selectedEntry.id) return;
+    articleChatSelectionSequenceRef.current += 1;
+    setArticleChatSelectionRequest({
+      requestId: articleChatSelectionSequenceRef.current,
+      selection,
+    });
+    if (!articleChatOpen) openArticleChat();
+  }, [articleChatOpen, openArticleChat, selectedEntry]);
+
+  const clearArticleChatSelection = useCallback((requestId: number): void => {
+    setArticleChatSelectionRequest((current) => (
+      current?.requestId === requestId ? undefined : current
+    ));
+  }, []);
+
+  useEffect(() => {
+    setArticleChatSelectionRequest(undefined);
+  }, [selectedEntryId]);
+
+  useEffect(() => {
+    if (
+      !activeArticleChatRun
+      || activeArticleChatRun.entryId === selectedEntryId
+    ) {
+      return;
+    }
+
+    const runId = activeArticleChatRun.runId;
+    setActiveArticleChatRun(null);
+    void window.shaleAPI.chat.cancel({ runId });
+  }, [activeArticleChatRun, selectedEntryId]);
 
   useLayoutEffect(() => {
     const previousLayout = layoutSnapshotRef.current;
@@ -452,6 +528,10 @@ useEffect(() => {
       }
 
       if (event.key !== 'Escape') return;
+      if (articleChatOpen) {
+        closeArticleChat();
+        return;
+      }
       if (searchFocused) {
         if (normalizedInput) {
           setSearchInput('');
@@ -469,7 +549,13 @@ useEffect(() => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isReadingFocus, normalizedInput, searchFocused]);
+  }, [
+    articleChatOpen,
+    closeArticleChat,
+    isReadingFocus,
+    normalizedInput,
+    searchFocused,
+  ]);
 
   useEffect(() => {
     if (!readerFeedback) return;
@@ -835,6 +921,7 @@ useEffect(() => {
         searchFocused ? 'is-search-active' : '',
         largeType ? 'is-large-type' : '',
         activeView === 'settings' ? 'is-settings-view' : '',
+        articleChatOpen ? 'is-article-chat' : '',
       ].join(' ')}
       data-theme={readerTheme}
     >
@@ -879,6 +966,16 @@ useEffect(() => {
         ref={workspaceRef}
         className="reader-workspace"
       >
+        {articleChatOpen && selectedEntry && (
+          <ArticleChatPanel
+            entryId={selectedEntry.id}
+            entryTitle={selectedEntry.title ?? 'Untitled'}
+            onClose={closeArticleChat}
+            onActiveRunChange={setActiveArticleChatRun}
+            selectionRequest={articleChatSelectionRequest}
+            onSelectionCleared={clearArticleChatSelection}
+          />
+        )}
         <button
           type="button"
           className="sidebar-backdrop"
@@ -1213,6 +1310,11 @@ useEffect(() => {
                 pageTurnAnimationEnabled={
                   readerPreferences.pageTurnAnimationEnabled
                 }
+                articleChatOpen={articleChatOpen}
+                onArticleChatToggle={
+                  articleChatOpen ? closeArticleChat : openArticleChat
+                }
+                onArticleChatSelection={openArticleChatForSelection}
               />
             )}
           </div>

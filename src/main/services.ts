@@ -46,6 +46,14 @@ import { AnnotationService } from './annotations/AnnotationService';
 import { TagStore } from './tags/TagStore';
 import { TagService } from './tags/TagService';
 import { AutoTagService } from './tags/AutoTagService';
+import { ChatService } from './ai/services/ChatService';
+import { ChatStore } from './ai/stores/ChatStore';
+import { ArticleContextCacheStore } from './ai/stores/ArticleContextCacheStore';
+import { ArticleContextService } from './ai/services/ArticleContextService';
+import { ProviderArticleSegmentAnalyzer } from './ai/services/ProviderArticleSegmentAnalyzer';
+import type { ChatOperationLogger } from './ai/services/ChatLogging';
+import { ChatAttachmentService } from './ai/services/ChatAttachmentService';
+import { ChatAttachmentStorage } from './ai/services/ChatAttachmentStorage';
 
 // ── Service Interfaces ──────────────────────────────────
 
@@ -77,6 +85,11 @@ export interface UsageServices {
   usageStatisticsService: UsageStatisticsService;
 }
 
+export interface ChatServices {
+  chatService: ChatService;
+  attachmentService: ChatAttachmentService;
+}
+
 export interface AnnotationServices {
   annotationService: AnnotationService;
 }
@@ -102,6 +115,7 @@ let translationServicesSingleton: TranslationServices | null = null;
 let annotationServicesSingleton: AnnotationServices | null = null;
 let tagServicesSingleton: TagServices | null = null;
 let usageServicesSingleton: UsageServices | null = null;
+let chatServicesSingleton: ChatServices | null = null;
 
 /** Returns the feed services singleton (null before initializeServices). */
 export function getFeedServices(): FeedServices | null {
@@ -121,6 +135,19 @@ export function getTranslationServices(): TranslationServices | null {
 /** Returns the read-only usage statistics service (null before initializeServices). */
 export function getUsageServices(): UsageServices | null {
   return usageServicesSingleton;
+}
+
+export function getChatServices(): ChatServices | null {
+  return chatServicesSingleton;
+}
+
+/** Returns the Article Chat runtime for application shutdown cleanup. */
+export function getChatService(): ChatService | null {
+  return chatServicesSingleton?.chatService ?? null;
+}
+
+export function getChatAttachmentService(): ChatAttachmentService | null {
+  return chatServicesSingleton?.attachmentService ?? null;
 }
 
 export function getAnnotationServices(): AnnotationServices | null {
@@ -196,6 +223,8 @@ export function initializeServices(
     builtInExpertBundle as BuiltInExpertBundle,
   );
   const usageStore = new UsageStore(dbManager.getDb());
+  const chatStore = new ChatStore(dbManager.getDb());
+  const articleContextCacheStore = new ArticleContextCacheStore(dbManager.getDb());
   const usageRecorder = new UsageRecorder(usageStore, operationLogger);
   const usageStatisticsService = new UsageStatisticsService(usageStore);
   usageRecorder.reconcileInterruptedRunning();
@@ -205,6 +234,40 @@ export function initializeServices(
     safeStorage,
   );
   const provider = new ProviderRegistry();
+  const chatLogger = operationLogger as unknown as ChatOperationLogger;
+  const articleSegmentAnalyzer = new ProviderArticleSegmentAnalyzer(
+    providerProfileStore,
+    secretStore,
+    provider,
+    usageRecorder,
+  );
+  const articleContextService = new ArticleContextService(
+    articleContextCacheStore,
+    articleSegmentAnalyzer,
+  );
+  const chatAttachmentStorage = new ChatAttachmentStorage(
+    path.join(path.dirname(dbPath ?? '.'), 'chat-attachments'),
+  );
+  const chatService = new ChatService(
+    contentStore,
+    providerProfileStore,
+    secretStore,
+    chatStore,
+    articleContextService,
+    provider,
+    chatAttachmentStorage,
+    usageRecorder,
+    chatLogger,
+  );
+  chatService.reconcileInterruptedRuns();
+  const attachmentService = new ChatAttachmentService(
+    chatService,
+    chatStore,
+    undefined,
+    undefined,
+    chatAttachmentStorage,
+  );
+  attachmentService.startCleanupSchedule();
   const terminologyStore = terminologyDbPath && existsSync(terminologyDbPath)
     ? new TerminologyStore(terminologyDbPath, dbManager.getDb())
     : null;
@@ -282,5 +345,6 @@ export function initializeServices(
   annotationServicesSingleton = { annotationService };
   tagServicesSingleton = { tagService, tagStore, autoTagService };
   usageServicesSingleton = { usageStatisticsService };
+  chatServicesSingleton = { chatService, attachmentService };
   return feedServicesSingleton;
 }

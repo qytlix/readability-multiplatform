@@ -141,6 +141,14 @@ export interface ProviderProfile {
   tagBaseUrl: string;
   /** Model used by Tag generation requests. */
   tagModel: string;
+  /** Provider used by Article Chat requests. */
+  chatProviderKind: ProviderKind;
+  /** Provider base URL used by Article Chat requests. */
+  chatBaseUrl: string;
+  /** Model used by Article Chat requests. */
+  chatModel: string;
+  /** User-confirmed image-input capability for the Chat model. */
+  chatSupportsImages: boolean;
   /**
    * Legacy alias retained for compatibility with older callers. It always
    * mirrors summaryModel and must not be used for task routing.
@@ -159,6 +167,8 @@ export interface ProviderProfile {
   hasTranslationApiKey?: boolean;
   /** Whether Main can use the Tag Provider API key. */
   hasTagApiKey?: boolean;
+  /** Whether Main can use the Chat Provider API key. */
+  hasChatApiKey?: boolean;
 }
 
 export interface SaveProviderTaskRequest {
@@ -166,6 +176,11 @@ export interface SaveProviderTaskRequest {
   baseUrl: string;
   model: string;
   apiKey?: string;
+}
+
+export interface SaveChatProviderTaskRequest extends SaveProviderTaskRequest {
+  /** Capability is explicit and is never inferred from the model ID. */
+  supportsImages: boolean;
 }
 
 /**
@@ -184,6 +199,11 @@ export type SaveProviderRequest =
       summary: SaveProviderTaskRequest;
       translation: SaveProviderTaskRequest;
       tag: SaveProviderTaskRequest;
+      /**
+       * Optional only for compatibility with Renderer builds predating Chat.
+       * Main inherits Summary and keeps image input disabled when omitted.
+       */
+      chat?: SaveChatProviderTaskRequest;
       providerKind?: never;
       baseUrl?: never;
       model?: never;
@@ -209,4 +229,17 @@ export type SaveProviderRequest =
 export interface ProviderConnectionTestResult {
   ok: true;
   message: string;
+}
+
+/** Safe model metadata returned to Renderer. API keys never cross this boundary. */
+export interface ProviderChatModel {
+  id: string;
+  displayName?: string;
+  description?: string;
+  ownedBy?: string;
+}
+
+export interface ProviderChatModelList {
+  providerKind: ProviderKind;
+  models: ProviderChatModel[];
 }

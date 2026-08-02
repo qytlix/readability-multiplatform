@@ -1,10 +1,12 @@
 import type { ProviderKind } from '../../../shared/contracts/provider.types';
 import { SUMMARY_ERROR_CODES, SummaryError } from '../../../shared/errors/summary.errors';
+import { CHAT_ERROR_CODES, ChatError } from '../../../shared/errors/chat.errors';
 import { AnthropicProvider } from './AnthropicProvider';
 import { GeminiProvider } from './GeminiProvider';
 import { OpenAICompatibleProvider } from './OpenAICompatibleProvider';
 import type {
   TextGenerationConnectionRequest,
+  TextGenerationImageConnectionRequest,
   TextGenerationProvider,
   TextGenerationProviderRequest,
 } from './TextGenerationProvider';
@@ -25,6 +27,20 @@ export class ProviderRegistry implements TextGenerationProvider {
 
   testConnection(request: TextGenerationConnectionRequest): Promise<void> {
     return this.resolve(request.providerKind).testConnection(request);
+  }
+
+  testImageConnection(
+    request: TextGenerationImageConnectionRequest,
+  ): Promise<void> {
+    const adapter = this.resolve(request.providerKind);
+    if (!adapter.testImageConnection) {
+      throw new ChatError(
+        CHAT_ERROR_CODES.CHAT_IMAGE_UNSUPPORTED,
+        'The configured Provider adapter cannot test image input.',
+        false,
+      );
+    }
+    return adapter.testImageConnection(request);
   }
 
   resolve(kind: ProviderKind = 'openai'): TextGenerationProvider {

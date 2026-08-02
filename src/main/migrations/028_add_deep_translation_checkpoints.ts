@@ -1,3 +1,7 @@
+/**
+ * The usage constraints include Article Chat kinds so this migration can run
+ * safely against a database that already came through the cyj-aichat history.
+ */
 export const MIGRATION_028 = `
   CREATE TABLE translation_deep_batch_checkpoint (
     translationResultId INTEGER NOT NULL REFERENCES translation_result(id) ON DELETE CASCADE,
@@ -13,14 +17,16 @@ export const MIGRATION_028 = `
   CREATE TABLE llm_usage_event (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     providerRequestId INTEGER NOT NULL UNIQUE,
-    taskType          TEXT NOT NULL CHECK (taskType IN ('summary', 'translation')),
+    taskType          TEXT NOT NULL CHECK (taskType IN ('summary', 'translation', 'chat')),
     taskRunId         INTEGER NOT NULL,
     providerProfileId INTEGER NOT NULL REFERENCES ai_provider_profile(id),
     model             TEXT NOT NULL,
     requestKind       TEXT NOT NULL CHECK (requestKind IN (
       'summary', 'batch', 'compensation',
       'deep-draft', 'deep-review', 'deep-rewrite',
-      'deep-draft-compensation', 'deep-rewrite-compensation'
+      'deep-draft-compensation', 'deep-rewrite-compensation',
+      'chat-answer', 'chat-history-compression',
+      'chat-segment-analysis', 'chat-article-map'
     )),
     requestStatus     TEXT NOT NULL CHECK (requestStatus IN ('running', 'succeeded', 'failed', 'interrupted')),
     errorCode         TEXT,

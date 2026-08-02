@@ -64,12 +64,26 @@ export const ProviderSettings = ({
   const [tagModel, setTagModel] = useState(
     profile?.tagModel ?? initialTagPreset.defaultModel,
   );
+  const initialChatKind = profile?.chatProviderKind ?? initialSummaryKind;
+  const initialChatPreset = getProviderPreset(initialChatKind);
+  const [chatProviderKind, setChatProviderKind] =
+    useState<ProviderKind>(initialChatKind);
+  const [chatBaseUrl, setChatBaseUrl] = useState(
+    profile?.chatBaseUrl ?? initialChatPreset.defaultBaseUrl,
+  );
+  const [chatModel, setChatModel] = useState(
+    profile?.chatModel ?? initialChatPreset.defaultModel,
+  );
+  const [chatSupportsImages, setChatSupportsImages] = useState(
+    profile?.chatSupportsImages ?? false,
+  );
   const [status, setStatus] = useState('');
   const [statusTone, setStatusTone] = useState<'neutral' | 'success' | 'error'>('neutral');
   const [saving, setSaving] = useState(false);
   const summaryApiKeyInputRef = useRef<HTMLInputElement>(null);
   const translationApiKeyInputRef = useRef<HTMLInputElement>(null);
   const tagApiKeyInputRef = useRef<HTMLInputElement>(null);
+  const chatApiKeyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const nextSummaryKind = profile?.providerKind ?? DEFAULT_PROVIDER_KIND;
@@ -89,6 +103,12 @@ export const ProviderSettings = ({
     setTagProviderKind(nextTagKind);
     setTagBaseUrl(profile?.tagBaseUrl ?? nextTagPreset.defaultBaseUrl);
     setTagModel(profile?.tagModel ?? nextTagPreset.defaultModel);
+    const nextChatKind = profile?.chatProviderKind ?? nextSummaryKind;
+    const nextChatPreset = getProviderPreset(nextChatKind);
+    setChatProviderKind(nextChatKind);
+    setChatBaseUrl(profile?.chatBaseUrl ?? nextChatPreset.defaultBaseUrl);
+    setChatModel(profile?.chatModel ?? nextChatPreset.defaultModel);
+    setChatSupportsImages(profile?.chatSupportsImages ?? false);
   }, [profile]);
 
   const save = async (): Promise<ProviderProfile | null> => {
@@ -98,6 +118,7 @@ export const ProviderSettings = ({
     const summaryApiKey = summaryApiKeyInputRef.current?.value.trim();
     const translationApiKey = translationApiKeyInputRef.current?.value.trim();
     const tagApiKey = tagApiKeyInputRef.current?.value.trim();
+    const chatApiKey = chatApiKeyInputRef.current?.value.trim();
     try {
       const result = await window.shaleAPI.provider.save({
         summary: {
@@ -118,6 +139,13 @@ export const ProviderSettings = ({
           model: tagModel,
           ...(tagApiKey ? { apiKey: tagApiKey } : {}),
         },
+        chat: {
+          providerKind: chatProviderKind,
+          baseUrl: chatBaseUrl,
+          model: chatModel,
+          supportsImages: chatSupportsImages,
+          ...(chatApiKey ? { apiKey: chatApiKey } : {}),
+        },
       });
       if (!result.ok) {
         setStatus(result.error.message);
@@ -127,6 +155,7 @@ export const ProviderSettings = ({
       if (summaryApiKeyInputRef.current) summaryApiKeyInputRef.current.value = '';
       if (translationApiKeyInputRef.current) translationApiKeyInputRef.current.value = '';
       if (tagApiKeyInputRef.current) tagApiKeyInputRef.current.value = '';
+      if (chatApiKeyInputRef.current) chatApiKeyInputRef.current.value = '';
       onSaved(result.data);
       setStatus(
         result.data.keyStorageMode === 'insecure'
@@ -159,6 +188,38 @@ export const ProviderSettings = ({
     }
   };
 
+  const testChatConnection = async (): Promise<void> => {
+    setSaving(true);
+    setStatus('');
+    setStatusTone('neutral');
+    try {
+      const result = await window.shaleAPI.provider.testChat();
+      setStatus(result.ok ? result.data.message : result.error.message);
+      setStatusTone(result.ok ? 'success' : 'error');
+    } catch {
+      setStatus('无法测试 AI 问答模型连接。');
+      setStatusTone('error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const testChatImageCapability = async (): Promise<void> => {
+    setSaving(true);
+    setStatus('');
+    setStatusTone('neutral');
+    try {
+      const result = await window.shaleAPI.provider.testChatImage();
+      setStatus(result.ok ? result.data.message : result.error.message);
+      setStatusTone(result.ok ? 'success' : 'error');
+    } catch {
+      setStatus('无法测试 AI 问答模型的图片能力。');
+      setStatusTone('error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     await save();
@@ -168,6 +229,7 @@ export const ProviderSettings = ({
   const hasTranslationApiKey =
     profile?.hasTranslationApiKey ?? profile?.hasApiKey ?? false;
   const hasTagApiKey = profile?.hasTagApiKey ?? false;
+  const hasChatApiKey = profile?.hasChatApiKey ?? profile?.hasSummaryApiKey ?? false;
   const summaryProviderChanged = Boolean(
     profile && profile.providerKind !== summaryProviderKind,
   );
@@ -187,6 +249,12 @@ export const ProviderSettings = ({
   const tagEndpointChanged = Boolean(
     profile && safeUrlOrigin(profile.tagBaseUrl) !== safeUrlOrigin(tagBaseUrl),
   );
+  const chatProviderChanged = Boolean(
+    profile && profile.chatProviderKind !== chatProviderKind,
+  );
+  const chatEndpointChanged = Boolean(
+    profile && safeUrlOrigin(profile.chatBaseUrl) !== safeUrlOrigin(chatBaseUrl),
+  );
   const hasUnsavedProfileChanges = Boolean(
     !profile
     || summaryProviderChanged
@@ -197,7 +265,11 @@ export const ProviderSettings = ({
     || profile.translationModel !== translationModel
     || tagProviderChanged
     || profile.tagBaseUrl !== tagBaseUrl
-    || profile.tagModel !== tagModel,
+    || profile.tagModel !== tagModel
+    || chatProviderChanged
+    || profile.chatBaseUrl !== chatBaseUrl
+    || profile.chatModel !== chatModel
+    || profile.chatSupportsImages !== chatSupportsImages,
   );
   const routesShareCredentialScope = summaryProviderKind === translationProviderKind
     && safeUrlOrigin(summaryBaseUrl) === safeUrlOrigin(translationBaseUrl);
@@ -215,6 +287,19 @@ export const ProviderSettings = ({
   const tagCredentialAvailable =
     hasTagApiKey && !tagProviderChanged && !tagEndpointChanged;
   const tagNeedsApiKey = !tagCredentialAvailable;
+  const chatCredentialAvailable =
+    hasChatApiKey && !chatProviderChanged && !chatEndpointChanged;
+  const chatSharesSummaryCredentialScope = chatProviderKind === summaryProviderKind
+    && safeUrlOrigin(chatBaseUrl) === safeUrlOrigin(summaryBaseUrl);
+  const chatSharesTranslationCredentialScope =
+    chatProviderKind === translationProviderKind
+    && safeUrlOrigin(chatBaseUrl) === safeUrlOrigin(translationBaseUrl);
+  const requiresChatApiKey = !chatCredentialAvailable
+    && !(chatSharesSummaryCredentialScope && (summaryCredentialAvailable || requiresSummaryApiKey))
+    && !(
+      chatSharesTranslationCredentialScope
+      && (translationCredentialAvailable || requiresTranslationApiKey)
+    );
   const usesInsecureStorage = profile?.keyStorageMode === 'insecure';
 
   const handleApiKeyPaste = (event: React.ClipboardEvent<HTMLInputElement>): void => {
@@ -229,16 +314,18 @@ export const ProviderSettings = ({
   const summaryModelSuggestionsId = `provider-summary-model-suggestions-${mode}`;
   const translationModelSuggestionsId = `provider-translation-model-suggestions-${mode}`;
   const tagModelSuggestionsId = `provider-tag-model-suggestions-${mode}`;
+  const chatModelSuggestionsId = `provider-chat-model-suggestions-${mode}`;
   const selectedSummaryPreset = getProviderPreset(summaryProviderKind);
   const selectedTranslationPreset = getProviderPreset(translationProviderKind);
   const selectedTagPreset = getProviderPreset(tagProviderKind);
+  const selectedChatPreset = getProviderPreset(chatProviderKind);
   const providerHeader = (
     <header className="provider-settings-header">
       <div>
         <h2 id={titleId}>模型服务</h2>
         {mode === 'embedded' && (
           <p className="provider-settings-description">
-            为总结、翻译和标签生成分别配置 Provider、模型与 API Key。
+            为总结、翻译、标签生成和 AI 问答分别配置 Provider、模型与 API Key。
           </p>
         )}
       </div>
@@ -319,6 +406,83 @@ export const ProviderSettings = ({
             required={requiresSummaryApiKey}
           />
         </label>
+      </fieldset>
+      <fieldset className="provider-route-settings">
+        <legend>AI 问答</legend>
+        <label>
+          Provider 类型
+          <select
+            value={chatProviderKind}
+            onChange={(event) => {
+              const kind = event.target.value as ProviderKind;
+              const preset = getProviderPreset(kind);
+              setChatProviderKind(kind);
+              setChatBaseUrl(preset.defaultBaseUrl);
+              setChatModel(preset.defaultModel);
+              setChatSupportsImages(false);
+              setStatus('');
+              setStatusTone('neutral');
+            }}
+            required
+          >
+            {PROVIDER_PRESETS.map((preset) => (
+              <option key={preset.kind} value={preset.kind}>{preset.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Provider 基础 URL
+          <input
+            value={chatBaseUrl}
+            onChange={(event) => setChatBaseUrl(event.target.value)}
+            placeholder={selectedChatPreset.defaultBaseUrl}
+            inputMode="url"
+            required
+          />
+        </label>
+        <label>
+          问答模型
+          <input
+            value={chatModel}
+            onChange={(event) => setChatModel(event.target.value)}
+            list={chatModelSuggestionsId}
+            placeholder={selectedChatPreset.defaultModel}
+            spellCheck={false}
+            required
+          />
+          <datalist id={chatModelSuggestionsId}>
+            {selectedChatPreset.suggestedModels.map((suggestedModel) => (
+              <option key={suggestedModel} value={suggestedModel} />
+            ))}
+          </datalist>
+        </label>
+        <label>
+          API Key
+          <input
+            ref={chatApiKeyInputRef}
+            type="password"
+            name="chat-provider-api-key"
+            placeholder={requiresChatApiKey ? '输入 AI 问答 Provider API Key' : SAVED_API_KEY_MASK}
+            autoComplete="new-password"
+            spellCheck={false}
+            data-1p-ignore="true"
+            data-lpignore="true"
+            onPaste={handleApiKeyPaste}
+            required={requiresChatApiKey}
+          />
+        </label>
+        <label className="provider-capability-option">
+          <input
+            type="checkbox"
+            checked={chatSupportsImages}
+            onChange={(event) => setChatSupportsImages(event.target.checked)}
+          />
+          该模型支持图片输入
+        </label>
+        <p className="provider-settings-note">
+          聊天界面会使用这里保存的 API Key 读取可用模型；在那里切换后，
+          此处的问答模型也会同步更新。图片能力不会根据模型名称自动判断。
+        </p>
       </fieldset>
       <fieldset className="provider-route-settings">
         <legend>翻译</legend>
@@ -466,12 +630,32 @@ export const ProviderSettings = ({
         <footer className="provider-settings-actions">
           <button
             type="button"
+            onClick={() => void testChatConnection()}
+            disabled={saving || !hasChatApiKey || hasUnsavedProfileChanges}
+          >
+            测试问答连接
+          </button>
+          <button
+            type="button"
+            onClick={() => void testChatImageCapability()}
+            disabled={
+              saving
+              || !hasChatApiKey
+              || !chatSupportsImages
+              || hasUnsavedProfileChanges
+            }
+          >
+            测试图片能力
+          </button>
+          <button
+            type="button"
             onClick={() => void testConnection()}
             disabled={
               saving
               || !hasSummaryApiKey
               || !hasTranslationApiKey
               || !hasTagApiKey
+              || !hasChatApiKey
               || hasUnsavedProfileChanges
             }
           >

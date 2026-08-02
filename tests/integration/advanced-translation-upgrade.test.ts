@@ -141,10 +141,15 @@ describe('Advanced Translation upgrade and restart hardening', () => {
         { filename: '023_tag_name_case_sensitive' },
         { filename: '024_add_tag_provider_route' },
         { filename: '025_add_entry_ai_tag_generated' },
+        { filename: '026_add_chat_provider_route' },
         { filename: '026_add_translation_local_context' },
         { filename: '027_add_translation_result_variant' },
+        { filename: '027_create_article_chat' },
         { filename: '028_add_deep_translation_checkpoints' },
+        { filename: '028_create_article_context_cache' },
         { filename: '029_add_translation_context_usage_kind' },
+        { filename: '029_expand_usage_for_chat' },
+        { filename: '030_add_article_chat_message_branches' },
       ]);
       expect(restarted.getDb().prepare(`
         SELECT name FROM sqlite_master
