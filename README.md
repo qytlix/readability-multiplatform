@@ -408,7 +408,7 @@ readability-multiplatform/
 
 ## 团队分工
 
-### qyt（[GitHub](https://github.com/qytlix)）
+### 秦一天（[GitHub](https://github.com/qytlix)）
 
 - SQLite 数据模型、迁移和持久化体系
 - Feed 添加、解析、同步与正文持久化
@@ -419,7 +419,7 @@ readability-multiplatform/
 - 手动标签、标签筛选与 Tag Agent
 - 开发文档、Release 工作流与 Git Tag 维护
 
-### cyj（[GitHub](https://github.com/tkg2197)）
+### 陈彦杰（[GitHub](https://github.com/tkg2197)）
 
 - AI Provider、模型调用及相关基础设施
 - AI Summary 基本功能
@@ -431,7 +431,7 @@ readability-multiplatform/
 - 界面视觉实现与样式优化
 - 交互细节和其他辅助功能
 
-### 我（组长）（[GitHub](https://github.com/chaocyndrome)）
+### 陈一诺（组长）（[GitHub](https://github.com/chaocyndrome)）
 
 - 需求拆解、进度规划、任务分配、风险管理与交付验收
 - 应用工程框架、依赖和基础 IPC 搭建
