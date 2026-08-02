@@ -36,6 +36,13 @@ entryId
 messageId
 ```
 
+Renderer also creates an opaque, bounded `operationId` for each
+`chat:send`, `chat:retry`, and `chat:regenerate` invocation. It is runtime-only
+and is never persisted. Before Main returns the durable `runId`, cancellation
+uses this `operationId`; after streaming starts, cancellation may use the
+`runId`. A `chat:cancel` request contains exactly one of those identities and
+never uses `entryId` as a cancellation key.
+
 ## IPC surface
 
 Preload exposes domain methods backed by:
@@ -133,3 +140,17 @@ compressionVersion
 Any identity change invalidates the cached formatted context, segment
 analyses, and article map.
 
+## Cancellation and Usage boundary
+
+Main registers one active runtime object before context preparation and passes
+its single `AbortSignal` through article preparation, segment analysis, the
+answer Provider, deltas, and final persistence. Cancellation is checked before
+Provider calls, asynchronous continuation, cache writes, deltas, and terminal
+persistence. Exact operation identity prevents a late panel cleanup from
+canceling a newer task for the same article.
+
+Usage begins only at a real Provider request boundary. A cancellation before
+any Provider call creates no Usage row; segment-analysis requests account only
+for the segments actually started; the final answer starts its Usage record
+immediately before the answer Provider call. Active requests are settled once
+through `interrupt()` on cancellation.

@@ -133,7 +133,6 @@ describe('Article Chat Markdown rendering', () => {
         entryId: 7,
         entryTitle: 'Markdown article',
         onClose: () => undefined,
-        onActiveRunChange: () => undefined,
         onSelectionCleared: () => undefined,
       }));
     });
@@ -180,7 +179,6 @@ describe('Article Chat Markdown rendering', () => {
         entryId: 7,
         entryTitle: 'Markdown article',
         onClose: () => undefined,
-        onActiveRunChange: () => undefined,
         onSelectionCleared: () => undefined,
       }));
     });
@@ -237,7 +235,6 @@ describe('Article Chat Markdown rendering', () => {
         entryId: 7,
         entryTitle: 'Markdown article',
         onClose: () => undefined,
-        onActiveRunChange: () => undefined,
         onSelectionCleared: () => undefined,
       }));
     });
@@ -256,7 +253,6 @@ describe('Article Chat Markdown rendering', () => {
         entryId: 7,
         entryTitle: 'Markdown article',
         onClose: () => undefined,
-        onActiveRunChange: () => undefined,
         onSelectionCleared: () => undefined,
       }));
     });

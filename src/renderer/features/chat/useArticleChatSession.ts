@@ -14,6 +14,7 @@ import type {
   ChatState,
   ChatStreamEvent,
 } from '../../../shared/contracts/chat.types';
+import { CHAT_ERROR_CODES } from '../../../shared/errors/chat.errors';
 import { applyChatStreamEvent } from './articleChatSession';
 import {
   buildProviderRequestWithChatModel,
@@ -86,6 +87,8 @@ export const useArticleChatSession = (
   const modelCatalogRequestVersionRef = useRef(0);
   const modelCatalogScopeRef = useRef('');
   const stateRef = useRef<ChatState | null>(null);
+  const pendingOperationIdRef = useRef<string | null>(null);
+  const activeRunIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     stateRef.current = state;
@@ -111,6 +114,9 @@ export const useArticleChatSession = (
       }
 
       stateRef.current = chatResult.data;
+      activeRunIdRef.current = chatResult.data.state === 'running'
+        ? chatResult.data.run.id
+        : null;
       setState(chatResult.data);
       const nextProvider = providerResult.ok ? providerResult.data : null;
       const nextCatalogScope = nextProvider
@@ -140,6 +146,8 @@ export const useArticleChatSession = (
     if (!active) {
       requestVersionRef.current += 1;
       stateRef.current = null;
+      pendingOperationIdRef.current = null;
+      activeRunIdRef.current = null;
       setState(null);
       setProvider(null);
       modelCatalogRequestVersionRef.current += 1;
@@ -154,6 +162,8 @@ export const useArticleChatSession = (
       return undefined;
     }
 
+    setActionStatus('idle');
+    setActionErrorMessage('');
     void reload();
     const removeListener = window.shaleAPI.chat.onEvent((
       event: ChatStreamEvent,
@@ -163,6 +173,7 @@ export const useArticleChatSession = (
       const next = applyChatStreamEvent(current, entryId, event);
       if (next === current) return;
       stateRef.current = next;
+      activeRunIdRef.current = next.state === 'running' ? next.run.id : null;
       setState(next);
     });
 
@@ -170,6 +181,15 @@ export const useArticleChatSession = (
       requestVersionRef.current += 1;
       modelCatalogRequestVersionRef.current += 1;
       removeListener();
+      const operationId = pendingOperationIdRef.current;
+      const runId = activeRunIdRef.current;
+      pendingOperationIdRef.current = null;
+      activeRunIdRef.current = null;
+      if (operationId) {
+        void window.shaleAPI.chat.cancel({ operationId });
+      } else if (runId) {
+        void window.shaleAPI.chat.cancel({ runId });
+      }
     };
   }, [active, entryId, reload]);
 
@@ -213,42 +233,62 @@ export const useArticleChatSession = (
     if (!active || stateRef.current?.state === 'running' || !question.trim()) {
       return false;
     }
+    const operationId = createChatOperationId();
+    pendingOperationIdRef.current = operationId;
     setActionStatus('sending');
     setActionErrorMessage('');
     try {
       const result = await window.shaleAPI.chat.send({
+        operationId,
         entryId,
         question,
         selection,
         attachmentIds,
       });
+      if (pendingOperationIdRef.current !== operationId) return false;
       if (!result.ok) {
-        setActionErrorMessage(result.error.message);
+        if (result.error.code !== CHAT_ERROR_CODES.CHAT_INTERRUPTED) {
+          setActionErrorMessage(result.error.message);
+        }
         // Context preparation can fail after the Main process reserves and
         // persists the run. Reload so the visible failure/retry state matches
         // the durable conversation immediately.
         await reload();
         return false;
       }
+      activeRunIdRef.current = result.data.runId;
       await reload();
       return true;
     } catch {
-      setActionErrorMessage('问题发送失败，请检查问答模型配置后重试。');
+      if (pendingOperationIdRef.current === operationId) {
+        setActionErrorMessage('问题发送失败，请检查问答模型配置后重试。');
+      }
       return false;
     } finally {
-      setActionStatus('idle');
+      if (pendingOperationIdRef.current === operationId) {
+        pendingOperationIdRef.current = null;
+        setActionStatus((current) => current === 'sending' ? 'idle' : current);
+      }
     }
   }, [active, entryId, reload]);
 
   const stop = useCallback(async (): Promise<boolean> => {
     const current = stateRef.current;
-    if (!active || current?.state !== 'running') return false;
+    const operationId = pendingOperationIdRef.current;
+    const runId = current?.state === 'running'
+      ? current.run.id
+      : activeRunIdRef.current;
+    if (!active || (!operationId && !runId)) return false;
     setActionStatus('stopping');
     setActionErrorMessage('');
     try {
       const result = await window.shaleAPI.chat.cancel({
-        runId: current.run.id,
+        ...(operationId ? { operationId } : { runId: runId as number }),
       });
+      const stillOwnsTarget = operationId
+        ? pendingOperationIdRef.current === operationId
+        : activeRunIdRef.current === runId;
+      if (!stillOwnsTarget) return result.ok;
       if (!result.ok) {
         setActionErrorMessage(result.error.message);
         return false;
@@ -256,10 +296,15 @@ export const useArticleChatSession = (
       await reload();
       return true;
     } catch {
-      setActionErrorMessage('无法停止当前回答，请稍后重试。');
+      const stillOwnsTarget = operationId
+        ? pendingOperationIdRef.current === operationId
+        : activeRunIdRef.current === runId;
+      if (stillOwnsTarget) {
+        setActionErrorMessage('无法停止当前回答，请稍后重试。');
+      }
       return false;
     } finally {
-      setActionStatus('idle');
+      setActionStatus((current) => current === 'stopping' ? 'idle' : current);
     }
   }, [active, reload]);
 
@@ -271,23 +316,35 @@ export const useArticleChatSession = (
     ) {
       return false;
     }
+    const operationId = createChatOperationId();
+    pendingOperationIdRef.current = operationId;
     setActionStatus('retrying');
     setActionErrorMessage('');
     try {
       const result = await window.shaleAPI.chat.retry({
+        operationId,
         runId: current.run.id,
       });
+      if (pendingOperationIdRef.current !== operationId) return false;
       if (!result.ok) {
-        setActionErrorMessage(result.error.message);
+        if (result.error.code !== CHAT_ERROR_CODES.CHAT_INTERRUPTED) {
+          setActionErrorMessage(result.error.message);
+        }
         return false;
       }
+      activeRunIdRef.current = result.data.runId;
       await reload();
       return true;
     } catch {
-      setActionErrorMessage('无法重试这次回答，请稍后再试。');
+      if (pendingOperationIdRef.current === operationId) {
+        setActionErrorMessage('无法重试这次回答，请稍后再试。');
+      }
       return false;
     } finally {
-      setActionStatus('idle');
+      if (pendingOperationIdRef.current === operationId) {
+        pendingOperationIdRef.current = null;
+        setActionStatus((current) => current === 'retrying' ? 'idle' : current);
+      }
     }
   }, [active, reload]);
 
@@ -304,25 +361,37 @@ export const useArticleChatSession = (
     ) {
       return false;
     }
+    const operationId = createChatOperationId();
+    pendingOperationIdRef.current = operationId;
     setActionStatus('regenerating');
     setActionErrorMessage('');
     try {
       const result = await window.shaleAPI.chat.regenerate({
+        operationId,
         userMessageId,
         ...(question === undefined ? {} : { question }),
       });
+      if (pendingOperationIdRef.current !== operationId) return false;
       if (!result.ok) {
-        setActionErrorMessage(result.error.message);
+        if (result.error.code !== CHAT_ERROR_CODES.CHAT_INTERRUPTED) {
+          setActionErrorMessage(result.error.message);
+        }
         await reload();
         return false;
       }
+      activeRunIdRef.current = result.data.runId;
       await reload();
       return true;
     } catch {
-      setActionErrorMessage('无法重新生成这次回答，请稍后再试。');
+      if (pendingOperationIdRef.current === operationId) {
+        setActionErrorMessage('无法重新生成这次回答，请稍后再试。');
+      }
       return false;
     } finally {
-      setActionStatus('idle');
+      if (pendingOperationIdRef.current === operationId) {
+        pendingOperationIdRef.current = null;
+        setActionStatus((current) => current === 'regenerating' ? 'idle' : current);
+      }
     }
   }, [active, reload]);
 
@@ -475,3 +544,13 @@ export const useArticleChatSession = (
     importClipboardImages,
   };
 };
+
+let chatOperationSequence = 0;
+
+function createChatOperationId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  chatOperationSequence += 1;
+  return `chat-${Date.now()}-${chatOperationSequence}`;
+}

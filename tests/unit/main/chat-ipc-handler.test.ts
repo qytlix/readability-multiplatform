@@ -126,6 +126,7 @@ describe('Article Chat IPC handler', () => {
       createAttachmentService(),
     );
     const request = {
+      operationId: 'ipc-send',
       entryId: 7,
       question: 'What is the conclusion?',
       attachmentIds: [],
@@ -162,6 +163,7 @@ describe('Article Chat IPC handler', () => {
       },
     });
     await expect(invoke(CHAT_IPC_CHANNELS.send, {}, {
+      operationId: 'unauthorized-send',
       entryId: 7,
       question: 'Question',
       attachmentIds: [],
@@ -187,6 +189,7 @@ describe('Article Chat IPC handler', () => {
     );
 
     await expect(invoke(CHAT_IPC_CHANNELS.send, event, {
+      operationId: 'selection-send',
       entryId: 7,
       question: 'Explain this selection.',
       selection: {
@@ -202,6 +205,78 @@ describe('Article Chat IPC handler', () => {
     expect(service.send).not.toHaveBeenCalled();
   });
 
+  it('cancels by exactly one run or Renderer operation identity', () => {
+    const { mainWindow, event } = createAuthorizedWindow();
+    const { service } = createService();
+    registerChatIpcHandlers(
+      () => mainWindow,
+      service,
+      createAttachmentService(),
+    );
+
+    expect(invoke(CHAT_IPC_CHANNELS.cancel, event, { runId: 12 })).toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(invoke(CHAT_IPC_CHANNELS.cancel, event, {
+      operationId: 'renderer-operation',
+    })).toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(service.cancel).toHaveBeenNthCalledWith(1, { runId: 12 });
+    expect(service.cancel).toHaveBeenNthCalledWith(2, {
+      operationId: 'renderer-operation',
+    });
+
+    for (const request of [
+      {},
+      { runId: 12, operationId: 'ambiguous' },
+      { entryId: 7 },
+      { operationId: '   ' },
+    ]) {
+      expect(invoke(CHAT_IPC_CHANNELS.cancel, event, request)).toMatchObject({
+        ok: false,
+        error: { code: 'CHAT_INVALID_REQUEST' },
+      });
+    }
+    expect(service.cancel).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires a bounded operation identity for every run-starting action', async () => {
+    const { mainWindow, event } = createAuthorizedWindow();
+    const { service } = createService();
+    registerChatIpcHandlers(
+      () => mainWindow,
+      service,
+      createAttachmentService(),
+    );
+
+    await expect(invoke(CHAT_IPC_CHANNELS.send, event, {
+      entryId: 7,
+      question: 'Question',
+      attachmentIds: [],
+    })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'CHAT_INVALID_REQUEST' },
+    });
+    await expect(invoke(CHAT_IPC_CHANNELS.retry, event, {
+      runId: 12,
+    })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'CHAT_INVALID_REQUEST' },
+    });
+    await expect(invoke(CHAT_IPC_CHANNELS.regenerate, event, {
+      userMessageId: 10,
+    })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'CHAT_INVALID_REQUEST' },
+    });
+    expect(service.send).not.toHaveBeenCalled();
+    expect(service.retry).not.toHaveBeenCalled();
+    expect(service.regenerate).not.toHaveBeenCalled();
+  });
+
   it('validates and forwards an edited-message regeneration request', async () => {
     const { mainWindow, event } = createAuthorizedWindow();
     const { service } = createService();
@@ -210,7 +285,11 @@ describe('Article Chat IPC handler', () => {
       service,
       createAttachmentService(),
     );
-    const request = { userMessageId: 13, question: 'Edited question' };
+    const request = {
+      operationId: 'ipc-regenerate',
+      userMessageId: 13,
+      question: 'Edited question',
+    };
 
     await expect(invoke(
       CHAT_IPC_CHANNELS.regenerate,
@@ -224,7 +303,11 @@ describe('Article Chat IPC handler', () => {
     await expect(invoke(
       CHAT_IPC_CHANNELS.regenerate,
       event,
-      { userMessageId: 13, question: '   ' },
+      {
+        operationId: 'ipc-regenerate-invalid',
+        userMessageId: 13,
+        question: '   ',
+      },
     )).resolves.toMatchObject({
       ok: false,
       error: { code: 'CHAT_INVALID_REQUEST' },

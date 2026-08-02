@@ -7,6 +7,7 @@ export const CHAT_SELECTION_LIMITS = {
   paragraphCharacters: 40_000,
   segmentIdCharacters: 512,
 } as const;
+export const CHAT_OPERATION_ID_MAX_LENGTH = 128;
 export const CHAT_CONTEXT_MODES = [
   'full',
   'history-compressed',
@@ -124,6 +125,7 @@ export interface ChatGetRequest {
 }
 
 export interface ChatSendRequest {
+  operationId: string;
   entryId: number;
   question: string;
   selection?: ChatSelectionContext;
@@ -131,18 +133,20 @@ export interface ChatSendRequest {
 }
 
 export interface ChatRetryRequest {
+  operationId: string;
   runId: number;
 }
 
 export interface ChatRegenerateRequest {
+  operationId: string;
   userMessageId: number;
   /** Omit to reuse the persisted question; provide to edit before sending. */
   question?: string;
 }
 
-export interface ChatCancelRequest {
-  runId: number;
-}
+export type ChatCancelRequest =
+  | { runId: number; operationId?: never }
+  | { operationId: string; runId?: never };
 
 export interface ChatAttachmentPickRequest {
   entryId: number;
