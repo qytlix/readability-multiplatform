@@ -266,6 +266,8 @@ export function initializeServices(
     undefined,
     undefined,
     chatAttachmentStorage,
+    undefined,
+    chatLogger,
   );
   attachmentService.startCleanupSchedule();
   const terminologyStore = terminologyDbPath && existsSync(terminologyDbPath)

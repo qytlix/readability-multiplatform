@@ -67,6 +67,36 @@ stale metadata/checkpoints on a terminal success. Ordinary state reads,
 completed-result reuse, Renderer state derivation, and UI interactions do not
 produce diagnostics.
 
+Article Chat emits failure terminals only. One operation-scoped terminal token
+is shared from context preparation through streaming completion. The terminal
+is selected only after required failure persistence and event notification have
+been attempted, so a later database fault can own the final classification and
+a listener exception cannot swallow or duplicate the Chat failure record:
+
+- `chat.run.failed` owns final context-preparation, Provider request/protocol
+  parsing, timeout, empty-response, and event-listener failures;
+- `chat.session.persistence.failed` owns conversation loading, thread/message/run
+  reservation, attachment linking, context identity, delta append, and run
+  success/failure persistence failures;
+- `chat.attachment.operation.failed` owns valid attachment operations that end
+  in file-read, file-write, database-read, database-write, or cleanup failure;
+- `usage.ledger.persistence.failed` remains the independent best-effort Usage
+  ledger boundary and is never reused as a Chat terminal.
+
+These records contain only a controlled `operation`, `finalFailureStage`, stable
+`errorCode`, `durationMs`, `success: false`, and an optional opaque `taskRunId`.
+The StructuredLogger applies an event-specific second allowlist before JSONL is
+written, and diagnostic export runs that sanitizer again. Questions, answers,
+history, article/selection/Prompt text, URLs, attachment metadata or content,
+paths, Provider configuration, secrets, SQL, and raw errors are excluded.
+
+Successful Chat runs, successful context preparation, Provider timing, internal
+retry, ordinary reads and attachment operations, user stop, article change,
+normal shutdown, and zero-work recovery produce no Chat business record.
+Expected results such as invalid input, `CHAT_BUSY`, an unconfigured Provider,
+unsupported/oversized attachments, encrypted PDFs, and PDFs without extractable
+text likewise produce no system-failure record.
+
 Markdown export records are operation-level terminal records only:
 `markdown.export.completed` includes the exported article count and duration.
 When image localization actually processed remote images, it also includes only

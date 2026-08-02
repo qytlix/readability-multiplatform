@@ -1,155 +1,156 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  logChatContextCompleted,
-  logChatProviderCompleted,
-  logChatProviderFirstDelta,
-  logChatProviderResponseHeaders,
-  logChatRunCompleted,
+  CHAT_LOG_ERROR_CODES,
+  CHAT_LOG_EVENTS,
+  createChatFailureTerminal,
+  logChatAttachmentOperationFailed,
   logChatRunFailed,
-  logChatRunRetrying,
-  logChatRunStarted,
+  logChatSessionPersistenceFailed,
 } from '../../../src/main/ai/services/ChatLogging';
 
-describe('Article Chat structured logging', () => {
-  it('exposes only lifecycle metadata to the logger', () => {
-    const logger = {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    };
+describe('Article Chat structured failure logging', () => {
+  it('records only the first valid Chat failure terminal', () => {
+    const logger = { error: vi.fn() };
+    const terminal = createChatFailureTerminal();
 
-    logChatRunStarted(logger, 7);
-    logChatContextCompleted(logger, {
-      taskRunId: 7,
-      durationMs: 11,
-      success: true,
-      contextMode: 'full',
-      inputTokens: 321,
-    });
-    logChatProviderResponseHeaders(logger, {
-      taskRunId: 7,
-      durationMs: 12,
-      attemptCount: 1,
-    });
-    logChatProviderFirstDelta(logger, {
-      taskRunId: 7,
-      durationMs: 18,
-      attemptCount: 1,
-    });
-    logChatProviderCompleted(logger, {
-      taskRunId: 7,
-      durationMs: 4,
-      attemptCount: 1,
-    });
-    logChatRunRetrying(logger, {
-      taskRunId: 7,
-      attemptCount: 2,
-      errorCode: 'CHAT_PROVIDER_REQUEST_FAILED',
-    });
-    logChatRunCompleted(logger, { taskRunId: 7, durationMs: 22 });
-    const unsafeFailureContext = {
+    logChatRunFailed(logger, terminal, {
+      operation: 'send',
+      finalFailureStage: 'provider',
       taskRunId: 8,
       durationMs: 30,
-      errorCode: 'CHAT_NETWORK_ERROR' as const,
-      question: 'QUESTION_CANARY',
-      selection: 'SELECTION_CANARY',
-      attachmentPath: 'C:\\private\\ATTACHMENT_CANARY.png',
-      apiKey: 'sk-SECRET_CANARY',
-    };
-    logChatRunFailed(logger, unsafeFailureContext);
-
-    const serialized = JSON.stringify({
-      info: logger.info.mock.calls,
-      warn: logger.warn.mock.calls,
-      error: logger.error.mock.calls,
+      errorCode: 'CHAT_NETWORK_ERROR',
+      success: false,
     });
-    expect(serialized).not.toContain('question');
-    expect(serialized).not.toContain('article');
-    expect(serialized).not.toContain('attachment');
-    expect(serialized).not.toContain('secret');
-    expect(serialized).not.toContain('QUESTION_CANARY');
-    expect(serialized).not.toContain('SELECTION_CANARY');
-    expect(serialized).not.toContain('ATTACHMENT_CANARY');
-    expect(serialized).not.toContain('SECRET_CANARY');
-    expect(logger.info).toHaveBeenCalledWith(
-      'chat.run.started',
-      'chat.run',
-      { taskRunId: 7 },
-    );
+    logChatSessionPersistenceFailed(logger, terminal, {
+      operation: 'send',
+      finalFailureStage: 'run-fail',
+      taskRunId: 8,
+      durationMs: 31,
+      errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+      success: false,
+    });
+
+    expect(logger.error).toHaveBeenCalledOnce();
     expect(logger.error).toHaveBeenCalledWith(
-      'chat.run.failed',
+      CHAT_LOG_EVENTS.runFailed,
       'chat.run',
       {
+        operation: 'send',
+        finalFailureStage: 'provider',
         taskRunId: 8,
         durationMs: 30,
         errorCode: 'CHAT_NETWORK_ERROR',
         success: false,
       },
     );
-    expect(logger.info).toHaveBeenCalledWith(
-      'chat.run.context.completed',
+  });
+
+  it('does not let an invalid attempt consume the terminal', () => {
+    const logger = { error: vi.fn() };
+    const terminal = createChatFailureTerminal();
+
+    logChatRunFailed(logger, terminal, {
+      operation: 'send',
+      finalFailureStage: 'provider',
+      taskRunId: 0,
+      durationMs: 1,
+      errorCode: 'CHAT_NETWORK_ERROR',
+      success: false,
+    });
+    logChatSessionPersistenceFailed(logger, terminal, {
+      operation: 'send',
+      finalFailureStage: 'run-reserve',
+      durationMs: 2,
+      errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+      success: false,
+    });
+
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(logger.error.mock.calls[0]?.[0]).toBe(
+      CHAT_LOG_EVENTS.sessionPersistenceFailed,
+    );
+  });
+
+  it('rebuilds each event from safe fields only', () => {
+    const logger = { error: vi.fn() };
+    const unsafeRun = {
+      operation: 'regenerate' as const,
+      finalFailureStage: 'context-preparation' as const,
+      taskRunId: 9,
+      durationMs: 45,
+      errorCode: 'CHAT_CONTEXT_TOO_LARGE' as const,
+      success: false as const,
+      question: 'QUESTION_CANARY',
+      prompt: 'PROMPT_CANARY',
+      rawError: 'SQLITE_CANARY',
+    };
+    const unsafeAttachment = {
+      operation: 'import' as const,
+      finalFailureStage: 'file-read' as const,
+      durationMs: 7,
+      errorCode: CHAT_LOG_ERROR_CODES.attachmentOperationFailed,
+      success: false as const,
+      fileName: 'PRIVATE_FILE_CANARY',
+      path: '/private/PATH_CANARY',
+    };
+
+    logChatRunFailed(
+      logger,
+      createChatFailureTerminal(),
+      unsafeRun,
+    );
+    logChatAttachmentOperationFailed(
+      logger,
+      createChatFailureTerminal(),
+      unsafeAttachment,
+    );
+
+    const serialized = JSON.stringify(logger.error.mock.calls);
+    expect(serialized).not.toContain('CANARY');
+    expect(logger.error).toHaveBeenNthCalledWith(
+      1,
+      CHAT_LOG_EVENTS.runFailed,
       'chat.run',
       {
-        taskRunId: 7,
-        durationMs: 11,
-        success: true,
-        contextMode: 'full',
-        inputTokens: 321,
+        operation: 'regenerate',
+        finalFailureStage: 'context-preparation',
+        taskRunId: 9,
+        durationMs: 45,
+        errorCode: 'CHAT_CONTEXT_TOO_LARGE',
+        success: false,
       },
     );
-    expect(logger.info).toHaveBeenCalledWith(
-      'chat.run.provider.response.headers',
-      'chat.run',
-      { taskRunId: 7, durationMs: 12, attemptCount: 1 },
-    );
-    expect(logger.info).toHaveBeenCalledWith(
-      'chat.run.provider.first.delta',
-      'chat.run',
-      { taskRunId: 7, durationMs: 18, attemptCount: 1 },
-    );
-    expect(logger.info).toHaveBeenCalledWith(
-      'chat.run.provider.completed',
-      'chat.run',
-      { taskRunId: 7, durationMs: 4, attemptCount: 1 },
-    );
-    expect(logger.warn).toHaveBeenCalledWith(
-      'chat.run.retrying',
-      'chat.run',
+    expect(logger.error).toHaveBeenNthCalledWith(
+      2,
+      CHAT_LOG_EVENTS.attachmentOperationFailed,
+      'chat.attachment',
       {
-        taskRunId: 7,
-        attemptCount: 2,
-        errorCode: 'CHAT_PROVIDER_REQUEST_FAILED',
+        operation: 'import',
+        finalFailureStage: 'file-read',
+        durationMs: 7,
+        errorCode: CHAT_LOG_ERROR_CODES.attachmentOperationFailed,
+        success: false,
       },
     );
   });
 
-  it('logs failed context timing without carrying unsafe source fields', () => {
+  it('never lets logger failures change Chat behavior', () => {
     const logger = {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    };
-    const unsafeContext = {
-      taskRunId: 9,
-      durationMs: 45,
-      success: false as const,
-      errorCode: 'CHAT_CONTEXT_TOO_LARGE' as const,
-      question: 'CONTEXT_QUESTION_CANARY',
-      article: 'CONTEXT_ARTICLE_CANARY',
+      error: vi.fn(() => {
+        throw new Error('logger unavailable');
+      }),
     };
 
-    logChatContextCompleted(logger, unsafeContext);
-
-    expect(logger.info).toHaveBeenCalledWith(
-      'chat.run.context.completed',
-      'chat.run',
+    expect(() => logChatSessionPersistenceFailed(
+      logger,
+      createChatFailureTerminal(),
       {
-        taskRunId: 9,
-        durationMs: 45,
+        operation: 'load',
+        finalFailureStage: 'session-load',
+        durationMs: 1,
+        errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
         success: false,
-        errorCode: 'CHAT_CONTEXT_TOO_LARGE',
       },
-    );
-    expect(JSON.stringify(logger.info.mock.calls)).not.toContain('CANARY');
+    )).not.toThrow();
   });
 });

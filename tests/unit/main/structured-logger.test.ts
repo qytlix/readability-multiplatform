@@ -61,6 +61,10 @@ import {
   TRANSLATION_LOG_ERROR_CODES,
   TRANSLATION_LOG_EVENTS,
 } from '../../../src/main/ai/services/TranslationLogging';
+import {
+  CHAT_LOG_ERROR_CODES,
+  CHAT_LOG_EVENTS,
+} from '../../../src/main/ai/services/ChatLogging';
 
 const filesystemControl = vi.hoisted(() => ({
   readdir: 0,
@@ -774,6 +778,58 @@ describe('StructuredLogger', () => {
       feedId: 9,
       errorCode: 'FEED_FETCH_FAILED',
     });
+  });
+
+  it('enforces the event-specific Chat failure context allowlist', async () => {
+    const directory = createLogDirectory();
+    const logger = createLogger(directory);
+    const canary = 'CHAT_STRUCTURED_CANARY_MUST_NOT_APPEAR';
+
+    logger.error(CHAT_LOG_EVENTS.sessionPersistenceFailed, 'chat.session', {
+      operation: 'send',
+      finalFailureStage: 'run-reserve',
+      durationMs: 9,
+      success: false,
+      errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+      taskRunId: 44,
+      inputTokens: 999,
+      providerId: 7,
+      stage: canary,
+    });
+    logger.error(CHAT_LOG_EVENTS.runFailed, 'chat.run', {
+      operation: 'free-text-operation',
+      finalFailureStage: 'provider',
+      durationMs: 10,
+      success: false,
+      errorCode: 'CHAT_NETWORK_ERROR',
+      taskRunId: 45,
+    });
+    logger.info('chat.run.completed', 'chat.run', {
+      taskRunId: 46,
+      durationMs: 11,
+      success: true,
+    });
+    await logger.flush();
+
+    const contents = readFileSync(
+      path.join(directory, getManagedFiles(directory)[0]),
+      'utf8',
+    );
+    expect(contents).not.toContain(canary);
+    expect(readRecords(directory)).toEqual([
+      expect.objectContaining({
+        event: CHAT_LOG_EVENTS.sessionPersistenceFailed,
+        component: 'chat.session',
+        context: {
+          operation: 'send',
+          finalFailureStage: 'run-reserve',
+          durationMs: 9,
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+          taskRunId: 44,
+        },
+      }),
+    ]);
   });
 
   it('accepts the fixed Content failure context while dropping unsafe values', async () => {

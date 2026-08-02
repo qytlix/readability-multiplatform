@@ -3,6 +3,16 @@ import { appendFile, mkdir, readdir, stat, unlink } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import path from 'node:path';
 import { TRANSLATION_HTML_VALIDATION_REASONS } from '../ai/TranslationOutputDiagnostics';
+import {
+  CHAT_ATTACHMENT_FAILURE_STAGES,
+  CHAT_LOG_COMPONENTS,
+  CHAT_LOG_ERROR_CODES,
+  CHAT_LOG_EVENTS,
+  CHAT_LOG_OPERATIONS,
+  CHAT_RUN_FAILURE_STAGES,
+  CHAT_RUN_LOG_ERROR_CODES,
+  CHAT_SESSION_FAILURE_STAGES,
+} from '../ai/services/ChatLogging';
 
 export const STRUCTURED_LOG_SCHEMA_VERSION = 1 as const;
 export const DEFAULT_LOG_RETENTION_DAYS = 7;
@@ -594,8 +604,13 @@ export function sanitizeStructuredLogRecord(value: unknown): StructuredLogRecord
   const sessionId = sanitizeIdentifier(value.sessionId, MAX_IDENTIFIER_LENGTH);
 
   if (!timestamp || !level || !event || !component || !sessionId) return undefined;
+  if (event.startsWith('chat.') && !isChatFailureEvent(event)) return undefined;
 
-  const context = sanitizeContext(value.context);
+  let context = sanitizeContext(value.context);
+  if (isChatFailureEvent(event)) {
+    context = sanitizeChatFailureContext(event, component, context);
+    if (!context) return undefined;
+  }
   return {
     schemaVersion: STRUCTURED_LOG_SCHEMA_VERSION,
     timestamp,
@@ -604,6 +619,75 @@ export function sanitizeStructuredLogRecord(value: unknown): StructuredLogRecord
     component,
     sessionId,
     ...(context ? { context } : {}),
+  };
+}
+
+function isChatFailureEvent(
+  event: string,
+): event is (typeof CHAT_LOG_EVENTS)[keyof typeof CHAT_LOG_EVENTS] {
+  return Object.values(CHAT_LOG_EVENTS).includes(
+    event as (typeof CHAT_LOG_EVENTS)[keyof typeof CHAT_LOG_EVENTS],
+  );
+}
+
+function sanitizeChatFailureContext(
+  event: (typeof CHAT_LOG_EVENTS)[keyof typeof CHAT_LOG_EVENTS],
+  component: string,
+  context: StructuredLogContext | undefined,
+): StructuredLogContext | undefined {
+  if (
+    !context
+    || context.success !== false
+    || !Number.isSafeInteger(context.durationMs)
+    || (context.durationMs ?? -1) < 0
+    || typeof context.operation !== 'string'
+    || typeof context.finalFailureStage !== 'string'
+    || typeof context.errorCode !== 'string'
+    || !CHAT_LOG_OPERATIONS.includes(context.operation as never)
+    || (
+      context.taskRunId !== undefined
+      && (!Number.isSafeInteger(context.taskRunId) || context.taskRunId <= 0)
+    )
+  ) return undefined;
+
+  if (
+    event === CHAT_LOG_EVENTS.runFailed
+    && (
+      component !== CHAT_LOG_COMPONENTS.run
+      || !['send', 'retry', 'regenerate'].includes(context.operation)
+      || !CHAT_RUN_FAILURE_STAGES.includes(context.finalFailureStage as never)
+      || !CHAT_RUN_LOG_ERROR_CODES.includes(context.errorCode as never)
+      || context.taskRunId === undefined
+    )
+  ) return undefined;
+  if (
+    event === CHAT_LOG_EVENTS.sessionPersistenceFailed
+    && (
+      component !== CHAT_LOG_COMPONENTS.session
+      || !['load', 'send', 'retry', 'regenerate'].includes(context.operation)
+      || !CHAT_SESSION_FAILURE_STAGES.includes(context.finalFailureStage as never)
+      || context.errorCode !== CHAT_LOG_ERROR_CODES.sessionPersistenceFailed
+    )
+  ) return undefined;
+  if (
+    event === CHAT_LOG_EVENTS.attachmentOperationFailed
+    && (
+      component !== CHAT_LOG_COMPONENTS.attachment
+      || context.operation === 'load'
+      || !CHAT_ATTACHMENT_FAILURE_STAGES.includes(context.finalFailureStage as never)
+      || context.errorCode !== CHAT_LOG_ERROR_CODES.attachmentOperationFailed
+    )
+  ) return undefined;
+
+  return {
+    operation: context.operation,
+    finalFailureStage: context.finalFailureStage,
+    errorCode: context.errorCode,
+    durationMs: context.durationMs,
+    success: false,
+    ...(context.taskRunId === undefined
+      ? {}
+      : { taskRunId: context.taskRunId }),
   };
 }
 

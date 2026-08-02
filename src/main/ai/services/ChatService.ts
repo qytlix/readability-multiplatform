@@ -54,18 +54,18 @@ import {
   DEFAULT_CHAT_RESPONSE_RESERVE_TOKENS,
 } from './ArticleContextBudget';
 import {
+  CHAT_LOG_ERROR_CODES,
+  createChatFailureTerminal,
   elapsedChatMilliseconds,
-  logChatContextCompleted,
-  logChatProviderCompleted,
-  logChatProviderFirstDelta,
-  logChatProviderResponseHeaders,
-  logChatRecoveryCompleted,
-  logChatRunCompleted,
+  logChatAttachmentOperationFailed,
   logChatRunFailed,
-  logChatRunInterrupted,
-  logChatRunRetrying,
-  logChatRunStarted,
+  logChatSessionPersistenceFailed,
+  type ChatAttachmentFailureStage,
+  type ChatFailureTerminal,
   type ChatOperationLogger,
+  type ChatRunFailureStage,
+  type ChatRunLogOperation,
+  type ChatSessionFailureStage,
 } from './ChatLogging';
 import { performance } from 'node:perf_hooks';
 
@@ -90,7 +90,14 @@ interface ActiveChatRun {
   abortController: AbortController;
   usageHandle: UsageRequestHandle;
   startedAt: number;
+  operation: ChatRunLogOperation;
+  failureTerminal: ChatFailureTerminal;
 }
+
+type ChatExecutionFailure =
+  | { kind: 'run'; stage: ChatRunFailureStage }
+  | { kind: 'session'; stage: ChatSessionFailureStage }
+  | { kind: 'attachment'; stage: ChatAttachmentFailureStage };
 
 export class ChatService {
   private activeRun: ActiveChatRun | null = null;
@@ -116,36 +123,51 @@ export class ChatService {
 
   getState(request: ChatGetRequest): ChatState {
     validateEntryId(request.entryId);
-    const content = this.requireContent(request.entryId);
-    const sourceContentHash = content.sourceContentHash
-      ?? hashChatInput(content.markdown);
-    const thread = this.chatStore.findOrCreateThread(
-      request.entryId,
-      sourceContentHash,
-      CHAT_PROMPT_VERSION,
-    );
-    const messages = this.chatStore.listMessages(thread.id);
-    const draftAttachments = this.chatStore.listDraftAttachments(thread.id);
-    const latestRun = this.chatStore.findLatestRunForThread(thread.id);
-    if (latestRun?.status === 'running') {
-      return {
-        state: 'running',
-        thread,
-        messages,
-        draftAttachments,
-        run: latestRun,
-      };
+    const startedAt = performance.now();
+    const terminal = createChatFailureTerminal();
+    try {
+      const content = this.requireContent(request.entryId);
+      const sourceContentHash = content.sourceContentHash
+        ?? hashChatInput(content.markdown);
+      const thread = this.chatStore.findOrCreateThread(
+        request.entryId,
+        sourceContentHash,
+        CHAT_PROMPT_VERSION,
+      );
+      const messages = this.chatStore.listMessages(thread.id);
+      const draftAttachments = this.chatStore.listDraftAttachments(thread.id);
+      const latestRun = this.chatStore.findLatestRunForThread(thread.id);
+      if (latestRun?.status === 'running') {
+        return {
+          state: 'running',
+          thread,
+          messages,
+          draftAttachments,
+          run: latestRun,
+        };
+      }
+      if (latestRun?.status === 'failed' || latestRun?.status === 'interrupted') {
+        return {
+          state: latestRun.status,
+          thread,
+          messages,
+          draftAttachments,
+          run: latestRun,
+        };
+      }
+      return { state: 'idle', thread, messages, draftAttachments };
+    } catch (error) {
+      if (shouldRecordChatSystemFailure(error)) {
+        logChatSessionPersistenceFailed(this.logger, terminal, {
+          operation: 'load',
+          finalFailureStage: 'session-load',
+          durationMs: elapsedChatMilliseconds(startedAt),
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+        });
+      }
+      throw error;
     }
-    if (latestRun?.status === 'failed' || latestRun?.status === 'interrupted') {
-      return {
-        state: latestRun.status,
-        thread,
-        messages,
-        draftAttachments,
-        run: latestRun,
-      };
-    }
-    return { state: 'idle', thread, messages, draftAttachments };
   }
 
   async send(request: ChatSendRequest): Promise<ChatRunResponse> {
@@ -158,19 +180,26 @@ export class ChatService {
       );
     }
     const requestStartedAt = performance.now();
+    const failureTerminal = createChatFailureTerminal();
+    const operation = 'send' as const;
+    let persistenceStage: ChatSessionFailureStage | undefined;
+    let taskRunId: number | undefined;
     this.preparing = true;
     try {
       const content = this.requireContent(request.entryId);
       const sourceContentHash = content.sourceContentHash
         ?? hashChatInput(content.markdown);
       const profile = this.requireProfile();
+      persistenceStage = 'thread-load-or-create';
       const thread = this.chatStore.findOrCreateThread(
         request.entryId,
         sourceContentHash,
         CHAT_PROMPT_VERSION,
       );
+      persistenceStage = 'session-load';
       const attachments = request.attachmentIds.map((attachmentId) =>
         this.requireAttachment(attachmentId, thread.id));
+      persistenceStage = undefined;
       if (
         attachments.some(({ kind }) => kind === 'image')
         && !profile.chatSupportsImages
@@ -181,8 +210,11 @@ export class ChatService {
           false,
         );
       }
+      persistenceStage = 'session-load';
       const history = this.chatStore.listMessages(thread.id);
+      persistenceStage = undefined;
       const attemptId = createUsageAttemptId();
+      persistenceStage = 'run-reserve';
       const created = this.chatStore.createRunWithMessages({
         threadId: thread.id,
         question: request.question.trim(),
@@ -201,12 +233,14 @@ export class ChatService {
           ...attachments.map(({ contentHash }) => contentHash),
         ].join('\n')),
       });
+      taskRunId = created.run.id;
+      persistenceStage = 'attachment-link';
       this.chatStore.linkAttachments(
         created.userMessage.id,
         request.attachmentIds,
       );
+      persistenceStage = undefined;
       let prepared: PreparedArticleContext;
-      const contextStartedAt = performance.now();
       try {
         prepared = await this.contextService.prepare({
           source: {
@@ -240,26 +274,28 @@ export class ChatService {
           contextWindowTokens: DEFAULT_CHAT_CONTEXT_WINDOW_TOKENS,
           responseReserveTokens: DEFAULT_CHAT_RESPONSE_RESERVE_TOKENS,
         });
-        logChatContextCompleted(this.logger, {
-          taskRunId: created.run.id,
-          durationMs: elapsedChatMilliseconds(contextStartedAt),
-          success: true,
-          contextMode: prepared.mode,
-          inputTokens: prepared.estimatedPromptTokens,
-        });
       } catch (error) {
         const failure = toChatIpcError(error);
-        logChatContextCompleted(this.logger, {
-          taskRunId: created.run.id,
-          durationMs: elapsedChatMilliseconds(contextStartedAt),
-          success: false,
-          errorCode: failure.code as (
-            typeof CHAT_ERROR_CODES
-          )[keyof typeof CHAT_ERROR_CODES],
-        });
-        this.chatStore.markRunFailed(
+        try {
+          this.chatStore.markRunFailed(created.run.id, failure);
+        } catch (persistenceError) {
+          logChatSessionPersistenceFailed(this.logger, failureTerminal, {
+            operation,
+            finalFailureStage: 'run-fail',
+            durationMs: elapsedChatMilliseconds(requestStartedAt),
+            success: false,
+            errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+            taskRunId: created.run.id,
+          });
+          throw persistenceError;
+        }
+        this.logRunFailure(
+          failureTerminal,
+          operation,
           created.run.id,
-          failure,
+          requestStartedAt,
+          'context-preparation',
+          error,
         );
         throw error;
       }
@@ -269,11 +305,13 @@ export class ChatService {
         request.question.trim(),
         ...attachments.map(({ contentHash }) => contentHash),
       ].join('\n'));
+      persistenceStage = 'context-finalize';
       const finalizedRun = this.chatStore.finalizeRunContext(
         created.run.id,
         prepared.mode,
         inputContentHash,
       );
+      persistenceStage = undefined;
       const abortController = new AbortController();
       const usageHandle = this.usageRecorder.start({
         providerRequestId: createProviderRequestId(),
@@ -290,27 +328,45 @@ export class ChatService {
         abortController,
         usageHandle,
         startedAt: requestStartedAt,
+        operation,
+        failureTerminal,
       };
-      logChatRunStarted(this.logger, finalizedRun.id);
-      this.emit({
-        type: 'started',
-        runId: finalizedRun.id,
-        threadId: thread.id,
-        entryId: request.entryId,
-        messageId: created.assistantMessage.id,
-        contextMode: prepared.mode,
-      });
-      void this.executeRun(
-        finalizedRun,
-        request.entryId,
-        prepared,
-        attachments,
-        request.question.trim(),
-        profile,
-        this.secretLookup.read(profile.chatApiKeyRef),
-        abortController,
-        usageHandle,
-      );
+      let startupFailure: ChatExecutionFailure = {
+        kind: 'run',
+        stage: 'event-listener',
+      };
+      try {
+        this.emit({
+          type: 'started',
+          runId: finalizedRun.id,
+          threadId: thread.id,
+          entryId: request.entryId,
+          messageId: created.assistantMessage.id,
+          contextMode: prepared.mode,
+        });
+        startupFailure = { kind: 'run', stage: 'provider' };
+        const apiKey = this.secretLookup.read(profile.chatApiKeyRef);
+        void this.executeRun(
+          finalizedRun,
+          request.entryId,
+          prepared,
+          attachments,
+          request.question.trim(),
+          profile,
+          apiKey,
+          abortController,
+          usageHandle,
+        );
+      } catch (error) {
+        this.finishActiveRunFailure(
+          this.activeRun,
+          error,
+          startupFailure,
+          undefined,
+          false,
+        );
+        throw error;
+      }
       return {
         runId: finalizedRun.id,
         threadId: thread.id,
@@ -318,6 +374,18 @@ export class ChatService {
         assistantMessageId: created.assistantMessage.id,
         reused: false,
       };
+    } catch (error) {
+      if (persistenceStage && shouldRecordChatSystemFailure(error)) {
+        logChatSessionPersistenceFailed(this.logger, failureTerminal, {
+          operation,
+          finalFailureStage: persistenceStage,
+          durationMs: elapsedChatMilliseconds(requestStartedAt),
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+          ...(taskRunId === undefined ? {} : { taskRunId }),
+        });
+      }
+      throw error;
     } finally {
       this.preparing = false;
     }
@@ -359,7 +427,25 @@ export class ChatService {
       );
     }
     const requestStartedAt = performance.now();
-    const previousRun = this.chatStore.findRunById(request.runId);
+    const failureTerminal = createChatFailureTerminal();
+    const operation = 'retry' as const;
+    let persistenceStage: ChatSessionFailureStage | undefined = 'session-load';
+    let previousRun: ChatRun | undefined;
+    try {
+      previousRun = this.chatStore.findRunById(request.runId);
+    } catch (error) {
+      if (shouldRecordChatSystemFailure(error)) {
+        logChatSessionPersistenceFailed(this.logger, failureTerminal, {
+          operation,
+          finalFailureStage: 'session-load',
+          durationMs: elapsedChatMilliseconds(requestStartedAt),
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+          taskRunId: request.runId,
+        });
+      }
+      throw error;
+    }
     if (
       !previousRun
       || (
@@ -373,8 +459,24 @@ export class ChatService {
         false,
       );
     }
-    const thread = this.chatStore.findThreadById(previousRun.threadId);
-    const userMessage = this.chatStore.findMessageById(previousRun.userMessageId);
+    let thread: ReturnType<ChatStore['findThreadById']>;
+    let userMessage: ReturnType<ChatStore['findMessageById']>;
+    try {
+      thread = this.chatStore.findThreadById(previousRun.threadId);
+      userMessage = this.chatStore.findMessageById(previousRun.userMessageId);
+    } catch (error) {
+      if (shouldRecordChatSystemFailure(error)) {
+        logChatSessionPersistenceFailed(this.logger, failureTerminal, {
+          operation,
+          finalFailureStage: 'session-load',
+          durationMs: elapsedChatMilliseconds(requestStartedAt),
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+          taskRunId: request.runId,
+        });
+      }
+      throw error;
+    }
     if (!thread || !userMessage) {
       throw new ChatError(
         CHAT_ERROR_CODES.CHAT_INVALID_REQUEST,
@@ -385,6 +487,7 @@ export class ChatService {
 
     this.preparing = true;
     try {
+      persistenceStage = undefined;
       const content = this.requireContent(thread.entryId);
       const currentHash = content.sourceContentHash ?? hashChatInput(content.markdown);
       if (currentHash !== thread.sourceContentHash) {
@@ -395,8 +498,10 @@ export class ChatService {
         );
       }
       const profile = this.requireProfile();
+      persistenceStage = 'session-load';
       const attachments = userMessage.attachments.map(({ id }) =>
         this.requireAttachment(id, thread.id));
+      persistenceStage = undefined;
       if (
         attachments.some(({ kind }) => kind === 'image')
         && !profile.chatSupportsImages
@@ -407,10 +512,11 @@ export class ChatService {
           false,
         );
       }
+      persistenceStage = 'session-load';
       const history = this.chatStore.listMessages(thread.id)
         .filter(({ id }) => id < userMessage.id);
+      persistenceStage = undefined;
       const attemptId = createUsageAttemptId();
-      const contextStartedAt = performance.now();
       let prepared: PreparedArticleContext;
       try {
         prepared = await this.contextService.prepare({
@@ -445,25 +551,18 @@ export class ChatService {
           contextWindowTokens: DEFAULT_CHAT_CONTEXT_WINDOW_TOKENS,
           responseReserveTokens: DEFAULT_CHAT_RESPONSE_RESERVE_TOKENS,
         });
-        logChatContextCompleted(this.logger, {
-          taskRunId: previousRun.id,
-          durationMs: elapsedChatMilliseconds(contextStartedAt),
-          success: true,
-          contextMode: prepared.mode,
-          inputTokens: prepared.estimatedPromptTokens,
-        });
       } catch (error) {
-        const failure = toChatIpcError(error);
-        logChatContextCompleted(this.logger, {
-          taskRunId: previousRun.id,
-          durationMs: elapsedChatMilliseconds(contextStartedAt),
-          success: false,
-          errorCode: failure.code as (
-            typeof CHAT_ERROR_CODES
-          )[keyof typeof CHAT_ERROR_CODES],
-        });
+        this.logRunFailure(
+          failureTerminal,
+          operation,
+          previousRun.id,
+          requestStartedAt,
+          'context-preparation',
+          error,
+        );
         throw error;
       }
+      persistenceStage = 'run-reserve';
       const retried = this.chatStore.retryRun(request.runId);
       const inputContentHash = hashChatInput([
         prepared.articleReference,
@@ -471,11 +570,13 @@ export class ChatService {
         userMessage.content,
         ...attachments.map(({ contentHash }) => contentHash),
       ].join('\n'));
+      persistenceStage = 'context-finalize';
       const finalizedRun = this.chatStore.finalizeRunContext(
         retried.run.id,
         prepared.mode,
         inputContentHash,
       );
+      persistenceStage = undefined;
       const abortController = new AbortController();
       const usageHandle = this.usageRecorder.start({
         providerRequestId: createProviderRequestId(),
@@ -492,27 +593,45 @@ export class ChatService {
         abortController,
         usageHandle,
         startedAt: requestStartedAt,
+        operation,
+        failureTerminal,
       };
-      logChatRunStarted(this.logger, finalizedRun.id);
-      this.emit({
-        type: 'started',
-        runId: finalizedRun.id,
-        threadId: thread.id,
-        entryId: thread.entryId,
-        messageId: retried.assistantMessage.id,
-        contextMode: prepared.mode,
-      });
-      void this.executeRun(
-        finalizedRun,
-        thread.entryId,
-        prepared,
-        attachments,
-        userMessage.content,
-        profile,
-        this.secretLookup.read(profile.chatApiKeyRef),
-        abortController,
-        usageHandle,
-      );
+      let startupFailure: ChatExecutionFailure = {
+        kind: 'run',
+        stage: 'event-listener',
+      };
+      try {
+        this.emit({
+          type: 'started',
+          runId: finalizedRun.id,
+          threadId: thread.id,
+          entryId: thread.entryId,
+          messageId: retried.assistantMessage.id,
+          contextMode: prepared.mode,
+        });
+        startupFailure = { kind: 'run', stage: 'provider' };
+        const apiKey = this.secretLookup.read(profile.chatApiKeyRef);
+        void this.executeRun(
+          finalizedRun,
+          thread.entryId,
+          prepared,
+          attachments,
+          userMessage.content,
+          profile,
+          apiKey,
+          abortController,
+          usageHandle,
+        );
+      } catch (error) {
+        this.finishActiveRunFailure(
+          this.activeRun,
+          error,
+          startupFailure,
+          undefined,
+          false,
+        );
+        throw error;
+      }
       return {
         runId: finalizedRun.id,
         threadId: thread.id,
@@ -520,6 +639,18 @@ export class ChatService {
         assistantMessageId: retried.assistantMessage.id,
         reused: true,
       };
+    } catch (error) {
+      if (persistenceStage && shouldRecordChatSystemFailure(error)) {
+        logChatSessionPersistenceFailed(this.logger, failureTerminal, {
+          operation,
+          finalFailureStage: persistenceStage,
+          durationMs: elapsedChatMilliseconds(requestStartedAt),
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+          taskRunId: request.runId,
+        });
+      }
+      throw error;
     } finally {
       this.preparing = false;
     }
@@ -550,12 +681,31 @@ export class ChatService {
       );
     }
 
-    const sourceMessage = this.chatStore.findCurrentMessageById(
-      request.userMessageId,
-    );
-    const sourceRun = this.chatStore.findRunByUserMessageId(
-      request.userMessageId,
-    );
+    const requestStartedAt = performance.now();
+    const failureTerminal = createChatFailureTerminal();
+    const operation = 'regenerate' as const;
+    let persistenceStage: ChatSessionFailureStage | undefined = 'session-load';
+    let sourceMessage: ReturnType<ChatStore['findCurrentMessageById']>;
+    let sourceRun: ReturnType<ChatStore['findRunByUserMessageId']>;
+    try {
+      sourceMessage = this.chatStore.findCurrentMessageById(
+        request.userMessageId,
+      );
+      sourceRun = this.chatStore.findRunByUserMessageId(
+        request.userMessageId,
+      );
+    } catch (error) {
+      if (shouldRecordChatSystemFailure(error)) {
+        logChatSessionPersistenceFailed(this.logger, failureTerminal, {
+          operation,
+          finalFailureStage: 'session-load',
+          durationMs: elapsedChatMilliseconds(requestStartedAt),
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+        });
+      }
+      throw error;
+    }
     if (
       !sourceMessage
       || sourceMessage.role !== 'user'
@@ -569,7 +719,22 @@ export class ChatService {
         false,
       );
     }
-    const thread = this.chatStore.findThreadById(sourceMessage.threadId);
+    let thread: ReturnType<ChatStore['findThreadById']>;
+    try {
+      thread = this.chatStore.findThreadById(sourceMessage.threadId);
+    } catch (error) {
+      if (shouldRecordChatSystemFailure(error)) {
+        logChatSessionPersistenceFailed(this.logger, failureTerminal, {
+          operation,
+          finalFailureStage: 'session-load',
+          durationMs: elapsedChatMilliseconds(requestStartedAt),
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+          taskRunId: sourceRun.id,
+        });
+      }
+      throw error;
+    }
     if (!thread) {
       throw new ChatError(
         CHAT_ERROR_CODES.CHAT_INVALID_REQUEST,
@@ -579,9 +744,9 @@ export class ChatService {
     }
 
     const question = (editedQuestion ?? sourceMessage.content).trim();
-    const requestStartedAt = performance.now();
     this.preparing = true;
     try {
+      persistenceStage = undefined;
       const content = this.requireContent(thread.entryId);
       const currentHash = content.sourceContentHash
         ?? hashChatInput(content.markdown);
@@ -593,8 +758,10 @@ export class ChatService {
         );
       }
       const profile = this.requireProfile();
+      persistenceStage = 'session-load';
       const attachments = sourceMessage.attachments.map(({ id }) =>
         this.requireAttachment(id, thread.id));
+      persistenceStage = undefined;
       if (
         attachments.some(({ kind }) => kind === 'image')
         && !profile.chatSupportsImages
@@ -605,9 +772,12 @@ export class ChatService {
           false,
         );
       }
+      persistenceStage = 'session-load';
       const history = this.chatStore.listMessages(thread.id)
         .filter(({ id }) => id < sourceMessage.id);
+      persistenceStage = undefined;
       const attemptId = createUsageAttemptId();
+      persistenceStage = 'run-reserve';
       const created = this.chatStore.createReplacementRun({
         userMessageId: sourceMessage.id,
         threadId: thread.id,
@@ -626,7 +796,7 @@ export class ChatService {
           ...attachments.map(({ contentHash }) => contentHash),
         ].join('\n')),
       });
-      const contextStartedAt = performance.now();
+      persistenceStage = undefined;
       let prepared: PreparedArticleContext;
       try {
         prepared = await this.contextService.prepare({
@@ -661,24 +831,29 @@ export class ChatService {
           contextWindowTokens: DEFAULT_CHAT_CONTEXT_WINDOW_TOKENS,
           responseReserveTokens: DEFAULT_CHAT_RESPONSE_RESERVE_TOKENS,
         });
-        logChatContextCompleted(this.logger, {
-          taskRunId: created.run.id,
-          durationMs: elapsedChatMilliseconds(contextStartedAt),
-          success: true,
-          contextMode: prepared.mode,
-          inputTokens: prepared.estimatedPromptTokens,
-        });
       } catch (error) {
         const failure = toChatIpcError(error);
-        logChatContextCompleted(this.logger, {
-          taskRunId: created.run.id,
-          durationMs: elapsedChatMilliseconds(contextStartedAt),
-          success: false,
-          errorCode: failure.code as (
-            typeof CHAT_ERROR_CODES
-          )[keyof typeof CHAT_ERROR_CODES],
-        });
-        this.chatStore.markRunFailed(created.run.id, failure);
+        try {
+          this.chatStore.markRunFailed(created.run.id, failure);
+        } catch (persistenceError) {
+          logChatSessionPersistenceFailed(this.logger, failureTerminal, {
+            operation,
+            finalFailureStage: 'run-fail',
+            durationMs: elapsedChatMilliseconds(requestStartedAt),
+            success: false,
+            errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+            taskRunId: created.run.id,
+          });
+          throw persistenceError;
+        }
+        this.logRunFailure(
+          failureTerminal,
+          operation,
+          created.run.id,
+          requestStartedAt,
+          'context-preparation',
+          error,
+        );
         throw error;
       }
       const inputContentHash = hashChatInput([
@@ -687,11 +862,13 @@ export class ChatService {
         question,
         ...attachments.map(({ contentHash }) => contentHash),
       ].join('\n'));
+      persistenceStage = 'context-finalize';
       const finalizedRun = this.chatStore.finalizeRunContext(
         created.run.id,
         prepared.mode,
         inputContentHash,
       );
+      persistenceStage = undefined;
       const abortController = new AbortController();
       const usageHandle = this.usageRecorder.start({
         providerRequestId: createProviderRequestId(),
@@ -708,27 +885,45 @@ export class ChatService {
         abortController,
         usageHandle,
         startedAt: requestStartedAt,
+        operation,
+        failureTerminal,
       };
-      logChatRunStarted(this.logger, finalizedRun.id);
-      this.emit({
-        type: 'started',
-        runId: finalizedRun.id,
-        threadId: thread.id,
-        entryId: thread.entryId,
-        messageId: created.assistantMessage.id,
-        contextMode: prepared.mode,
-      });
-      void this.executeRun(
-        finalizedRun,
-        thread.entryId,
-        prepared,
-        attachments,
-        question,
-        profile,
-        this.secretLookup.read(profile.chatApiKeyRef),
-        abortController,
-        usageHandle,
-      );
+      let startupFailure: ChatExecutionFailure = {
+        kind: 'run',
+        stage: 'event-listener',
+      };
+      try {
+        this.emit({
+          type: 'started',
+          runId: finalizedRun.id,
+          threadId: thread.id,
+          entryId: thread.entryId,
+          messageId: created.assistantMessage.id,
+          contextMode: prepared.mode,
+        });
+        startupFailure = { kind: 'run', stage: 'provider' };
+        const apiKey = this.secretLookup.read(profile.chatApiKeyRef);
+        void this.executeRun(
+          finalizedRun,
+          thread.entryId,
+          prepared,
+          attachments,
+          question,
+          profile,
+          apiKey,
+          abortController,
+          usageHandle,
+        );
+      } catch (error) {
+        this.finishActiveRunFailure(
+          this.activeRun,
+          error,
+          startupFailure,
+          undefined,
+          false,
+        );
+        throw error;
+      }
       return {
         runId: finalizedRun.id,
         threadId: thread.id,
@@ -736,6 +931,18 @@ export class ChatService {
         assistantMessageId: created.assistantMessage.id,
         reused: false,
       };
+    } catch (error) {
+      if (persistenceStage && shouldRecordChatSystemFailure(error)) {
+        logChatSessionPersistenceFailed(this.logger, failureTerminal, {
+          operation,
+          finalFailureStage: persistenceStage,
+          durationMs: elapsedChatMilliseconds(requestStartedAt),
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+          taskRunId: sourceRun.id,
+        });
+      }
+      throw error;
     } finally {
       this.preparing = false;
     }
@@ -752,13 +959,7 @@ export class ChatService {
   }
 
   reconcileInterruptedRuns(): number {
-    const startedAt = performance.now();
-    const count = this.chatStore.reconcileInterruptedRuns();
-    logChatRecoveryCompleted(this.logger, {
-      durationMs: elapsedChatMilliseconds(startedAt),
-      count,
-    });
-    return count;
+    return this.chatStore.reconcileInterruptedRuns();
   }
 
   private interruptActiveRun(): void {
@@ -784,11 +985,6 @@ export class ChatService {
       messageId: active.run.assistantMessageId,
       error,
     });
-    logChatRunInterrupted(this.logger, {
-      taskRunId: active.run.id,
-      durationMs: elapsedChatMilliseconds(active.startedAt),
-      errorCode: CHAT_ERROR_CODES.CHAT_INTERRUPTED,
-    });
     this.activeRun = null;
   }
 
@@ -805,54 +1001,32 @@ export class ChatService {
   ): Promise<void> {
     let usage: ProviderTokenUsage | undefined;
     let output = '';
-    const providerStartedAt = performance.now();
-    let currentProviderAttempt = 1;
-    let currentProviderAttemptStartedAt = providerStartedAt;
-    let responseHeadersRecordedForAttempt = false;
-    let firstDeltaAt: number | undefined;
-    const recordProviderTiming = (
-      phase: 'response-headers' | 'first-delta',
-    ): void => {
-      if (this.activeRun?.run.id !== run.id) return;
-      if (phase === 'response-headers') {
-        if (responseHeadersRecordedForAttempt) return;
-        responseHeadersRecordedForAttempt = true;
-        logChatProviderResponseHeaders(this.logger, {
-          taskRunId: run.id,
-          durationMs: elapsedChatMilliseconds(currentProviderAttemptStartedAt),
-          attemptCount: currentProviderAttempt,
-        });
-        return;
-      }
-      if (firstDeltaAt !== undefined) return;
-      firstDeltaAt = performance.now();
-      logChatProviderFirstDelta(this.logger, {
-        taskRunId: run.id,
-        durationMs: elapsedChatMilliseconds(providerStartedAt),
-        attemptCount: currentProviderAttempt,
-      });
+    let executionFailure: ChatExecutionFailure = {
+      kind: 'run',
+      stage: 'provider',
     };
+    let runMarkedSucceeded = false;
     try {
-      const questionParts: ProviderContentPart[] = [
-        { type: 'text', text: question },
-        ...attachments.flatMap((attachment): ProviderContentPart[] => {
-          if (attachment.kind !== 'image') return [];
-          if (!this.attachmentLoader) {
-            throw new ChatError(
-              CHAT_ERROR_CODES.CHAT_IMAGE_UNSUPPORTED,
-              'Image attachment loading is unavailable.',
-              false,
-            );
-          }
-          return [{
-            type: 'image',
-            mimeType: attachment.mimeType === 'image/png'
-              ? 'image/png'
-              : 'image/jpeg',
-            bytes: this.attachmentLoader.readImage(attachment),
-          }];
-        }),
-      ];
+      const questionParts: ProviderContentPart[] = [{ type: 'text', text: question }];
+      for (const attachment of attachments) {
+        if (attachment.kind !== 'image') continue;
+        if (!this.attachmentLoader) {
+          throw new ChatError(
+            CHAT_ERROR_CODES.CHAT_IMAGE_UNSUPPORTED,
+            'Image attachment loading is unavailable.',
+            false,
+          );
+        }
+        executionFailure = { kind: 'attachment', stage: 'file-read' };
+        questionParts.push({
+          type: 'image',
+          mimeType: attachment.mimeType === 'image/png'
+            ? 'image/png'
+            : 'image/jpeg',
+          bytes: this.attachmentLoader.readImage(attachment),
+        });
+      }
+      executionFailure = { kind: 'run', stage: 'provider' };
       const messages = [
         {
           role: 'user' as const,
@@ -879,18 +1053,16 @@ export class ChatService {
         onUsage: (reported) => {
           usage = sanitizeProviderTokenUsage(reported);
         },
-        onTiming: recordProviderTiming,
       };
       for (let providerAttempt = 1; ; providerAttempt += 1) {
-        currentProviderAttempt = providerAttempt;
-        currentProviderAttemptStartedAt = performance.now();
-        responseHeadersRecordedForAttempt = false;
+        executionFailure = { kind: 'run', stage: 'provider' };
         try {
           for await (const delta of this.provider.stream(providerRequest)) {
             if (this.activeRun?.run.id !== run.id) return;
-            recordProviderTiming('first-delta');
             output += delta;
+            executionFailure = { kind: 'session', stage: 'delta-append' };
             this.chatStore.appendAssistantDelta(run.id, delta);
+            executionFailure = { kind: 'run', stage: 'event-listener' };
             this.emit({
               type: 'delta',
               runId: run.id,
@@ -899,6 +1071,7 @@ export class ChatService {
               messageId: run.assistantMessageId,
               text: delta,
             });
+            executionFailure = { kind: 'run', stage: 'provider' };
           }
           break;
         } catch (error) {
@@ -916,27 +1089,14 @@ export class ChatService {
           );
           if (!canRetry) throw error;
           usage = undefined;
-          logChatRunRetrying(this.logger, {
-            taskRunId: run.id,
-            attemptCount: providerAttempt + 1,
-            errorCode: failure.code as (
-              typeof CHAT_ERROR_CODES
-            )[keyof typeof CHAT_ERROR_CODES],
-          });
           await waitForChatProviderRetry(
             retryDelayMs,
             abortController.signal,
           );
         }
       }
-      if (firstDeltaAt !== undefined) {
-        logChatProviderCompleted(this.logger, {
-          taskRunId: run.id,
-          durationMs: elapsedChatMilliseconds(firstDeltaAt),
-          attemptCount: currentProviderAttempt,
-        });
-      }
       if (!output.trim()) {
+        executionFailure = { kind: 'run', stage: 'empty-response' };
         throw new ChatError(
           CHAT_ERROR_CODES.CHAT_EMPTY_OUTPUT,
           'The Provider returned an empty Article Chat answer.',
@@ -944,9 +1104,12 @@ export class ChatService {
         );
       }
       this.usageRecorder.complete(usageHandle, usage);
+      executionFailure = { kind: 'session', stage: 'run-finalize' };
       this.chatStore.markRunSucceeded(run.id);
+      runMarkedSucceeded = true;
       const message = this.chatStore.findMessageById(run.assistantMessageId);
       if (!message) throw new Error('Completed Chat message was not persisted.');
+      executionFailure = { kind: 'run', stage: 'event-listener' };
       this.emit({
         type: 'completed',
         runId: run.id,
@@ -955,37 +1118,114 @@ export class ChatService {
         messageId: run.assistantMessageId,
         message,
       });
-      logChatRunCompleted(this.logger, {
-        taskRunId: run.id,
-        durationMs: elapsedChatMilliseconds(
-          this.activeRun?.startedAt ?? performance.now(),
-        ),
-      });
     } catch (error) {
       if (this.activeRun?.run.id !== run.id) return;
-      const failure = toChatIpcError(error);
-      this.usageRecorder.fail(usageHandle, failure.code, usage);
-      this.chatStore.markRunFailed(run.id, failure);
-      this.emit({
-        type: 'failed',
-        runId: run.id,
-        threadId: run.threadId,
-        entryId,
-        messageId: run.assistantMessageId,
-        error: failure,
-      });
-      logChatRunFailed(this.logger, {
-        taskRunId: run.id,
-        durationMs: elapsedChatMilliseconds(
-          this.activeRun?.startedAt ?? performance.now(),
-        ),
-        errorCode: failure.code as (
-          typeof CHAT_ERROR_CODES
-        )[keyof typeof CHAT_ERROR_CODES],
-      });
+      this.finishActiveRunFailure(
+        this.activeRun,
+        error,
+        executionFailure,
+        usage,
+        runMarkedSucceeded,
+      );
     } finally {
       if (this.activeRun?.run.id === run.id) this.activeRun = null;
     }
+  }
+
+  private finishActiveRunFailure(
+    active: ActiveChatRun | null,
+    error: unknown,
+    executionFailure: ChatExecutionFailure,
+    usage: ProviderTokenUsage | undefined,
+    runMarkedSucceeded: boolean,
+  ): void {
+    if (!active) return;
+    const failure = toChatIpcError(error);
+    this.usageRecorder.fail(active.usageHandle, failure.code, usage);
+
+    let terminalFailure = executionFailure;
+    if (!runMarkedSucceeded) {
+      try {
+        this.chatStore.markRunFailed(active.run.id, failure);
+      } catch {
+        terminalFailure = { kind: 'session', stage: 'run-fail' };
+      }
+      try {
+        this.emit({
+          type: 'failed',
+          runId: active.run.id,
+          threadId: active.run.threadId,
+          entryId: active.entryId,
+          messageId: active.run.assistantMessageId,
+          error: failure,
+        });
+      } catch {
+        // The terminal record below owns observability for listener failures.
+      }
+    }
+
+    if (terminalFailure.kind === 'session') {
+      logChatSessionPersistenceFailed(
+        this.logger,
+        active.failureTerminal,
+        {
+          operation: active.operation,
+          finalFailureStage: terminalFailure.stage,
+          durationMs: elapsedChatMilliseconds(active.startedAt),
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+          taskRunId: active.run.id,
+        },
+      );
+    } else if (terminalFailure.kind === 'attachment') {
+      logChatAttachmentOperationFailed(
+        this.logger,
+        active.failureTerminal,
+        {
+          operation: active.operation,
+          finalFailureStage: terminalFailure.stage,
+          durationMs: elapsedChatMilliseconds(active.startedAt),
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.attachmentOperationFailed,
+          taskRunId: active.run.id,
+        },
+      );
+    } else {
+      this.logRunFailure(
+        active.failureTerminal,
+        active.operation,
+        active.run.id,
+        active.startedAt,
+        terminalFailure.stage,
+        error,
+      );
+    }
+    if (this.activeRun?.run.id === active.run.id) this.activeRun = null;
+  }
+
+  private logRunFailure(
+    terminal: ChatFailureTerminal,
+    operation: ChatRunLogOperation,
+    taskRunId: number,
+    startedAt: number,
+    finalFailureStage: ChatRunFailureStage,
+    error: unknown,
+  ): void {
+    const failure = toChatIpcError(error);
+    if (
+      finalFailureStage !== 'event-listener'
+      && !shouldRecordChatRunFailure(failure.code)
+    ) return;
+    logChatRunFailed(this.logger, terminal, {
+      operation,
+      finalFailureStage,
+      durationMs: elapsedChatMilliseconds(startedAt),
+      success: false,
+      errorCode: finalFailureStage === 'event-listener'
+        ? CHAT_LOG_ERROR_CODES.eventListenerFailed
+        : failure.code as (typeof CHAT_ERROR_CODES)[keyof typeof CHAT_ERROR_CODES],
+      taskRunId,
+    });
   }
 
   private requireContent(entryId: number): CleanedContent {
@@ -1084,6 +1324,34 @@ function validateSendRequest(request: ChatSendRequest): void {
 
 function hashChatInput(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+const EXPECTED_CHAT_BUSINESS_ERROR_CODES = new Set<string>([
+  CHAT_ERROR_CODES.CHAT_PROVIDER_NOT_CONFIGURED,
+  CHAT_ERROR_CODES.CHAT_CONTENT_UNAVAILABLE,
+  CHAT_ERROR_CODES.CHAT_BUSY,
+  CHAT_ERROR_CODES.CHAT_INTERRUPTED,
+  CHAT_ERROR_CODES.CHAT_ATTACHMENT_NOT_FOUND,
+  CHAT_ERROR_CODES.CHAT_ATTACHMENT_LIMIT_EXCEEDED,
+  CHAT_ERROR_CODES.CHAT_ATTACHMENT_TOO_LARGE,
+  CHAT_ERROR_CODES.CHAT_ATTACHMENT_TYPE_UNSUPPORTED,
+  CHAT_ERROR_CODES.CHAT_ATTACHMENT_PARSE_FAILED,
+  CHAT_ERROR_CODES.CHAT_IMAGE_INVALID,
+  CHAT_ERROR_CODES.CHAT_IMAGE_TOO_LARGE,
+  CHAT_ERROR_CODES.CHAT_IMAGE_DIMENSIONS_UNSAFE,
+  CHAT_ERROR_CODES.CHAT_IMAGE_UNSUPPORTED,
+  CHAT_ERROR_CODES.CHAT_PDF_ENCRYPTED,
+  CHAT_ERROR_CODES.CHAT_PDF_TEXT_UNAVAILABLE,
+  CHAT_ERROR_CODES.CHAT_UNAUTHORIZED,
+  CHAT_ERROR_CODES.CHAT_INVALID_REQUEST,
+]);
+
+function shouldRecordChatRunFailure(errorCode: string): boolean {
+  return !EXPECTED_CHAT_BUSINESS_ERROR_CODES.has(errorCode);
+}
+
+function shouldRecordChatSystemFailure(error: unknown): boolean {
+  return toChatIpcError(error).code === CHAT_ERROR_CODES.CHAT_UNKNOWN_ERROR;
 }
 
 function getChatProviderRetryDelayMs(

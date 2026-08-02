@@ -33,10 +33,12 @@ import {
   TRANSLATION_LOG_EVENTS,
 } from '../../../src/main/ai/services/TranslationLogging';
 import {
+  CHAT_LOG_ERROR_CODES,
   CHAT_LOG_EVENTS,
-  logChatContextCompleted,
-  logChatProviderFirstDelta,
+  createChatFailureTerminal,
+  logChatAttachmentOperationFailed,
   logChatRunFailed,
+  logChatSessionPersistenceFailed,
 } from '../../../src/main/ai/services/ChatLogging';
 
 const temporaryDirectories: string[] = [];
@@ -269,85 +271,112 @@ describe('DiagnosticExportService', () => {
     ]);
   });
 
-  it('exports Chat lifecycle metadata without question or attachment canaries', async () => {
+  it('exports only allow-listed Chat failure terminals', async () => {
     const logDirectory = createDirectory();
     const logger = new StructuredLogger({
       directory: logDirectory,
       now: () => GENERATED_AT,
       createSessionId: () => 'session-test-chat',
     });
-    const unsafeFailureContext = {
+    const unsafeRunFailure = {
+      operation: 'send' as const,
+      finalFailureStage: 'provider' as const,
       taskRunId: 31,
       durationMs: 48,
       errorCode: 'CHAT_NETWORK_ERROR' as const,
+      success: false as const,
       question: 'CHAT_QUESTION_CANARY',
       selection: 'CHAT_SELECTION_CANARY',
       attachmentPath: '/Users/alice/CHAT_ATTACHMENT_CANARY.png',
       imageBase64: 'CHAT_IMAGE_BYTES_CANARY',
       authorization: 'Bearer CHAT_SECRET_CANARY',
     };
-    const unsafeContextTiming = {
-      taskRunId: 31,
+    const unsafeSessionFailure = {
+      operation: 'load' as const,
+      finalFailureStage: 'session-load' as const,
       durationMs: 7,
-      success: true as const,
-      contextMode: 'full' as const,
-      inputTokens: 987,
-      question: 'CHAT_QUESTION_CANARY',
-      article: 'CHAT_ARTICLE_CANARY',
+      success: false as const,
+      errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+      sql: 'SELECT CHAT_SQL_CANARY',
+      rawError: 'SQLITE_CHAT_RAW_CANARY',
     };
-    const unsafeFirstDeltaTiming = {
-      taskRunId: 31,
+    const unsafeAttachmentFailure = {
+      operation: 'import' as const,
+      finalFailureStage: 'file-read' as const,
       durationMs: 29,
-      attemptCount: 2,
+      success: false as const,
+      errorCode: CHAT_LOG_ERROR_CODES.attachmentOperationFailed,
       attachmentPath: '/Users/alice/CHAT_ATTACHMENT_CANARY.png',
-      apiKey: 'CHAT_SECRET_CANARY',
+      fileName: 'CHAT_FILE_NAME_CANARY.png',
     };
-    logChatContextCompleted(logger, unsafeContextTiming);
-    logChatProviderFirstDelta(logger, unsafeFirstDeltaTiming);
-    logChatRunFailed(logger, unsafeFailureContext);
+    logChatRunFailed(
+      logger,
+      createChatFailureTerminal(),
+      unsafeRunFailure,
+    );
+    logChatSessionPersistenceFailed(
+      logger,
+      createChatFailureTerminal(),
+      unsafeSessionFailure,
+    );
+    logChatAttachmentOperationFailed(
+      logger,
+      createChatFailureTerminal(),
+      unsafeAttachmentFailure,
+    );
     await logger.flush();
 
+    const jsonl = readdirSync(logDirectory)
+      .filter((name) => name.endsWith('.jsonl'))
+      .map((name) => readFileSync(path.join(logDirectory, name), 'utf8'))
+      .join('\n');
     const report = await createService(logDirectory).buildReport();
     expect(report.logs.records).toEqual([
-      expect.objectContaining({
-        event: CHAT_LOG_EVENTS.contextCompleted,
-        component: 'chat.run',
-        context: {
-          taskRunId: 31,
-          durationMs: 7,
-          success: true,
-          contextMode: 'full',
-          inputTokens: 987,
-        },
-      }),
-      expect.objectContaining({
-        event: CHAT_LOG_EVENTS.providerFirstDelta,
-        component: 'chat.run',
-        context: {
-          taskRunId: 31,
-          durationMs: 29,
-          attemptCount: 2,
-        },
-      }),
       expect.objectContaining({
         event: CHAT_LOG_EVENTS.runFailed,
         component: 'chat.run',
         context: {
+          operation: 'send',
+          finalFailureStage: 'provider',
           taskRunId: 31,
           durationMs: 48,
           success: false,
           errorCode: 'CHAT_NETWORK_ERROR',
         },
       }),
+      expect.objectContaining({
+        event: CHAT_LOG_EVENTS.sessionPersistenceFailed,
+        component: 'chat.session',
+        context: {
+          operation: 'load',
+          finalFailureStage: 'session-load',
+          durationMs: 7,
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.sessionPersistenceFailed,
+        },
+      }),
+      expect.objectContaining({
+        event: CHAT_LOG_EVENTS.attachmentOperationFailed,
+        component: 'chat.attachment',
+        context: {
+          operation: 'import',
+          finalFailureStage: 'file-read',
+          durationMs: 29,
+          success: false,
+          errorCode: CHAT_LOG_ERROR_CODES.attachmentOperationFailed,
+        },
+      }),
     ]);
-    const serialized = JSON.stringify(report);
+    const serialized = `${jsonl}\n${JSON.stringify(report)}`;
     for (const canary of [
       'CHAT_QUESTION_CANARY',
-      'CHAT_ARTICLE_CANARY',
       'CHAT_SELECTION_CANARY',
       'CHAT_ATTACHMENT_CANARY',
       'CHAT_IMAGE_BYTES_CANARY',
       'CHAT_SECRET_CANARY',
+      'CHAT_SQL_CANARY',
+      'CHAT_RAW_CANARY',
+      'CHAT_FILE_NAME_CANARY',
     ]) {
       expect(serialized).not.toContain(canary);
     }

@@ -80,4 +80,33 @@ describe('UsageRecorder', () => {
       },
     );
   });
+
+  it('does not finalize one usage request twice after Chat completion', () => {
+    const store = {
+      createRunning: vi.fn(),
+      finish: vi.fn(),
+      reconcileInterruptedRunning: vi.fn(() => 0),
+    } as unknown as UsageStore;
+    const recorder = new UsageRecorder(store);
+    const handle = recorder.start({
+      providerRequestId: 5003,
+      attemptId: 'attempt-5003',
+      taskType: 'chat',
+      taskRunId: 93,
+      providerProfileId: 12,
+      model: 'test-model',
+      requestKind: 'chat-answer',
+    });
+
+    recorder.complete(handle, { inputTokens: 11, outputTokens: 7 });
+    recorder.fail(handle, 'CHAT_EVENT_LISTENER_FAILED', { inputTokens: 11 });
+
+    expect(store.finish).toHaveBeenCalledOnce();
+    expect(store.finish).toHaveBeenCalledWith(
+      5003,
+      'succeeded',
+      { inputTokens: 11, outputTokens: 7 },
+      undefined,
+    );
+  });
 });

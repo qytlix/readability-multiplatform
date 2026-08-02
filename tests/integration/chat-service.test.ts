@@ -112,7 +112,7 @@ describe('ChatService', () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
-    } satisfies ChatOperationLogger;
+    };
     const service = new ChatService(
       contentStore,
       profileStore,
@@ -158,34 +158,9 @@ describe('ChatService', () => {
       taskRunId: response.runId,
       requestKind: 'chat-answer',
     }));
-    expect(logger.info.mock.calls.map(([event]) => event)).toEqual([
-      CHAT_LOG_EVENTS.contextCompleted,
-      CHAT_LOG_EVENTS.runStarted,
-      CHAT_LOG_EVENTS.providerResponseHeaders,
-      CHAT_LOG_EVENTS.providerFirstDelta,
-      CHAT_LOG_EVENTS.providerCompleted,
-      CHAT_LOG_EVENTS.runCompleted,
-    ]);
-    expect(logger.info).toHaveBeenCalledWith(
-      CHAT_LOG_EVENTS.contextCompleted,
-      'chat.run',
-      expect.objectContaining({
-        taskRunId: response.runId,
-        durationMs: expect.any(Number),
-        success: true,
-        contextMode: 'full',
-        inputTokens: 20,
-      }),
-    );
-    expect(logger.info).toHaveBeenCalledWith(
-      CHAT_LOG_EVENTS.providerFirstDelta,
-      'chat.run',
-      expect.objectContaining({
-        taskRunId: response.runId,
-        durationMs: expect.any(Number),
-        attemptCount: 1,
-      }),
-    );
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
     expect(chatStore.findMessageById(response.assistantMessageId)).toMatchObject({
       status: 'completed',
       content: 'First answer.',
@@ -283,7 +258,7 @@ describe('ChatService', () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
-    } satisfies ChatOperationLogger;
+    };
     const harness = createChatServiceHarness(async function* (request) {
       attemptCount += 1;
       request.onTiming?.('response-headers');
@@ -321,21 +296,9 @@ describe('ChatService', () => {
       status: 'completed',
       content: 'recovered',
     });
-    expect(logger.info).toHaveBeenCalledWith(
-      CHAT_LOG_EVENTS.providerResponseHeaders,
-      'chat.run',
-      expect.objectContaining({ attemptCount: 1 }),
-    );
-    expect(logger.info).toHaveBeenCalledWith(
-      CHAT_LOG_EVENTS.providerResponseHeaders,
-      'chat.run',
-      expect.objectContaining({ attemptCount: 2 }),
-    );
-    expect(logger.info).toHaveBeenCalledWith(
-      CHAT_LOG_EVENTS.providerFirstDelta,
-      'chat.run',
-      expect.objectContaining({ attemptCount: 2 }),
-    );
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
   });
 
   it('recovers from a short Provider outage spanning multiple 503 attempts', async () => {
@@ -628,7 +591,7 @@ describe('ChatService', () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
-    } satisfies ChatOperationLogger;
+    };
     const harness = createChatServiceHarness(
       providerStream,
       async () => {
@@ -661,14 +624,242 @@ describe('ChatService', () => {
         error: { code: CHAT_ERROR_CODES.CHAT_CONTEXT_TOO_LARGE },
       },
     });
-    expect(logger.info).toHaveBeenCalledWith(
-      CHAT_LOG_EVENTS.contextCompleted,
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(logger.error).toHaveBeenCalledWith(
+      CHAT_LOG_EVENTS.runFailed,
       'chat.run',
       expect.objectContaining({
+        operation: 'send',
+        finalFailureStage: 'context-preparation',
+        taskRunId: expect.any(Number),
         success: false,
         errorCode: CHAT_ERROR_CODES.CHAT_CONTEXT_TOO_LARGE,
       }),
     );
+  });
+
+  it('records one session terminal when conversation loading fails', () => {
+    const logger = createChatLoggerDouble();
+    const harness = createChatServiceHarness(async function* () {
+      yield 'unused';
+    }, undefined, logger);
+    vi.spyOn(harness.chatStore, 'findOrCreateThread').mockImplementation(() => {
+      throw new Error('SQLITE_PRIVATE_LOAD_CANARY');
+    });
+
+    expect(() => harness.service.getState({ entryId: 1 })).toThrow();
+
+    expectSingleChatFailure(logger, CHAT_LOG_EVENTS.sessionPersistenceFailed, {
+      operation: 'load',
+      finalFailureStage: 'session-load',
+      errorCode: 'CHAT_SESSION_PERSISTENCE_FAILED',
+    });
+  });
+
+  it('records one session terminal when reserving messages and a run fails', async () => {
+    const logger = createChatLoggerDouble();
+    const harness = createChatServiceHarness(async function* () {
+      yield 'unused';
+    }, undefined, logger);
+    vi.spyOn(harness.chatStore, 'createRunWithMessages').mockImplementation(() => {
+      throw new Error('SQLITE_PRIVATE_RESERVE_CANARY');
+    });
+
+    await expect(harness.service.send({
+      entryId: 1,
+      question: 'private question canary',
+      attachmentIds: [],
+    })).rejects.toThrow();
+
+    expectSingleChatFailure(logger, CHAT_LOG_EVENTS.sessionPersistenceFailed, {
+      operation: 'send',
+      finalFailureStage: 'run-reserve',
+      errorCode: 'CHAT_SESSION_PERSISTENCE_FAILED',
+    });
+  });
+
+  it('records one session terminal when finalizing prepared context fails', async () => {
+    const logger = createChatLoggerDouble();
+    const harness = createChatServiceHarness(async function* () {
+      yield 'unused';
+    }, undefined, logger);
+    vi.spyOn(harness.chatStore, 'finalizeRunContext').mockImplementation(() => {
+      throw new Error('SQLITE_PRIVATE_CONTEXT_FINALIZE_CANARY');
+    });
+
+    await expect(harness.service.send({
+      entryId: 1,
+      question: 'private question canary',
+      attachmentIds: [],
+    })).rejects.toThrow();
+
+    expectSingleChatFailure(logger, CHAT_LOG_EVENTS.sessionPersistenceFailed, {
+      operation: 'send',
+      finalFailureStage: 'context-finalize',
+      errorCode: 'CHAT_SESSION_PERSISTENCE_FAILED',
+    });
+  });
+
+  it('records one session terminal when appending a streamed delta fails', async () => {
+    const logger = createChatLoggerDouble();
+    const harness = createChatServiceHarness(async function* () {
+      yield 'PRIVATE_DELTA_CANARY';
+    }, undefined, logger);
+    vi.spyOn(harness.chatStore, 'appendAssistantDelta').mockImplementation(() => {
+      throw new Error('SQLITE_PRIVATE_APPEND_CANARY');
+    });
+
+    await harness.service.send({
+      entryId: 1,
+      question: 'private question canary',
+      attachmentIds: [],
+    });
+    await vi.waitFor(() => expect(logger.error).toHaveBeenCalledOnce());
+
+    expectSingleChatFailure(logger, CHAT_LOG_EVENTS.sessionPersistenceFailed, {
+      operation: 'send',
+      finalFailureStage: 'delta-append',
+      errorCode: 'CHAT_SESSION_PERSISTENCE_FAILED',
+    });
+  });
+
+  it('records one session terminal when successful run finalization fails', async () => {
+    const logger = createChatLoggerDouble();
+    const harness = createChatServiceHarness(async function* () {
+      yield 'answer';
+    }, undefined, logger);
+    vi.spyOn(harness.chatStore, 'markRunSucceeded').mockImplementation(() => {
+      throw new Error('SQLITE_PRIVATE_FINALIZE_CANARY');
+    });
+
+    await harness.service.send({
+      entryId: 1,
+      question: 'private question canary',
+      attachmentIds: [],
+    });
+    await vi.waitFor(() => expect(logger.error).toHaveBeenCalledOnce());
+
+    expectSingleChatFailure(logger, CHAT_LOG_EVENTS.sessionPersistenceFailed, {
+      operation: 'send',
+      finalFailureStage: 'run-finalize',
+      errorCode: 'CHAT_SESSION_PERSISTENCE_FAILED',
+    });
+  });
+
+  it('records one session terminal when failed-state persistence fails', async () => {
+    const logger = createChatLoggerDouble();
+    const harness = createChatServiceHarness(async function* () {
+      yield 'partial';
+      throw new SummaryError(
+        SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_AUTH,
+        'RAW_PROVIDER_ERROR_CANARY',
+        false,
+      );
+    }, undefined, logger);
+    vi.spyOn(harness.chatStore, 'markRunFailed').mockImplementation(() => {
+      throw new Error('SQLITE_PRIVATE_FAIL_CANARY');
+    });
+
+    await harness.service.send({
+      entryId: 1,
+      question: 'private question canary',
+      attachmentIds: [],
+    });
+    await vi.waitFor(() => expect(logger.error).toHaveBeenCalledOnce());
+
+    expectSingleChatFailure(logger, CHAT_LOG_EVENTS.sessionPersistenceFailed, {
+      operation: 'send',
+      finalFailureStage: 'run-fail',
+      errorCode: 'CHAT_SESSION_PERSISTENCE_FAILED',
+    });
+  });
+
+  it('lets a context failure-persistence fault own the single terminal', async () => {
+    const logger = createChatLoggerDouble();
+    const harness = createChatServiceHarness(
+      async function* () {
+        yield 'unused';
+      },
+      async () => {
+        throw new ChatError(
+          CHAT_ERROR_CODES.CHAT_CONTEXT_TOO_LARGE,
+          'PRIVATE_CONTEXT_CANARY',
+          false,
+        );
+      },
+      logger,
+    );
+    vi.spyOn(harness.chatStore, 'markRunFailed').mockImplementation(() => {
+      throw new Error('SQLITE_PRIVATE_FAIL_CANARY');
+    });
+
+    await expect(harness.service.send({
+      entryId: 1,
+      question: 'private question canary',
+      attachmentIds: [],
+    })).rejects.toThrow();
+
+    expectSingleChatFailure(logger, CHAT_LOG_EVENTS.sessionPersistenceFailed, {
+      operation: 'send',
+      finalFailureStage: 'run-fail',
+      errorCode: 'CHAT_SESSION_PERSISTENCE_FAILED',
+    });
+  });
+
+  it('keeps one run terminal when a failure listener throws', async () => {
+    const logger = createChatLoggerDouble();
+    const harness = createChatServiceHarness(async function* () {
+      yield 'partial';
+      throw new SummaryError(
+        SUMMARY_ERROR_CODES.SUMMARY_PROVIDER_AUTH,
+        'RAW_PROVIDER_ERROR_CANARY',
+        false,
+      );
+    }, undefined, logger);
+    harness.service.subscribe((event) => {
+      if (event.type === 'failed') throw new Error('LISTENER_PRIVATE_CANARY');
+    });
+
+    await harness.service.send({
+      entryId: 1,
+      question: 'private question canary',
+      attachmentIds: [],
+    });
+    await vi.waitFor(() => expect(logger.error).toHaveBeenCalledOnce());
+
+    expectSingleChatFailure(logger, CHAT_LOG_EVENTS.runFailed, {
+      operation: 'send',
+      finalFailureStage: 'provider',
+      errorCode: CHAT_ERROR_CODES.CHAT_PROVIDER_AUTH,
+    });
+  });
+
+  it('does not log user stop, article change, or normal shutdown', async () => {
+    for (const interrupt of [
+      (service: ChatService, runId: number) => service.cancel({ runId }),
+      (service: ChatService) => service.handleEntryChange(2),
+      (service: ChatService) => service.abortActiveRun(),
+    ]) {
+      const logger = createChatLoggerDouble();
+      const harness = createChatServiceHarness(async function* () {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        yield 'late';
+      }, undefined, logger);
+      const response = await harness.service.send({
+        entryId: 1,
+        question: 'stop normally',
+        attachmentIds: [],
+      });
+
+      interrupt(harness.service, response.runId);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+    }
   });
 });
 
@@ -811,4 +1002,32 @@ function createChatServiceHarness(
       logger,
     ),
   };
+}
+
+function createChatLoggerDouble() {
+  return {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  };
+}
+
+function expectSingleChatFailure(
+  logger: ReturnType<typeof createChatLoggerDouble>,
+  event: (typeof CHAT_LOG_EVENTS)[keyof typeof CHAT_LOG_EVENTS],
+  context: Record<string, unknown>,
+): void {
+  expect(logger.info).not.toHaveBeenCalled();
+  expect(logger.warn).not.toHaveBeenCalled();
+  expect(logger.error).toHaveBeenCalledOnce();
+  expect(logger.error).toHaveBeenCalledWith(
+    event,
+    expect.stringMatching(/^chat\./),
+    expect.objectContaining({
+      ...context,
+      durationMs: expect.any(Number),
+      success: false,
+    }),
+  );
+  expect(JSON.stringify(logger.error.mock.calls)).not.toContain('CANARY');
 }

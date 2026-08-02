@@ -25,6 +25,17 @@ import {
   type NormalizedChatImage,
 } from './ChatImageNormalizer';
 import { ChatAttachmentStorage } from './ChatAttachmentStorage';
+import {
+  CHAT_LOG_ERROR_CODES,
+  createChatFailureTerminal,
+  elapsedChatMilliseconds,
+  logChatAttachmentOperationFailed,
+  type ChatAttachmentFailureStage,
+  type ChatAttachmentLogOperation,
+  type ChatFailureTerminal,
+  type ChatOperationLogger,
+} from './ChatLogging';
+import { performance } from 'node:perf_hooks';
 
 export const CHAT_ATTACHMENT_LIMIT = 5;
 export const CHAT_DRAFT_ATTACHMENT_TTL_MS = 24 * 60 * 60 * 1_000;
@@ -61,6 +72,7 @@ export class ChatAttachmentService {
     private readonly now: () => Date = () => new Date(),
     private readonly imageStorage?: ChatAttachmentStorage,
     private readonly imageNormalizer: ChatImageNormalizationPort = normalizeChatImage,
+    private readonly logger?: ChatOperationLogger,
   ) {}
 
   async importFiles(
@@ -82,6 +94,8 @@ export class ChatAttachmentService {
     );
     const attachments: ChatAttachment[] = [];
     const failures: ChatAttachmentImportFailure[] = [];
+    const startedAt = performance.now();
+    const terminal = createChatFailureTerminal();
 
     for (const [index, filePath] of filePaths.entries()) {
       const displayName = safeAttachmentDisplayName(filePath);
@@ -104,9 +118,15 @@ export class ChatAttachmentService {
           filePath,
         ));
       } catch (error) {
+        const reportedError = this.recordSystemFailure(
+          terminal,
+          'import',
+          startedAt,
+          error,
+        );
         failures.push({
           displayName,
-          error: toChatIpcError(error),
+          error: toChatIpcError(reportedError),
         });
       }
     }
@@ -123,13 +143,29 @@ export class ChatAttachmentService {
     attachmentId: number,
   ): ChatAttachmentRemoveResponse {
     const state = this.stateLookup.getState({ entryId });
-    const attachment = this.chatStore.findStoredAttachment(attachmentId);
-    const removed = this.chatStore.deleteDraftAttachment(
-      attachmentId,
-      state.thread.id,
-    );
-    if (removed && attachment) this.removeOrphanedImageFile(attachment);
-    return { removed };
+    const startedAt = performance.now();
+    const terminal = createChatFailureTerminal();
+    try {
+      let attachment: ReturnType<ChatStore['findStoredAttachment']>;
+      try {
+        attachment = this.chatStore.findStoredAttachment(attachmentId);
+      } catch (error) {
+        throw new ChatAttachmentSystemFailure('database-read', error);
+      }
+      let removed: boolean;
+      try {
+        removed = this.chatStore.deleteDraftAttachment(
+          attachmentId,
+          state.thread.id,
+        );
+      } catch (error) {
+        throw new ChatAttachmentSystemFailure('database-write', error);
+      }
+      if (removed && attachment) this.removeOrphanedImageFile(attachment);
+      return { removed };
+    } catch (error) {
+      throw this.recordSystemFailure(terminal, 'remove', startedAt, error);
+    }
   }
 
   importClipboardImage(
@@ -157,13 +193,19 @@ export class ChatAttachmentService {
         false,
       );
     }
-    const normalized = this.imageNormalizer(bytes);
-    const extension = normalized.mimeType === 'image/png' ? 'png' : 'jpg';
-    return this.persistImage(
-      state.thread.id,
-      `pasted-image-${normalized.contentHash.slice(0, 12)}.${extension}`,
-      normalized,
-    );
+    const startedAt = performance.now();
+    const terminal = createChatFailureTerminal();
+    try {
+      const normalized = this.imageNormalizer(bytes);
+      const extension = normalized.mimeType === 'image/png' ? 'png' : 'jpg';
+      return this.persistImage(
+        state.thread.id,
+        `pasted-image-${normalized.contentHash.slice(0, 12)}.${extension}`,
+        normalized,
+      );
+    } catch (error) {
+      throw this.recordSystemFailure(terminal, 'import', startedAt, error);
+    }
   }
 
   previewImage(
@@ -171,43 +213,76 @@ export class ChatAttachmentService {
     attachmentId: number,
   ): ChatAttachmentPreviewResponse {
     const state = this.stateLookup.getState({ entryId });
-    const attachment = this.chatStore.findStoredAttachment(attachmentId);
-    if (
-      !attachment
-      || attachment.threadId !== state.thread.id
-      || attachment.kind !== 'image'
-      || attachment.width === undefined
-      || attachment.height === undefined
-      || !this.imageStorage
-    ) {
-      throw new ChatError(
-        CHAT_ERROR_CODES.CHAT_ATTACHMENT_NOT_FOUND,
-        'The image attachment preview is unavailable.',
-        false,
-      );
+    const startedAt = performance.now();
+    const terminal = createChatFailureTerminal();
+    try {
+      let attachment: ReturnType<ChatStore['findStoredAttachment']>;
+      try {
+        attachment = this.chatStore.findStoredAttachment(attachmentId);
+      } catch (error) {
+        throw new ChatAttachmentSystemFailure('database-read', error);
+      }
+      if (
+        !attachment
+        || attachment.threadId !== state.thread.id
+        || attachment.kind !== 'image'
+        || attachment.width === undefined
+        || attachment.height === undefined
+        || !this.imageStorage
+      ) {
+        throw new ChatError(
+          CHAT_ERROR_CODES.CHAT_ATTACHMENT_NOT_FOUND,
+          'The image attachment preview is unavailable.',
+          false,
+        );
+      }
+      let imageBytes: Uint8Array;
+      try {
+        imageBytes = this.imageStorage.readImage(attachment);
+      } catch (error) {
+        throw new ChatAttachmentSystemFailure('file-read', error);
+      }
+      return {
+        mimeType: attachment.mimeType === 'image/png'
+          ? 'image/png'
+          : 'image/jpeg',
+        bytes: imageBytes,
+        width: attachment.width,
+        height: attachment.height,
+      };
+    } catch (error) {
+      throw this.recordSystemFailure(terminal, 'preview', startedAt, error);
     }
-    return {
-      mimeType: attachment.mimeType === 'image/png'
-        ? 'image/png'
-        : 'image/jpeg',
-      bytes: this.imageStorage.readImage(attachment),
-      width: attachment.width,
-      height: attachment.height,
-    };
   }
 
   cleanupExpiredDrafts(): number {
-    const expiresAt = this.now().toISOString();
-    const expired = this.chatStore.listExpiredDraftAttachments(expiresAt);
-    return expired.reduce((count, attachment) => {
-      const removed = this.chatStore.deleteExpiredDraftAttachment(
-        attachment.id,
-        expiresAt,
-      );
-      if (!removed) return count;
-      this.removeOrphanedImageFile(attachment);
-      return count + 1;
-    }, 0);
+    const startedAt = performance.now();
+    const terminal = createChatFailureTerminal();
+    try {
+      const expiresAt = this.now().toISOString();
+      let expired: ReturnType<ChatStore['listExpiredDraftAttachments']>;
+      try {
+        expired = this.chatStore.listExpiredDraftAttachments(expiresAt);
+      } catch (error) {
+        throw new ChatAttachmentSystemFailure('database-read', error);
+      }
+      return expired.reduce((count, attachment) => {
+        let removed: boolean;
+        try {
+          removed = this.chatStore.deleteExpiredDraftAttachment(
+            attachment.id,
+            expiresAt,
+          );
+        } catch (error) {
+          throw new ChatAttachmentSystemFailure('database-write', error);
+        }
+        if (!removed) return count;
+        this.removeOrphanedImageFile(attachment);
+        return count + 1;
+      }, 0);
+    } catch (error) {
+      throw this.recordSystemFailure(terminal, 'cleanup', startedAt, error);
+    }
   }
 
   startCleanupSchedule(): void {
@@ -230,7 +305,12 @@ export class ChatAttachmentService {
     displayName: string,
     filePath: string,
   ): Promise<ChatAttachment> {
-    const stats = await this.fileSystem.stat(filePath);
+    let stats: Awaited<ReturnType<ChatAttachmentFileSystem['stat']>>;
+    try {
+      stats = await this.fileSystem.stat(filePath);
+    } catch (error) {
+      throw new ChatAttachmentSystemFailure('file-read', error);
+    }
     if (!stats.isFile) {
       throw new ChatError(
         CHAT_ERROR_CODES.CHAT_ATTACHMENT_TYPE_UNSUPPORTED,
@@ -253,7 +333,12 @@ export class ChatAttachmentService {
       );
     }
 
-    const bytes = await this.fileSystem.readFile(filePath);
+    let bytes: Uint8Array;
+    try {
+      bytes = await this.fileSystem.readFile(filePath);
+    } catch (error) {
+      throw new ChatAttachmentSystemFailure('file-read', error);
+    }
     const type = detectChatAttachmentType(bytes);
     if (type === 'png' || type === 'jpeg' || type === 'webp') {
       return this.persistImage(
@@ -268,15 +353,19 @@ export class ChatAttachmentService {
     const expiresAt = new Date(
       this.now().getTime() + CHAT_DRAFT_ATTACHMENT_TTL_MS,
     ).toISOString();
-    return this.chatStore.createTextAttachment({
-      threadId,
-      displayName,
-      mimeType: extracted.mimeType,
-      byteSize: extracted.byteSize,
-      textContent: extracted.textContent,
-      contentHash: extracted.contentHash,
-      expiresAt,
-    });
+    try {
+      return this.chatStore.createTextAttachment({
+        threadId,
+        displayName,
+        mimeType: extracted.mimeType,
+        byteSize: extracted.byteSize,
+        textContent: extracted.textContent,
+        contentHash: extracted.contentHash,
+        expiresAt,
+      });
+    } catch (error) {
+      throw new ChatAttachmentSystemFailure('database-write', error);
+    }
   }
 
   private persistImage(
@@ -291,7 +380,12 @@ export class ChatAttachmentService {
         false,
       );
     }
-    const storageKey = this.imageStorage.writeImage(image);
+    let storageKey: string;
+    try {
+      storageKey = this.imageStorage.writeImage(image);
+    } catch (error) {
+      throw new ChatAttachmentSystemFailure('file-write', error);
+    }
     const expiresAt = new Date(
       this.now().getTime() + CHAT_DRAFT_ATTACHMENT_TTL_MS,
     ).toISOString();
@@ -308,25 +402,64 @@ export class ChatAttachmentService {
         expiresAt,
       });
     } catch (error) {
-      if (this.chatStore.countImageStorageReferences(storageKey) === 0) {
-        this.imageStorage.removeImage(storageKey);
+      try {
+        if (this.chatStore.countImageStorageReferences(storageKey) === 0) {
+          this.imageStorage.removeImage(storageKey);
+        }
+      } catch {
+        // Preserve the database failure as the operation's single terminal.
       }
-      throw error;
+      throw new ChatAttachmentSystemFailure('database-write', error);
     }
   }
 
   private removeOrphanedImageFile(
     attachment: { kind: 'text' | 'image'; storageKey?: string },
   ): void {
-    if (
-      attachment.kind !== 'image'
-      || !attachment.storageKey
-      || !this.imageStorage
-      || this.chatStore.countImageStorageReferences(attachment.storageKey) > 0
-    ) {
+    if (attachment.kind !== 'image' || !attachment.storageKey || !this.imageStorage) {
       return;
     }
-    this.imageStorage.removeImage(attachment.storageKey);
+    let referenceCount: number;
+    try {
+      referenceCount = this.chatStore.countImageStorageReferences(
+        attachment.storageKey,
+      );
+    } catch (error) {
+      throw new ChatAttachmentSystemFailure('database-read', error);
+    }
+    if (referenceCount > 0) return;
+    try {
+      this.imageStorage.removeImage(attachment.storageKey);
+    } catch (error) {
+      throw new ChatAttachmentSystemFailure('cleanup', error);
+    }
+  }
+
+  private recordSystemFailure(
+    terminal: ChatFailureTerminal,
+    operation: ChatAttachmentLogOperation,
+    startedAt: number,
+    error: unknown,
+  ): unknown {
+    if (!(error instanceof ChatAttachmentSystemFailure)) return error;
+    logChatAttachmentOperationFailed(this.logger, terminal, {
+      operation,
+      finalFailureStage: error.stage,
+      durationMs: elapsedChatMilliseconds(startedAt),
+      success: false,
+      errorCode: CHAT_LOG_ERROR_CODES.attachmentOperationFailed,
+    });
+    return error.originalError;
+  }
+}
+
+class ChatAttachmentSystemFailure extends Error {
+  constructor(
+    readonly stage: ChatAttachmentFailureStage,
+    readonly originalError: unknown,
+  ) {
+    super('Article Chat attachment system operation failed.');
+    this.name = 'ChatAttachmentSystemFailure';
   }
 }
 

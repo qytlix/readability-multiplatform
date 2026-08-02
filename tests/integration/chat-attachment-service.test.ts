@@ -17,6 +17,10 @@ import { ChatStore } from '../../src/main/ai/stores/ChatStore';
 import { ChatAttachmentStorage } from '../../src/main/ai/services/ChatAttachmentStorage';
 import type { NormalizedChatImage } from '../../src/main/ai/services/ChatImageNormalizer';
 import { buildTestDbWithData } from '../fixtures/databases/feed-fixture';
+import {
+  CHAT_LOG_ERROR_CODES,
+  CHAT_LOG_EVENTS,
+} from '../../src/main/ai/services/ChatLogging';
 
 const encode = (value: string): Uint8Array => new TextEncoder().encode(value);
 
@@ -47,6 +51,70 @@ describe('ChatAttachmentService', () => {
       }),
     }]);
     expect(JSON.stringify(result)).not.toContain('C:\\private');
+    expect(harness.logger.error).not.toHaveBeenCalled();
+  });
+
+  it('records one safe terminal for legal attachment system failures', async () => {
+    const harness = createHarness(new Map());
+
+    const result = await harness.service.importFiles(1, [
+      'C:\\private\\first.md',
+      'C:\\private\\second.md',
+    ]);
+
+    expect(result.failures).toHaveLength(2);
+    expect(harness.logger.error).toHaveBeenCalledOnce();
+    expect(harness.logger.error).toHaveBeenCalledWith(
+      CHAT_LOG_EVENTS.attachmentOperationFailed,
+      'chat.attachment',
+      {
+        operation: 'import',
+        finalFailureStage: 'file-read',
+        durationMs: expect.any(Number),
+        success: false,
+        errorCode: CHAT_LOG_ERROR_CODES.attachmentOperationFailed,
+      },
+    );
+    expect(JSON.stringify(harness.logger.error.mock.calls)).not.toContain('private');
+    expect(JSON.stringify(harness.logger.error.mock.calls)).not.toContain('CANARY');
+  });
+
+  it('distinguishes attachment database and cleanup failures', async () => {
+    const databaseHarness = createHarness(new Map([
+      ['notes.md', encode('valid notes')],
+    ]));
+    vi.spyOn(databaseHarness.store, 'createTextAttachment').mockImplementation(() => {
+      throw new Error('SQLITE_ATTACHMENT_CANARY');
+    });
+
+    await databaseHarness.service.importFiles(1, ['notes.md']);
+
+    expect(databaseHarness.logger.error).toHaveBeenCalledWith(
+      CHAT_LOG_EVENTS.attachmentOperationFailed,
+      'chat.attachment',
+      expect.objectContaining({
+        operation: 'import',
+        finalFailureStage: 'database-write',
+        errorCode: CHAT_LOG_ERROR_CODES.attachmentOperationFailed,
+      }),
+    );
+
+    const cleanupHarness = createHarness(new Map());
+    vi.spyOn(cleanupHarness.store, 'listExpiredDraftAttachments')
+      .mockImplementation(() => {
+        throw new Error('SQLITE_CLEANUP_CANARY');
+      });
+
+    expect(() => cleanupHarness.service.cleanupExpiredDrafts()).toThrow();
+    expect(cleanupHarness.logger.error).toHaveBeenCalledWith(
+      CHAT_LOG_EVENTS.attachmentOperationFailed,
+      'chat.attachment',
+      expect.objectContaining({
+        operation: 'cleanup',
+        finalFailureStage: 'database-read',
+        errorCode: CHAT_LOG_ERROR_CODES.attachmentOperationFailed,
+      }),
+    );
   });
 
   it('expires only unlinked draft attachments after 24 hours', async () => {
@@ -186,6 +254,7 @@ function createHarness(
   store: ChatStore;
   stateLookup: ChatAttachmentStateLookup;
   fileSystem: ChatAttachmentFileSystem;
+  logger: ReturnType<typeof createLoggerDouble>;
 } {
   const { db } = buildTestDbWithData();
   const store = new ChatStore(db);
@@ -210,11 +279,29 @@ function createHarness(
       draftAttachments: store.listDraftAttachments(thread.id),
     }),
   };
+  const logger = createLoggerDouble();
   return {
-    service: new ChatAttachmentService(stateLookup, store, fileSystem, now),
+    service: new ChatAttachmentService(
+      stateLookup,
+      store,
+      fileSystem,
+      now,
+      undefined,
+      undefined,
+      logger,
+    ),
     store,
     stateLookup,
     fileSystem,
+    logger,
+  };
+}
+
+function createLoggerDouble() {
+  return {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
   };
 }
 

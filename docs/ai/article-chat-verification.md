@@ -37,9 +37,11 @@ preserves all existing migrations and user data.
 - content-hash conversation identity;
 - success, failure, cancellation, retry, late-event isolation, and restart
   interruption;
-- chat usage records and diagnostic-export redaction.
-- privacy-safe timing records for context preparation, response headers, first
-  visible delta, post-delta generation, retries, and end-to-end completion.
+- chat usage records and diagnostic-export redaction;
+- exactly one privacy-safe failure terminal for run, session persistence, or
+  attachment system failures, with Usage ledger failures kept independent;
+- no Chat business log for success, context success, internal retry, user stop,
+  article change, or normal shutdown.
 
 ### Attachments
 
@@ -102,9 +104,9 @@ of:
 - article, question, conversation, selection, or attachment text;
 - image bytes, Base64, original absolute paths, EXIF, or clipboard source.
 
-Allowed diagnostics are limited to identifiers, Provider kind/model, context
-mode, counts, normalized dimensions and byte sizes, duration, usage, and stable
-error codes.
+Article Chat failure diagnostics are limited to controlled operations and final
+stages, optional opaque run identity, duration, `success: false`, and stable
+error codes. Usage diagnostics remain governed by their separate ledger contract.
 
 ## Status
 
