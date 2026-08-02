@@ -7,6 +7,34 @@ Shale 是一款本地优先、面向深度阅读的桌面 Feed 阅读器。它�
 使用 Summary、Translation、Tag Agent 或 Article Chat 时，则会按功能需要将内容
 发送给用户配置的模型服务。
 
+<!-- 人工补充：确认公开发布状态后，再添加 Release、Build Status 和 License 徽章。 -->
+
+## 界面预览
+
+### 基础阅读
+
+白天模式下的订阅源、文章列表与 Reader 三栏阅读界面。
+
+![Shale 白天模式下的基础阅读界面](docs/assets/screenshots/shale-reader-light.png)
+
+### 双语全文翻译
+
+在 Reader 中按段落对照显示原文与译文。
+
+![Shale 的双语全文翻译界面](docs/assets/screenshots/shale-translation-bilingual.png)
+
+### AI 摘要
+
+摘要结果直接呈现在正文阅读路径中。
+
+![Shale 的 AI 摘要界面](docs/assets/screenshots/shale-summary.png)
+
+### 黑夜阅读与批注
+
+黑夜模式下的正文阅读、文本高亮与批注卡片。
+
+![Shale 黑夜模式下的阅读与批注界面](docs/assets/screenshots/shale-reader-annotation-dark.png)
+
 ## 设计理念
 
 ### Let ideas settle into layers.
@@ -126,32 +154,28 @@ Shale 希望 AI 像页岩中的一层辅助矿物：它改善阅读过程，却�
 
 以下顺序保留课程草稿与要求中的辅助功能分类，并标明当前实现边界。
 
-1. **多语言支持 — 部分实现。** Summary 支持简体中文和英文，Translation 支持
-   上述八种目标语言；应用界面目前没有完整的 i18n 或界面语言切换，仍混合使用
-   中文和英文文案。
-2. **结构化日志与诊断、调试工具 — 已实现。** Main 进程写入带轮转和保留上限的
+1. **多语言支持** Summary 支持简体中文和英文，Translation 支持
+   上述八种目标语言。
+2. **结构化日志与诊断、调试工具** Main 进程写入带轮转和保留上限的
    本地 JSONL 结构化日志；用户可从 Settings 导出最近最多 1,000 条经过二次白名单
    清洗的诊断记录。导出由用户显式保存，不会自动上传。开发者还可参考
    [`docs/debugging-cdp.md`](docs/debugging-cdp.md) 使用 CDP 调试 Renderer。
-3. **大模型用量统计 — 已实现。** Settings 提供 7 / 30 / 90 天的请求与 Token 趋势，
+3. **大模型用量统计** Settings 提供 7 / 30 / 90 天的请求与 Token 趋势，
    并按日期、功能、Provider 配置和模型汇总 Summary、Translation 与 Article Chat
    请求。Token 只累计 Provider 明确报告的字段，不把缺失值估算为零。
-4. **笔记、文摘与内容导出 — 已实现。** Reader 可用四种颜色创建本地文本高亮并
+4. **笔记、文摘与内容导出** Reader 可用四种颜色创建本地文本高亮并
    添加、锁定或删除批注笔记；支持单篇和多选文章导出 Markdown，并按文章选择是否
    包含摘要、当前有效翻译和笔记。导出会保留高亮，远程图片会尽力下载到同目录的
    `.assets` 资源目录；下载失败时保留原 URL。
-5. **标签系统 — 部分实现。** 可手动创建标签、为文章添加或移除标签、查看标签及
+5. **标签系统** 可手动创建标签、为文章添加或移除标签、查看标签及
    文章数，并按标签浏览或使用搜索语法筛选；Tag Agent 会基于最多前 2,000 个
-   Cleaned Markdown 字符，从既有标签和新标签中提出候选，确认后写入。当前没有
-   全局重命名或删除标签的 API。
-6. **已读状态管理 — 已实现。** 已读 / 未读、阅读进度和收藏状态均保存在本地，
+   Cleaned Markdown 字符，从既有标签和新标签中提出候选，确认后写入。尚有优化空间，但是基本闭环与搜索联动已实现。
+6. **已读状态管理** 已读 / 未读、阅读进度和收藏状态均保存在本地，
    文章列表支持未读与收藏筛选，并可从阅读进度控件返回先前位置。
-7. **分享 — 尚未实现。** 当前没有文章分享流程或系统分享 API；打开原文、复制订阅
-   信息和手动分享导出的文件不等同于内置分享功能。
-8. **搜索 — 已实现。** 在本地文章标题、正文、作者和 Feed 范围内搜索，支持短查询
+7. **搜索** 在本地文章标题、正文、作者和 Feed 范围内搜索，支持短查询
    回退、引号短语、当前 / 全部订阅范围，以及 `tag`、`feed`、`title`、`content`、
    `author`、`starred`、`read` 的包含、必须和排除过滤语法。
-9. **AI Provider 与模型配置 — 已实现。** 一个活动配置可分别为 Summary、
+8. **AI Provider 与模型配置** 一个活动配置可分别为 Summary、
    Translation、Tag 和 Article Chat 选择 Provider、Base URL、模型与 API Key。
    内置 OpenAI、Anthropic、DeepSeek、Gemini、OpenRouter 和自定义
    OpenAI-compatible 预设，模型 ID 保持可编辑；未配置 AI 时，订阅、同步、清洗、
@@ -326,6 +350,8 @@ Shale 当前处于**课程项目的功能完成与人工验收阶段**。仓库�
 Advanced Translation 与 Article Chat；这些功能的最终 Windows、原生 Wayland、真实
 Provider 和主观质量验收仍由人工完成。
 
+<!-- 人工补充：确认当前版本是否已公开发布，以及是否适合面向普通用户日常使用。 -->
+
 ## 已知限制
 
 - 课程早期设计中的内嵌 Web / Dual 阅读模式尚未实现；当前原文在系统浏览器打开。
@@ -380,12 +406,50 @@ readability-multiplatform/
 4. 运行相关检查与测试；
 5. 在 Pull Request 中说明变更、验证结果和已知限制。
 
+## 团队分工
+
+### qyt（[GitHub](https://github.com/qytlix)）
+
+- SQLite 数据模型、迁移和持久化体系
+- Feed 添加、解析、同步与正文持久化
+- 网页正文抓取、提取与内容清洗
+- OPML 导入与导出
+- Markdown 内容导出
+- 文章收藏与搜索
+- 手动标签、标签筛选与 Tag Agent
+- 开发文档、Release 工作流与 Git Tag 维护
+
+### cyj（[GitHub](https://github.com/tkg2197)）
+
+- AI Provider、模型调用及相关基础设施
+- AI Summary 基本功能
+- AI Translation 基本功能
+- 翻译术语库与 AI 翻译专家
+- Article Chat
+- 文本高亮、批注与笔记
+- 正文抓取结果的结构与格式优化
+- 界面视觉实现与样式优化
+- 交互细节和其他辅助功能
+
+### 我（组长）（[GitHub](https://github.com/chaocyndrome)）
+
+- 需求拆解、进度规划、任务分配、风险管理与交付验收
+- 应用工程框架、依赖和基础 IPC 搭建
+- 早期 UI 框架、Stone to Paper 视觉体系与主题设计
+- Reader 阅读呈现与桌面阅读体验
+- 交互逻辑设计、验收和针对性优化
+- 结构化日志、诊断导出与跨模块可观测性
+- AI 用量统计
+- 重新翻译、深度翻译及翻译质量优化
+- 项目文档、Release 协调与跨平台交付维护
+
 ## 致谢
 
 感谢课程指导教师 [李骏（neolee）](https://github.com/neolee) 的指导。
 
 Shale 的早期构思参考了 [Mercury](https://github.com/neolee/mercury)。
 
-## License
-
-项目元数据当前声明为 MIT；仓库尚未包含独立的 `LICENSE` 文件。
+<!--
+人工补充：package.json 当前声明 MIT，但仓库没有 LICENSE 文件。确认许可证并添加
+LICENSE 后，再在此加入正式 License 章节和链接。
+-->
