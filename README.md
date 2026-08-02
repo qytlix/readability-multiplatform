@@ -7,7 +7,9 @@ Shale 是一款本地优先、面向深度阅读的桌面 Feed 阅读器。它�
 使用 Summary、Translation、Tag Agent 或 Article Chat 时，则会按功能需要将内容
 发送给用户配置的模型服务。
 
-<!-- 人工补充：确认公开发布状态后，再添加 Release、Build Status 和 License 徽章。 -->
+[下载最新版本（v0.5.4）](https://github.com/qytlix/readability-multiplatform/releases/latest)
+·
+[![Build](https://github.com/qytlix/readability-multiplatform/actions/workflows/build.yml/badge.svg)](https://github.com/qytlix/readability-multiplatform/actions/workflows/build.yml)
 
 ## 界面预览
 
@@ -191,6 +193,22 @@ Shale 希望 AI 像页岩中的一层辅助矿物：它改善阅读过程，却�
 - **桌面阅读体验：** 白天 / 黑夜主题、可折叠与可调宽的三栏布局、阅读进度与可选
   翻页动画，以及对当前文章的本地收藏。
 
+## 下载与安装
+
+最新公开版本为 [Shale v0.5.4](https://github.com/qytlix/readability-multiplatform/releases/tag/v0.5.4)。
+普通用户可以直接下载安装，无需安装 Node.js，也无需从源码构建。
+
+| 平台 | 架构 | 下载文件 | 格式与用途 |
+| --- | --- | --- | --- |
+| macOS | Apple Silicon（arm64） | [`Shale-darwin-arm64-0.5.4.zip`](https://github.com/qytlix/readability-multiplatform/releases/download/v0.5.4/Shale-darwin-arm64-0.5.4.zip) | 解压后使用其中的 `Shale.app`。该构建采用 ad-hoc 签名；仓库未配置 Developer ID 签名或公证。 |
+| Windows | x64 | [`Shale-0.5.4.Setup.exe`](https://github.com/qytlix/readability-multiplatform/releases/download/v0.5.4/Shale-0.5.4.Setup.exe) | Squirrel 安装程序。Release 中的 `shale-0.5.4-full.nupkg` 和 `RELEASES` 是配套发布文件，手动安装请选择 `Setup.exe`。 |
+| Debian / Ubuntu Linux | x64（amd64） | [`shale_0.5.4_amd64.deb`](https://github.com/qytlix/readability-multiplatform/releases/download/v0.5.4/shale_0.5.4_amd64.deb) | DEB 软件包。 |
+| RPM 系 Linux | x64（x86_64） | [`shale-0.5.4-1.x86_64.rpm`](https://github.com/qytlix/readability-multiplatform/releases/download/v0.5.4/shale-0.5.4-1.x86_64.rpm) | RPM 软件包。 |
+| Arch Linux | x64（x86_64） | [`shale-linux-arch-x86_64.pkg.tar.zst`](https://github.com/qytlix/readability-multiplatform/releases/download/v0.5.4/shale-linux-arch-x86_64.pkg.tar.zst) | Arch Linux 软件包。 |
+
+其他版本和完整发布说明见
+[GitHub Releases](https://github.com/qytlix/readability-multiplatform/releases)。
+
 ## 技术架构
 
 ### 技术栈
@@ -259,6 +277,8 @@ flowchart LR
   账号、云同步或遥测上传服务，但这不意味着第三方 Provider 请求留在本机。
 
 ## 快速开始
+
+本节面向希望从源码运行或参与开发的开发者；普通用户请使用上方的公开 Release。
 
 ### 环境要求
 
@@ -334,23 +354,27 @@ README-only 修改不需要运行完整应用测试。功能特有的真实 Prov
 
 ## 平台支持与验证状态
 
-| 平台 | 工程 / CI 目标 | 仓库能够证明的状态 |
-| --- | --- | --- |
-| Windows 11 x64 | Squirrel | CI 已配置；专项文档记录了 Windows x64 打包、启动进程和 Article Chat 包内容自动检查。最终 GUI 与真实 Provider 人工验收仍未完成。 |
-| Linux x64 | Debian、RPM、Arch Linux | CI 已配置；Main 会在 Wayland 环境启用原生 Ozone / Wayland 参数。原生 Wayland 的最终 GUI、真实 Provider 和打包冒烟仍需人工执行。 |
-| macOS arm64 | ZIP | CI 已配置，并检查 arm64 可执行文件、原生 SQLite 模块和 ad-hoc 签名；仓库未记录本轮完整人工 GUI 验收。 |
+| 平台 | v0.5.4 公开产物 | GitHub Actions 验证 | 人工验证记录 |
+| --- | --- | --- | --- |
+| Windows x64 | Squirrel `Setup.exe`；同时发布 `.nupkg` 和 `RELEASES` 配套文件 | `windows-2022` 的 x64 Squirrel 构建通过 | 专项文档记录了 Windows x64 打包和进程级启动检查；完整 GUI、真实 Provider 和普通用户安装验证未在仓库中完整记录。 |
+| Linux x64 | Debian `.deb`、RPM `.rpm`、Arch `.pkg.tar.zst` | `ubuntu-latest` 的 x64 DEB、RPM 和 Arch 构建通过 | 原生 Wayland 的完整 GUI、真实 Provider 和安装冒烟仍列为待人工验证。 |
+| macOS arm64 | ZIP（包含 `Shale.app`） | `macos-14` 的 arm64 ZIP 构建、可执行文件与原生 SQLite 架构检查、ad-hoc 签名验证均通过 | 仓库未记录 v0.5.4 的完整人工安装与 GUI 功能验证。 |
 
-这里的“CI 已配置”表示工作流存在相应 job，不等同于当前提交的远端 job 已通过；
-“可构建”也不等同于所有交互已经人工验证。
+Tag `v0.5.4` 对应的
+[Build 工作流](https://github.com/qytlix/readability-multiplatform/actions/runs/30758808106)
+已完成并成功通过 `check`、`test`、三平台 `make` 和 `release` job。这证明对应提交的
+自动化检查和发布构建成功，不等同于三平台所有功能均已完成人工验收。
+
+<!-- 待人工确认：补充 v0.5.4 在 macOS、Windows 和原生 Wayland Linux 上的实际安装与完整功能冒烟记录。 -->
 
 ## 项目状态
 
-Shale 当前处于**课程项目的功能完成与人工验收阶段**。仓库已经形成“订阅 → 同步 →
-清洗 → 本地阅读 → 可选 AI 辅助 → 批注 / 标签 / 导出”的自动化可验证链路，并加入
-Advanced Translation 与 Article Chat；这些功能的最终 Windows、原生 Wayland、真实
-Provider 和主观质量验收仍由人工完成。
-
-<!-- 人工补充：确认当前版本是否已公开发布，以及是否适合面向普通用户日常使用。 -->
+Shale 已提供面向普通用户的公开 Release。当前最新版本为
+[v0.5.4](https://github.com/qytlix/readability-multiplatform/releases/tag/v0.5.4)，包含
+macOS、Windows 和 Linux 构建产物，用户可以直接下载使用。项目仍在继续迭代；仓库
+已经形成“订阅 → 同步 → 清洗 → 本地阅读 → 可选 AI 辅助 → 批注 / 标签 / 导出”的
+自动化可验证链路，并加入 Advanced Translation 与 Article Chat。跨平台完整 GUI、
+真实 Provider 和主观质量等人工验收范围仍以相关验证文档为准。
 
 ## 已知限制
 
@@ -450,6 +474,6 @@ readability-multiplatform/
 Shale 的早期构思参考了 [Mercury](https://github.com/neolee/mercury)。
 
 <!--
-人工补充：package.json 当前声明 MIT，但仓库没有 LICENSE 文件。确认许可证并添加
-LICENSE 后，再在此加入正式 License 章节和链接。
+待人工确认许可证：package.json 声明 MIT，但仓库没有 LICENSE 文件，GitHub 也未识别
+明确许可证。确认并添加 LICENSE 后，再加入正式 License 章节和链接。
 -->
