@@ -1,12 +1,20 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { performance } from 'node:perf_hooks';
 import {
   FeedService,
   SyncCoordinator,
+  type EntryListOperationLogger,
   type FeedOperationLogger,
   type FeedSyncTrigger,
 } from '../feed/services';
+import {
+  elapsedEntryListMilliseconds,
+  ENTRY_LIST_LOG_ERROR_CODE,
+  logEntryListFailure,
+} from '../feed/services/EntryListLogging';
+import { EntryQueryValidationError } from '../feed/stores/EntryStore';
 import { FEED_IPC_CHANNELS } from '../../shared/contracts/feed.ipc';
-import type { ShaleError } from '../../shared/errors/feed.errors';
+import { FEED_ERROR_CODES, type ShaleError } from '../../shared/errors/feed.errors';
 import type {
   FeedAddRequest,
   FeedSyncRequest,
@@ -79,6 +87,7 @@ function failure(error: unknown): { ok: false; error: ShaleError } {
 export function registerFeedIpcHandlers(
   getMainWindow: GetMainWindow,
   services: FeedServices,
+  entryListLogger?: EntryListOperationLogger,
 ): void {
   const {
     feedService,
@@ -233,10 +242,20 @@ export function registerFeedIpcHandlers(
         return failure({ code: 'UNAUTHORIZED', message: 'Unauthorized IPC sender.' });
       }
 
+      const startedAt = performance.now();
       try {
         return success(entryStore.query(request));
       } catch (error) {
-        return failure(error);
+        if (error instanceof EntryQueryValidationError) {
+          return entryListInvalidRequest();
+        }
+        logEntryListFailure(entryListLogger, {
+          stage: 'read',
+          errorCode: ENTRY_LIST_LOG_ERROR_CODE,
+          durationMs: elapsedEntryListMilliseconds(startedAt),
+          success: false,
+        });
+        return entryListReadFailure();
       }
     },
   );
@@ -406,6 +425,28 @@ export function registerFeedIpcHandlers(
       }
     },
   );
+}
+
+function entryListInvalidRequest(): IPCResult<never> {
+  return {
+    ok: false,
+    error: {
+      code: FEED_ERROR_CODES.ENTRY_LIST_INVALID_REQUEST,
+      message: '文章列表请求无效。',
+      retryable: false,
+    },
+  };
+}
+
+function entryListReadFailure(): IPCResult<never> {
+  return {
+    ok: false,
+    error: {
+      code: FEED_ERROR_CODES.ENTRY_LIST_FAILED,
+      message: '无法读取本地文章。',
+      retryable: true,
+    },
+  };
 }
 
 /**

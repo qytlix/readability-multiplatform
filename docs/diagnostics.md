@@ -138,6 +138,17 @@ diagnoses Usage ledger writes. Successful queries and invalid requests produce
 no statistics record. Query dates, time zone, filters, Provider or model data,
 usage totals, execution identities, SQL, paths, and raw errors are excluded.
 
+`entry.list.failed` is one terminal record emitted by the `entry:list` IPC
+operation boundary only when a valid article-list request cannot be completed
+because the Store or database read fails. It contains only `stage: "read"`,
+`ENTRY_LIST_READ_FAILED`, duration, and `success: false`. Successful reads,
+empty search/filter results, empty pages, unauthorized senders, and invalid
+requests produce no article-list record. Search text and syntax, tag/feed/title
+values, filters, cursors, sort inputs, SQL, database paths, and raw errors are
+excluded. The Renderer receives `ENTRY_LIST_FAILED` with the existing safe
+article-list message, or `ENTRY_LIST_INVALID_REQUEST` for expected validation;
+neither response includes the original exception.
+
 ## Save behavior
 
 Main owns the native save dialog and the final write. Cancel returns a normal

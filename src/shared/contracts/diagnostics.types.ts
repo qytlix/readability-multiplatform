@@ -119,6 +119,19 @@ export interface DiagnosticLogRecord {
   context?: DiagnosticLogContext;
 }
 
+/** Event-specific diagnostic contract after the second export allowlist pass. */
+export interface DiagnosticEntryListFailureRecord extends DiagnosticLogRecord {
+  level: 'error';
+  event: 'entry.list.failed';
+  component: 'entry.list';
+  context: {
+    stage: 'read';
+    errorCode: 'ENTRY_LIST_READ_FAILED';
+    durationMs: number;
+    success: false;
+  };
+}
+
 export const DIAGNOSTIC_LOG_READ_ISSUE_CODES = {
   directoryUnavailable: 'LOG_DIRECTORY_UNAVAILABLE',
   fileReadFailed: 'LOG_FILE_READ_FAILED',

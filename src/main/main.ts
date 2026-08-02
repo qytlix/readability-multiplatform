@@ -23,6 +23,7 @@ import type {
 } from '../shared/contracts/diagnostics.types';
 import type {
   ContentOperationLogger,
+  EntryListOperationLogger,
   FeedOperationLogger,
   OPMLOperationLogger,
 } from './feed/services';
@@ -156,6 +157,7 @@ async function initializeApplication(): Promise<void> {
   // Preserve startup behavior if logger construction itself was unavailable;
   // no second on-disk logger is created.
   const operationLogger: FeedOperationLogger
+    & EntryListOperationLogger
     & ContentOperationLogger
     & OPMLOperationLogger
     & ProviderOperationLogger
