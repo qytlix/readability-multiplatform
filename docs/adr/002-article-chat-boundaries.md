@@ -30,10 +30,19 @@ or a secret reference.
 ### Runtime identity
 
 Every stream event carries `runId`, `threadId`, `entryId`, and `messageId`.
-Only one Chat run may be active. Article changes abort the run. Late or
-mismatched events are ignored, listeners are removed on unmount, and shutdown
-aborts the Provider request. A startup recovery step changes abandoned
-`running` rows to `interrupted`.
+Renderer creates a non-persisted `operationId` before each send, retry, or
+regenerate request. Cancellation uses that identity during context preparation
+and the durable `runId` during streaming; it never targets an `entryId`. Only
+one Chat run may be active, and one AbortController spans context preparation,
+segment analysis, answer generation, deltas, and persistence. Article changes,
+panel closure, unmount, and shutdown abort the exact active operation. Late or
+mismatched events and cleanups are ignored, listeners are removed on unmount,
+and a startup recovery step changes abandoned `running` rows to `interrupted`.
+
+Cancellation classification requires an explicit Chat/Provider interruption
+or an `AbortError` belonging to the active signal. A real fault observed before
+a later cancellation remains a failure rather than being hidden as an
+interruption.
 
 ### Content and attachment trust
 
@@ -79,4 +88,3 @@ the existing guarded external-link API.
   lifecycle and cleanup code.
 - The context strategy is more work than silent truncation but keeps omissions
   visible and preserves the article-understanding product promise.
-

@@ -160,6 +160,7 @@ describe('Article Chat message actions', () => {
     });
     expect(regenerate).toHaveBeenLastCalledWith(10);
   });
+
 });
 
 async function renderPanel(root: Root): Promise<void> {
@@ -168,7 +169,6 @@ async function renderPanel(root: Root): Promise<void> {
       entryId: 7,
       entryTitle: 'Article',
       onClose: vi.fn(),
-      onActiveRunChange: vi.fn(),
       onSelectionCleared: vi.fn(),
     }));
     await settle();

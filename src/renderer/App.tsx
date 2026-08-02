@@ -185,10 +185,6 @@ export const App = () => {
   const [articleChatOpen, setArticleChatOpen] = useState(false);
   const [articleChatSelectionRequest, setArticleChatSelectionRequest] =
     useState<ArticleChatSelectionRequest | undefined>();
-  const [activeArticleChatRun, setActiveArticleChatRun] = useState<{
-    entryId: number;
-    runId: number;
-  } | null>(null);
   const requestSequenceRef = useRef(0);
   const translationSetupNoticeResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -280,19 +276,6 @@ export const App = () => {
   useEffect(() => {
     setArticleChatSelectionRequest(undefined);
   }, [selectedEntryId]);
-
-  useEffect(() => {
-    if (
-      !activeArticleChatRun
-      || activeArticleChatRun.entryId === selectedEntryId
-    ) {
-      return;
-    }
-
-    const runId = activeArticleChatRun.runId;
-    setActiveArticleChatRun(null);
-    void window.shaleAPI.chat.cancel({ runId });
-  }, [activeArticleChatRun, selectedEntryId]);
 
   useLayoutEffect(() => {
     const previousLayout = layoutSnapshotRef.current;
@@ -971,7 +954,6 @@ useEffect(() => {
             entryId={selectedEntry.id}
             entryTitle={selectedEntry.title ?? 'Untitled'}
             onClose={closeArticleChat}
-            onActiveRunChange={setActiveArticleChatRun}
             selectionRequest={articleChatSelectionRequest}
             onSelectionCleared={clearArticleChatSelection}
           />

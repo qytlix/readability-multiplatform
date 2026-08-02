@@ -11,6 +11,7 @@ import type {
 } from '../../src/main/ai/services/ArticleContextService';
 import type { StartUsageRequestParams } from '../../src/main/ai/stores/UsageStore';
 import type {
+  UsageRecorderPort,
   UsageRequestHandle,
 } from '../../src/main/ai/services/UsageRecorder';
 import {
@@ -139,6 +140,7 @@ describe('ChatService', () => {
     });
 
     const response = await service.send({
+      operationId: 'stream-answer',
       entryId: 1,
       question: 'What is the point?',
       attachmentIds: [],
@@ -219,8 +221,14 @@ describe('ChatService', () => {
       provider,
     );
 
-    await service.send({ entryId: 1, question: 'first', attachmentIds: [] });
+    await service.send({
+      operationId: 'first-run',
+      entryId: 1,
+      question: 'first',
+      attachmentIds: [],
+    });
     await expect(service.send({
+      operationId: 'duplicate-run',
       entryId: 1,
       question: 'second',
       attachmentIds: [],
@@ -229,13 +237,15 @@ describe('ChatService', () => {
   });
 
   it('cancels an active run and ignores late Provider output', async () => {
+    const usageRecorder = createUsageRecorderDouble();
     const harness = createChatServiceHarness(async function* () {
       await new Promise((resolve) => setTimeout(resolve, 20));
       yield 'late';
-    });
+    }, undefined, undefined, usageRecorder);
     const events: string[] = [];
     harness.service.subscribe((event) => events.push(event.type));
     const response = await harness.service.send({
+      operationId: 'cancel-run',
       entryId: 1,
       question: 'cancel me',
       attachmentIds: [],
@@ -250,6 +260,94 @@ describe('ChatService', () => {
       status: 'interrupted',
       content: '',
     });
+    expect(usageRecorder.start).toHaveBeenCalledOnce();
+    expect(usageRecorder.interrupt).toHaveBeenCalledOnce();
+    expect(usageRecorder.complete).not.toHaveBeenCalled();
+    expect(usageRecorder.fail).not.toHaveBeenCalled();
+  });
+
+  it('keeps a real answer Provider failure when cancellation follows its rejection', async () => {
+    let rejectProvider: ((error: Error) => void) | undefined;
+    let markProviderStarted = (): void => undefined;
+    const providerStarted = new Promise<void>((resolve) => {
+      markProviderStarted = resolve;
+    });
+    const logger = createChatLoggerDouble();
+    const usageRecorder = createUsageRecorderDouble();
+    const harness = createChatServiceHarness(async function* () {
+      markProviderStarted();
+      await new Promise<never>((_resolve, reject) => {
+        rejectProvider = reject;
+      });
+      yield 'unreachable';
+    }, undefined, logger, usageRecorder);
+    const failed = new Promise<void>((resolve) => {
+      harness.service.subscribe((event) => {
+        if (event.type === 'failed') resolve();
+      });
+    });
+    const response = await harness.service.send({
+      operationId: 'provider-failure-before-cancel',
+      entryId: 1,
+      question: 'preserve the Provider failure',
+      attachmentIds: [],
+    });
+    await providerStarted;
+
+    rejectProvider?.(new Error('REAL_ANSWER_PROVIDER_FAILURE'));
+    harness.service.cancel({ runId: response.runId });
+    await failed;
+
+    expect(harness.chatStore.findRunById(response.runId)).toMatchObject({
+      status: 'failed',
+      error: { code: CHAT_ERROR_CODES.CHAT_UNKNOWN_ERROR },
+    });
+    expect(usageRecorder.fail).toHaveBeenCalledOnce();
+    expect(usageRecorder.interrupt).not.toHaveBeenCalled();
+    expectSingleChatFailure(logger, CHAT_LOG_EVENTS.runFailed, {
+      operation: 'send',
+      finalFailureStage: 'provider',
+      errorCode: CHAT_ERROR_CODES.CHAT_UNKNOWN_ERROR,
+    });
+  });
+
+  it('lets cancellation win when the answer Provider completes in the same turn', async () => {
+    let releaseProvider = (): void => undefined;
+    let markProviderStarted = (): void => undefined;
+    const providerStarted = new Promise<void>((resolve) => {
+      markProviderStarted = resolve;
+    });
+    const providerGate = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    const usageRecorder = createUsageRecorderDouble();
+    const harness = createChatServiceHarness(async function* () {
+      markProviderStarted();
+      await providerGate;
+      yield 'too late';
+    }, undefined, undefined, usageRecorder);
+    const events: string[] = [];
+    harness.service.subscribe((event) => events.push(event.type));
+    const response = await harness.service.send({
+      operationId: 'provider-completion-cancel-race',
+      entryId: 1,
+      question: 'cancel at completion',
+      attachmentIds: [],
+    });
+    await providerStarted;
+
+    releaseProvider();
+    harness.service.cancel({ runId: response.runId });
+    await vi.waitFor(() => {
+      expect(harness.chatStore.findRunById(response.runId)?.status)
+        .toBe('interrupted');
+    });
+
+    expect(events).toEqual(['started', 'interrupted']);
+    expect(harness.chatStore.findMessageById(response.assistantMessageId))
+      .toMatchObject({ status: 'interrupted', content: '' });
+    expect(usageRecorder.interrupt).toHaveBeenCalledOnce();
+    expect(usageRecorder.complete).not.toHaveBeenCalled();
   });
 
   it('retries one retryable Provider failure before any answer text is emitted', async () => {
@@ -283,6 +381,7 @@ describe('ChatService', () => {
     });
 
     const response = await harness.service.send({
+      operationId: 'usage-run',
       entryId: 1,
       question: 'recover transient failure',
       attachmentIds: [],
@@ -325,6 +424,7 @@ describe('ChatService', () => {
       });
 
       const response = await harness.service.send({
+        operationId: 'repeated-outage',
         entryId: 1,
         question: 'recover repeated transient failures',
         attachmentIds: [],
@@ -358,6 +458,7 @@ describe('ChatService', () => {
         ));
       });
       const response = await harness.service.send({
+        operationId: 'cancel-retry-delay',
         entryId: 1,
         question: 'cancel during retry delay',
         attachmentIds: [],
@@ -395,6 +496,7 @@ describe('ChatService', () => {
     });
 
     const response = await harness.service.send({
+      operationId: 'timeout-retry',
       entryId: 1,
       question: 'do not duplicate output',
       attachmentIds: [],
@@ -421,6 +523,7 @@ describe('ChatService', () => {
       });
     });
     const first = await harness.service.send({
+      operationId: 'retry-source',
       entryId: 1,
       question: 'retry me',
       attachmentIds: [],
@@ -433,7 +536,10 @@ describe('ChatService', () => {
         if (event.type === 'completed') resolve();
       });
     });
-    const retried = await harness.service.retry({ runId: first.runId });
+    const retried = await harness.service.retry({
+      operationId: 'retry-attempt',
+      runId: first.runId,
+    });
     await completedEvent;
 
     expect(retried).toMatchObject({ runId: first.runId, reused: true });
@@ -458,6 +564,7 @@ describe('ChatService', () => {
 
     const firstCompleted = waitForChatCompletion(harness.service);
     const first = await harness.service.send({
+      operationId: 'regenerate-source',
       entryId: 1,
       question: 'Original question',
       attachmentIds: [],
@@ -465,6 +572,7 @@ describe('ChatService', () => {
     await firstCompleted;
     const followUpCompleted = waitForChatCompletion(harness.service);
     await harness.service.send({
+      operationId: 'regenerate-follow-up',
       entryId: 1,
       question: 'Follow-up question',
       attachmentIds: [],
@@ -473,6 +581,7 @@ describe('ChatService', () => {
 
     const regeneratedCompleted = waitForChatCompletion(harness.service);
     const regenerated = await harness.service.regenerate({
+      operationId: 'regenerate-attempt',
       userMessageId: first.userMessageId,
       question: 'Edited question',
     });
@@ -500,6 +609,7 @@ describe('ChatService', () => {
       yield 'late';
     });
     const response = await harness.service.send({
+      operationId: 'article-change',
       entryId: 1,
       question: 'switch article',
       attachmentIds: [],
@@ -507,7 +617,10 @@ describe('ChatService', () => {
 
     harness.service.handleEntryChange(2);
 
-    expect(harness.chatStore.findRunById(response.runId)?.status).toBe('interrupted');
+    await vi.waitFor(() => {
+      expect(harness.chatStore.findRunById(response.runId)?.status)
+        .toBe('interrupted');
+    });
   });
 
   it('loads a persisted normalized image into a multimodal Provider request', async () => {
@@ -531,6 +644,7 @@ describe('ChatService', () => {
     });
 
     await harness.service.send({
+      operationId: 'image-chat',
       entryId: 1,
       question: 'What does this image show?',
       attachmentIds: [attachment.id],
@@ -571,6 +685,7 @@ describe('ChatService', () => {
     });
 
     await expect(harness.service.send({
+      operationId: 'image-unsupported',
       entryId: 1,
       question: 'Read this image',
       attachmentIds: [attachment.id],
@@ -605,6 +720,7 @@ describe('ChatService', () => {
     );
 
     await expect(harness.service.send({
+      operationId: 'context-failure',
       entryId: 1,
       question: 'Explain the complete article.',
       attachmentIds: [],
@@ -668,6 +784,7 @@ describe('ChatService', () => {
     });
 
     await expect(harness.service.send({
+      operationId: 'reserve-failure',
       entryId: 1,
       question: 'private question canary',
       attachmentIds: [],
@@ -690,6 +807,7 @@ describe('ChatService', () => {
     });
 
     await expect(harness.service.send({
+      operationId: 'finalize-failure',
       entryId: 1,
       question: 'private question canary',
       attachmentIds: [],
@@ -712,6 +830,7 @@ describe('ChatService', () => {
     });
 
     await harness.service.send({
+      operationId: 'delta-failure',
       entryId: 1,
       question: 'private question canary',
       attachmentIds: [],
@@ -735,6 +854,7 @@ describe('ChatService', () => {
     });
 
     await harness.service.send({
+      operationId: 'success-finalize-failure',
       entryId: 1,
       question: 'private question canary',
       attachmentIds: [],
@@ -763,6 +883,7 @@ describe('ChatService', () => {
     });
 
     await harness.service.send({
+      operationId: 'failed-state-failure',
       entryId: 1,
       question: 'private question canary',
       attachmentIds: [],
@@ -796,6 +917,7 @@ describe('ChatService', () => {
     });
 
     await expect(harness.service.send({
+      operationId: 'context-persistence-failure',
       entryId: 1,
       question: 'private question canary',
       attachmentIds: [],
@@ -823,6 +945,7 @@ describe('ChatService', () => {
     });
 
     await harness.service.send({
+      operationId: 'listener-failure',
       entryId: 1,
       question: 'private question canary',
       attachmentIds: [],
@@ -848,6 +971,7 @@ describe('ChatService', () => {
         yield 'late';
       }, undefined, logger);
       const response = await harness.service.send({
+        operationId: 'normal-interruption',
         entryId: 1,
         question: 'stop normally',
         attachmentIds: [],
@@ -856,10 +980,259 @@ describe('ChatService', () => {
       interrupt(harness.service, response.runId);
       await new Promise((resolve) => setTimeout(resolve, 30));
 
+      expect(harness.chatStore.findRunById(response.runId)?.status)
+        .toBe('interrupted');
       expect(logger.info).not.toHaveBeenCalled();
       expect(logger.warn).not.toHaveBeenCalled();
       expect(logger.error).not.toHaveBeenCalled();
     }
+  });
+
+  it('cancels send during context preparation without answer Provider usage or failure logs', async () => {
+    const preparation = createDeferredPreparation();
+    const logger = createChatLoggerDouble();
+    const usageRecorder = createUsageRecorderDouble();
+    const providerStream = vi.fn(async function* () {
+      yield 'unreachable';
+    });
+    const harness = createChatServiceHarness(
+      providerStream,
+      preparation.prepare,
+      logger,
+      usageRecorder,
+    );
+
+    const sending = harness.service.send({
+      operationId: 'prepare-send-cancel',
+      entryId: 1,
+      question: 'stop before the answer request',
+      attachmentIds: [],
+    });
+    await preparation.started;
+
+    harness.service.cancel({ operationId: 'prepare-send-cancel' });
+    preparation.release();
+
+    await expect(sending).rejects.toMatchObject({
+      code: CHAT_ERROR_CODES.CHAT_INTERRUPTED,
+    });
+    expect(providerStream).not.toHaveBeenCalled();
+    expect(usageRecorder.start).not.toHaveBeenCalled();
+    expect(harness.service.getState({ entryId: 1 })).toMatchObject({
+      state: 'interrupted',
+      run: { status: 'interrupted' },
+    });
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['article change', (service: ChatService) => service.handleEntryChange(2)],
+    ['normal shutdown', (service: ChatService) => service.abortActiveRun()],
+  ])('cancels preparation on %s before the Provider starts', async (_label, interrupt) => {
+    const preparation = createDeferredPreparation();
+    const providerStream = vi.fn(async function* () {
+      yield 'unreachable';
+    });
+    const harness = createChatServiceHarness(providerStream, preparation.prepare);
+    const sending = harness.service.send({
+      operationId: `prepare-${String(_label)}`,
+      entryId: 1,
+      question: 'lifecycle cancellation',
+      attachmentIds: [],
+    });
+    await preparation.started;
+
+    interrupt(harness.service);
+    preparation.release();
+
+    await expect(sending).rejects.toMatchObject({
+      code: CHAT_ERROR_CODES.CHAT_INTERRUPTED,
+    });
+    expect(providerStream).not.toHaveBeenCalled();
+  });
+
+  it('cancels retry and regenerate while their context is being prepared', async () => {
+    let prepareCount = 0;
+    let releasePreparation: (() => void) | undefined;
+    let preparationStarted: (() => void) | undefined;
+    const waitingForPreparation = new Promise<void>((resolve) => {
+      preparationStarted = resolve;
+    });
+    const prepare = vi.fn(async (request: PrepareArticleContextRequest) => {
+      prepareCount += 1;
+      if (prepareCount > 1) {
+        preparationStarted?.();
+        await new Promise<void>((resolve) => {
+          releasePreparation = resolve;
+        });
+        request.signal.throwIfAborted();
+      }
+      return preparedContext();
+    });
+    let providerCalls = 0;
+    const harness = createChatServiceHarness(async function* () {
+      providerCalls += 1;
+      yield `answer-${providerCalls}`;
+    }, prepare);
+    const completed = waitForChatCompletion(harness.service);
+    const first = await harness.service.send({
+      operationId: 'prepare-regenerate-source',
+      entryId: 1,
+      question: 'source question',
+      attachmentIds: [],
+    });
+    await completed;
+
+    const regenerating = harness.service.regenerate({
+      operationId: 'prepare-regenerate-cancel',
+      userMessageId: first.userMessageId,
+    });
+    await waitingForPreparation;
+    harness.service.cancel({ operationId: 'prepare-regenerate-cancel' });
+    releasePreparation?.();
+    await expect(regenerating).rejects.toMatchObject({
+      code: CHAT_ERROR_CODES.CHAT_INTERRUPTED,
+    });
+    expect(providerCalls).toBe(1);
+
+    const interruptedRun = harness.service.getState({ entryId: 1 });
+    expect(interruptedRun.state).toBe('interrupted');
+    if (interruptedRun.state !== 'interrupted') throw new Error('Expected interrupted run.');
+
+    let releaseRetry: (() => void) | undefined;
+    let retryStarted: (() => void) | undefined;
+    const waitingForRetry = new Promise<void>((resolve) => {
+      retryStarted = resolve;
+    });
+    prepare.mockImplementationOnce(async (request) => {
+      retryStarted?.();
+      await new Promise<void>((resolve) => {
+        releaseRetry = resolve;
+      });
+      request.signal.throwIfAborted();
+      return preparedContext();
+    });
+    const retrying = harness.service.retry({
+      operationId: 'prepare-retry-cancel',
+      runId: interruptedRun.run.id,
+    });
+    await waitingForRetry;
+    harness.service.cancel({ operationId: 'prepare-retry-cancel' });
+    releaseRetry?.();
+
+    await expect(retrying).rejects.toMatchObject({
+      code: CHAT_ERROR_CODES.CHAT_INTERRUPTED,
+    });
+    expect(providerCalls).toBe(1);
+  });
+
+  it('lets cancellation win the preparation-completion race without reviving the run', async () => {
+    const preparation = createDeferredPreparation();
+    const providerStream = vi.fn(async function* () {
+      yield 'unreachable';
+    });
+    const harness = createChatServiceHarness(providerStream, preparation.prepare);
+    const sending = harness.service.send({
+      operationId: 'prepare-race',
+      entryId: 1,
+      question: 'race preparation completion',
+      attachmentIds: [],
+    });
+    await preparation.started;
+
+    preparation.release();
+    harness.service.cancel({ operationId: 'prepare-race' });
+
+    await expect(sending).rejects.toMatchObject({
+      code: CHAT_ERROR_CODES.CHAT_INTERRUPTED,
+    });
+    expect(providerStream).not.toHaveBeenCalled();
+    expect(harness.service.getState({ entryId: 1 })).toMatchObject({
+      state: 'interrupted',
+    });
+  });
+
+  it('does not let a late operation cleanup cancel a newer run', async () => {
+    const firstPreparation = createDeferredPreparation();
+    const secondPreparation = createDeferredPreparation();
+    const prepare = vi.fn()
+      .mockImplementationOnce(firstPreparation.prepare)
+      .mockImplementationOnce(secondPreparation.prepare);
+    const providerStream = vi.fn(async function* () {
+      yield 'new answer';
+    });
+    const harness = createChatServiceHarness(providerStream, prepare);
+    const first = harness.service.send({
+      operationId: 'old-operation',
+      entryId: 1,
+      question: 'old request',
+      attachmentIds: [],
+    });
+    await firstPreparation.started;
+    harness.service.cancel({ operationId: 'old-operation' });
+    firstPreparation.release();
+    await expect(first).rejects.toMatchObject({
+      code: CHAT_ERROR_CODES.CHAT_INTERRUPTED,
+    });
+
+    const completed = waitForChatCompletion(harness.service);
+    const second = harness.service.send({
+      operationId: 'new-operation',
+      entryId: 1,
+      question: 'new request',
+      attachmentIds: [],
+    });
+    await secondPreparation.started;
+    expect(() => harness.service.cancel({ operationId: 'old-operation' }))
+      .toThrowError(ChatError);
+    secondPreparation.release();
+    await second;
+    await completed;
+
+    expect(providerStream).toHaveBeenCalledOnce();
+    expect(harness.service.getState({ entryId: 1 })).toMatchObject({ state: 'idle' });
+  });
+
+  it('keeps a real preparation failure when cancellation arrives after rejection', async () => {
+    let rejectPreparation: ((error: Error) => void) | undefined;
+    let markStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const logger = createChatLoggerDouble();
+    const harness = createChatServiceHarness(
+      async function* () {
+        yield 'unreachable';
+      },
+      async () => {
+        markStarted?.();
+        return await new Promise<PreparedArticleContext>((_resolve, reject) => {
+          rejectPreparation = reject;
+        });
+      },
+      logger,
+    );
+    const sending = harness.service.send({
+      operationId: 'real-failure-before-cancel',
+      entryId: 1,
+      question: 'preserve the real failure',
+      attachmentIds: [],
+    });
+    await started;
+
+    rejectPreparation?.(new Error('PRIVATE_CONTEXT_FAILURE'));
+    harness.service.cancel({ operationId: 'real-failure-before-cancel' });
+
+    await expect(sending).rejects.toThrow('PRIVATE_CONTEXT_FAILURE');
+    expect(harness.service.getState({ entryId: 1 })).toMatchObject({
+      state: 'failed',
+      run: { error: { code: CHAT_ERROR_CODES.CHAT_UNKNOWN_ERROR } },
+    });
+    expectSingleChatFailure(logger, CHAT_LOG_EVENTS.runFailed, {
+      operation: 'send',
+      finalFailureStage: 'context-preparation',
+      errorCode: CHAT_ERROR_CODES.CHAT_UNKNOWN_ERROR,
+    });
   });
 });
 
@@ -964,6 +1337,7 @@ function createChatServiceHarness(
     relatedSegmentIds: [],
   }),
   logger?: ChatOperationLogger,
+  usageRecorder?: UsageRecorderPort,
 ): {
   service: ChatService;
   chatStore: ChatStore;
@@ -998,7 +1372,7 @@ function createChatServiceHarness(
       { prepare },
       provider,
       undefined,
-      undefined,
+      usageRecorder,
       logger,
     ),
   };
@@ -1009,6 +1383,61 @@ function createChatLoggerDouble() {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
+  };
+}
+
+function preparedContext(): PreparedArticleContext {
+  return {
+    mode: 'full',
+    systemInstruction: 'system',
+    articleReference: 'article',
+    historyReference: '',
+    estimatedPromptTokens: 2,
+    cacheHit: false,
+    relatedSegmentIds: [],
+  };
+}
+
+function createDeferredPreparation(): {
+  prepare: (request: PrepareArticleContextRequest) => Promise<PreparedArticleContext>;
+  started: Promise<void>;
+  release: () => void;
+} {
+  let markStarted = (): void => undefined;
+  let releasePreparation = (): void => undefined;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const preparationGate = new Promise<void>((resolve) => {
+    releasePreparation = resolve;
+  });
+
+  return {
+    started,
+    release: releasePreparation,
+    prepare: async (request) => {
+      markStarted();
+      await preparationGate;
+      request.signal.throwIfAborted();
+      return preparedContext();
+    },
+  };
+}
+
+function createUsageRecorderDouble() {
+  return {
+    start: vi.fn((params: StartUsageRequestParams): UsageRequestHandle => ({
+      providerRequestId: params.providerRequestId,
+      attemptId: params.attemptId,
+      taskRunId: params.taskRunId,
+      persisted: true,
+      settled: false,
+    })),
+    complete: vi.fn<UsageRecorderPort['complete']>(),
+    fail: vi.fn<UsageRecorderPort['fail']>(),
+    interrupt: vi.fn<UsageRecorderPort['interrupt']>(),
+    reconcileInterruptedRunning: vi.fn(() => 0),
+    listByAttempt: vi.fn(() => []),
   };
 }
 

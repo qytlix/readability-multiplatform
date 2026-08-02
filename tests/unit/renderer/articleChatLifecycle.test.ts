@@ -14,6 +14,7 @@ import {
   type ArticleChatSession,
 } from '../../../src/renderer/features/chat/useArticleChatSession';
 import { ChatImageAttachmentPreview } from '../../../src/renderer/features/chat/ChatImageAttachmentPreview';
+import { ArticleChatPanel } from '../../../src/renderer/features/chat/ArticleChatPanel';
 
 const reactActEnvironment = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean;
@@ -110,13 +111,15 @@ const providerProfile: ProviderProfile = {
 };
 
 const SessionHarness = ({
+  entryId = 7,
   children,
   onSession,
 }: {
+  entryId?: number;
   children?: ReactNode;
   onSession?: (session: ArticleChatSession) => void;
 }) => {
-  const session = useArticleChatSession(7, true);
+  const session = useArticleChatSession(entryId, true);
   onSession?.(session);
   return children ?? null;
 };
@@ -135,8 +138,9 @@ describe('Article Chat renderer lifecycle', () => {
         chat: {
           get: vi.fn().mockResolvedValue({ ok: true, data: idleState }),
           send: vi.fn(),
-          cancel: vi.fn(),
+          cancel: vi.fn().mockResolvedValue({ ok: true, data: undefined }),
           retry: vi.fn(),
+          regenerate: vi.fn(),
           previewAttachment: vi.fn().mockResolvedValue({
             ok: true,
             data: {
@@ -212,6 +216,275 @@ describe('Article Chat renderer lifecycle', () => {
     expect(session?.actionErrorMessage).toBe(
       'The required context does not fit.',
     );
+  });
+
+  it('stops context preparation with the exact Renderer operation identity', async () => {
+    let resolveSend: ((
+      value: Awaited<ReturnType<typeof window.shaleAPI.chat.send>>,
+    ) => void) | undefined;
+    vi.mocked(window.shaleAPI.chat.send).mockImplementation(() => (
+      new Promise((resolve) => {
+        resolveSend = resolve;
+      })
+    ));
+    let session: ArticleChatSession | undefined;
+    await act(async () => {
+      root.render(createElement(SessionHarness, {
+        onSession: (current) => {
+          session = current;
+        },
+      }));
+      await settle();
+    });
+
+    let sending: Promise<boolean> | undefined;
+    await act(async () => {
+      sending = session?.sendQuestion('Explain the full article.');
+      await settle();
+    });
+    const sendRequest = vi.mocked(window.shaleAPI.chat.send).mock.calls[0]?.[0];
+    expect(sendRequest?.operationId).toEqual(expect.any(String));
+    expect(session?.actionStatus).toBe('sending');
+
+    await act(async () => {
+      await session?.stop();
+      await settle();
+    });
+    expect(window.shaleAPI.chat.cancel).toHaveBeenCalledWith({
+      operationId: sendRequest?.operationId,
+    });
+
+    await act(async () => {
+      resolveSend?.({
+        ok: false,
+        error: {
+          code: 'CHAT_INTERRUPTED',
+          message: 'Stopped.',
+          retryable: true,
+        },
+      });
+      await sending;
+      await settle();
+    });
+    expect(session?.actionErrorMessage).toBe('');
+  });
+
+  it('shows and uses the existing stop control during context preparation', async () => {
+    let resolveSend: ((
+      value: Awaited<ReturnType<typeof window.shaleAPI.chat.send>>,
+    ) => void) | undefined;
+    vi.mocked(window.shaleAPI.chat.send).mockImplementation(() => (
+      new Promise((resolve) => {
+        resolveSend = resolve;
+      })
+    ));
+    await act(async () => {
+      root.render(createElement(ArticleChatPanel, {
+        entryId: 7,
+        entryTitle: 'Article',
+        onClose: vi.fn(),
+        onSelectionCleared: vi.fn(),
+      }));
+      await settle();
+    });
+    const textarea = container.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="向文章提问"]',
+    );
+    act(() => setTextareaValue(textarea, 'Explain the full article.'));
+    const sendButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="发送问题"]',
+    );
+
+    await act(async () => {
+      sendButton?.click();
+      await settle();
+    });
+    const operationId = vi.mocked(window.shaleAPI.chat.send)
+      .mock.calls[0]?.[0].operationId;
+    const stopButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="停止生成"]',
+    );
+    expect(stopButton?.disabled).toBe(false);
+
+    await act(async () => {
+      stopButton?.click();
+      await settle();
+    });
+    expect(window.shaleAPI.chat.cancel).toHaveBeenCalledWith({ operationId });
+
+    await act(async () => {
+      resolveSend?.({
+        ok: false,
+        error: {
+          code: 'CHAT_INTERRUPTED',
+          message: 'Stopped.',
+          retryable: true,
+        },
+      });
+      await settle();
+    });
+  });
+
+  it('cancels only the captured operation when the panel unmounts', async () => {
+    let resolveSend: ((
+      value: Awaited<ReturnType<typeof window.shaleAPI.chat.send>>,
+    ) => void) | undefined;
+    vi.mocked(window.shaleAPI.chat.send).mockImplementation(() => (
+      new Promise((resolve) => {
+        resolveSend = resolve;
+      })
+    ));
+    let session: ArticleChatSession | undefined;
+    await act(async () => {
+      root.render(createElement(SessionHarness, {
+        onSession: (current) => {
+          session = current;
+        },
+      }));
+      await settle();
+    });
+    let sending: Promise<boolean> | undefined;
+    await act(async () => {
+      sending = session?.sendQuestion('Explain the full article.');
+      await settle();
+    });
+    const operationId = vi.mocked(window.shaleAPI.chat.send)
+      .mock.calls[0]?.[0].operationId;
+
+    act(() => root.unmount());
+
+    expect(window.shaleAPI.chat.cancel).toHaveBeenCalledWith({ operationId });
+    expect(window.shaleAPI.chat.cancel).not.toHaveBeenCalledWith({ entryId: 7 });
+    root = createRoot(container);
+    await act(async () => {
+      resolveSend?.({
+        ok: false,
+        error: {
+          code: 'CHAT_INTERRUPTED',
+          message: 'Stopped.',
+          retryable: true,
+        },
+      });
+      await sending;
+      await settle();
+    });
+  });
+
+  it('creates a fresh non-persisted operation identity for retry and regenerate', async () => {
+    vi.mocked(window.shaleAPI.chat.get).mockResolvedValue({
+      ok: true,
+      data: failedState,
+    });
+    const interrupted = {
+      ok: false as const,
+      error: {
+        code: 'CHAT_INTERRUPTED',
+        message: 'Stopped.',
+        retryable: true,
+      },
+    };
+    vi.mocked(window.shaleAPI.chat.retry).mockResolvedValue(interrupted);
+    vi.mocked(window.shaleAPI.chat.regenerate).mockResolvedValue(interrupted);
+    let session: ArticleChatSession | undefined;
+    await act(async () => {
+      root.render(createElement(SessionHarness, {
+        onSession: (current) => {
+          session = current;
+        },
+      }));
+      await settle();
+    });
+
+    await act(async () => {
+      await session?.retry();
+      await session?.regenerate(10);
+      await settle();
+    });
+
+    const retryOperationId = vi.mocked(window.shaleAPI.chat.retry)
+      .mock.calls[0]?.[0].operationId;
+    const regenerateOperationId = vi.mocked(window.shaleAPI.chat.regenerate)
+      .mock.calls[0]?.[0].operationId;
+    expect(retryOperationId).toEqual(expect.any(String));
+    expect(regenerateOperationId).toEqual(expect.any(String));
+    expect(regenerateOperationId).not.toBe(retryOperationId);
+    expect(failedState.run).not.toHaveProperty('operationId');
+  });
+
+  it('does not let a late old response clear a newer article operation', async () => {
+    const sendResolvers: Array<(
+      value: Awaited<ReturnType<typeof window.shaleAPI.chat.send>>,
+    ) => void> = [];
+    vi.mocked(window.shaleAPI.chat.send).mockImplementation(() => (
+      new Promise((resolve) => {
+        sendResolvers.push(resolve);
+      })
+    ));
+    let session: ArticleChatSession | undefined;
+    const renderEntry = async (entryId: number): Promise<void> => {
+      await act(async () => {
+        root.render(createElement(SessionHarness, {
+          entryId,
+          onSession: (current) => {
+            session = current;
+          },
+        }));
+        await settle();
+      });
+    };
+    await renderEntry(7);
+    let firstSending: Promise<boolean> | undefined;
+    await act(async () => {
+      firstSending = session?.sendQuestion('old article question');
+      await settle();
+    });
+    const oldOperationId = vi.mocked(window.shaleAPI.chat.send)
+      .mock.calls[0]?.[0].operationId;
+
+    await renderEntry(8);
+    expect(window.shaleAPI.chat.cancel).toHaveBeenCalledWith({
+      operationId: oldOperationId,
+    });
+    let secondSending: Promise<boolean> | undefined;
+    await act(async () => {
+      secondSending = session?.sendQuestion('new article question');
+      await settle();
+    });
+    const newOperationId = vi.mocked(window.shaleAPI.chat.send)
+      .mock.calls[1]?.[0].operationId;
+
+    await act(async () => {
+      sendResolvers[0]?.({
+        ok: true,
+        data: {
+          runId: 41,
+          threadId: 3,
+          userMessageId: 10,
+          assistantMessageId: 11,
+          reused: false,
+        },
+      });
+      await firstSending;
+      await settle();
+    });
+
+    expect(session?.actionStatus).toBe('sending');
+    expect(window.shaleAPI.chat.cancel).not.toHaveBeenCalledWith({
+      operationId: newOperationId,
+    });
+
+    await act(async () => {
+      sendResolvers[1]?.({
+        ok: false,
+        error: {
+          code: 'CHAT_INTERRUPTED',
+          message: 'Stopped.',
+          retryable: true,
+        },
+      });
+      await secondSending;
+      await settle();
+    });
   });
 
   it('persists a chat model switch and updates the active profile', async () => {
@@ -351,4 +624,17 @@ async function settle(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
+}
+
+function setTextareaValue(
+  textarea: HTMLTextAreaElement | null,
+  value: string,
+): void {
+  if (!textarea) throw new Error('Expected the Article Chat textarea.');
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    'value',
+  )?.set;
+  setter?.call(textarea, value);
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }

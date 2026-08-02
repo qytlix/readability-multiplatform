@@ -60,7 +60,9 @@ The chat panel contains:
 
 `Enter` sends, `Shift+Enter` inserts a line break, and IME composition never
 triggers send. A running generation prevents a second send. Leaving the
-article cancels its active run; merely closing the panel does not.
+article, closing the panel, or unmounting its session cancels only the captured
+send/retry/regenerate operation. The existing stop control is available during
+context preparation as well as answer streaming.
 
 ## Scope limits
 
@@ -77,4 +79,3 @@ If a Provider reports a retryable streaming failure before any answer text is
 emitted, Article Chat retries the Provider request once. It never retries after
 visible output has started, so persisted and rendered answer text cannot be
 duplicated.
-

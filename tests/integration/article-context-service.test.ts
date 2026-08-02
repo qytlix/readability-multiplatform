@@ -46,6 +46,7 @@ describe('ArticleContextService', () => {
       { analyze },
     );
     const prepared = await service.prepare({
+      signal: new AbortController().signal,
       source: {
         entryId: 1,
         title: 'Article',
@@ -75,6 +76,7 @@ describe('ArticleContextService', () => {
       { analyze },
     );
     const request = {
+      signal: new AbortController().signal,
       source: {
         entryId: 1,
         title: 'Very long article',
@@ -105,11 +107,63 @@ describe('ArticleContextService', () => {
     expect(analyze).toHaveBeenCalledTimes(segments.length);
     expect(analyze).toHaveBeenCalledWith(
       segments[0],
+      request.signal,
       request.analysisUsage,
     );
     expect(first.relatedSegmentIds).toEqual(['s-1', 's-2', 's-3', 's-4']);
     expect(first.articleReference).toContain('Analysis for s-4');
     expect(first.articleReference).toContain('Solar battery evidence and data.');
+  });
+
+  it('forwards cancellation through segment analysis and skips the article-map cache write', async () => {
+    const { db } = buildTestDbWithData();
+    const cacheStore = new ArticleContextCacheStore(db);
+    const save = vi.spyOn(cacheStore, 'save');
+    const controller = new AbortController();
+    let markStarted = (): void => undefined;
+    let releaseAnalysis = (): void => undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const analysisGate = new Promise<void>((resolve) => {
+      releaseAnalysis = resolve;
+    });
+    const analyze = vi.fn(async (
+      _segment: ContentSegment,
+      signal: AbortSignal,
+    ) => {
+      markStarted();
+      await analysisGate;
+      signal.throwIfAborted();
+      return 'late analysis';
+    });
+    const service = new ArticleContextService(cacheStore, { analyze });
+    const preparing = service.prepare({
+      signal: controller.signal,
+      source: {
+        entryId: 1,
+        title: 'Very long article',
+        markdown: 'Long article '.repeat(5_000),
+        sourceContentHash: 'hash-cancelled-map',
+        segments,
+      },
+      history: [],
+      question: 'What evidence is given?',
+      textAttachments: [],
+      analysisModelFamily: 'mock:model',
+      contextWindowTokens: 2_000,
+      responseReserveTokens: 500,
+    });
+    await started;
+    const savesBeforeCancellation = save.mock.calls.length;
+
+    controller.abort();
+    releaseAnalysis();
+
+    await expect(preparing).rejects.toMatchObject({ name: 'AbortError' });
+    expect(analyze).toHaveBeenCalledOnce();
+    expect(analyze).toHaveBeenCalledWith(segments[0], controller.signal, undefined);
+    expect(save).toHaveBeenCalledTimes(savesBeforeCancellation);
   });
 
   it('selects matching segments and adjacent original context deterministically', () => {

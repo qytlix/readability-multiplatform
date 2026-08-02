@@ -11,7 +11,11 @@ import {
   createSyncCoordinator,
   registerFeedIpcHandlers,
 } from './ipc/feed.handler';
-import { SyncScheduler, type FeedOperationLogger } from './feed/services';
+import {
+  SyncScheduler,
+  type EntryListOperationLogger,
+  type FeedOperationLogger,
+} from './feed/services';
 import { registerExternalIpcHandlers } from './ipc/external.handler';
 import {
   registerSummaryIpcHandlers,
@@ -61,6 +65,7 @@ export const isAuthorizedSender = (
 export function registerIpcHandlers(
   getMainWindow: GetMainWindow,
   feedLogger: FeedOperationLogger
+    & EntryListOperationLogger
     & MarkdownExportOperationLogger
     & AnnotationOperationLogger
     & UsageStatisticsOperationLogger,
@@ -148,7 +153,7 @@ export function registerIpcHandlers(
     });
     feedServices.syncCoordinator = syncCoordinator;
     feedServices.syncScheduler = syncScheduler;
-    registerFeedIpcHandlers(getMainWindow, feedServices);
+    registerFeedIpcHandlers(getMainWindow, feedServices, feedLogger);
   }
 
   registerExternalIpcHandlers(getMainWindow);

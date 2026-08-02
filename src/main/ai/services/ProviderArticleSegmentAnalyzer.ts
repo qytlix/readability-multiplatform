@@ -39,8 +39,10 @@ export class ProviderArticleSegmentAnalyzer implements ArticleSegmentAnalyzer {
 
   async analyze(
     segment: ContentSegment,
+    signal: AbortSignal,
     usageScope?: ArticleSegmentAnalysisUsage,
   ): Promise<string> {
+    signal.throwIfAborted();
     const profile = this.profileStore.findActiveWithSecret();
     if (!profile || !profile.chatApiKeyRef) {
       throw new ChatError(
@@ -49,18 +51,21 @@ export class ProviderArticleSegmentAnalyzer implements ArticleSegmentAnalyzer {
         false,
       );
     }
-    const abortController = new AbortController();
-    const usageHandle = usageScope
-      ? this.startUsage(usageScope)
-      : undefined;
+    let usageHandle: UsageRequestHandle | undefined;
     let usage: ProviderTokenUsage | undefined;
     let analysis = '';
     try {
+      signal.throwIfAborted();
+      const apiKey = this.secretStore.read(profile.chatApiKeyRef);
+      signal.throwIfAborted();
+      usageHandle = usageScope
+        ? this.startUsage(usageScope)
+        : undefined;
       for await (const delta of this.provider.stream({
         providerKind: profile.chatProviderKind,
         baseUrl: profile.chatBaseUrl,
         model: profile.chatModel,
-        apiKey: this.secretStore.read(profile.chatApiKeyRef),
+        apiKey,
         prompt: '',
         systemInstruction: SEGMENT_ANALYSIS_SYSTEM_INSTRUCTION,
         messages: [{
@@ -74,7 +79,7 @@ export class ProviderArticleSegmentAnalyzer implements ArticleSegmentAnalyzer {
             ].join('\n'),
           }],
         }],
-        signal: abortController.signal,
+        signal,
         requestUsage: Boolean(usageHandle),
         ...(usageHandle ? {
           onUsage: (reported: ProviderTokenUsage) => {
@@ -82,8 +87,10 @@ export class ProviderArticleSegmentAnalyzer implements ArticleSegmentAnalyzer {
           },
         } : {}),
       })) {
+        signal.throwIfAborted();
         analysis += delta;
       }
+      signal.throwIfAborted();
       if (!analysis.trim()) {
         throw new ChatError(
           CHAT_ERROR_CODES.CHAT_EMPTY_OUTPUT,
@@ -95,11 +102,16 @@ export class ProviderArticleSegmentAnalyzer implements ArticleSegmentAnalyzer {
       return analysis.trim();
     } catch (error) {
       if (usageHandle) {
-        this.usageRecorder.fail(
-          usageHandle,
-          toChatIpcError(error).code,
-          usage,
-        );
+        const failure = toChatIpcError(error);
+        if (isProviderAnalysisInterruption(error, signal, failure.code)) {
+          this.usageRecorder.interrupt(
+            usageHandle,
+            usage,
+            CHAT_ERROR_CODES.CHAT_INTERRUPTED,
+          );
+        } else {
+          this.usageRecorder.fail(usageHandle, failure.code, usage);
+        }
       }
       throw error;
     }
@@ -118,4 +130,15 @@ export class ProviderArticleSegmentAnalyzer implements ArticleSegmentAnalyzer {
       requestKind: 'chat-segment-analysis',
     });
   }
+}
+
+function isProviderAnalysisInterruption(
+  error: unknown,
+  signal: AbortSignal,
+  errorCode: string,
+): boolean {
+  if (errorCode === CHAT_ERROR_CODES.CHAT_INTERRUPTED) return true;
+  if (!signal.aborted || !(error instanceof Error)) return false;
+  const candidate = error as Error & { code?: unknown };
+  return candidate.name === 'AbortError' || candidate.code === 'ABORT_ERR';
 }

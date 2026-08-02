@@ -17,9 +17,6 @@ interface ArticleChatPanelProps {
   entryId: number;
   entryTitle: string;
   onClose: () => void;
-  onActiveRunChange: (
-    activeRun: { entryId: number; runId: number } | null,
-  ) => void;
   selectionRequest?: ArticleChatSelectionRequest;
   onSelectionCleared: (requestId: number) => void;
 }
@@ -28,7 +25,6 @@ export const ArticleChatPanel = ({
   entryId,
   entryTitle,
   onClose,
-  onActiveRunChange,
   selectionRequest,
   onSelectionCleared,
 }: ArticleChatPanelProps) => {
@@ -45,17 +41,11 @@ export const ArticleChatPanel = ({
   );
   const [pendingSelection, setPendingSelection] =
     useState<ArticleChatSelectionRequest | null>(selectionRequest ?? null);
-  const running = session.state?.state === 'running';
-  const activeRunId = session.state?.state === 'running'
-    ? session.state.run.id
-    : null;
-  const busy = session.actionStatus !== 'idle';
-
-  useEffect(() => {
-    onActiveRunChange(activeRunId !== null
-      ? { entryId, runId: activeRunId }
-      : null);
-  }, [activeRunId, entryId, onActiveRunChange]);
+  const preparing = session.actionStatus === 'sending'
+    || session.actionStatus === 'retrying'
+    || session.actionStatus === 'regenerating';
+  const running = session.state?.state === 'running' || preparing;
+  const busy = session.actionStatus !== 'idle' && !preparing;
 
   useEffect(() => {
     if (selectionRequest?.selection.entryId !== entryId) return;

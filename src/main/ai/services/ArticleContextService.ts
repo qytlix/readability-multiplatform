@@ -39,6 +39,7 @@ export interface ArticleContextSource {
 export interface ArticleSegmentAnalyzer {
   analyze(
     segment: ContentSegment,
+    signal: AbortSignal,
     usage?: ArticleSegmentAnalysisUsage,
   ): Promise<string>;
 }
@@ -51,6 +52,7 @@ export interface ArticleSegmentAnalysisUsage {
 }
 
 export interface PrepareArticleContextRequest {
+  signal: AbortSignal;
   source: ArticleContextSource;
   history: readonly ChatMessage[];
   question: string;
@@ -81,6 +83,7 @@ export class ArticleContextService {
   async prepare(
     request: PrepareArticleContextRequest,
   ): Promise<PreparedArticleContext> {
+    request.signal.throwIfAborted();
     const identity: ArticleContextCacheIdentity = {
       entryId: request.source.entryId,
       sourceContentHash: request.source.sourceContentHash,
@@ -97,6 +100,7 @@ export class ArticleContextService {
         contentHash: request.source.sourceContentHash,
       });
     if (!cached) {
+      request.signal.throwIfAborted();
       this.cacheStore.save({
         ...identity,
         formattedContext: fullArticleContext,
@@ -120,6 +124,7 @@ export class ArticleContextService {
     });
 
     if (decision.mode !== 'article-map') {
+      request.signal.throwIfAborted();
       return {
         mode: decision.mode,
         systemInstruction: ARTICLE_CHAT_SYSTEM_INSTRUCTION,
@@ -140,10 +145,13 @@ export class ArticleContextService {
     const analyses = cached?.segmentAnalyses
       ?? await this.analyzeAllSegments(
         request.source.segments,
+        request.signal,
         request.analysisUsage,
       );
+    request.signal.throwIfAborted();
     const articleMap = cached?.articleMap ?? formatArticleMap(analyses);
     if (!cached?.articleMap || !cached.segmentAnalyses) {
+      request.signal.throwIfAborted();
       this.cacheStore.save({
         ...identity,
         formattedContext: fullArticleContext,
@@ -177,6 +185,7 @@ export class ArticleContextService {
         currentQuestion: request.question,
       },
     );
+    request.signal.throwIfAborted();
     return {
       mode: 'article-map',
       systemInstruction: ARTICLE_CHAT_SYSTEM_INSTRUCTION,
@@ -190,16 +199,21 @@ export class ArticleContextService {
 
   private async analyzeAllSegments(
     segments: readonly ContentSegment[],
+    signal: AbortSignal,
     usage?: ArticleSegmentAnalysisUsage,
   ): Promise<ArticleSegmentAnalysis[]> {
     const analyses: ArticleSegmentAnalysis[] = [];
     for (const segment of segments) {
+      signal.throwIfAborted();
+      const analysis = await this.segmentAnalyzer.analyze(segment, signal, usage);
+      signal.throwIfAborted();
       analyses.push({
         segmentId: segment.id,
         orderIndex: segment.orderIndex,
-        analysis: await this.segmentAnalyzer.analyze(segment, usage),
+        analysis,
       });
     }
+    signal.throwIfAborted();
     return analyses;
   }
 }

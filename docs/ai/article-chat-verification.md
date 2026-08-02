@@ -37,6 +37,13 @@ preserves all existing migrations and user data.
 - content-hash conversation identity;
 - success, failure, cancellation, retry, late-event isolation, and restart
   interruption;
+- send, retry, and regenerate cancellation during context preparation;
+- article-switch, panel-close/unmount, and normal-shutdown cancellation using
+  exact operation identity, including completion and stale-cleanup races;
+- no Provider call, late delta, cache write, terminal overwrite, failure log,
+  or task revival after cancellation;
+- cancellation/failure classification races and exact-once Usage settlement at
+  the segment-analysis and final-answer Provider boundaries;
 - chat usage records and diagnostic-export redaction;
 - exactly one privacy-safe failure terminal for run, session persistence, or
   attachment system failures, with Usage ledger failures kept independent;
@@ -78,6 +85,15 @@ typecheck, and packaging on the available host.
 
 Vitest emitted worker-termination timeout notices for 11 files after all tests
 had passed. The process exited successfully without a failed or skipped test.
+
+### Issue #138 cancellation hardening — 2026-08-02
+
+- focused cancellation, context, IPC, Usage, and Renderer lifecycle tests:
+  5 test files and 61 tests passed;
+- `npm test`: 159 test files and 1288 tests passed;
+- `npm run typecheck`: passed;
+- `npm run lint`: passed with 0 errors and 123 existing warnings;
+- `git diff --check`: passed.
 
 ## Human verification
 

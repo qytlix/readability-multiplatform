@@ -9,6 +9,7 @@ import {
 } from '../../shared/contracts/chat.ipc';
 import type { IPCResult } from '../../shared/contracts/feed.ipc';
 import {
+  CHAT_OPERATION_ID_MAX_LENGTH,
   CHAT_SELECTION_LIMITS,
   type ChatAttachmentPickResponse,
   type ChatAttachmentPreviewRequest,
@@ -71,7 +72,7 @@ export function registerChatIpcHandlers(
     CHAT_IPC_CHANNELS.cancel,
     (event, request: unknown): IPCResult<void> => {
       if (!isAuthorizedSender(event, getMainWindow)) return unauthorized();
-      if (!isRunRequest(request)) return invalidRequest();
+      if (!isChatCancelRequest(request)) return invalidRequest();
       try {
         chatService.cancel(request);
         return { ok: true, data: undefined };
@@ -261,6 +262,7 @@ export function isChatGetRequest(value: unknown): value is ChatGetRequest {
 export function isChatSendRequest(value: unknown): value is ChatSendRequest {
   if (
     !isRecord(value)
+    || !isOperationId(value.operationId)
     || !isPositiveInteger(value.entryId)
     || typeof value.question !== 'string'
     || !value.question.trim()
@@ -304,14 +306,27 @@ function isSelection(
 
 function isRunRequest(
   value: unknown,
-): value is ChatCancelRequest & ChatRetryRequest {
-  return isRecord(value) && isPositiveInteger(value.runId);
+): value is ChatRetryRequest {
+  return isRecord(value)
+    && isOperationId(value.operationId)
+    && isPositiveInteger(value.runId);
+}
+
+function isChatCancelRequest(value: unknown): value is ChatCancelRequest {
+  if (!isRecord(value)) return false;
+  const hasRunId = value.runId !== undefined;
+  const hasOperationId = value.operationId !== undefined;
+  if (hasRunId === hasOperationId) return false;
+  return hasRunId
+    ? isPositiveInteger(value.runId)
+    : isOperationId(value.operationId);
 }
 
 export function isRegenerateRequest(
   value: unknown,
 ): value is ChatRegenerateRequest {
   return isRecord(value)
+    && isOperationId(value.operationId)
     && isPositiveInteger(value.userMessageId)
     && (
       value.question === undefined
@@ -321,6 +336,12 @@ export function isRegenerateRequest(
         && value.question.length <= 20_000
       )
     );
+}
+
+function isOperationId(value: unknown): value is string {
+  return typeof value === 'string'
+    && Boolean(value.trim())
+    && value.length <= CHAT_OPERATION_ID_MAX_LENGTH;
 }
 
 function isAttachmentRemoveRequest(

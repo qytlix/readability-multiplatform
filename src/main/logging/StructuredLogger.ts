@@ -4,6 +4,11 @@ import type { Dirent } from 'node:fs';
 import path from 'node:path';
 import { TRANSLATION_HTML_VALIDATION_REASONS } from '../ai/TranslationOutputDiagnostics';
 import {
+  ENTRY_LIST_LOG_COMPONENT,
+  ENTRY_LIST_LOG_ERROR_CODE,
+  ENTRY_LIST_LOG_EVENT,
+} from '../feed/services/EntryListLogging';
+import {
   CHAT_ATTACHMENT_FAILURE_STAGES,
   CHAT_LOG_COMPONENTS,
   CHAT_LOG_ERROR_CODES,
@@ -605,10 +610,16 @@ export function sanitizeStructuredLogRecord(value: unknown): StructuredLogRecord
 
   if (!timestamp || !level || !event || !component || !sessionId) return undefined;
   if (event.startsWith('chat.') && !isChatFailureEvent(event)) return undefined;
+  if (event.startsWith('entry.list.') && event !== ENTRY_LIST_LOG_EVENT) return undefined;
 
   let context = sanitizeContext(value.context);
   if (isChatFailureEvent(event)) {
     context = sanitizeChatFailureContext(event, component, context);
+    if (!context) return undefined;
+  }
+  if (event === ENTRY_LIST_LOG_EVENT) {
+    if (level !== 'error') return undefined;
+    context = sanitizeEntryListFailureContext(component, context);
     if (!context) return undefined;
   }
   return {
@@ -619,6 +630,30 @@ export function sanitizeStructuredLogRecord(value: unknown): StructuredLogRecord
     component,
     sessionId,
     ...(context ? { context } : {}),
+  };
+}
+
+function sanitizeEntryListFailureContext(
+  component: string,
+  context: StructuredLogContext | undefined,
+): StructuredLogContext | undefined {
+  if (
+    component !== ENTRY_LIST_LOG_COMPONENT
+    || !context
+    || context.stage !== 'read'
+    || context.errorCode !== ENTRY_LIST_LOG_ERROR_CODE
+    || !Number.isSafeInteger(context.durationMs)
+    || (context.durationMs ?? -1) < 0
+    || context.success !== false
+  ) {
+    return undefined;
+  }
+
+  return {
+    stage: 'read',
+    errorCode: ENTRY_LIST_LOG_ERROR_CODE,
+    durationMs: context.durationMs,
+    success: false,
   };
 }
 

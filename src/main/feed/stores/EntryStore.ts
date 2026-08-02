@@ -39,6 +39,14 @@ interface EntryQueryResult {
   nextCursor?: EntryCursor;
 }
 
+/** Identifies expected list-request validation without inspecting error text. */
+export class EntryQueryValidationError extends RangeError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EntryQueryValidationError';
+  }
+}
+
 export class EntryStore {
   constructor(private db: Database.Database) {}
 
@@ -251,7 +259,7 @@ export class EntryStore {
     if (options.cursor) {
       const { matchTier, rank, publishedAt, id } = options.cursor;
       if (matchTier === undefined || rank === undefined) {
-        throw new RangeError('Ranked searches require a ranked cursor.');
+        throw new EntryQueryValidationError('Ranked searches require a ranked cursor.');
       }
       cursorConditions.push(`(
         matchTier < ?
@@ -490,21 +498,33 @@ const ALLOWED_FILTER_FIELDS: readonly FilterField[] = [
 ];
 
 function validateEntryQuery(options: EntryQuery): void {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) {
+    throw new EntryQueryValidationError('Entry query must be an object.');
+  }
   if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100) {
-    throw new RangeError('Entry query limit must be between 1 and 100.');
+    throw new EntryQueryValidationError('Entry query limit must be between 1 and 100.');
   }
   if (
     options.feedId !== undefined
     && (!Number.isInteger(options.feedId) || options.feedId <= 0)
   ) {
-    throw new RangeError('Entry query feedId must be a positive integer.');
+    throw new EntryQueryValidationError('Entry query feedId must be a positive integer.');
   }
-  if (options.search !== undefined && options.search.length > 256) {
-    throw new RangeError('Entry search query must not exceed 256 characters.');
+  if (options.isRead !== undefined && typeof options.isRead !== 'boolean') {
+    throw new EntryQueryValidationError('Entry query isRead must be a boolean.');
+  }
+  if (options.isStarred !== undefined && typeof options.isStarred !== 'boolean') {
+    throw new EntryQueryValidationError('Entry query isStarred must be a boolean.');
+  }
+  if (
+    options.search !== undefined
+    && (typeof options.search !== 'string' || options.search.length > 256)
+  ) {
+    throw new EntryQueryValidationError('Entry search query must not exceed 256 characters.');
   }
   if (options.filters !== undefined) {
     if (!Array.isArray(options.filters) || options.filters.length > 50) {
-      throw new RangeError('Entry query filters must be an array of up to 50 entries.');
+      throw new EntryQueryValidationError('Entry query filters must be an array of up to 50 entries.');
     }
     for (const filter of options.filters) {
       if (
@@ -512,32 +532,43 @@ function validateEntryQuery(options: EntryQuery): void {
         || filter === null
         || !ALLOWED_FILTER_FIELDS.includes(filter.field)
       ) {
-        throw new RangeError('Entry query filter field is invalid.');
+        throw new EntryQueryValidationError('Entry query filter field is invalid.');
       }
       if (typeof filter.value !== 'string' || filter.value.length > 100) {
-        throw new RangeError('Filter value must be a string up to 100 characters.');
+        throw new EntryQueryValidationError('Filter value must be a string up to 100 characters.');
       }
       if (filter.operator !== '+' && filter.operator !== '-' && filter.operator !== '') {
-        throw new RangeError(`Invalid filter operator: "${filter.operator}".`);
+        throw new EntryQueryValidationError(`Invalid filter operator: "${filter.operator}".`);
       }
       if (
         filter.match !== undefined
         && filter.match !== 'fuzzy'
         && filter.match !== 'exact'
       ) {
-        throw new RangeError(`Invalid filter match mode: "${filter.match}".`);
+        throw new EntryQueryValidationError(`Invalid filter match mode: "${filter.match}".`);
       }
     }
   }
   if (
-    options.cursor
+    options.cursor !== undefined
     && (
-      !options.cursor.publishedAt
+      options.cursor === null
+      || typeof options.cursor !== 'object'
+      || typeof options.cursor.publishedAt !== 'string'
+      || !options.cursor.publishedAt
       || !Number.isInteger(options.cursor.id)
       || options.cursor.id <= 0
+      || (
+        options.cursor.matchTier !== undefined
+        && !Number.isFinite(options.cursor.matchTier)
+      )
+      || (
+        options.cursor.rank !== undefined
+        && !Number.isFinite(options.cursor.rank)
+      )
     )
   ) {
-    throw new RangeError('Entry query cursor is invalid.');
+    throw new EntryQueryValidationError('Entry query cursor is invalid.');
   }
 }
 

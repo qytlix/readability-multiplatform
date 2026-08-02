@@ -170,6 +170,7 @@ const chatAPI = {
   get: (request: { entryId: number }) =>
     ipcRenderer.invoke(CHAT_IPC_CHANNELS.get, request),
   send: (request: {
+    operationId: string;
     entryId: number;
     question: string;
     selection?: {
@@ -180,11 +181,15 @@ const chatAPI = {
     };
     attachmentIds: number[];
   }) => ipcRenderer.invoke(CHAT_IPC_CHANNELS.send, request),
-  cancel: (request: { runId: number }) =>
+  cancel: (request: { runId: number } | { operationId: string }) =>
     ipcRenderer.invoke(CHAT_IPC_CHANNELS.cancel, request),
-  retry: (request: { runId: number }) =>
+  retry: (request: { operationId: string; runId: number }) =>
     ipcRenderer.invoke(CHAT_IPC_CHANNELS.retry, request),
-  regenerate: (request: { userMessageId: number; question?: string }) =>
+  regenerate: (request: {
+    operationId: string;
+    userMessageId: number;
+    question?: string;
+  }) =>
     ipcRenderer.invoke(CHAT_IPC_CHANNELS.regenerate, request),
   pickAttachments: (request: ChatAttachmentPickRequest) =>
     ipcRenderer.invoke(CHAT_IPC_CHANNELS.attachmentPick, request),
