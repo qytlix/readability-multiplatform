@@ -435,10 +435,45 @@ describe('ContentCleaner', () => {
     expect(cleanedHtml).toContain('class="reader-author-name"');
     expect(cleanedHtml).toContain('class="reader-author-bio"');
     expect(cleanedHtml).toContain(
-      '<img src="https://example.com/article-photo.jpg" alt="Article photo">',
+      '<img src="https://example.com/article-photo.jpg" alt="Article photo" referrerpolicy="no-referrer">',
     );
     expect(cleanedHtml).not.toContain(
       'alt="Article photo" class="reader-author-avatar"',
+    );
+  });
+
+  it('injects referrerpolicy=no-referrer on reader images to avoid referer-based blocking', () => {
+    const result = cleaner.clean(
+      `<html>
+        <head><title>Referrer article</title></head>
+        <body>
+          <article>
+            <p>An article that uses absolute and relative image URLs.</p>
+            <figure>
+              <img src="/assets/photo.jpg" alt="Figure photo">
+            </figure>
+            <p>
+              <img src="https://cdn.example.com/img.png" alt="Inline image">
+            </p>
+          </article>
+        </body>
+      </html>`,
+      'https://example.com/posts/article',
+    );
+
+    // Every reader image must carry `referrerpolicy="no-referrer"`.
+    const images = result.content.match(/<img[^>]*>/g) ?? [];
+    expect(images.length).toBe(2);
+    for (const image of images) {
+      expect(image).toContain('referrerpolicy="no-referrer"');
+    }
+
+    // Relative URLs are still normalized to absolute base-relative URLs.
+    expect(result.content).toContain(
+      '<img src="https://example.com/assets/photo.jpg"',
+    );
+    expect(result.content).toContain(
+      '<img src="https://cdn.example.com/img.png"',
     );
   });
 });
