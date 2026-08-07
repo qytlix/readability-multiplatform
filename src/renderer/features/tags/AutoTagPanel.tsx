@@ -9,6 +9,12 @@ interface AutoTagPanelProps {
   autoTrigger?: boolean;
   /** Max number of candidate tags the AI should generate (from user preferences). */
   maxCandidates?: number;
+  /** 生成候选后是否跳过用户确认并直接落库。 */
+  confirmMode?: 'manual' | 'auto';
+  /** 自动确认成功后的回调。 */
+  onAutoConfirmed?: (count: number) => void;
+  /** 自动操作失败时的提示回调。 */
+  onFeedback?: (message: string) => void;
 }
 
 type PanelState =
@@ -69,17 +75,66 @@ async function fetchCandidates(
   return promise;
 }
 
-export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger, maxCandidates = 8 }: AutoTagPanelProps) => {
+export const AutoTagPanel = ({
+  entryId,
+  onTagsChanged,
+  autoTrigger,
+  maxCandidates = 8,
+  confirmMode = 'manual',
+  onAutoConfirmed,
+  onFeedback,
+}: AutoTagPanelProps) => {
   const [panelState, setPanelState] = useState<PanelState>({ type: 'checking' });
   const [isConfirming, setIsConfirming] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(LOADING_TIMEOUT_SECONDS);
   const hasTriggered = useRef(false);
   const loadingStartedAt = useRef(0);
   const panelPhase = useRef<PanelState['type']>('checking');
+  const onTagsChangedRef = useRef(onTagsChanged);
+  const onAutoConfirmedRef = useRef(onAutoConfirmed);
+  const onFeedbackRef = useRef(onFeedback);
+  onTagsChangedRef.current = onTagsChanged;
+  onAutoConfirmedRef.current = onAutoConfirmed;
+  onFeedbackRef.current = onFeedback;
 
   useEffect(() => {
     panelPhase.current = panelState.type;
   }, [panelState]);
+
+  const applyCandidates = useCallback(async (candidates: TagCandidate[]) => {
+    if (confirmMode === 'manual') {
+      sessionCandidates.set(entryId, candidates);
+      setPanelState({
+        type: 'candidates',
+        candidates,
+        selected: new Set(candidates.map((candidate) => candidate.name)),
+      });
+      return;
+    }
+
+    setIsConfirming(true);
+    try {
+      const result = await window.shaleAPI.tag.autoTagConfirm({
+        entryId,
+        tagNames: candidates.map((candidate) => candidate.name),
+      });
+      if (!result.ok) {
+        setPanelState({ type: 'error', message: result.error.message });
+        onFeedbackRef.current?.(result.error.message);
+        return;
+      }
+      sessionCandidates.delete(entryId);
+      setPanelState({ type: 'done' });
+      onTagsChangedRef.current?.();
+      onAutoConfirmedRef.current?.(result.data.length);
+    } catch {
+      const message = '标签自动确认失败。';
+      setPanelState({ type: 'error', message });
+      onFeedbackRef.current?.(message);
+    } finally {
+      setIsConfirming(false);
+    }
+  }, [confirmMode, entryId]);
 
   // ── On mount: check DB status and session cache ─────────
 
@@ -89,13 +144,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger, maxCandidate
       // First check session cache for candidates
       const cached = sessionCandidates.get(entryId);
       if (cached && cached.length > 0) {
-        if (!cancelled) {
-          setPanelState({
-            type: 'candidates',
-            candidates: cached,
-            selected: new Set(cached.map((c) => c.name)),
-          });
-        }
+        if (!cancelled) await applyCandidates(cached);
         return;
       }
 
@@ -104,6 +153,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger, maxCandidate
         const status = await window.shaleAPI.tag.autoTagCheckStatus(entryId);
         if (!cancelled && status.ok && status.data.aiTagGenerated) {
           setPanelState({ type: 'done' });
+          if (autoTrigger) onAutoConfirmedRef.current?.(0);
           return;
         }
       } catch {
@@ -115,6 +165,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger, maxCandidate
       // Not done and no cached candidates — check auto-trigger
       if (autoTrigger && !hasTriggered.current) {
         hasTriggered.current = true;
+        panelPhase.current = 'loading';
         setPanelState({ type: 'loading' });
         loadingStartedAt.current = Date.now();
         try {
@@ -127,14 +178,10 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger, maxCandidate
           const candidates = result.data;
           if (!candidates || candidates.length === 0) {
             setPanelState({ type: 'idle' });
+            onAutoConfirmedRef.current?.(0);
             return;
           }
-          sessionCandidates.set(entryId, candidates);
-          setPanelState({
-            type: 'candidates',
-            candidates,
-            selected: new Set(candidates.map((c) => c.name)),
-          });
+          await applyCandidates(candidates);
         } catch {
           if (!cancelled && panelPhase.current === 'loading') {
             setPanelState({ type: 'idle' });
@@ -145,7 +192,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger, maxCandidate
       }
     })();
     return () => { cancelled = true; };
-  }, [entryId, autoTrigger, maxCandidates]);
+  }, [entryId, autoTrigger, maxCandidates, applyCandidates]);
 
   // Countdown timer while loading
   useEffect(() => {
@@ -173,6 +220,7 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger, maxCandidate
   const startGeneration = useCallback(async () => {
     // Clear session cache so fresh results replace old ones
     sessionCandidates.delete(entryId);
+    panelPhase.current = 'loading';
     setPanelState({ type: 'loading' });
     loadingStartedAt.current = Date.now();
     try {
@@ -187,17 +235,12 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger, maxCandidate
         setPanelState({ type: 'error', message: '未能生成标签，请重试。' });
         return;
       }
-      sessionCandidates.set(entryId, candidates);
-      setPanelState({
-        type: 'candidates',
-        candidates,
-        selected: new Set(candidates.map((c) => c.name)),
-      });
+      await applyCandidates(candidates);
     } catch {
       if (panelPhase.current !== 'loading') return;
       setPanelState({ type: 'error', message: '标签生成请求失败。' });
     }
-  }, [entryId, maxCandidates]);
+  }, [entryId, maxCandidates, applyCandidates]);
 
   const generate = useCallback(() => {
     void startGeneration();
@@ -242,12 +285,12 @@ export const AutoTagPanel = ({ entryId, onTagsChanged, autoTrigger, maxCandidate
       // DB flag is already set by AutoTagService.confirmTags()
       sessionCandidates.delete(entryId);
       setPanelState({ type: 'done' });
-      onTagsChanged?.();
+      onTagsChangedRef.current?.();
     } catch {
       setIsConfirming(false);
       setPanelState({ type: 'error', message: '标签确认失败。' });
     }
-  }, [entryId, panelState, onTagsChanged]);
+  }, [entryId, panelState]);
 
   const cancel = useCallback(() => {
     // Keep candidates in session cache in case the user re-opens

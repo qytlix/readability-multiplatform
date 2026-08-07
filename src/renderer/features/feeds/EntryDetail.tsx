@@ -164,6 +164,7 @@ export const EntryDetail = ({
   const [isTitleTranslating, setIsTitleTranslating] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showTagWindow, setShowTagWindow] = useState(false);
+  const [tagWindowAutoTriggered, setTagWindowAutoTriggered] = useState(false);
   const [exportArticleAvail, setExportArticleAvail] = useState<ArticleAvailability | null>(null);
   const [titleTranslationTarget, setTitleTranslationTarget] = useState<HTMLDivElement | null>(null);
   const [isFloatingHeaderVisible, setIsFloatingHeaderVisible] = useState(false);
@@ -398,6 +399,8 @@ export const EntryDetail = ({
     setTranslationControlState(null);
     setRetranslationStatus(null);
     setIsTitleTranslating(false);
+    setShowTagWindow(false);
+    setTagWindowAutoTriggered(false);
     setVisibleReadingProgress(entry?.readingProgress ?? 0);
     setReadingBookTurn(null);
     setReadingJumpTarget('end');
@@ -405,6 +408,40 @@ export const EntryDetail = ({
     readingBookDirectionRef.current = null;
     readingBookDistanceRef.current = 0;
   }, [entry?.id]);
+
+  useEffect(() => {
+    if (
+      !entry
+      || aiPreferences.tagAgentTriggerMode !== 'auto'
+      || status !== 'success'
+      || content?.isPreview === true
+      || !content?.cleanedHtml.trim()
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await window.shaleAPI.tag.listByEntry(entry.id);
+        if (cancelled || !result.ok || result.data.length > 0) return;
+        setTagWindowAutoTriggered(true);
+        setShowTagWindow(true);
+      } catch {
+        if (!cancelled) onFeedback?.('未能检查本文的标签状态。');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    aiPreferences.tagAgentTriggerMode,
+    content?.cleanedHtml,
+    content?.isPreview,
+    entry?.id,
+    onFeedback,
+    status,
+  ]);
 
   useEffect(() => {
     if (
@@ -1027,6 +1064,7 @@ export const EntryDetail = ({
               if (showTagWindow) {
                 tagBtnRef.current?.blur();
               }
+              setTagWindowAutoTriggered(false);
               setShowTagWindow(!showTagWindow);
             }}
           >
@@ -1098,6 +1136,31 @@ export const EntryDetail = ({
           onTagsChanged={onTagsChanged}
           maxCandidates={aiPreferences.tagAgentMaxCandidates}
           tagSuggestionMaxCount={aiPreferences.tagSuggestionMaxCount}
+          autoTrigger={tagWindowAutoTriggered}
+          confirmMode={aiPreferences.tagAgentConfirmMode}
+          silent={
+            tagWindowAutoTriggered
+            && aiPreferences.tagAgentConfirmMode === 'auto'
+          }
+          onAutoConfirmed={(count) => {
+            if (count > 0) {
+              onFeedback?.(`已为本文添加 ${count} 个 AI 标签。`);
+            }
+            if (tagWindowAutoTriggered) {
+              setShowTagWindow(false);
+              setTagWindowAutoTriggered(false);
+            }
+          }}
+          onFeedback={(message) => {
+            onFeedback?.(message);
+            if (
+              tagWindowAutoTriggered
+              && aiPreferences.tagAgentConfirmMode === 'auto'
+            ) {
+              setShowTagWindow(false);
+              setTagWindowAutoTriggered(false);
+            }
+          }}
         />
       )}
       <div className="entry-detail">
