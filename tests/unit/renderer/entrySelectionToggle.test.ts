@@ -398,6 +398,38 @@ describe('article selection toggle', () => {
     expect(container.querySelector('.story-list-header h1')?.textContent).toBe('全部文章');
   });
 
+  it('exits reading focus and clears the article when another feed is selected', async () => {
+    await act(async () => {
+      root.render(createElement(App));
+      await Promise.resolve();
+    });
+    await flushAsyncState();
+
+    const feedButtons = container.querySelectorAll<HTMLButtonElement>('.sidebar-feed');
+    act(() => feedButtons[0]?.click());
+    await flushAsyncState();
+    act(() => findStoryCard(container, '文章 A')?.click());
+
+    const focusButton =
+      container.querySelector<HTMLButtonElement>('.reader-focus-toggle');
+    act(() => focusButton?.click());
+    expect(container.querySelector('.reader-page')?.classList.contains('is-reading-focus'))
+      .toBe(true);
+    expect(container.querySelector('.entry-detail-title-row h2')?.textContent)
+      .toBe('文章 A');
+
+    await act(async () => {
+      feedButtons[1]?.click();
+      await Promise.resolve();
+    });
+    await flushAsyncState();
+
+    expect(container.querySelector('.reader-page')?.classList.contains('is-reading-focus'))
+      .toBe(false);
+    expect(container.textContent).toContain('选择一篇文章开始阅读');
+    expect(container.querySelector('.story-list-pane')).not.toBeNull();
+  });
+
   it('offers a manual refresh that bypasses cached article content', async () => {
     getContent.mockResolvedValue({
       ok: true,

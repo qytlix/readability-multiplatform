@@ -830,6 +830,10 @@ useEffect(() => {
 
   const handleSelectFeed = useCallback((feedId: number | null) => {
     setActiveView('reader');
+    setIsReadingFocus(false);
+    setSelectedEntryId(null);
+    setSelectedEntry(null);
+    setCopiedOriginalEntryId(null);
     setTagFilter(null);
     setEntryFilter('all');
     setSearchInput('');
