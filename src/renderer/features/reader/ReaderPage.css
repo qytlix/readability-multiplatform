@@ -5510,6 +5510,55 @@ body.workspace-is-resizing * {
   font-weight: 650;
 }
 
+.feed-duplicate-warning {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--reader-accent) 55%, var(--reader-line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--reader-accent) 8%, transparent);
+}
+
+.feed-duplicate-warning h3 {
+  margin: 0 0 8px;
+  color: var(--reader-text);
+  font-size: 15px;
+}
+
+.feed-duplicate-warning p {
+  margin: 7px 0;
+  color: var(--reader-text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.feed-duplicate-warning dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin: 12px 0;
+  gap: 8px 12px;
+}
+
+.feed-duplicate-warning dt {
+  color: var(--reader-text-soft);
+  font-size: 12px;
+}
+
+.feed-duplicate-warning dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--reader-text);
+  font-size: 13px;
+}
+
+.feed-duplicate-warning small {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--reader-text-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .feed-edit-copy-row {
   display: flex;
   align-items: stretch;

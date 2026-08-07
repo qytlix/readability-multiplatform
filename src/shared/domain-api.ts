@@ -54,7 +54,10 @@ export interface ExportAPI {
  */
 
 export interface FeedAPI {
-  add: (url: string) => Promise<IPCResult<{ feed: Feed; entries: EntryListItem[] }>>;
+  add: (
+    url: string,
+    options?: { allowSuspectedDuplicate?: boolean },
+  ) => Promise<IPCResult<{ feed: Feed; entries: EntryListItem[] }>>;
   list: () => Promise<IPCResult<Feed[]>>;
   sync: (feedId?: number) => Promise<IPCResult<{
     feed: Feed;
@@ -74,6 +77,7 @@ export interface OPMLAPI {
   import: (
     filePath: string,
     mode: 'merge' | 'replace',
+    suspectedDuplicatePolicy?: 'warn' | 'keep' | 'skip',
   ) => Promise<IPCResult<OPMLImportResult>>;
   export: (filePath: string) => Promise<IPCResult<void>>;
 }

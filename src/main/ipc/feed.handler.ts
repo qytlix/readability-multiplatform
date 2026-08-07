@@ -112,7 +112,9 @@ export function registerFeedIpcHandlers(
       }
 
       try {
-        return success(await feedService.addFeed(request.url));
+        return success(await feedService.addFeed(request.url, {
+          allowSuspectedDuplicate: request.allowSuspectedDuplicate,
+        }));
       } catch (error) {
         return failure(error);
       }
@@ -399,6 +401,7 @@ export function registerFeedIpcHandlers(
         const result = await opmlImportService.importFromFile(
           request.filePath,
           request.mode,
+          request.suspectedDuplicatePolicy,
         );
         return success(result);
       } catch (error) {

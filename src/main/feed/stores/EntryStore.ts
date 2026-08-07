@@ -345,6 +345,23 @@ export class EntryStore {
     return this.query({ ...options, feedId });
   }
 
+  findRecentIdentityEntries(
+    feedId: number,
+    limit: number,
+  ): Array<{ guid?: string; url?: string }> {
+    const rows = this.db.prepare(`
+      SELECT guid, url
+      FROM entry
+      WHERE feedId = ? AND isDeleted = 0
+      ORDER BY COALESCE(publishedAt, createdAt) DESC, id DESC
+      LIMIT ?
+    `).all(feedId, limit) as Array<{ guid: string | null; url: string | null }>;
+    return rows.map((row) => ({
+      ...(row.guid ? { guid: row.guid } : {}),
+      ...(row.url ? { url: row.url } : {}),
+    }));
+  }
+
   markRead(ids: number[], isRead: boolean): void {
     if (ids.length === 0) return;
     const placeholders = ids.map(() => '?').join(',');

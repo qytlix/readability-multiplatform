@@ -59,7 +59,8 @@ const ping = (): Promise<PingResponse> =>
   ipcRenderer.invoke(IPC_CHANNELS.systemPing);
 
 const feedAPI = {
-  add: (url: string) => ipcRenderer.invoke(FEED_IPC_CHANNELS.feedAdd, { url }),
+  add: (url: string, options?: { allowSuspectedDuplicate?: boolean }) =>
+    ipcRenderer.invoke(FEED_IPC_CHANNELS.feedAdd, { url, ...options }),
   list: () => ipcRenderer.invoke(FEED_IPC_CHANNELS.feedList),
   sync: (feedId?: number) =>
     ipcRenderer.invoke(FEED_IPC_CHANNELS.feedSync, { feedId }),
@@ -123,8 +124,15 @@ const dialogAPI = {
 };
 
 const opmlAPI = {
-  import: (filePath: string, mode: 'merge' | 'replace') =>
-    ipcRenderer.invoke(FEED_IPC_CHANNELS.opmlImport, { filePath, mode }),
+  import: (
+    filePath: string,
+    mode: 'merge' | 'replace',
+    suspectedDuplicatePolicy: 'warn' | 'keep' | 'skip' = 'warn',
+  ) => ipcRenderer.invoke(FEED_IPC_CHANNELS.opmlImport, {
+    filePath,
+    mode,
+    suspectedDuplicatePolicy,
+  }),
   export: (filePath: string) =>
     ipcRenderer.invoke(FEED_IPC_CHANNELS.opmlExport, { filePath }),
 };

@@ -334,7 +334,12 @@ export function initializeServices(
     feedStore,
     syncCoordinator: null as unknown as SyncCoordinator,
     syncScheduler: null as unknown as SyncScheduler,
-    opmlImportService: new OPMLImportService(feedStore, operationLogger),
+    opmlImportService: new OPMLImportService(
+      feedStore,
+      operationLogger,
+      undefined,
+      feedService,
+    ),
     opmlExportService: new OPMLExportService(feedStore, operationLogger),
   };
   summaryServicesSingleton = { providerService, summaryService };

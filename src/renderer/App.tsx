@@ -582,9 +582,19 @@ useEffect(() => {
     }
   }, [loadEntryStats, loadFeeds, requestEntries]);
 
-  const handleAddFeed = useCallback(async (url: string) => {
-    const result = await window.shaleAPI.feed.add(url);
-    if (!result.ok) throw new Error(result.error.message);
+  const handleAddFeed = useCallback(async (
+    url: string,
+    allowSuspectedDuplicate = false,
+  ) => {
+    const result = await window.shaleAPI.feed.add(url, {
+      allowSuspectedDuplicate,
+    });
+    if (!result.ok) {
+      throw Object.assign(new Error(result.error.message), {
+        code: result.error.code,
+        details: result.error.details,
+      });
+    }
     await Promise.all([
       loadFeeds(false),
       requestEntries(undefined, false),
