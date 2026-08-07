@@ -97,7 +97,7 @@ export interface EntryAPI {
     readingProgress: number,
   ) => Promise<IPCResult<EntryReadingProgress>>;
   markRead: (ids: number[], isRead: boolean) => Promise<IPCResult<void>>;
-  markStarred: (id: number, isStarred: boolean) => Promise<IPCResult<void>>;
+  markStarred: (ids: number[], isStarred: boolean) => Promise<IPCResult<void>>;
 }
 
 export interface ContentAPI {

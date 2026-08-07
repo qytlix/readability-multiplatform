@@ -12,6 +12,9 @@ export const TAG_IPC_CHANNELS = {
   createTag:         'tag:create-tag',
   tagEntry:          'tag:tag-entry',
   untagEntry:        'tag:untag-entry',
+  listByEntries:     'tag:list-by-entries',
+  tagEntries:        'tag:tag-entries',
+  untagEntries:      'tag:untag-entries',
   listAllWithCount:  'tag:list-all-with-count',
   listAvailableForEntry: 'tag:list-available-for-entry',
   autoTagGenerate:   'tag:auto-tag-generate',
@@ -25,6 +28,9 @@ export interface TagAPI {
   createTag: (tagName: string) => Promise<IPCResult<Tag>>;
   tagEntry: (entryId: number, tagName: string) => Promise<IPCResult<void>>;
   untagEntry: (entryId: number, tagId: number) => Promise<IPCResult<void>>;
+  listByEntries: (entryIds: number[]) => Promise<IPCResult<Tag[]>>;
+  tagEntries: (entryIds: number[], tagName: string) => Promise<IPCResult<void>>;
+  untagEntries: (entryIds: number[], tagId: number) => Promise<IPCResult<void>>;
   listAllWithCount: () => Promise<IPCResult<TagWithCount[]>>;
   listAvailableForEntry: (entryId: number) => Promise<IPCResult<TagWithCount[]>>;
   autoTagGenerate: (request: AutoTagGenerateRequest) => Promise<IPCResult<TagCandidate[]>>;

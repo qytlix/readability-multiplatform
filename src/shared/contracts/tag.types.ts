@@ -28,6 +28,18 @@ export interface UntagEntryRequest {
   tagId: number;
 }
 
+export interface EntryIdsRequest {
+  entryIds: number[];
+}
+
+export interface TagEntriesRequest extends EntryIdsRequest {
+  tagName: string;
+}
+
+export interface UntagEntriesRequest extends EntryIdsRequest {
+  tagId: number;
+}
+
 export interface EntryIdRequest {
   entryId: number;
 }

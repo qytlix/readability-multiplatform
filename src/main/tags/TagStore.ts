@@ -61,6 +61,19 @@ export class TagStore {
     return rows.map(toTag);
   }
 
+  listByEntries(entryIds: number[]): Tag[] {
+    if (entryIds.length === 0) return [];
+    const placeholders = entryIds.map(() => '?').join(',');
+    const rows = this.db.prepare(`
+      SELECT DISTINCT t.id, t.name, t.color
+      FROM tag t
+      INNER JOIN entry_tag et ON et.tagId = t.id
+      WHERE et.entryId IN (${placeholders})
+      ORDER BY t.name ASC
+    `).all(...entryIds) as TagRow[];
+    return rows.map(toTag);
+  }
+
   /**
    * Associate a tag with an entry (idempotent — no-op if already linked).
    *
@@ -71,6 +84,17 @@ export class TagStore {
       INSERT OR IGNORE INTO entry_tag (entryId, tagId, source, createdAt)
       VALUES (?, ?, ?, ?)
     `).run(entryId, tagId, source, new Date().toISOString());
+  }
+
+  tagEntries(entryIds: number[], tagId: number): void {
+    const insert = this.db.prepare(`
+      INSERT OR IGNORE INTO entry_tag (entryId, tagId, source, createdAt)
+      VALUES (?, ?, 'manual', ?)
+    `);
+    const createdAt = new Date().toISOString();
+    this.db.transaction((ids: number[]) => {
+      for (const entryId of ids) insert.run(entryId, tagId, createdAt);
+    })(entryIds);
   }
 
   /**
@@ -95,6 +119,15 @@ export class TagStore {
     this.db.prepare(`
       DELETE FROM entry_tag WHERE entryId = ? AND tagId = ?
     `).run(entryId, tagId);
+  }
+
+  untagEntries(entryIds: number[], tagId: number): void {
+    if (entryIds.length === 0) return;
+    const placeholders = entryIds.map(() => '?').join(',');
+    this.db.prepare(`
+      DELETE FROM entry_tag
+      WHERE entryId IN (${placeholders}) AND tagId = ?
+    `).run(...entryIds, tagId);
   }
 
   /**

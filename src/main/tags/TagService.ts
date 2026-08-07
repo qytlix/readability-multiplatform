@@ -19,6 +19,11 @@ export class TagService {
     return this.tagStore.listByEntry(entryId);
   }
 
+  listByEntries(entryIds: number[]): Tag[] {
+    this.assertEntriesExist(entryIds);
+    return this.tagStore.listByEntries(entryIds);
+  }
+
   /**
    * Create or find a tag by name.
    */
@@ -38,6 +43,13 @@ export class TagService {
     this.tagStore.tagEntry(entryId, tag.id);
   }
 
+  tagEntries(entryIds: number[], tagName: string): void {
+    this.assertEntriesExist(entryIds);
+    const name = assertTagName(tagName);
+    const tag = this.tagStore.findOrCreate(name);
+    this.tagStore.tagEntries(entryIds, tag.id);
+  }
+
   /**
    * Remove a tag from an entry.
    */
@@ -50,6 +62,17 @@ export class TagService {
       );
     }
     this.tagStore.untagEntry(entryId, tagId);
+  }
+
+  untagEntries(entryIds: number[], tagId: number): void {
+    this.assertEntriesExist(entryIds);
+    if (!Number.isInteger(tagId) || tagId <= 0) {
+      throw new TagError(
+        TAG_ERROR_CODES.INVALID_REQUEST,
+        'The tag identity is invalid.',
+      );
+    }
+    this.tagStore.untagEntries(entryIds, tagId);
   }
 
   /**
@@ -80,6 +103,16 @@ export class TagService {
         'The article for this tag no longer exists.',
       );
     }
+  }
+
+  private assertEntriesExist(entryIds: number[]): void {
+    if (entryIds.length === 0) {
+      throw new TagError(
+        TAG_ERROR_CODES.INVALID_REQUEST,
+        'At least one article must be selected.',
+      );
+    }
+    for (const entryId of entryIds) this.assertEntryExists(entryId);
   }
 }
 

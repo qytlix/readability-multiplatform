@@ -98,8 +98,8 @@ const entryAPI = {
     }),
   markRead: (ids: number[], isRead: boolean) =>
     ipcRenderer.invoke(FEED_IPC_CHANNELS.entryMarkRead, { ids, isRead }),
-  markStarred: (id: number, isStarred: boolean) =>
-    ipcRenderer.invoke(FEED_IPC_CHANNELS.entryMarkStarred, { id, isStarred }),
+  markStarred: (ids: number[], isStarred: boolean) =>
+    ipcRenderer.invoke(FEED_IPC_CHANNELS.entryMarkStarred, { ids, isStarred }),
 };
 
 const contentAPI = {
@@ -321,6 +321,12 @@ const tagAPI = {
     ipcRenderer.invoke(TAG_IPC_CHANNELS.tagEntry, { entryId, tagName }),
   untagEntry: (entryId: number, tagId: number) =>
     ipcRenderer.invoke(TAG_IPC_CHANNELS.untagEntry, { entryId, tagId }),
+  listByEntries: (entryIds: number[]) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.listByEntries, { entryIds }),
+  tagEntries: (entryIds: number[], tagName: string) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.tagEntries, { entryIds, tagName }),
+  untagEntries: (entryIds: number[], tagId: number) =>
+    ipcRenderer.invoke(TAG_IPC_CHANNELS.untagEntries, { entryIds, tagId }),
   listAllWithCount: () =>
     ipcRenderer.invoke(TAG_IPC_CHANNELS.listAllWithCount),
   listAvailableForEntry: (entryId: number) =>

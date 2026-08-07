@@ -15,6 +15,7 @@ import type {
 } from '../shared/contracts/feed.types';
 import { FeedList } from './features/feeds/FeedList';
 import { EntryList } from './features/feeds/EntryList';
+import { EntrySelectionActions } from './features/feeds/EntrySelectionActions';
 import { EntryDetail } from './features/feeds/EntryDetail';
 import { FeedAddDialog } from './features/feeds/FeedAddDialog';
 import { getEntryListHeadingPresentation } from './features/feeds/entryListPresentation';
@@ -694,7 +695,7 @@ useEffect(() => {
       entry.id === entryId ? { ...entry, isStarred: nextValue } : entry));
 
     try {
-      const result = await window.shaleAPI.entry.markStarred(entryId, nextValue);
+      const result = await window.shaleAPI.entry.markStarred([entryId], nextValue);
       if (!result.ok) throw new Error(result.error.message);
       setReaderFeedback(nextValue ? '已收藏到本地。' : '已取消收藏。');
       if (entryFilter === 'starred' && !nextValue && !appliedSearchQuery) {
@@ -888,6 +889,22 @@ useEffect(() => {
     setShowExportDialog(true);
   }, [selectedIds]);
 
+  const handleSelectionChanged = useCallback(async (
+    change: 'read' | 'starred' | 'tags',
+  ) => {
+    if (change === 'read') {
+      setSelectedEntry((current) => current && selectedIds.has(current.id)
+        ? { ...current, isRead: true, readingProgress: 1 }
+        : current);
+      await loadEntryStats();
+    } else if (change === 'starred') {
+      setSelectedEntry((current) => current && selectedIds.has(current.id)
+        ? { ...current, isStarred: true }
+        : current);
+    }
+    await requestEntries(undefined, false);
+  }, [loadEntryStats, requestEntries, selectedIds]);
+
   const selectedSourceTitle = selectedEntryFeed?.title
     ?? selectedEntryFeed?.feedURL
     ?? '';
@@ -1043,6 +1060,14 @@ useEffect(() => {
                   return nextIds;
                 });
               }}
+              selectionActions={(
+                <EntrySelectionActions
+                  selectedIds={selectedIds}
+                  onChanged={handleSelectionChanged}
+                  onFeedback={setReaderFeedback}
+                  onExport={() => void handleExportRequest()}
+                />
+              )}
             />
           )}
         </section>

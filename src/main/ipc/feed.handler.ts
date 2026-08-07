@@ -336,7 +336,7 @@ export function registerFeedIpcHandlers(
       }
 
       try {
-        entryStore.markStarred(request.id, request.isStarred);
+        entryStore.markStarredMany(request.ids, request.isStarred);
         return success(undefined);
       } catch (error) {
         return failure(error);

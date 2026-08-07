@@ -2,6 +2,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  type ReactNode,
 } from 'react';
 import type { EntryListItem } from '../../../shared/contracts/feed.types';
 import { FilterIcon, SearchIcon } from '../reader/ReaderIcons';
@@ -35,6 +36,7 @@ interface EntryListProps {
   selectedIds?: Set<number>;
   onSelectionModeChange?: (enabled: boolean) => void;
   onSelectionToggle?: (entryId: number) => void;
+  selectionActions?: ReactNode;
 }
 
 const nextFilter = (filter: EntryFilter): EntryFilter => {
@@ -61,6 +63,7 @@ export const EntryList = ({
   selectedIds,
   onSelectionModeChange,
   onSelectionToggle,
+  selectionActions,
 }: EntryListProps) => {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const selectionIndicatorRef = useRef<HTMLSpanElement>(null);
@@ -167,6 +170,7 @@ export const EntryList = ({
       {selectionMode && (
         <div className="export-selection-bar">
           <span>{selectedIds && selectedIds.size > 0 ? <>已选 <strong>{selectedIds.size}</strong> 篇</> : '选择模式'}</span>
+          {selectionActions}
         </div>
       )}
 
