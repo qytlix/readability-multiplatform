@@ -11,6 +11,7 @@ import path from 'node:path';
 
 const appIconBasePath = path.resolve(__dirname, 'assets/icons/shale-app-icon');
 const linuxIconPath = path.resolve(__dirname, 'assets/icons/linux/shale-app-icon-512.png');
+const splashResourcePath = path.resolve(__dirname, 'resources/splash');
 const terminologyDbPath = path.resolve(
   __dirname,
   'resources/terminology/terminology-libraries.sqlite',
@@ -40,7 +41,7 @@ const config: ForgeConfig = {
     // Electron Packager selects `.icns` on macOS and `.ico` on Windows.
     icon: appIconBasePath,
     // Linux window icons need a PNG outside app.asar at runtime.
-    extraResource: [linuxIconPath, terminologyDbPath],
+    extraResource: [linuxIconPath, terminologyDbPath, splashResourcePath],
     // The Vite plugin normally packages only `.vite`. Main-process dependencies
     // are deliberately externalized in vite.main.config.ts, so let Forge retain
     // the application dependencies and prune development-only packages.
